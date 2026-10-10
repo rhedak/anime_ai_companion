@@ -8,6 +8,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { TerminalLink } from "./terminal-link.ts";
+import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -63,8 +64,22 @@ const persona = (config: SessionConfig) =>
   "\n" +
   avatar.promptSection();
 
+// What the chat log shows, and which Claude Code session it belongs to, survive a restart.
+const transcript = new Transcript(join(root, "data/transcript.json"));
+const savedLog = await transcript.load();
+const resumable =
+  savedLog?.provider === "claude" && savedLog.sessionId && (await claudeSessionExists(savedLog.sessionId))
+    ? savedLog.sessionId
+    : undefined;
+if (!resumable && savedLog?.provider === "claude") transcript.clear(); // its session is gone: start clean
+
 const providers: Record<ProviderName, Provider> = {
-  claude: new ClaudeCodeProvider({ config: sessionConfig(), chatCwd: workspace, persona }),
+  claude: new ClaudeCodeProvider({
+    config: sessionConfig(),
+    chatCwd: workspace,
+    persona,
+    resumeSessionId: resumable,
+  }),
   ollama: new OllamaProvider({
     host: ollamaHost,
     model: settings.ollamaModel ?? "",
@@ -144,6 +159,17 @@ const attachToken = randomBytes(24).toString("hex");
 await mkdir(join(root, "data"), { recursive: true });
 await writeFile(join(root, "data/attach-token"), attachToken, { mode: 0o600 });
 
+/** Save the visible log and the session it belongs to (debounced a little: turns end often). */
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function persistTranscript(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    transcript
+      .save({ provider: settings.provider, sessionId: provider.sessionId })
+      .catch((err) => console.error("could not save the transcript:", err));
+  }, 300);
+}
+
 // Problems with the model's avatar tags, passed back to it with the next user message.
 let notesForModel: string[] = [];
 
@@ -156,7 +182,10 @@ function makeTagApplier(): (reply: string) => void {
       avatar
         .applyPatch(tags[seen])
         .then(({ applied, rejected }) => {
-          if (applied.length) broadcast({ type: "avatar", version: avatar.version, applied });
+          if (applied.length) {
+            transcript.look(applied);
+            broadcast({ type: "avatar", version: avatar.version, applied });
+          }
           if (rejected.length) {
             notesForModel.push(
               "Your avatar tag had problems: " +
@@ -183,7 +212,10 @@ const link = new TerminalLink({
   onSay: (text) => {
     makeTagApplier()(text);
     // Let avatar changes land before she "speaks", so the new look is there for the words.
-    avatar.settled().finally(() => broadcast({ type: "say", text }));
+    avatar.settled().finally(() => {
+      transcript.say(text);
+      broadcast({ type: "say", text });
+    });
   },
   onChange: () => {
     if (link.connected) provider.close(); // one brain at a time
@@ -201,9 +233,11 @@ function runTurn(userText: string): void {
   provider.send(toModel, (event) => {
     if (event.type === "delta") {
       reply += event.text;
+      transcript.delta(event.text);
       applyNewTags(reply);
       broadcast(event);
     } else if (event.type === "tool") {
+      transcript.tool({ type: "tool", id: event.id, name: event.name, summary: event.summary, status: event.status });
       broadcast(event);
     } else if (event.type === "permission") {
       pendingPermissions.set(event.request.id, event.request);
@@ -215,7 +249,11 @@ function runTurn(userText: string): void {
       pendingPermissions.clear();
       applyNewTags(reply);
       // Let queued avatar changes land before the turn is reported finished.
-      avatar.settled().finally(() => broadcast(event));
+      avatar.settled().finally(() => {
+        transcript.flush();
+        persistTranscript();
+        broadcast(event);
+      });
     }
   });
 }
@@ -224,6 +262,7 @@ wss.on("connection", (ws) => {
   clients.add(ws);
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   ws.send(JSON.stringify(modeInfo()));
+  ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   void refreshOllamaModels();
   ws.on("close", () => clients.delete(ws));
@@ -235,6 +274,7 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
+      transcript.user(msg.text);
       broadcast({ type: "user", text: msg.text });
       if (link.connected) link.send(withNotes(msg.text));
       else runTurn(msg.text);
@@ -284,6 +324,8 @@ wss.on("connection", (ws) => {
         provider.close();
         provider = providers[settings.provider];
         provider.reset(); // a new brain does not share the other one's memory
+        transcript.clear();
+        persistTranscript();
         notesForModel = [];
         pendingPermissions.clear();
         broadcast({ type: "reset" });
@@ -292,6 +334,8 @@ wss.on("connection", (ws) => {
       broadcast(modeInfo());
     } else if (msg.type === "reset") {
       provider.reset();
+      transcript.clear();
+      persistTranscript();
       notesForModel = [];
       pendingPermissions.clear();
       broadcast({ type: "reset" });
@@ -299,6 +343,8 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "reset-look") {
       await avatar.resetLook();
       provider.reset();
+      transcript.clear();
+      persistTranscript();
       pendingPermissions.clear();
       broadcast({ type: "reset" });
       broadcast(modeInfo());

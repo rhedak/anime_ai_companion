@@ -193,6 +193,23 @@ function resolvePermission(id, text) {
 
 function handle(msg) {
   switch (msg.type) {
+    case "history": {
+      // The conversation so far, replayed to a freshly opened or reloaded tab.
+      log.replaceChildren();
+      toolEls.clear();
+      for (const item of msg.items) {
+        if (item.type === "user") addMsg("user", item.text);
+        else if (item.type === "bot") {
+          const { clean } = parseReply(item.text);
+          if (clean) addMsg("bot", clean);
+        } else if (item.type === "look") addMsg("look", `✨ new look: ${item.applied.join(", ")}`);
+        else if (item.type === "tool") {
+          const icon = { running: "⏳", done: "✓", error: "✗" }[item.status === "running" ? "done" : item.status];
+          addMsg(`tool ${item.status === "error" ? "error" : "done"}`, `${icon} ${item.name}${item.summary ? " · " + item.summary : ""}`);
+        }
+      }
+      break;
+    }
     case "mode":
       state = { ...state, ...msg };
       if (msg.mode === "work") wantWork = false;

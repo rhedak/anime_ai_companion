@@ -8,6 +8,8 @@ export interface ClaudeCodeOptions {
   config: SessionConfig;
   /** Folder used in chat mode (no tools, nothing to protect). */
   chatCwd: string;
+  /** Continue this existing session instead of starting a new one (after a server restart). */
+  resumeSessionId?: string;
   /** Resolved each time the process starts, so a reset or mode change sees the current avatar. */
   persona: (config: SessionConfig) => string;
 }
@@ -31,7 +33,7 @@ export class ClaudeCodeProvider implements Provider {
   private readonly opts: ClaudeCodeOptions;
   private proc: ChildProcessWithoutNullStreams | null = null;
   private listener: ((event: ProviderEvent) => void) | null = null;
-  private sessionIdValue = randomUUID();
+  private sessionIdValue: string = randomUUID();
   /** True once the session has a transcript on disk, so a restart can resume it. */
   private hasHistory = false;
   private pending = new Map<string, PendingPermission>();
@@ -40,6 +42,10 @@ export class ClaudeCodeProvider implements Provider {
   constructor(opts: ClaudeCodeOptions) {
     this.opts = opts;
     this.config = opts.config;
+    if (opts.resumeSessionId) {
+      this.sessionIdValue = opts.resumeSessionId;
+      this.hasHistory = true;
+    }
   }
 
   get name(): string {
@@ -114,6 +120,27 @@ export class ClaudeCodeProvider implements Provider {
     listener?.(event);
   }
 
+  /**
+   * She is a companion, not a coding agent with a memory directory: switch off
+   * auto memory (it would try to write files, or emit unparseable tool calls in chat
+   * mode) and a few default prompt sections she does not use, which also keeps turns
+   * smaller. In work mode the project's own CLAUDE.md and git guidance stay on.
+   */
+  private trimmedEnv(): Record<string, string> {
+    const env: Record<string, string> = {
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+      CLAUDE_CODE_DISABLE_CRON: "1",
+      CLAUDE_CODE_DISABLE_CFC_PROMPT: "1",
+      CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
+    };
+    if (this.config.mode === "chat") {
+      env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS = "1";
+      env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = "1";
+    }
+    return env;
+  }
+
   private args(): string[] {
     const { mode, model, allowedTools } = this.config;
     const args = [
@@ -147,7 +174,7 @@ export class ClaudeCodeProvider implements Provider {
   private ensureProcess(): ChildProcessWithoutNullStreams {
     if (this.proc) return this.proc;
     const cwd = this.config.mode === "work" ? this.config.cwd : this.opts.chatCwd;
-    const proc = spawn("claude", this.args(), { cwd });
+    const proc = spawn("claude", this.args(), { cwd, env: { ...process.env, ...this.trimmedEnv() } });
     this.proc = proc;
 
     createInterface({ input: proc.stdout }).on("line", (line) => {
