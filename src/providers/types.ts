@@ -1,3 +1,4 @@
+import type { Effort } from "../claude-settings.ts";
 import type { ImageInput } from "../images.ts";
 import type { Limit } from "./claude-stream.ts";
 
@@ -57,6 +58,8 @@ export interface SessionConfig {
   allowedTools: string[];
   /** How approvals work in work mode. */
   permissionMode: PermissionMode;
+  /** How hard Claude thinks (`--effort`); null leaves it to Claude Code's default. */
+  effort: Effort | null;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, parse } from "node:path";
+import { isEffort, type Effort } from "./claude-settings.ts";
 
 export type ProviderName = "claude" | "ollama";
 
@@ -13,6 +14,8 @@ export interface Settings {
   projectDir: string | null;
   chatModel: string;
   workModel: string;
+  /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
+  effort: Effort | "default";
   /** Tools pre-approved in work mode. Reads in the folder are cheap; everything else asks. */
   allowedTools: string[];
 }
@@ -23,6 +26,7 @@ const defaults = (): Settings => ({
   projectDir: null,
   chatModel: "haiku",
   workModel: "sonnet",
+  effort: "default",
   allowedTools: ["Read", "Grep", "Glob"],
 });
 
@@ -35,6 +39,7 @@ export async function loadSettings(path: string): Promise<Settings> {
     // first run
   }
   const settings = { ...defaults(), ...saved };
+  if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
   if (process.env.COMPANION_PROVIDER === "ollama" || process.env.COMPANION_PROVIDER === "claude") {
     settings.provider = process.env.COMPANION_PROVIDER;
@@ -56,9 +61,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, projectDir } = settings;
+  const { provider, ollamaModel, projectDir, effort } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, projectDir }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, projectDir, effort }, null, 2));
 }
 
 export type FolderCheck = { ok: true; dir: string } | { ok: false; reason: string };

@@ -114,11 +114,19 @@ appearance (hair, clothes, face) is separate: ask her to change it in chat.
 
 ## The usage line
 
-Under the message box a small line shows the model, your Claude **session** (five-hour) and **week**
+Under the message box a small line shows the model and its effort, e.g. `Sonnet 5.5 (high)`, your Claude **session** (five-hour) and **week**
 usage with their reset times, and **ctx**, how full her memory of this conversation is (`/compact` frees
 it up). Numbers turn amber above 80% and red above 95%. The limits come from Claude Code after each
 reply, so they are shown dimmed when they are over ten minutes old, and only for a Claude subscription;
 with Ollama only the model is shown. Colours are theme variables (`--warn-text`, `--error-text`).
+
+## Effort
+
+The **Effort** menu (or `/effort low|medium|high|xhigh|max|default`) sets how hard Claude thinks; more
+is slower and uses more of your limits. Her sessions do not load your Claude Code settings (so a
+folder's hooks and rules never run), with one exception: for *Default* the effort level in your own
+`~/.claude/settings.json` (`effortLevel` and `modelSettings`) is read, so she thinks as hard as your
+terminal does, and the footer shows it. Changing it restarts her process and the conversation carries on.
 
 ## Images
 
@@ -145,6 +153,7 @@ Type these in the chat box (`/help` lists them):
 | `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
 | `/rc`, `/remote-control` | not built in: explains why and prints the terminal command to use it yourself |
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
+| `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |

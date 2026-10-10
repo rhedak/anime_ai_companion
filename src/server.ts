@@ -17,6 +17,7 @@ import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from ".
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
+import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
@@ -74,6 +75,13 @@ const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
 
+const userEffort = await loadUserEffort();
+/** The effort in force: the user's pick, or what their own Claude Code settings give this model. */
+function effectiveEffort(modelAlias = mode === "work" ? settings.workModel : settings.chatModel): Effort | null {
+  if (settings.provider !== "claude") return null;
+  return settings.effort === "default" ? resolveEffort(userEffort, modelAlias) : settings.effort;
+}
+
 const sessionConfig = (): SessionConfig => ({
   mode,
   cwd: settings.projectDir ?? workspace,
@@ -83,6 +91,7 @@ const sessionConfig = (): SessionConfig => ({
       : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
   permissionMode,
+  effort: effectiveEffort(),
 });
 
 const persona = (config: SessionConfig) =>
@@ -130,6 +139,7 @@ const meterInfo = () => {
   return {
     type: "meter",
     model: claude ? (account.model ? prettyModel(account.model) : null) : provider.name,
+    effort: claude ? effectiveEffort() : null,
     session: claude ? account.session : null,
     week: claude ? account.week : null,
     limitsAt: account.limitsAt,
@@ -149,6 +159,7 @@ const modeInfo = () => ({
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
   permissionMode,
+  effort: settings.effort,
 });
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
@@ -338,6 +349,16 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
 }
 
 /** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
+async function changeEffort(value: Effort | "default", say: Say): Promise<void> {
+  if (settings.provider !== "claude") return say("Effort only applies to Claude.");
+  const blocked = cannotChange("change the effort");
+  if (blocked) return say(blocked);
+  settings.effort = value;
+  await saveSettings(settingsPath, settings);
+  provider.configure(sessionConfig()); // restarts claude with --effort; the conversation carries on
+  broadcast(modeInfo());
+}
+
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (link.connected) say("A terminal session is connected: permissions are handled there.");
   else if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
@@ -455,6 +476,16 @@ const slashCommands: Record<
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
       if (!wanted) return say(`Permissions: ${permissionMode}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
       changePermissionMode(wanted, say);
+    },
+  },
+  effort: {
+    help: `how hard she thinks: ${efforts.join(" | ")} | default (follow your Claude settings)`,
+    claudeOnly: true,
+    run: ({ args, say }) => {
+      const wanted = args.toLowerCase();
+      if (wanted === "default" || isEffort(wanted)) return changeEffort(wanted, say);
+      const now = effectiveEffort();
+      say(`Effort: ${now ?? "Claude's default"}${settings.effort === "default" ? " (from your Claude settings)" : ""}. Use /effort ${efforts.join(" | ")} | default`);
     },
   },
   plan: { help: "same as /permissions plan", claudeOnly: true, run: ({ say }) => changePermissionMode("plan", say) },
@@ -654,6 +685,8 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "effort" && (msg.value === "default" || isEffort(msg.value))) {
+      await changeEffort(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {

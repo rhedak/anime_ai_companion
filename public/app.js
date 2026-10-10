@@ -198,6 +198,14 @@ const menuDescriptions = {
     auto: "She runs on her own and pauses if anything looks unsafe",
   },
 };
+menuDescriptions.effort = {
+  default: "Follow your own Claude Code settings",
+  low: "Fastest and lightest on your limits",
+  medium: "Balanced",
+  high: "Thinks harder; slower",
+  xhigh: "Even more thorough",
+  max: "The most thinking she can do",
+};
 const menuRefreshers = [];
 const closeMenus = () => document.querySelectorAll(".menu-pop").forEach((p) => p.remove());
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
@@ -278,6 +286,7 @@ function makeMenu(select, title) {
 }
 const providerMenu = makeMenu($("provider"), "Brain");
 const ollamaMenu = makeMenu($("ollama-model"), "Ollama model");
+const effortMenu = makeMenu($("effort"), "Effort");
 const permissionMenu = makeMenu($("permission-mode"), "Permission mode");
 
 function renderBrain() {
@@ -285,6 +294,8 @@ function renderBrain() {
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
   ollamaMenu.hidden = !ollama;
+  effortMenu.hidden = ollama || state.mode === "attached";
+  $("effort").value = state.effort ?? "default";
   if (ollama) {
     const models = state.ollamaModels ?? [];
     picker.replaceChildren(
@@ -734,6 +745,9 @@ $("provider").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: $("provider").value }));
   renderBrain(); // snaps back to the server's answer if it refuses
 });
+$("effort").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "effort", value: $("effort").value }));
+});
 $("permission-mode").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "permission-mode", value: $("permission-mode").value }));
   renderMode(); // snaps back to the server's answer if it refuses
@@ -792,7 +806,7 @@ function renderMeter() {
     else if (fraction >= 0.8) span.className = "warn";
     parts.push(span);
   };
-  if (meter.model) add(meter.model, 0, "The model answering you");
+  if (meter.model) add(meter.effort ? `${meter.model} (${meter.effort})` : meter.model, 0, "The model answering you" + (meter.effort ? " and how hard she thinks" : ""));
   if (meter.session) {
     add(`session: ${percent(meter.session.used)}${meter.session.resetsAt ? ` (resets ${resetText(meter.session.resetsAt)})` : ""}`, meter.session.used, "Your five-hour usage window with Claude" + (stale ? " (as of her last reply)" : ""));
   }

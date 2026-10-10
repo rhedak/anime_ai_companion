@@ -174,7 +174,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools, permissionMode } = this.config;
+    const { mode, model, allowedTools, permissionMode, effort } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -189,6 +189,7 @@ export class ClaudeCodeProvider implements Provider {
       "--setting-sources", "",
       this.hasHistory ? "--resume" : "--session-id", this.sessionIdValue,
     ];
+    if (effort) args.push("--effort", effort);
     if (mode === "chat") {
       args.push("--tools", "");
     } else {
