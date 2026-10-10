@@ -230,6 +230,13 @@ function handle(msg) {
       calmTimer = setTimeout(() => avatar.setEmotion("neutral"), 9000 + clean.length * 45);
       break;
     }
+    case "looks": {
+      $("undo-look").disabled = !msg.canUndo;
+      const select = $("looks");
+      select.replaceChildren(new Option("Looks…", ""), ...msg.names.map((n) => new Option(n, n)));
+      select.disabled = msg.names.length === 0;
+      break;
+    }
     case "notice":
       addMsg("sys", msg.text);
       break;
@@ -358,6 +365,24 @@ $("folder").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("folder-set").click();
 });
 renderMode();
+
+$("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
+$("looks").addEventListener("change", () => {
+  const name = $("looks").value;
+  if (name) ws?.send(JSON.stringify({ type: "look-load", name }));
+  $("looks").value = "";
+});
+$("save-look").addEventListener("click", () => {
+  const form = $("save-look-form");
+  form.hidden = !form.hidden;
+  if (!form.hidden) $("look-name").focus();
+});
+$("save-look-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  ws?.send(JSON.stringify({ type: "look-save", name: $("look-name").value }));
+  $("look-name").value = "";
+  $("save-look-form").hidden = true;
+});
 
 let full = false;
 $("zoom").addEventListener("click", () => {

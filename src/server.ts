@@ -32,6 +32,7 @@ const avatar = new AvatarService({
   python: process.env.PYTHON ?? "python3",
   workerPath: join(root, "python/render_worker.py"),
   statePath: join(root, "data/avatar.json"),
+  looksDir: join(root, "data/looks"),
   emotions,
   defaultPreset: process.env.COMPANION_PRESET ?? "linnea",
 });
@@ -100,6 +101,8 @@ const modeInfo = () => ({
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
 });
+
+const looksInfo = () => ({ type: "looks", names: avatar.lookNames, canUndo: avatar.canUndo });
 
 async function refreshOllamaModels(): Promise<void> {
   const before = JSON.stringify(ollamaModels);
@@ -185,6 +188,7 @@ function makeTagApplier(): (reply: string) => void {
           if (applied.length) {
             transcript.look(applied);
             broadcast({ type: "avatar", version: avatar.version, applied });
+            broadcast(looksInfo());
           }
           if (rejected.length) {
             notesForModel.push(
@@ -262,6 +266,7 @@ wss.on("connection", (ws) => {
   clients.add(ws);
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   ws.send(JSON.stringify(modeInfo()));
+  ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   void refreshOllamaModels();
@@ -340,6 +345,26 @@ wss.on("connection", (ws) => {
       pendingPermissions.clear();
       broadcast({ type: "reset" });
       broadcast(modeInfo());
+    } else if (msg.type === "look-undo") {
+      if (await avatar.undo()) {
+        transcript.look(["undid the last change"]);
+        broadcast({ type: "avatar", version: avatar.version, applied: ["undid the last change"] });
+      }
+      broadcast(looksInfo());
+    } else if (msg.type === "look-save" && typeof msg.name === "string") {
+      const saved = await avatar.saveLook(msg.name);
+      if (!saved) ws.send(JSON.stringify({ type: "notice", text: "Please give the look a name." }));
+      else ws.send(JSON.stringify({ type: "notice", text: `Saved this look as "${saved}".` }));
+      broadcast(looksInfo());
+    } else if (msg.type === "look-load" && typeof msg.name === "string") {
+      if (await avatar.loadLook(msg.name)) {
+        transcript.look([`load=${msg.name}`]);
+        broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
+      }
+      broadcast(looksInfo());
+    } else if (msg.type === "look-delete" && typeof msg.name === "string") {
+      await avatar.deleteLook(msg.name);
+      broadcast(looksInfo());
     } else if (msg.type === "reset-look") {
       await avatar.resetLook();
       provider.reset();
@@ -349,6 +374,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "reset" });
       broadcast(modeInfo());
       broadcast({ type: "avatar", version: avatar.version, applied: ["back to the original look"] });
+      broadcast(looksInfo());
     } else if (msg.type === "frames" && typeof msg.emotion === "string") {
       try {
         const version = avatar.version;

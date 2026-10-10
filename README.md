@@ -47,6 +47,13 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PORT` | `3737` | |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
 
+## Looks: undo, save, load
+
+She can redesign herself at any time, so it is reversible: **Undo** steps back through her recent
+changes, **Save look** stores the current look by name, and the **Looks** menu loads one. She can load
+a saved look herself too (`[avatar load=name]`). Saved looks are plain files in `data/looks/`; delete a
+file to delete a look.
+
 ## Local models with Ollama
 
 Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing

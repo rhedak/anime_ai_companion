@@ -11,9 +11,16 @@
     <section class="stage">
       <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
       <div class="tools">
+        <button id="undo-look" class="ghost" title="Undo her last look change" disabled>Undo</button>
+        <select id="looks" class="ghost" title="Your saved looks"><option value="">Looks…</option></select>
+        <button id="save-look" class="ghost" title="Save the current look">Save look</button>
         <button id="zoom" class="ghost" title="Switch between close-up and full body">Full body</button>
         <button id="reset-look" class="ghost" title="Restore the original look">Reset look</button>
       </div>
+      <form id="save-look-form" class="save-form" hidden>
+        <input id="look-name" maxlength="40" placeholder="Name this look" autocomplete="off">
+        <button class="ghost">Save</button>
+      </form>
       <div id="avatar" class="avatar" aria-label="Your companion"></div>
       <div id="bubble" class="bubble" hidden></div>
     </section>

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 type Character = Record<string, any>;
@@ -16,6 +16,8 @@ export interface AvatarOptions {
   python: string;
   workerPath: string;
   statePath: string;
+  /** Folder for the user's saved looks, one JSON file each. */
+  looksDir: string;
   emotions: Record<string, Record<string, number>>;
   defaultPreset: string;
 }
@@ -40,6 +42,9 @@ export class AvatarService {
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private frameCache = new Map<string, string[]>();
+  /** Earlier looks, newest last, so a redesign can be undone. */
+  private history: Character[] = [];
+  lookNames: string[] = [];
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(opts: AvatarOptions) {
@@ -53,20 +58,115 @@ export class AvatarService {
     } catch {
       this.character = (await this.call("base", { name: this.opts.defaultPreset })).character;
     }
+    await this.listLooks();
+  }
+
+  get canUndo(): boolean {
+    return this.history.length > 0;
+  }
+
+  /** Replace the current look, remembering the old one for undo. */
+  private async adopt(character: Character): Promise<void> {
+    this.history.push(this.character);
+    if (this.history.length > 20) this.history.shift();
+    this.character = character;
+    this.version++;
+    this.frameCache.clear();
+    await this.persist();
+  }
+
+  private async persist(): Promise<void> {
+    await mkdir(dirname(this.opts.statePath), { recursive: true });
+    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character }, null, 2));
+  }
+
+  /** Go back to the look before the last change. */
+  undo(): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      const previous = this.history.pop();
+      if (!previous) return false;
+      this.character = previous;
+      this.version++;
+      this.frameCache.clear();
+      await this.persist();
+      return true;
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private static slug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  }
+
+  async listLooks(): Promise<string[]> {
+    try {
+      this.lookNames = (await readdir(this.opts.looksDir)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
+    } catch {
+      this.lookNames = [];
+    }
+    return this.lookNames;
+  }
+
+  /** Save the current look under a name. Returns the stored name, or null if the name is unusable. */
+  async saveLook(name: string): Promise<string | null> {
+    const slug = AvatarService.slug(name);
+    if (!slug) return null;
+    await mkdir(this.opts.looksDir, { recursive: true });
+    await writeFile(join(this.opts.looksDir, `${slug}.json`), JSON.stringify({ character: this.character }, null, 2));
+    await this.listLooks();
+    return slug;
+  }
+
+  async deleteLook(name: string): Promise<void> {
+    const slug = AvatarService.slug(name);
+    if (slug) await rm(join(this.opts.looksDir, `${slug}.json`), { force: true });
+    await this.listLooks();
+  }
+
+  private async readLook(name: string): Promise<Character | null> {
+    const slug = AvatarService.slug(name);
+    if (!slug) return null;
+    try {
+      return JSON.parse(await readFile(join(this.opts.looksDir, `${slug}.json`), "utf8")).character;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Switch to a saved look. */
+  loadLook(name: string): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      const look = await this.readLook(name);
+      if (!look) return false;
+      await this.adopt(look);
+      return true;
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   /** Apply `[avatar ...]` changes one after another, in the order the model wrote them. */
   applyPatch(set: Record<string, string>): Promise<PatchResult> {
     const run = this.queue.then(async () => {
-      const res = await this.call("patch", { character: this.character, set });
-      if (res.applied.length > 0) {
-        this.character = res.character;
-        this.version++;
-        this.frameCache.clear();
-        await mkdir(dirname(this.opts.statePath), { recursive: true });
-        await writeFile(this.opts.statePath, JSON.stringify({ character: this.character }, null, 2));
+      const { load, ...rest } = set;
+      let base = this.character;
+      let loadedName: string | null = null;
+      const rejected: PatchResult["rejected"] = [];
+      if (load !== undefined) {
+        const look = await this.readLook(load);
+        if (look) {
+          base = look;
+          loadedName = AvatarService.slug(load);
+        } else {
+          const saved = this.lookNames.length ? this.lookNames.join(", ") : "none yet";
+          rejected.push({ key: "load", reason: `no saved look named '${load}' (saved looks: ${saved})` });
+        }
       }
-      return { applied: res.applied, rejected: res.rejected } as PatchResult;
+      const res = await this.call("patch", { character: base, set: rest });
+      const applied: string[] = [...(loadedName ? [`load=${loadedName}`] : []), ...res.applied];
+      if (applied.length > 0) await this.adopt(res.character);
+      return { applied, rejected: [...rejected, ...res.rejected] } as PatchResult;
     });
     this.queue = run.catch(() => undefined);
     return run;
@@ -79,10 +179,7 @@ export class AvatarService {
 
   async resetLook(): Promise<void> {
     await this.settled();
-    this.character = (await this.call("base", { name: this.opts.defaultPreset })).character;
-    this.version++;
-    this.frameCache.clear();
-    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character }, null, 2));
+    await this.adopt((await this.call("base", { name: this.opts.defaultPreset })).character);
   }
 
   /**
@@ -117,6 +214,8 @@ You are drawn from code, and you can redesign yourself in the middle of a conver
 - Clothes: a garment is worn when its colour is set. Main ones: tunic_color, coat_color, robe_color, skirt_color, trouser_color, belt_color, boot_color, collar_color, apron_color, undersleeve_color, hat_color, hat_band_color, hair_clip_color (hair_clip style), headscarf_color, goggle_color, mask_color, wristband_color, staff_color, staff_crystal_color.
 - Every other field is also accepted by name. Look: ${names(s.top)}. Outfit: ${names(s.outfit)}.
 - The user sees you close-up by default (head and torso) and can switch to full body, so boots and trousers are mostly out of sight unless they do.
+
+- [avatar load=<name>] switches to one of the user's saved looks (${this.lookNames.length ? this.lookNames.join(", ") : "none yet"}); further keys in the same tag then modify it.
 
 Your current look: ${current}`;
   }
