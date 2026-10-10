@@ -10,7 +10,8 @@ import { shareNudge } from "./share-nudge.ts";
 import { TerminalLink } from "./terminal-link.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
-import { checkProjectDir, loadSettings, saveSettings } from "./settings.ts";
+import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
+import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import type { Decision, Mode, PermissionRequest, Provider, SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -42,31 +43,54 @@ const settings = await loadSettings(settingsPath);
 // Always start in chat mode: work mode can change files, so it is an explicit choice each time.
 let mode: Mode = "chat";
 
+const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
+/** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
+let ollamaModels: string[] | null = null;
+
 const sessionConfig = (): SessionConfig => ({
   mode,
   cwd: settings.projectDir ?? workspace,
-  model: mode === "work" ? settings.workModel : settings.chatModel,
+  model:
+    settings.provider === "ollama"
+      ? (settings.ollamaModel ?? "")
+      : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
 });
 
-const provider: Provider = new ClaudeCodeProvider({
-  config: sessionConfig(),
-  chatCwd: workspace,
-  persona: (config) =>
-    personaBase +
-    (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
-    "\n" +
-    avatar.promptSection(),
-});
+const persona = (config: SessionConfig) =>
+  personaBase +
+  (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
+  "\n" +
+  avatar.promptSection();
+
+const providers: Record<ProviderName, Provider> = {
+  claude: new ClaudeCodeProvider({ config: sessionConfig(), chatCwd: workspace, persona }),
+  ollama: new OllamaProvider({
+    host: ollamaHost,
+    model: settings.ollamaModel ?? "",
+    persona: () => persona(sessionConfig()),
+  }),
+};
+let provider: Provider = providers[settings.provider];
 
 const modeInfo = () => ({
   type: "mode",
   mode: link.connected ? "attached" : mode,
+  provider: settings.provider,
+  canUseTools: provider.canUseTools,
+  ollamaModels,
+  ollamaModel: settings.ollamaModel,
   projectDir: settings.projectDir,
   model: sessionConfig().model,
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
 });
+
+async function refreshOllamaModels(): Promise<void> {
+  const before = JSON.stringify(ollamaModels);
+  ollamaModels = await listOllamaModels(ollamaHost);
+  if (JSON.stringify(ollamaModels) !== before) broadcast(modeInfo());
+}
 
 /** Approvals waiting for an answer, so a reloaded tab can show them again. */
 const pendingPermissions = new Map<string, PermissionRequest>();
@@ -201,6 +225,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   ws.send(JSON.stringify(modeInfo()));
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
+  void refreshOllamaModels();
   ws.on("close", () => clients.delete(ws));
   ws.on("message", async (raw) => {
     let msg: any;
@@ -224,6 +249,7 @@ wss.on("connection", (ws) => {
       if (link.connected) return notice("A terminal session is connected. Close it (or /exit) to switch modes.");
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       if (msg.mode === "work") {
+        if (!provider.canUseTools) return notice("This model cannot use tools. Switch to Claude Code for work mode.");
         const wanted = typeof msg.projectDir === "string" && msg.projectDir.trim() ? msg.projectDir : settings.projectDir;
         if (!wanted) return notice("Choose a project folder first.");
         const check = await checkProjectDir(wanted);
@@ -232,6 +258,36 @@ wss.on("connection", (ws) => {
         await saveSettings(settingsPath, settings);
       }
       mode = msg.mode;
+      provider.configure(sessionConfig());
+      broadcast(modeInfo());
+    } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {
+      const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (link.connected) return notice("A terminal session is connected. Close it first.");
+      if (provider.busy) return notice("Wait for her to finish the current reply first.");
+      if (msg.provider === "ollama") {
+        await refreshOllamaModels();
+        const chosen = typeof msg.model === "string" && msg.model ? msg.model : (settings.ollamaModel ?? ollamaModels?.[0]);
+        if (!chosen) {
+          return notice(
+            ollamaModels === null
+              ? `Could not reach Ollama at ${ollamaHost}. Start it with: ollama serve`
+              : "Ollama has no models yet. Pull one, for example: ollama pull llama3.2",
+          );
+        }
+        settings.ollamaModel = chosen;
+        mode = "chat"; // no tools on this backend
+      }
+      const switching = settings.provider !== msg.provider;
+      settings.provider = msg.provider;
+      await saveSettings(settingsPath, settings);
+      if (switching) {
+        provider.close();
+        provider = providers[settings.provider];
+        provider.reset(); // a new brain does not share the other one's memory
+        notesForModel = [];
+        pendingPermissions.clear();
+        broadcast({ type: "reset" });
+      }
       provider.configure(sessionConfig());
       broadcast(modeInfo());
     } else if (msg.type === "reset") {

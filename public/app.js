@@ -83,9 +83,28 @@ let wantWork = false; // the user clicked Work but has not chosen a folder yet
 const toolEls = new Map();
 const permEls = new Map();
 
+function renderBrain() {
+  $("provider").value = state.provider ?? "claude";
+  const picker = $("ollama-model");
+  const ollama = state.provider === "ollama";
+  picker.hidden = !ollama;
+  if (ollama) {
+    const models = state.ollamaModels ?? [];
+    picker.replaceChildren(
+      ...(models.length ? models : [state.ollamaModel ?? "(no models found)"]).map((m) => new Option(m, m, false, m === state.ollamaModel)),
+    );
+    picker.disabled = models.length === 0;
+  }
+  const noTools = state.canUseTools === false;
+  $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
+  $("provider").disabled = state.mode === "attached";
+}
+
 function renderMode() {
+  renderBrain();
   const attached = state.mode === "attached";
-  $("mode-chat").disabled = $("mode-work").disabled = attached;
+  $("mode-chat").disabled = attached;
+  $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
   if (attached) {
     $("mode-chat").classList.remove("on");
@@ -294,6 +313,13 @@ input.addEventListener("input", () => {
 });
 $("reset").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset" })));
 
+$("provider").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "provider", provider: $("provider").value }));
+  renderBrain(); // snaps back to the server's answer if it refuses
+});
+$("ollama-model").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "provider", provider: "ollama", model: $("ollama-model").value }));
+});
 $("mode-chat").addEventListener("click", () => {
   wantWork = false;
   ws?.send(JSON.stringify({ type: "mode", mode: "chat" }));

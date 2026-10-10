@@ -2,7 +2,13 @@ import { readFile, writeFile, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, parse } from "node:path";
 
+export type ProviderName = "claude" | "ollama";
+
 export interface Settings {
+  /** Which backend powers her. */
+  provider: ProviderName;
+  /** Model used when the provider is Ollama. */
+  ollamaModel: string | null;
   /** Folder she works in, in work mode. null until the user picks one. */
   projectDir: string | null;
   chatModel: string;
@@ -12,6 +18,8 @@ export interface Settings {
 }
 
 const defaults = (): Settings => ({
+  provider: "claude",
+  ollamaModel: null,
   projectDir: null,
   chatModel: "haiku",
   workModel: "sonnet",
@@ -28,13 +36,29 @@ export async function loadSettings(path: string): Promise<Settings> {
   }
   const settings = { ...defaults(), ...saved };
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
+  if (process.env.COMPANION_PROVIDER === "ollama" || process.env.COMPANION_PROVIDER === "claude") {
+    settings.provider = process.env.COMPANION_PROVIDER;
+  }
+  if (process.env.OLLAMA_MODEL) settings.ollamaModel = process.env.OLLAMA_MODEL;
   if (process.env.COMPANION_WORK_MODEL) settings.workModel = process.env.COMPANION_WORK_MODEL;
   return settings;
 }
 
+/**
+ * Writes the settings the UI changes (provider, Ollama model, project folder) and
+ * leaves everything else in the file as the user wrote it, so models set through
+ * environment variables are not frozen into it.
+ */
 export async function saveSettings(path: string, settings: Settings): Promise<void> {
+  let existing: Record<string, unknown> = {};
+  try {
+    existing = JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    // first save
+  }
+  const { provider, ollamaModel, projectDir } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(settings, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, projectDir }, null, 2));
 }
 
 export type FolderCheck = { ok: true; dir: string } | { ok: false; reason: string };

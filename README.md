@@ -39,10 +39,21 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | --- | --- | --- |
 | `COMPANION_MODEL` | `haiku` | model used for chat |
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
+| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code) or `ollama` (local models); also switchable in the UI |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
+| `OLLAMA_MODEL` | first installed | model to use with Ollama |
 | `COMPANION_PRESET` | `linnea` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
 | `PORT` | `3737` | |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
+
+## Local models with Ollama
+
+Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing
+leaves it at all. Install [Ollama](https://ollama.com), `ollama pull llama3.2` (or any chat model),
+and choose the model in the dropdown. The same persona and the same `[emotion:...]` / `[avatar ...]`
+tags drive the avatar, though small models follow the tag protocol less reliably. Ollama is chat
+only: no tools, so Work mode is unavailable with it. Switching brains starts a fresh conversation.
 
 ## Work mode
 

@@ -52,8 +52,8 @@ connected when it was built). Phase 0 below covers this.
 
 ## Phases
 
-> **Status 2026-10-10:** Phases 0 to 4 are done (see the notes under each). Next: Phase 5
-> (Ollama) and Phase 6 polish.
+> **Status 2026-10-10:** Phases 0 to 5 are done (see the notes under each). Next: Phase 6
+> polish, in any order.
 
 ### Phase 0: confirm what exists (small) ✅ done
 
@@ -181,7 +181,13 @@ interface, a launcher (`npm run attach` printing the command or config to start
 the terminal session with the right MCP config and persona), and a status
 indicator in the UI showing which mode and session she is connected to.
 
-### Phase 5: other providers
+### Phase 5: other providers ✅ done
+
+Built: `src/providers/ollama.ts` (streaming `/api/chat`, in-memory history, friendly errors),
+`canUseTools` on the provider interface so the UI disables Work for tool-less backends, a Brain picker
+with the installed models, a persisted choice, and tests against a fake Ollama server. Not tested
+against a real Ollama (none installed here), only against its documented HTTP API. Original scope:
+
 
 - Ollama provider for chat mode (streaming over its local HTTP API). Persona and
   tags carry over; tools do not, so work mode is unavailable there.
