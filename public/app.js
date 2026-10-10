@@ -93,10 +93,10 @@ function fillShell(div, output, code) {
     pre.textContent = output.replace(/\n$/, "");
     div.append(pre);
   }
-  if (code !== 0) {
+  if (code !== 0 && code !== null) {
     const status = document.createElement("div");
     status.className = "shell-status";
-    status.textContent = code === null ? "stopped" : `exit ${code}`;
+    status.textContent = `exit ${code}`;
     div.append(status);
   }
   div.dataset.raw = `$ ${div.querySelector(".shell-cmd").textContent.slice(2)}\n${output}`;
@@ -131,7 +131,10 @@ function addUserMsg(text, pics = [], count = pics.length) {
 
 function setBusy(on) {
   busy = on;
-  send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
+  // While she works the send button becomes a stop button.
+  send.disabled = !ws || ws.readyState !== WebSocket.OPEN;
+  send.classList.toggle("stop", on);
+  send.title = send.ariaLabel = on ? "Stop (Ctrl+C)" : "Send";
   if (busy) markActivity();
   renderWorking();
 }
@@ -744,6 +747,20 @@ input.addEventListener("input", () => {
   const shell = /^!\s*\S/.test(input.value);
   $("shell-hint").hidden = !shell;
   $("form").classList.toggle("shell", shell);
+});
+// Stop: the button while she works, or Ctrl+C (without a text selection, so copying still works).
+const stopWork = () => ws?.send(JSON.stringify({ type: "stop" }));
+send.addEventListener("click", (e) => {
+  if (!busy) return;
+  e.preventDefault();
+  stopWork();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() !== "c" || !e.ctrlKey || e.metaKey || e.altKey || !(busy || shellEls.size)) return;
+  const selectedInInput = document.activeElement === input && input.selectionStart !== input.selectionEnd;
+  if (selectedInInput || window.getSelection()?.toString()) return;
+  e.preventDefault();
+  stopWork();
 });
 $("attach").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", () => {

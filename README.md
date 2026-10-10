@@ -175,6 +175,13 @@ because you typed the command yourself, so the composer turns amber with a remin
 with `!`. Commands run in your shell without a terminal and without input, so they cannot ask questions
 or open editors; they stop after 2 minutes and their output is cut at 100 KB. Chat mode refuses them.
 
+## Stopping her
+
+**Ctrl+C** (or the round stop button that replaces Send while she works) stops her reply, or a running
+`!command` (with everything it started). What she had said so far stays in the conversation, and she
+carries on with your next message. With text selected, Ctrl+C still copies. On a Mac use the Control key,
+not Cmd.
+
 ## Slash commands
 
 Type these in the chat box (`/help` lists them):

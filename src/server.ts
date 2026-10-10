@@ -392,7 +392,8 @@ const slashCommands: Record<
       say(
         Object.entries(slashCommands)
           .map(([name, c]) => `/${name}: ${c.help}${c.claudeOnly && !claude ? " (needs Claude Code)" : ""}`)
-          .join("\n") + "\n!command: run a shell command in your project folder (work mode), e.g. !git status",
+          .join("\n") +
+          "\n!command: run a shell command in your project folder (work mode), e.g. !git status\nCtrl+C (or the stop button): stop her reply or a running !command",
       );
     },
   },
@@ -526,20 +527,22 @@ function remoteControlHint(say: Say): void {
 }
 
 let shellRunning = false;
+let shellAbort: AbortController | null = null;
 
 /** `!command` in the chat box: run it in the project folder and tell the model afterwards, like Claude Code's bash mode. */
 async function runBang(command: string, say: Say): Promise<void> {
   if (mode !== "work") return say("!commands run in work mode, in your project folder. Switch to Work first.");
   if (shellRunning) return say("A command is still running; wait for it to finish.");
   shellRunning = true;
+  shellAbort = new AbortController();
   const id = randomUUID();
   broadcast({ type: "shell", id, command });
   try {
-    const result = await runShell(command, settings.projectDir ?? workspace);
+    const result = await runShell(command, settings.projectDir ?? workspace, { signal: shellAbort.signal });
     const output =
       result.output +
       (result.truncated ? "\n[output cut off]" : "") +
-      (result.timedOut ? "\n[stopped after 2 minutes]" : "");
+      (result.timedOut ? "\n[stopped after 2 minutes]" : shellAbort.signal.aborted ? "\n[stopped]" : "");
     transcript.shell({ command, output, code: result.code });
     persistTranscript();
     // The model did not see this; tell it with her next message.
@@ -549,7 +552,19 @@ async function runBang(command: string, say: Say): Promise<void> {
     broadcast({ type: "shell-done", id, output, code: result.code });
   } finally {
     shellRunning = false;
+    shellAbort = null;
   }
+}
+
+/** Ctrl+C / the stop button: end the command or the reply that is running. */
+function stopWork(say: Say): void {
+  if (shellAbort) {
+    shellAbort.abort();
+  } else if (provider.interrupt()) {
+    for (const id of pendingPermissions.keys()) broadcast({ type: "permission-cancelled", id });
+    pendingPermissions.clear();
+    broadcast({ type: "notice", text: "Stopped." });
+  } else say("Nothing is running.");
 }
 
 /** Where Claude Code is (or would be) running, so where its sessions are stored. */
@@ -712,6 +727,8 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "stop") {
+      stopWork((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "effort" && (msg.value === "default" || isEffort(msg.value))) {
       await changeEffort(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "claude-setup" && typeof msg.value === "boolean") {

@@ -38,6 +38,8 @@ export class ClaudeCodeProvider implements Provider {
   /** True once the session has a transcript on disk, so a restart can resume it. */
   private hasHistory = false;
   private pending = new Map<string, PendingPermission>();
+  /** Set when the user stopped the reply, so the turn's "error" result is read as a normal end. */
+  private interrupted = false;
   private tools = new Map<string, { name: string; summary: string }>();
   private usageValue: Usage = { turns: 0, costUsd: 0, contextTokens: null, contextWindow: null };
 
@@ -72,6 +74,7 @@ export class ClaudeCodeProvider implements Provider {
       return;
     }
     this.listener = onEvent;
+    this.interrupted = false;
     const content =
       images.length === 0
         ? text
@@ -91,6 +94,14 @@ export class ClaudeCodeProvider implements Provider {
     if (!pending || !this.proc) return;
     this.pending.delete(id);
     this.proc.stdin.write(permissionResponse(id, decision, pending.input, pending.suggestions, message) + "\n");
+  }
+
+  interrupt(): boolean {
+    if (!this.listener || !this.proc) return false;
+    this.interrupted = true;
+    this.pending.clear();
+    this.proc.stdin.write(JSON.stringify({ type: "control_request", request_id: `stop-${randomUUID()}`, request: { subtype: "interrupt" } }) + "\n");
+    return true;
   }
 
   setPermissionMode(mode: PermissionMode): void {
@@ -291,7 +302,10 @@ export class ClaudeCodeProvider implements Provider {
           contextWindow: item.contextWindow ?? this.usageValue.contextWindow,
         };
         this.pending.clear();
-        this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
+        if (this.interrupted) {
+          this.interrupted = false;
+          this.finish({ type: "done" }); // she was stopped; what she said so far stays
+        } else this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
         break;
       case "limits":
         this.listener?.({ type: "limits", session: item.session, week: item.week });

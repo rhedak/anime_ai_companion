@@ -12,6 +12,8 @@ export interface ShellResult {
 export interface ShellOptions {
   timeoutMs?: number;
   maxBytes?: number;
+  /** Aborting stops the command and everything it started. */
+  signal?: AbortSignal;
 }
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
@@ -58,6 +60,7 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
       timedOut = true;
       killGroup();
     }, timeoutMs);
+    opts.signal?.addEventListener("abort", killGroup, { once: true });
     const finish = (code: number | null, extra = "") => {
       clearTimeout(timer);
       resolve({ output: Buffer.concat(chunks).toString("utf8").replace(ANSI, "") + extra, code, timedOut, truncated });

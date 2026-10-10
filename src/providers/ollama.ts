@@ -32,6 +32,7 @@ export class OllamaProvider implements Provider {
   private history: ChatMessage[] = [];
   private listener: ((event: ProviderEvent) => void) | null = null;
   private abort: AbortController | null = null;
+  private stopped = false;
 
   constructor(opts: OllamaOptions) {
     this.host = opts.host.replace(/\/+$/, "");
@@ -53,6 +54,7 @@ export class OllamaProvider implements Provider {
       return;
     }
     this.listener = onEvent;
+    this.stopped = false;
     void this.run(text, images);
   }
 
@@ -68,6 +70,13 @@ export class OllamaProvider implements Provider {
   reset(): void {
     this.abort?.abort();
     this.history = [];
+  }
+
+  interrupt(): boolean {
+    if (!this.listener || !this.abort) return false;
+    this.stopped = true;
+    this.abort.abort();
+    return true;
   }
 
   close(): void {
@@ -124,6 +133,12 @@ export class OllamaProvider implements Provider {
       this.history.push({ role: "user", content: [marker, text].filter(Boolean).join(" ") }, { role: "assistant", content: reply });
       this.finish({ type: "done" });
     } catch (err: any) {
+      if (controller.signal.aborted && this.stopped) {
+        // Stopped by the user: keep what she said so far in the conversation.
+        const marker = images.length ? `[${images.length} image${images.length > 1 ? "s" : ""} attached]` : "";
+        this.history.push({ role: "user", content: [marker, text].filter(Boolean).join(" ") }, { role: "assistant", content: reply });
+        return this.finish({ type: "done" });
+      }
       if (controller.signal.aborted) return this.finish({ type: "error", message: "Conversation reset." });
       this.finish({
         type: "error",

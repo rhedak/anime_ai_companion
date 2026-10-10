@@ -47,6 +47,9 @@ button.icon { display: grid; place-items: center; width: 34px; height: 34px; pad
 button.icon:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 button.icon.send { background: var(--accent); color: var(--accent-text); }
 button.icon.send:hover:not(:disabled) { background: var(--accent-hover); }
+.icon-stop { display: none; }
+button.icon.send.stop .icon-send { display: none; }
+button.icon.send.stop .icon-stop { display: block; }
 button.icon.send:disabled { background: var(--fill-2); color: var(--muted); opacity: 1; }
 .seg-group { display: flex; background: var(--code-bg); border-radius: var(--radius-md); padding: 3px; gap: 2px; }
 button.seg { background: transparent; color: var(--muted); padding: 5px 14px; font-size: var(--font-size-small); border-radius: var(--radius-md); }
