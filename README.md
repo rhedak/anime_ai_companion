@@ -47,6 +47,13 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PORT` | `3737` | |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
 
+## Voice
+
+The **Voice** button makes her read her replies aloud with your browser's own speech synthesis:
+local voices, nothing is uploaded. She speaks sentence by sentence while the reply streams, and her
+mouth moves while she speaks. Speech *recognition* is deliberately not included: Chrome's version sends
+your audio to Google, which would break the "stays on your machine" promise.
+
 ## Looks: undo, save, load
 
 She can redesign herself at any time, so it is reversible: **Undo** steps back through her recent

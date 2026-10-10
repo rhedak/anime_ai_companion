@@ -1,4 +1,5 @@
 import { createAvatar } from "./avatar.js";
+import { createVoice, takeSentences } from "./speech.js";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -6,6 +7,12 @@ const avatar = createAvatar($("avatar"), (emotion) => {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "frames", emotion }));
 });
 const log = $("log"), input = $("input"), send = $("send"), bubble = $("bubble");
+
+// With voice on, her mouth follows the speech; otherwise it follows the arriving text.
+const voice = createVoice((speaking) => {
+  if (voice.enabled) avatar.setTalking(speaking);
+});
+let spoken = 0; // characters of the current reply already handed to the voice
 
 let busy = false;
 let botEl = null;
@@ -53,22 +60,39 @@ function showBubble(text) {
 function onDelta(text) {
   clearTimeout(calmTimer);
   if (!botEl) {
+    spoken = 0;
     botEl = addMsg("bot", "");
     avatar.setEmotion("thinking");
   }
   raw += text;
   const { clean, emotion } = parseReply(raw);
   if (emotion) avatar.setEmotion(emotion);
-  avatar.setTalking(clean.length > 0);
+  if (!voice.enabled) avatar.setTalking(clean.length > 0);
+  else {
+    const { ready } = takeSentences(clean.slice(spoken));
+    if (ready) {
+      voice.speak(ready);
+      spoken += ready.length;
+    }
+  }
   botEl.textContent = clean;
   showBubble(clean);
   log.scrollTop = log.scrollHeight;
 }
 
+/** Hand whatever is left of the current reply to the voice. */
+function speakRest() {
+  if (!voice.enabled || !raw) return;
+  const rest = parseReply(raw).clean.slice(spoken);
+  if (rest.trim()) voice.speak(rest);
+  spoken = 0;
+}
+
 function endTurn() {
+  speakRest();
   toolEls.clear();
   for (const id of [...permEls.keys()]) resolvePermission(id, "Cancelled");
-  avatar.setTalking(false);
+  if (!voice.enabled) avatar.setTalking(false);
   botEl = null;
   raw = "";
   setBusy(false);
@@ -224,8 +248,11 @@ function handle(msg) {
       if (clean) {
         addMsg("bot", clean);
         showBubble(clean);
-        avatar.setTalking(true);
-        talkTimer = setTimeout(() => avatar.setTalking(false), Math.min(9000, 700 + clean.length * 45));
+        if (voice.enabled) voice.speak(clean);
+        else {
+          avatar.setTalking(true);
+          talkTimer = setTimeout(() => avatar.setTalking(false), Math.min(9000, 700 + clean.length * 45));
+        }
       }
       calmTimer = setTimeout(() => avatar.setEmotion("neutral"), 9000 + clean.length * 45);
       break;
@@ -245,6 +272,7 @@ function handle(msg) {
       let el = toolEls.get(msg.id);
       if (!el) {
         // text after a tool call belongs in a new message, so the log keeps its order
+        speakRest();
         botEl = null;
         raw = "";
         el = document.createElement("div");
@@ -276,6 +304,7 @@ function handle(msg) {
       setBusy(busy);
       break;
     case "user":
+      voice.cancel();
       addMsg("user", msg.text);
       showBubble("");
       avatar.setEmotion("thinking");
@@ -300,6 +329,7 @@ function handle(msg) {
       endTurn();
       break;
     case "reset":
+      voice.cancel();
       log.replaceChildren();
       showBubble("");
       avatar.setEmotion("neutral");
@@ -383,6 +413,18 @@ $("save-look-form").addEventListener("submit", (e) => {
   $("look-name").value = "";
   $("save-look-form").hidden = true;
 });
+
+if (voice.supported) {
+  const button = $("voice");
+  button.hidden = false;
+  const render = () => (button.textContent = voice.enabled ? "Voice: on" : "Voice: off");
+  render();
+  button.addEventListener("click", () => {
+    voice.setEnabled(!voice.enabled);
+    avatar.setTalking(false);
+    render();
+  });
+}
 
 let full = false;
 $("zoom").addEventListener("click", () => {

@@ -194,7 +194,15 @@ against a real Ollama (none installed here), only against its documented HTTP AP
 - Provider picker in the UI; capabilities reported by the provider (`canUseTools`,
   `streams`) so the UI hides what is unavailable.
 
-### Phase 6: polish (any order, as wanted)
+### Phase 6: polish (any order, as wanted) — in progress
+
+Done so far: chat history across reloads and restarts (the Claude Code session is resumed), undo and
+saved looks (and `[avatar load=name]`), spoken replies (browser speech synthesis; recognition left out on
+privacy grounds), and trimming Claude Code's auto memory and unused prompt sections for the headless
+session. Still open: backgrounds and poses (the creator can pose arms and take a background), a
+renderer interface for VRM or Live2D, running the creator in the browser via Pyodide, editing the
+pre-approved tools in the UI.
+
 
 - Persist chat history across restarts.
 - Voice: browser speech recognition in, a TTS service out, with mouth frames
