@@ -324,18 +324,33 @@ interface CommandContext {
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
  * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
  */
-const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) => void | Promise<void> }> = {
+const slashCommands: Record<
+  string,
+  {
+    help: string;
+    /** Needs Claude Code underneath: with another brain the command says so instead of pretending. */
+    claudeOnly?: boolean;
+    run: (ctx: CommandContext) => void | Promise<void>;
+  }
+> = {
   help: {
     help: "list these commands",
-    run: ({ say }) => say(Object.entries(slashCommands).map(([name, c]) => `/${name}: ${c.help}`).join("\n")),
+    run: ({ say }) => {
+      const claude = settings.provider === "claude";
+      say(
+        Object.entries(slashCommands)
+          .map(([name, c]) => `/${name}: ${c.help}${c.claudeOnly && !claude ? " (needs Claude Code)" : ""}`)
+          .join("\n"),
+      );
+    },
   },
   clear: { help: "forget the conversation and start fresh", run: () => resetConversation() },
   new: { help: "same as /clear", run: () => resetConversation() },
   compact: {
     help: "summarise the conversation to free up context",
+    claudeOnly: true,
     run: ({ text, say }) => {
       if (link.connected) return say("A terminal session is connected: use /compact there.");
-      if (!provider.canUseTools) return say("/compact needs Claude Code; this model keeps the whole conversation.");
       if (provider.busy) return say("Wait for her to finish the current reply first.");
       transcript.user(text);
       broadcast({ type: "user", text });
@@ -344,6 +359,7 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
   },
   resume: {
     help: "list earlier conversations in this folder, then /resume <number> to continue one",
+    claudeOnly: true,
     run: ({ args, say }) => resumeCommand(args, say),
   },
   status: {
@@ -362,9 +378,10 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
   },
   cost: {
     help: "what this conversation has used so far (an estimate)",
+    claudeOnly: true,
     run: ({ say }) => {
       const u = provider.usage;
-      if (!u) return say("This model does not report usage.");
+      if (!u) return say("This brain does not report usage.");
       if (u.turns === 0) return say("Nothing yet: usage shows after her next reply.");
       const context = u.contextTokens === null ? "unknown" : `~${u.contextTokens.toLocaleString("en-US")} tokens`;
       say(
@@ -390,9 +407,10 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
     },
   },
   chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
-  work: { help: "switch to work mode, optionally for a folder: /work ~/project", run: ({ args, say }) => switchMode("work", args, say) },
+  work: { help: "switch to work mode, optionally for a folder: /work ~/project", claudeOnly: true, run: ({ args, say }) => switchMode("work", args, say) },
   permissions: {
     help: "ask, plan, accept (edits) or auto: how work mode handles approvals",
+    claudeOnly: true,
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
@@ -400,12 +418,42 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
       changePermissionMode(wanted, say);
     },
   },
-  plan: { help: "same as /permissions plan", run: ({ say }) => changePermissionMode("plan", say) },
+  plan: { help: "same as /permissions plan", claudeOnly: true, run: ({ say }) => changePermissionMode("plan", say) },
+  rc: {
+    help: "remote control from claude.ai or the phone (not built in; shows how to do it yourself)",
+    claudeOnly: true,
+    run: ({ say }) => remoteControlHint(say),
+  },
+  "remote-control": { help: "same as /rc", claudeOnly: true, run: ({ say }) => remoteControlHint(say) },
+  rewind: {
+    help: "roll back to an earlier point (not available in the companion)",
+    claudeOnly: true,
+    run: ({ say }) =>
+      say(
+        "/rewind is not available in the companion: it relies on Claude Code's own interactive checkpoints. " +
+          `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
+      ),
+  },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
   export: { help: "download the conversation as a Markdown file", run: () => {} },
   voice: { help: "turn spoken replies on or off", run: () => {} },
 };
 Object.setPrototypeOf(slashCommands, null); // so "/constructor" is just unknown
+
+/** `cd <folder> && claude --resume <id>` for continuing this conversation in a terminal. */
+function resumeCommandLine(): string {
+  const folder = sessionCwd();
+  const quoted = /^[\w@%+=:,./-]+$/.test(folder) ? folder : `'${folder.replace(/'/g, `'\\''`)}'`;
+  return `: cd ${quoted} && claude --resume ${provider.sessionId}`;
+}
+
+function remoteControlHint(say: Say): void {
+  say(
+    "Remote control is not available in the companion. It links a session to claude.ai or the Claude app through Anthropic's servers, " +
+      "and a remote client would be answering permission questions outside the approval cards here. " +
+      `To use it, start a terminal session with it enabled and keep the browser out of that conversation${resumeCommandLine()} --remote-control`,
+  );
+}
 
 /** Where Claude Code is (or would be) running, so where its sessions are stored. */
 const sessionCwd = () => (mode === "work" ? sessionConfig().cwd : workspace);
@@ -526,8 +574,10 @@ wss.on("connection", (ws) => {
       if (command) {
         const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
         const known = slashCommands[command.name];
-        if (known) await known.run({ args: command.args, text: msg.text, say });
-        else say(`Unknown command /${command.name}. Try /help.`);
+        if (!known) say(`Unknown command /${command.name}. Try /help.`);
+        else if (known.claudeOnly && settings.provider !== "claude") {
+          say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
+        } else await known.run({ args: command.args, text: msg.text, say });
         return;
       }
       transcript.user(msg.text);

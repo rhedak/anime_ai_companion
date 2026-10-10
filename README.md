@@ -107,6 +107,8 @@ Type these in the chat box (`/help` lists them):
 | `/model [name]` | show or set the model for the current mode (`/model opus`), until the server restarts |
 | `/chat`, `/work [folder]` | switch modes |
 | `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
+| `/rc`, `/remote-control` | not built in: explains why and prints the terminal command to use it yourself |
+| `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |
@@ -117,8 +119,10 @@ in chat mode), so it also finds sessions you started in a terminal there; switch
 elsewhere. It is refused mid-reply and with Ollama.
 
 Anything else that looks like `/word` is reported as unknown instead of being sent to her; paths like
-`/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply, and `/compact`
-and `/cost` need Claude Code (not Ollama).
+`/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply. Commands that
+need Claude Code (`/compact`, `/cost`, `/resume`, `/work`, `/permissions`, `/plan`, `/rc`, `/rewind`) say
+so plainly when another brain, such as Ollama, is active, instead of pretending to work.
+
 
 ## Pro mode: your own terminal session
 
