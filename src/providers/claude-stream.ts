@@ -18,6 +18,8 @@ export type StreamItem =
       suggestions: any[];
     }
   | { kind: "permission-cancel"; requestId: string }
+  | { kind: "status"; text: string | null }
+  | { kind: "compacted" }
   | { kind: "result"; isError: boolean; text: string };
 
 export function parseStreamLine(line: string): StreamItem[] {
@@ -29,7 +31,11 @@ export function parseStreamLine(line: string): StreamItem[] {
   }
   switch (msg.type) {
     case "system":
-      return msg.subtype === "init" && msg.session_id ? [{ kind: "init", sessionId: msg.session_id }] : [];
+      if (msg.subtype === "init" && msg.session_id) return [{ kind: "init", sessionId: msg.session_id }];
+      // `/compact` reports progress as status events: "compacting", then null when done.
+      if (msg.subtype === "status") return [{ kind: "status", text: msg.status === "compacting" ? "Compacting the conversation…" : null }];
+      if (msg.subtype === "compact_boundary") return [{ kind: "compacted" }];
+      return [];
 
     case "stream_event": {
       const delta = msg.event?.delta;

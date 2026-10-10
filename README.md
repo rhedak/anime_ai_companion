@@ -94,6 +94,14 @@ chat). `anaico --chat` starts in chat mode instead; the folder is still pre-fill
 switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
 saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
 
+## Slash commands
+
+Type these in the chat box: `/compact [focus]` summarises the conversation to free up context (she
+keeps the gist and shows "Compacting…" meanwhile), `/clear` starts a fresh conversation like **New
+chat**, and `/help` lists them. Anything else that looks like `/word` is reported as unknown instead
+of being sent to her; paths like `/etc/hosts` are sent as usual. `/compact` needs Claude Code, not
+Ollama, and is refused mid-reply.
+
 ## Pro mode: your own terminal session
 
 Prefer your normal terminal? Keep the server running (`npm start`), then start Claude Code *with the

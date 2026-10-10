@@ -67,6 +67,7 @@ const SLOW_MS = 8000; // no activity for this long: add the elapsed time
 let lastActivity = 0;
 let thinkingNudged = false;
 const runningTools = new Map(); // tool id -> name
+let statusText = null; // what the server says she is doing (e.g. compacting), while it lasts
 
 function markActivity() {
   lastActivity = Date.now();
@@ -77,11 +78,11 @@ function renderWorking() {
   const el = $("working");
   const quiet = Date.now() - lastActivity;
   // While an approval card waits for the user, she is not working, so don't pretend.
-  const show = busy && permEls.size === 0 && (quiet > QUIET_MS || runningTools.size > 0);
+  const show = busy && permEls.size === 0 && (quiet > QUIET_MS || runningTools.size > 0 || statusText !== null);
   el.hidden = !show;
   if (!show) return;
   const tools = [...runningTools.values()];
-  let text = tools.length ? `Working: ${tools[tools.length - 1]}…` : "Thinking…";
+  let text = statusText ?? (tools.length ? `Working: ${tools[tools.length - 1]}…` : "Thinking…");
   if (quiet > SLOW_MS) text += ` ${Math.round(quiet / 1000)}s`;
   $("working-text").textContent = text;
   // Her face should say "busy" through the quiet stretches, whatever mood the last words had.
@@ -140,6 +141,7 @@ function endTurn() {
   speakRest();
   toolEls.clear();
   runningTools.clear();
+  statusText = null;
   for (const id of [...permEls.keys()]) resolvePermission(id, "Cancelled");
   if (!voice.enabled) avatar.setTalking(false);
   botEl = null;
@@ -319,6 +321,11 @@ function handle(msg) {
     }
     case "notice":
       addMsg("sys", msg.text);
+      break;
+    case "status":
+      statusText = msg.text;
+      markActivity();
+      renderWorking();
       break;
     case "tool": {
       const icon = { running: "⏳", done: "✓", error: "✗" }[msg.status];

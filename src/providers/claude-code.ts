@@ -233,6 +233,12 @@ export class ClaudeCodeProvider implements Provider {
       case "permission-cancel":
         if (this.pending.delete(item.requestId)) this.listener?.({ type: "permission-cancelled", id: item.requestId });
         break;
+      case "status":
+        this.listener?.({ type: "status", text: item.text });
+        break;
+      case "compacted":
+        this.listener?.({ type: "notice", text: "Conversation compacted: she keeps a summary, the log above stays as it is." });
+        break;
       case "result":
         this.hasHistory = true;
         this.pending.clear();

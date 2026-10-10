@@ -271,9 +271,32 @@ const link = new TerminalLink({
   },
 });
 
+/** Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the model. */
+const slashCommands: Record<string, string> = {
+  clear: "forget the conversation and start fresh",
+  compact: "summarise the conversation to free up context",
+  help: "list these commands",
+};
+function slashCommand(text: string): string | null {
+  const match = /^\/([a-z][\w-]*)(?:\s|$)/i.exec(text.trim());
+  if (!match) return null;
+  return match[1].toLowerCase();
+}
+
+function resetConversation(): void {
+  provider.reset();
+  transcript.clear();
+  persistTranscript();
+  notesForModel = [];
+  pendingPermissions.clear();
+  broadcast({ type: "reset" });
+  broadcast(modeInfo());
+}
+
 /** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(userText: string): void {
-  const toModel = withNotes(userText);
+function runTurn(userText: string, opts: { raw?: boolean } = {}): void {
+  // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
+  const toModel = opts.raw ? userText : withNotes(userText);
   let reply = "";
   const applyNewTags = makeTagApplier();
 
@@ -291,6 +314,8 @@ function runTurn(userText: string): void {
       broadcast(event);
     } else if (event.type === "permission-cancelled") {
       pendingPermissions.delete(event.id);
+      broadcast(event);
+    } else if (event.type === "status" || event.type === "notice") {
       broadcast(event);
     } else {
       pendingPermissions.clear();
@@ -322,6 +347,21 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
+      const command = slashCommand(msg.text);
+      if (command) {
+        const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
+        if (command === "clear") resetConversation();
+        else if (command === "help") notice(Object.entries(slashCommands).map(([c, what]) => `/${c}: ${what}`).join("\n"));
+        else if (command === "compact") {
+          if (link.connected) return notice("A terminal session is connected: use /compact there.");
+          if (!provider.canUseTools) return notice("/compact needs Claude Code; this model keeps the whole conversation.");
+          if (provider.busy) return notice("Wait for her to finish the current reply first.");
+          transcript.user(msg.text);
+          broadcast({ type: "user", text: msg.text });
+          runTurn(msg.text, { raw: true });
+        } else notice(`Unknown command /${command}. Try /help.`);
+        return;
+      }
       transcript.user(msg.text);
       broadcast({ type: "user", text: msg.text });
       if (link.connected) link.send(withNotes(msg.text));
@@ -396,13 +436,7 @@ wss.on("connection", (ws) => {
       provider.configure(sessionConfig());
       broadcast(modeInfo());
     } else if (msg.type === "reset") {
-      provider.reset();
-      transcript.clear();
-      persistTranscript();
-      notesForModel = [];
-      pendingPermissions.clear();
-      broadcast({ type: "reset" });
-      broadcast(modeInfo());
+      resetConversation();
     } else if (msg.type === "look-undo") {
       if (await avatar.undo()) {
         transcript.look(["undid the last change"]);

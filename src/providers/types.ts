@@ -16,6 +16,9 @@ export type ProviderEvent =
   | { type: "tool"; id: string; name: string; summary: string; status: "running" | "done" | "error" }
   | { type: "permission"; request: PermissionRequest }
   | { type: "permission-cancelled"; id: string }
+  /** What she is doing while no text arrives (e.g. compacting); null clears it. */
+  | { type: "status"; text: string | null }
+  | { type: "notice"; text: string }
   | { type: "done" }
   | { type: "error"; message: string };
 

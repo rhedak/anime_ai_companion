@@ -70,3 +70,17 @@ test("deny carries a message the model can read", () => {
   const body = parse(permissionResponse("r", "deny", { command: "ls" }, suggestions, "Not now")).response;
   assert.deepEqual(body, { behavior: "deny", message: "Not now" });
 });
+
+// Recorded from a real `/compact` sent over stream-json (ids shortened).
+test("/compact progress shows as status events and a compaction notice", () => {
+  const line = (o: object) => JSON.stringify({ type: "system", session_id: "s", ...o });
+  assert.deepEqual(parseStreamLine(line({ subtype: "status", status: "compacting" })), [
+    { kind: "status", text: "Compacting the conversation…" },
+  ]);
+  assert.deepEqual(parseStreamLine(line({ subtype: "status", status: null, compact_result: "success" })), [
+    { kind: "status", text: null },
+  ]);
+  assert.deepEqual(parseStreamLine(line({ subtype: "compact_boundary", compact_metadata: { trigger: "manual" } })), [
+    { kind: "compacted" },
+  ]);
+});
