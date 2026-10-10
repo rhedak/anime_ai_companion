@@ -84,7 +84,10 @@ there, like a regular Claude Code session. She asks first:
 - The bar under the header shows `claude --resume <session id>`: you can continue the same
   conversation in a terminal. Only one side should write at a time.
 
-The server always starts in chat mode.
+`anaico` starts in work mode for the folder you ran it from (a home directory or `/` falls back to
+chat). `anaico --chat` starts in chat mode instead; the folder is still pre-filled, so the **Work**
+switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
+saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
 
 ## Pro mode: your own terminal session
 

@@ -43,8 +43,24 @@ const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 const personaAttached = await readFile(join(root, "persona-attached.md"), "utf8");
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
-// Always start in chat mode: work mode can change files, so it is an explicit choice each time.
+// Start in work mode when there is a folder to work in, unless --chat says otherwise.
+// `anaico` passes the folder it was started from as --project-dir; that folder is only
+// pre-filled here, not saved, until the user picks one in the UI.
 let mode: Mode = "chat";
+{
+  const flag = process.argv.indexOf("--project-dir");
+  const wanted = flag >= 0 ? process.argv[flag + 1] : settings.projectDir;
+  if (wanted) {
+    const check = await checkProjectDir(wanted);
+    if (check.ok) {
+      settings.projectDir = check.dir;
+      if (settings.provider === "claude" && !process.argv.includes("--chat")) mode = "work";
+    } else {
+      if (settings.projectDir === wanted) settings.projectDir = null;
+      console.log(`Starting in chat mode: ${check.reason}`);
+    }
+  }
+}
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
