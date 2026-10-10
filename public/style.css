@@ -69,6 +69,14 @@ button.seg.on { background: linear-gradient(135deg, var(--accent), var(--accent2
 .msg.tool { align-self: flex-start; max-width: 100%; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); background: rgba(255,255,255,.05); padding: 5px 9px; border-radius: 8px; }
 .msg.tool .st { margin-right: 6px; }
 .msg.tool.error { color: #ff9fb0; }
+.working { display: flex; align-items: center; gap: 8px; padding: 2px 4px 6px; font-size: 12px; color: var(--muted); }
+.working[hidden] { display: none; }
+.working .dots { display: inline-flex; gap: 4px; }
+.working .dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: working-bounce 1.2s infinite ease-in-out; }
+.working .dots i:nth-child(2) { animation-delay: .15s; }
+.working .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes working-bounce { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .working .dots i { animation: none; opacity: .7; } }
 .msg.perm { align-self: stretch; max-width: 100%; background: rgba(255, 200, 120, .1); border: 1px solid rgba(255, 200, 120, .35); }
 .perm-title { font-weight: 600; margin-bottom: 4px; }
 .perm-desc { font-size: 13px; color: var(--muted); margin-bottom: 6px; }

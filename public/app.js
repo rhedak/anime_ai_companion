@@ -54,7 +54,43 @@ function setBusy(on) {
   // In pro mode replies come whenever the terminal session sends them, so never lock the input.
   busy = on && state.mode !== "attached";
   send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
+  if (busy) markActivity();
+  renderWorking();
 }
+
+// --- "still working" feedback ---------------------------------------------------------
+// Shown while a reply is in progress but nothing is arriving: before the first word, and
+// during tool calls. Text that is streaming in is its own proof of life, so the dots hide then.
+
+const QUIET_MS = 1200; // no text for this long: show the dots
+const SLOW_MS = 8000; // no activity for this long: add the elapsed time
+let lastActivity = 0;
+let thinkingNudged = false;
+const runningTools = new Map(); // tool id -> name
+
+function markActivity() {
+  lastActivity = Date.now();
+  thinkingNudged = false;
+}
+
+function renderWorking() {
+  const el = $("working");
+  const quiet = Date.now() - lastActivity;
+  // While an approval card waits for the user, she is not working, so don't pretend.
+  const show = busy && permEls.size === 0 && (quiet > QUIET_MS || runningTools.size > 0);
+  el.hidden = !show;
+  if (!show) return;
+  const tools = [...runningTools.values()];
+  let text = tools.length ? `Working: ${tools[tools.length - 1]}…` : "Thinking…";
+  if (quiet > SLOW_MS) text += ` ${Math.round(quiet / 1000)}s`;
+  $("working-text").textContent = text;
+  // Her face should say "busy" through the quiet stretches, whatever mood the last words had.
+  if (quiet > QUIET_MS * 2 && !thinkingNudged) {
+    thinkingNudged = true;
+    avatar.setEmotion("thinking");
+  }
+}
+setInterval(renderWorking, 500);
 
 // The bubble is a glimpse, not the transcript: show the latest few lines only.
 const BUBBLE_MAX = 220;
@@ -68,6 +104,7 @@ function showBubble(text) {
 }
 
 function onDelta(text) {
+  markActivity();
   clearTimeout(calmTimer);
   if (!botEl) {
     spoken = 0;
@@ -102,6 +139,7 @@ function speakRest() {
 function endTurn() {
   speakRest();
   toolEls.clear();
+  runningTools.clear();
   for (const id of [...permEls.keys()]) resolvePermission(id, "Cancelled");
   if (!voice.enabled) avatar.setTalking(false);
   botEl = null;
@@ -282,6 +320,10 @@ function handle(msg) {
       break;
     case "tool": {
       const icon = { running: "⏳", done: "✓", error: "✗" }[msg.status];
+      markActivity();
+      if (msg.status === "running") runningTools.set(msg.id, msg.name);
+      else runningTools.delete(msg.id);
+      renderWorking();
       let el = toolEls.get(msg.id);
       if (!el) {
         // text after a tool call belongs in a new message, so the log keeps its order
