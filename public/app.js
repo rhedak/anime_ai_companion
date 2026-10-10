@@ -35,6 +35,7 @@ function parseReply(text) {
     .replace(/\[emotion:(\w+)\]/g, (_, e) => ((emotion = e.toLowerCase()), ""))
     .replace(/\[gesture:(\w+)\]/g, (_, g) => (gestures.push(g.toLowerCase()), ""))
     .replace(/\[avatar\b[^\]]*\]/g, "")
+    .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };
@@ -56,6 +57,94 @@ function addMsg(kind, text) {
   const div = document.createElement("div");
   div.className = `msg ${kind}`;
   setMsgText(div, text);
+  log.append(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+// --- pictures in the chat: thumbnails that open in a viewer ----------------------------------
+
+let viewer = null; // { images: [{ src, name }], index }
+
+function closeViewer() {
+  document.querySelector(".viewer")?.remove();
+  viewer = null;
+}
+
+function showViewer() {
+  document.querySelector(".viewer")?.remove();
+  const { images, index } = viewer;
+  const box = document.createElement("div");
+  box.className = "viewer";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", "Image viewer");
+  const img = document.createElement("img");
+  img.src = images[index].src;
+  img.alt = images[index].name;
+  const caption = document.createElement("div");
+  caption.className = "viewer-caption";
+  caption.textContent = images.length > 1 ? `${images[index].name} (${index + 1}/${images.length})` : images[index].name;
+  const button = (cls, label, text, action) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `viewer-btn ${cls}`;
+    b.textContent = text;
+    b.setAttribute("aria-label", label);
+    b.onclick = (e) => {
+      e.stopPropagation();
+      action();
+    };
+    return b;
+  };
+  const step = (by) => {
+    viewer.index = (viewer.index + by + images.length) % images.length;
+    showViewer();
+  };
+  const close = button("close", "Close", "✕", closeViewer);
+  box.append(img, caption, close);
+  if (images.length > 1) box.append(button("prev", "Previous image", "‹", () => step(-1)), button("next", "Next image", "›", () => step(1)));
+  box.addEventListener("click", (e) => {
+    if (e.target === box) closeViewer();
+  });
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeViewer();
+    else if (e.key === "ArrowLeft" && images.length > 1) step(-1);
+    else if (e.key === "ArrowRight" && images.length > 1) step(1);
+    else if (e.key === "Tab") e.preventDefault(); // keep focus inside while it is open
+    else return;
+    e.preventDefault();
+  });
+  document.body.append(box);
+  close.focus();
+}
+
+/** A thumbnail that opens the viewer at its place among `images`. */
+function thumbButton(images, index) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "thumb-btn";
+  b.title = images[index].name;
+  b.setAttribute("aria-label", `Open ${images[index].name}`);
+  const img = document.createElement("img");
+  img.src = images[index].src;
+  img.alt = images[index].name;
+  img.loading = "lazy";
+  b.append(img);
+  b.onclick = () => {
+    viewer = { images, index };
+    showViewer();
+  };
+  return b;
+}
+
+/** Pictures she showed, under her message. */
+function addImageStrip(shown) {
+  const div = document.createElement("div");
+  div.className = "msg pic-strip";
+  const images = shown.map((s) => ({ src: `/shown/${s.id}`, name: s.name }));
+  div.append(...images.map((_, i) => thumbButton(images, i)));
+  div.dataset.raw = shown.map((s) => `[image: ${s.name}]`).join(" ");
   log.append(div);
   log.scrollTop = log.scrollHeight;
   return div;
@@ -110,12 +199,8 @@ function addUserMsg(text, pics = [], count = pics.length) {
   if (pics.length) {
     const row = document.createElement("div");
     row.className = "pics";
-    for (const url of pics) {
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = "attached image";
-      row.append(img);
-    }
+    const images = pics.map((src, i) => ({ src, name: `picture ${i + 1}` }));
+    images.forEach((_, i) => row.append(thumbButton(images, i)));
     div.append(row);
   } else if (count) {
     const note = document.createElement("div");
@@ -472,7 +557,8 @@ function handle(msg) {
         else if (item.type === "bot") {
           const { clean } = parseReply(item.text);
           if (clean) addMsg("bot", clean);
-        } else if (item.type === "shell") addShell(item.command, item.output, item.code);
+        } else if (item.type === "images") addImageStrip(item.images);
+        else if (item.type === "shell") addShell(item.command, item.output, item.code);
         else if (item.type === "look") addMsg("look", `✨ new look: ${item.applied.join(", ")}`);
         else if (item.type === "tool") {
           const icon = { running: "⏳", done: "✓", error: "✗" }[item.status === "running" ? "done" : item.status];
@@ -567,6 +653,9 @@ function handle(msg) {
       showBubble("");
       avatar.setEmotion("thinking");
       setBusy(true);
+      break;
+    case "images":
+      addImageStrip(msg.images);
       break;
     case "shell":
       shellEls.set(msg.id, addShell(msg.command, null, null));
@@ -706,8 +795,8 @@ const browserCommands = {
     else addMsg("sys", "She has not said anything yet.");
   },
   "/export": () => {
-    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool, .msg.shell")].map((el) =>
-      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
+    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool, .msg.shell, .msg.pic-strip")].map((el) =>
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("pic-strip") ? el.dataset.raw : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
     );
     if (!lines.length) return addMsg("sys", "Nothing to export yet.");
     const link = document.createElement("a");

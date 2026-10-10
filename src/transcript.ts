@@ -8,7 +8,17 @@ export type TranscriptItem =
   | { type: "bot"; text: string }
   | { type: "tool"; id: string; name: string; summary: string; status: "running" | "done" | "error" }
   | { type: "look"; applied: string[] }
+  | { type: "images"; images: ShownRecord[] }
   | { type: "shell"; command: string; output: string; code: number | null };
+
+/** A picture she showed: served from disk by id, so only the id and where to find it are kept. */
+export interface ShownRecord {
+  id: string;
+  name: string;
+  path: string;
+  root: string;
+  mime: string;
+}
 
 export interface TranscriptMeta {
   provider: string;
@@ -46,6 +56,17 @@ export class Transcript {
     const known = this.items.find((i) => i.type === "tool" && i.id === event.id);
     if (known) Object.assign(known, event);
     else this.items.push({ ...event });
+  }
+
+  images(images: ShownRecord[]): void {
+    this.flush();
+    this.items.push({ type: "images", images });
+  }
+
+  /** A picture she showed earlier, by id. */
+  findShown(id: string): ShownRecord | undefined {
+    for (const item of this.items) if (item.type === "images") for (const image of item.images) if (image.id === id) return image;
+    return undefined;
   }
 
   /** A `!command` the user ran, with what it printed. */

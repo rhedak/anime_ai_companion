@@ -25,6 +25,11 @@ const signatures: Record<ImageType, (b: Buffer) => boolean> = {
   "image/webp": (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP",
 };
 
+/** Which image type these bytes really are, judging by their first bytes, or null. */
+export function sniffImageType(bytes: Buffer): ImageType | null {
+  return (Object.keys(signatures) as ImageType[]).find((type) => signatures[type](bytes)) ?? null;
+}
+
 /** The attachments of a message, or a sentence saying what is wrong with them. */
 export function parseImages(input: unknown): ImageInput[] | string {
   if (input === undefined || input === null) return [];

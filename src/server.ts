@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
 import { shareNudge } from "./share-nudge.ts";
-import { Transcript, claudeSessionExists } from "./transcript.ts";
-import { findAvatarTags } from "./avatar-tags.ts";
+import { Transcript, claudeSessionExists, type ShownRecord } from "./transcript.ts";
+import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
 import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
@@ -16,6 +16,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { randomUUID } from "node:crypto";
+import { checkShownImage } from "./shown-images.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -204,6 +205,19 @@ const securityHeaders = {
 
 const server = createServer(async (req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
+  if (shown) {
+    // A picture she showed in the chat. The id is unguessable and the file is re-checked on every request.
+    const record = transcript.findShown(shown[1]);
+    const ok = record && !("error" in (await checkShownImage(record.path, record.root)));
+    if (!record || !ok) {
+      res.writeHead(404).end("Not found");
+      return;
+    }
+    res.writeHead(200, { "content-type": record.mime, "cache-control": "private, max-age=3600", ...securityHeaders });
+    res.end(await readFile(record.path));
+    return;
+  }
   if (path === "/custom.css") {
     // The user's own styling (see public/theme.css). Missing file: an empty sheet, not a 404.
     const css = await readFile(customCssPath).catch(() => "");
@@ -292,6 +306,21 @@ function makeTagApplier(): (reply: string) => void {
         .catch((err) => console.error("avatar patch failed:", err));
     }
   };
+}
+
+const MAX_SHOWN_PER_REPLY = 8;
+
+/** The pictures named by `[image path]` tags in a finished reply, checked and registered. */
+async function collectShownImages(reply: string): Promise<ShownRecord[]> {
+  const records: ShownRecord[] = [];
+  const problems: string[] = [];
+  for (const requested of [...new Set(findImageTags(reply))].slice(0, MAX_SHOWN_PER_REPLY)) {
+    const checked = await checkShownImage(requested, sessionConfig().cwd);
+    if ("error" in checked) problems.push(checked.error);
+    else records.push({ id: randomUUID(), name: checked.name, path: checked.path, root: checked.root, mime: checked.mime });
+  }
+  if (problems.length) notesForModel.push(`Your image tag had problems: ${problems.join("; ")}.`);
+  return records;
 }
 
 /** Prepends any pending notes about the model's own mistakes to the user's message. */
@@ -664,8 +693,14 @@ function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] 
       pendingPermissions.clear();
       applyNewTags(reply);
       // Let queued avatar changes land before the turn is reported finished.
-      avatar.settled().finally(() => {
+      avatar.settled().finally(async () => {
         transcript.flush();
+        // Pictures she named are shown under her message, once the files exist (she may just have made them).
+        const images = event.type === "done" ? await collectShownImages(reply).catch(() => []) : [];
+        if (images.length) {
+          transcript.images(images);
+          broadcast({ type: "images", images: images.map(({ id, name }) => ({ id, name })) });
+        }
         persistTranscript();
         broadcast(event);
         broadcast(meterInfo()); // the context grew
