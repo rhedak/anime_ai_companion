@@ -1,0 +1,9 @@
+{
+  "neutral":   {},
+  "happy":     { "mouth_curve": 1.6, "brow_tilt": -0.1, "blush": 1.0, "eye_openness": 0.7, "mouth_open": 0.3 },
+  "sad":       { "mouth_curve": -1.4, "brow_tilt": -1.2, "eye_openness": 0.7, "blush": 0.0 },
+  "angry":     { "mouth_curve": -1.0, "brow_tilt": 1.4, "eye_openness": 0.6, "eye_tilt": 0.2 },
+  "surprised": { "eye_size": 1.12, "iris_size": 0.8, "brow_tilt": -0.5, "mouth_curve": 0.2, "mouth_width": 0.6, "mouth_open": 0.65 },
+  "shy":       { "blush": 1.5, "gaze": 0.8, "mouth_curve": 0.6, "brow_tilt": -0.6, "eye_openness": 0.8 },
+  "thinking":  { "gaze": -0.8, "mouth_curve": -0.1, "brow_tilt": 0.3, "eye_openness": 0.9, "mouth_width": 0.6 }
+}

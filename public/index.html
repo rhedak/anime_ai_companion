@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Companion</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <section class="stage">
+      <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
+      <div class="tools">
+        <button id="zoom" class="ghost" title="Switch between close-up and full body">Full body</button>
+        <button id="reset-look" class="ghost" title="Restore the original look">Reset look</button>
+      </div>
+      <div id="avatar" class="avatar" aria-label="Your companion"></div>
+      <div id="bubble" class="bubble" hidden></div>
+    </section>
+
+    <section class="panel">
+      <header>
+        <h1>Mio</h1>
+        <button id="reset" class="ghost" title="Start a fresh conversation">New chat</button>
+      </header>
+      <div id="log" class="log"></div>
+      <form id="form">
+        <textarea id="input" rows="1" placeholder="Say something… or ask her to change her look" autofocus></textarea>
+        <button id="send" type="submit">Send</button>
+      </form>
+      <footer class="credit">
+        Drawn by <a href="https://github.com/rhedak/anime-character-creator" target="_blank" rel="noopener">anime-character-creator</a>
+        · <a href="https://github.com/rhedak/anime_ai_companion" target="_blank" rel="noopener">source</a>
+      </footer>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

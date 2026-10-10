@@ -1,0 +1,7 @@
+node_modules/
+# your own avatar and local state
+data/
+workspace/*
+!workspace/.gitkeep
+.env
+.DS_Store

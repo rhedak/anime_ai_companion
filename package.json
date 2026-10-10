@@ -1,0 +1,28 @@
+{
+  "name": "anime-ai-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local browser-based anime AI companion, drawn by code and driven by a headless Claude Code session",
+  "license": "MIT",
+  "author": "Henrik Hanssen",
+  "repository": { "type": "git", "url": "git+ssh://git@github.com/rhedak/anime_ai_companion.git" },
+  "homepage": "https://github.com/rhedak/anime_ai_companion",
+  "bugs": "https://github.com/rhedak/anime_ai_companion/issues",
+  "keywords": ["anime", "ai-companion", "claude-code", "svg", "llm", "avatar"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.0"
+  }
+}
