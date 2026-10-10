@@ -15,6 +15,7 @@ import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from ".
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
+import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
 import { runShell } from "./shell.ts";
@@ -575,6 +576,25 @@ function remoteControlHint(say: Say): void {
   );
 }
 
+let pickerOpen = false;
+
+/** The "Choose folder…" button: ask the operating system's folder dialog, then work there. */
+async function chooseFolder(say: Say): Promise<void> {
+  const blocked = cannotChange();
+  if (blocked) return say(blocked);
+  if (pickerOpen) return say("The folder dialog is already open.");
+  pickerOpen = true;
+  broadcast({ type: "picking", on: true });
+  try {
+    const result = await pickFolder(settings.projectDir);
+    if ("error" in result) say(result.error);
+    else if ("path" in result) await switchMode("work", result.path, say);
+  } finally {
+    pickerOpen = false;
+    broadcast({ type: "picking", on: false });
+  }
+}
+
 let shellRunning = false;
 let shellAbort: AbortController | null = null;
 
@@ -782,6 +802,8 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "pick-folder") {
+      await chooseFolder((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "rename" && typeof msg.name === "string") {
       await rename(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
       ws.send(JSON.stringify(modeInfo())); // puts the old name back in a box whose edit was refused

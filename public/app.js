@@ -521,6 +521,7 @@ function renderMode() {
   $("mode-work").classList.toggle("on", work);
   $("workbar").hidden = !(work || wantWork);
   if (state.projectDir && document.activeElement !== $("folder")) $("folder").value = state.projectDir;
+  renderFolderButton();
   const info = $("workinfo");
   info.replaceChildren();
   if (!work) {
@@ -710,6 +711,10 @@ function handle(msg) {
       showBubble("");
       avatar.setEmotion("thinking");
       setBusy(true);
+      break;
+    case "picking":
+      picking = msg.on;
+      renderFolderButton();
       break;
     case "images":
       addImageStrip(msg.images);
@@ -976,11 +981,29 @@ $("mode-work").addEventListener("click", () => {
     $("folder").focus();
   }
 });
-$("folder-set").addEventListener("click", () => {
+// "Work here" applies what is typed; once she already works in that folder the same button opens a folder dialog,
+// since the next thing someone wants there is a different folder.
+let picking = false;
+const folderUnchanged = () => state.mode === "work" && Boolean(state.projectDir) && $("folder").value.trim().replace(/(?<=.)\/+$/, "") === state.projectDir;
+
+function renderFolderButton() {
+  const button = $("folder-set");
+  const choose = folderUnchanged();
+  button.textContent = picking ? "Choosing…" : choose ? "Choose folder…" : "Work here";
+  button.disabled = picking;
+  button.title = choose ? "Pick a different folder in a dialog" : "Work in the folder typed here";
+}
+$("folder").addEventListener("input", renderFolderButton);
+
+function applyTypedFolder() {
   ws?.send(JSON.stringify({ type: "mode", mode: "work", projectDir: $("folder").value }));
+}
+$("folder-set").addEventListener("click", () => {
+  if (folderUnchanged()) ws?.send(JSON.stringify({ type: "pick-folder" }));
+  else applyTypedFolder();
 });
 $("folder").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("folder-set").click();
+  if (e.key === "Enter") applyTypedFolder(); // Enter always means "use what I typed"
 });
 renderMode();
 
