@@ -76,6 +76,11 @@ there, like a regular Claude Code session. She asks first:
 
 - Every action that is not pre-approved shows an approval card with the **exact** command or file
   content. Choose *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried.
+- The **Permissions** menu changes how approvals work: *Ask for each action* (the default),
+  *Plan first* (she reads and proposes a plan; nothing changes until you approve it), *Accept edits*
+  (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves
+  routine actions and blocks risky ones, so fewer cards reach you). It resets to *Ask* on every start
+  and cannot be changed mid-reply; changing it keeps the conversation.
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
 - Your folder's own `.claude/settings*.json` hooks and rules are **not** loaded in this mode, and
   the home directory or `/` cannot be chosen as a folder.
@@ -84,7 +89,66 @@ there, like a regular Claude Code session. She asks first:
 - The bar under the header shows `claude --resume <session id>`: you can continue the same
   conversation in a terminal. Only one side should write at a time.
 
-The server always starts in chat mode.
+`anaico` starts in work mode for the folder you ran it from (a home directory or `/` falls back to
+chat). `anaico --chat` starts in chat mode instead; the folder is still pre-filled, so the **Work**
+switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
+saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
+
+## Changing how it looks
+
+All colours, fonts, corner radii and sizes of the interface are CSS variables at the top of
+[`public/theme.css`](public/theme.css), with a comment on each. `public/style.css` only uses them.
+To restyle it, put your changes in **`data/custom.css`** (create it; it is yours, git ignores it, updates
+never overwrite it, and deleting it restores the default look). It loads last and a page reload shows
+the change, so you can simply ask an AI assistant: "edit `data/custom.css` to make the chat panel light
+with a blue accent and rounded corners; the variables are documented in `public/theme.css`".
+
+```css
+:root { --accent: #4f9d69; --surface: #22302a; --panel: #17201c; --radius-lg: 6px; --font-heading: "Courier New", monospace; }
+```
+
+Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Mio's own
+appearance (hair, clothes, face) is separate: ask her to change it in chat.
+
+## Images
+
+The **📎** button next to the message box attaches up to 5 pictures (PNG, JPEG, GIF or WebP, up to 5 MB
+each); you can also paste an image or drop files onto the chat. The browser shrinks anything bigger
+than 1568 px on its long edge first (a resized GIF or WebP loses its animation), and the server checks
+the type, the real file contents and the sizes again. Pictures go to the model as they are and a picture
+without text works too. Only a count is kept in the saved chat log, so after a reload the thumbnails give
+way to "🖼 2 images". Pictures cannot be sent to a terminal session (pro mode). With Ollama they need
+a vision model (e.g. `llava`), and only the message that carries them sees them.
+
+## Slash commands
+
+Type these in the chat box (`/help` lists them):
+
+| Command | |
+| --- | --- |
+| `/compact [focus]` | summarise the conversation to free up context; she keeps the gist |
+| `/clear`, `/new` | start a fresh conversation, like **New chat** |
+| `/resume [number]` | list earlier conversations in the current folder (newest first), or continue one; the chat log is rebuilt from Claude Code's own session file |
+| `/cost` | what the conversation has used: an API-price estimate and how full the context is |
+| `/model [name]` | show or set the model for the current mode (`/model opus`), until the server restarts |
+| `/chat`, `/work [folder]` | switch modes |
+| `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
+| `/rc`, `/remote-control` | not built in: explains why and prints the terminal command to use it yourself |
+| `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
+| `/status` | brain, model, mode, folder and session id |
+| `/copy` | copy her last reply to the clipboard |
+| `/export` | download the conversation as a Markdown file |
+| `/voice` | turn spoken replies on or off |
+
+`/resume` looks in the folder she is working in (the project folder in work mode, her own `workspace/`
+in chat mode), so it also finds sessions you started in a terminal there; switch modes first to look
+elsewhere. It is refused mid-reply and with Ollama.
+
+Anything else that looks like `/word` is reported as unknown instead of being sent to her; paths like
+`/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply. Commands that
+need Claude Code (`/compact`, `/cost`, `/resume`, `/work`, `/permissions`, `/plan`, `/rc`, `/rewind`) say
+so plainly when another brain, such as Ollama, is active, instead of pretending to work.
+
 
 ## Pro mode: your own terminal session
 
@@ -156,7 +220,7 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,
   plain-text only for free text), even though the character renderer now escapes text itself (older
   checkouts of it did not). The SVG is also sanitised in the browser before it is shown.
-- Work mode never skips permissions, shows the exact command or content you approve, and does not load a
+- Work mode never skips permissions (even *Auto* leaves risky actions to Claude Code's safety checks), shows the exact command or content you approve, and does not load a
   folder's own hooks or settings.
 
 Found something? Please open an issue, or report it privately if it is serious.

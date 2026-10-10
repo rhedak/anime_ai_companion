@@ -2,7 +2,8 @@
 /**
  * `anaico` starts the companion, the way `claude` starts Claude Code.
  *
- *   anaico                    start the server and open the browser
+ *   anaico                    start the server in work mode for this folder, and open the browser
+ *   anaico --chat             start in chat mode instead (the folder is still pre-filled)
  *   anaico --pro [claude args]   also start Claude Code in this folder with the companion channel
  *
  * If a server is already running on the port, it is reused and left running.
@@ -16,9 +17,10 @@ const port = Number(process.env.PORT ?? 3737);
 const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: anaico [--pro] [--no-open] [claude args...]
+  console.log(`Usage: anaico [--chat] [--pro] [--no-open] [claude args...]
 
-  (no flags)   start the companion and open it in the browser
+  (no flags)   start the companion in work mode for the current folder and open the browser
+  --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
   --pro        also start Claude Code in the current folder with the companion channel;
                every other argument goes to claude (e.g. --permission-mode auto)
   --no-open    do not open the browser`);
@@ -26,8 +28,9 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 const pro = args.includes("--pro");
+const chat = args.includes("--chat");
 const open = !args.includes("--no-open");
-const rest = args.filter((a) => a !== "--pro" && a !== "--no-open");
+const rest = args.filter((a) => a !== "--pro" && a !== "--no-open" && a !== "--chat");
 
 async function serverUp(): Promise<boolean> {
   try {
@@ -40,7 +43,8 @@ async function serverUp(): Promise<boolean> {
 
 let server: ChildProcess | null = null;
 if (!(await serverUp())) {
-  server = spawn(process.execPath, [join(root, "src/server.ts"), ...(open ? ["--open"] : [])], { stdio: "inherit" });
+  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : [])];
+  server = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], { stdio: "inherit" });
   const started = server;
   started.on("exit", (code) => {
     if (server === started) process.exit(code ?? 1);
@@ -52,7 +56,7 @@ if (!(await serverUp())) {
     process.exit(1);
   }
 } else {
-  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it.`);
+  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it (its folder and mode stay as they are).`);
 }
 
 function stopServer(): void {

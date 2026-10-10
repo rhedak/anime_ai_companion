@@ -2,7 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
-import type { Decision, Provider, ProviderEvent, SessionConfig } from "./types.ts";
+import type { ImageInput } from "../images.ts";
+import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
 export interface ClaudeCodeOptions {
   config: SessionConfig;
@@ -38,6 +39,7 @@ export class ClaudeCodeProvider implements Provider {
   private hasHistory = false;
   private pending = new Map<string, PendingPermission>();
   private tools = new Map<string, { name: string; summary: string }>();
+  private usageValue: Usage = { turns: 0, costUsd: 0, contextTokens: null };
 
   constructor(opts: ClaudeCodeOptions) {
     this.opts = opts;
@@ -56,20 +58,29 @@ export class ClaudeCodeProvider implements Provider {
     return this.sessionIdValue;
   }
 
+  get usage(): Usage {
+    return this.usageValue;
+  }
+
   get busy(): boolean {
     return this.listener !== null;
   }
 
-  send(text: string, onEvent: (event: ProviderEvent) => void): void {
+  send(text: string, onEvent: (event: ProviderEvent) => void, images: ImageInput[] = []): void {
     if (this.listener) {
       onEvent({ type: "error", message: "Still answering the previous message." });
       return;
     }
     this.listener = onEvent;
+    const content =
+      images.length === 0
+        ? text
+        : [
+            ...(text.trim() ? [{ type: "text", text }] : []),
+            ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: i.data } })),
+          ];
     try {
-      this.ensureProcess().stdin.write(
-        JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
-      );
+      this.ensureProcess().stdin.write(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n");
     } catch (err) {
       this.finish({ type: "error", message: String(err) });
     }
@@ -94,6 +105,15 @@ export class ClaudeCodeProvider implements Provider {
     if (this.listener) this.finish({ type: "error", message: "Conversation reset." });
     this.sessionIdValue = randomUUID();
     this.hasHistory = false;
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
+  }
+
+  resume(sessionId: string): void {
+    if (this.listener) throw new Error("Wait for the current reply to finish first.");
+    this.killProcess();
+    this.sessionIdValue = sessionId;
+    this.hasHistory = true; // the next message starts claude with --resume
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
   }
 
   close(): void {
@@ -142,7 +162,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools } = this.config;
+    const { mode, model, allowedTools, permissionMode } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -167,6 +187,7 @@ export class ClaudeCodeProvider implements Provider {
         "--permission-prompt-tool", "stdio",
       );
       if (allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
+      if (permissionMode !== "manual") args.push("--permission-mode", permissionMode);
     }
     return args;
   }
@@ -232,8 +253,20 @@ export class ClaudeCodeProvider implements Provider {
       case "permission-cancel":
         if (this.pending.delete(item.requestId)) this.listener?.({ type: "permission-cancelled", id: item.requestId });
         break;
+      case "status":
+        this.listener?.({ type: "status", text: item.text });
+        break;
+      case "compacted":
+        this.listener?.({ type: "notice", text: "Conversation compacted: she keeps a summary, the log above stays as it is." });
+        break;
       case "result":
         this.hasHistory = true;
+        this.usageValue = {
+          turns: this.usageValue.turns + 1,
+          // The CLI's total covers the whole conversation: it restores it when a session is resumed.
+          costUsd: item.costUsd ?? this.usageValue.costUsd,
+          contextTokens: item.contextTokens ?? this.usageValue.contextTokens,
+        };
         this.pending.clear();
         this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
         break;

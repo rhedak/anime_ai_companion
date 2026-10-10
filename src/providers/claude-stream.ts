@@ -18,7 +18,9 @@ export type StreamItem =
       suggestions: any[];
     }
   | { kind: "permission-cancel"; requestId: string }
-  | { kind: "result"; isError: boolean; text: string };
+  | { kind: "status"; text: string | null }
+  | { kind: "compacted" }
+  | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null };
 
 export function parseStreamLine(line: string): StreamItem[] {
   let msg: any;
@@ -29,7 +31,11 @@ export function parseStreamLine(line: string): StreamItem[] {
   }
   switch (msg.type) {
     case "system":
-      return msg.subtype === "init" && msg.session_id ? [{ kind: "init", sessionId: msg.session_id }] : [];
+      if (msg.subtype === "init" && msg.session_id) return [{ kind: "init", sessionId: msg.session_id }];
+      // `/compact` reports progress as status events: "compacting", then null when done.
+      if (msg.subtype === "status") return [{ kind: "status", text: msg.status === "compacting" ? "Compacting the conversation…" : null }];
+      if (msg.subtype === "compact_boundary") return [{ kind: "compacted" }];
+      return [];
 
     case "stream_event": {
       const delta = msg.event?.delta;
@@ -68,7 +74,19 @@ export function parseStreamLine(line: string): StreamItem[] {
       return [{ kind: "permission-cancel", requestId: msg.request_id }];
 
     case "result":
-      return [{ kind: "result", isError: Boolean(msg.is_error), text: String(msg.result ?? "") }];
+      return [
+        {
+          kind: "result",
+          isError: Boolean(msg.is_error),
+          text: String(msg.result ?? ""),
+          // Cumulative over the claude process, not per turn.
+          costUsd: typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null,
+          // Everything the last request sent: roughly how full the context window is.
+          contextTokens: msg.usage
+            ? (msg.usage.input_tokens ?? 0) + (msg.usage.cache_read_input_tokens ?? 0) + (msg.usage.cache_creation_input_tokens ?? 0)
+            : null,
+        },
+      ];
 
     default:
       return [];

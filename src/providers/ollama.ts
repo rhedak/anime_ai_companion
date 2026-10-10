@@ -1,3 +1,4 @@
+import type { ImageInput } from "../images.ts";
 import type { Decision, Provider, ProviderEvent, SessionConfig } from "./types.ts";
 
 export interface OllamaOptions {
@@ -46,13 +47,13 @@ export class OllamaProvider implements Provider {
     return this.listener !== null;
   }
 
-  send(text: string, onEvent: (event: ProviderEvent) => void): void {
+  send(text: string, onEvent: (event: ProviderEvent) => void, images: ImageInput[] = []): void {
     if (this.listener) {
       onEvent({ type: "error", message: "Still answering the previous message." });
       return;
     }
     this.listener = onEvent;
-    void this.run(text);
+    void this.run(text, images);
   }
 
   respondPermission(_id: string, _decision: Decision): void {
@@ -80,13 +81,14 @@ export class OllamaProvider implements Provider {
     listener?.(event);
   }
 
-  private async run(text: string): Promise<void> {
+  private async run(text: string, images: ImageInput[]): Promise<void> {
     const controller = new AbortController();
     this.abort = controller;
     const messages = [
       { role: "system", content: this.persona() },
       ...this.history.slice(-MAX_HISTORY),
-      { role: "user", content: text },
+      // Only this message carries its pictures; keeping them in the history would grow every request.
+      { role: "user", content: text, ...(images.length ? { images: images.map((i) => i.data) } : {}) },
     ];
     let reply = "";
     try {
@@ -118,7 +120,8 @@ export class OllamaProvider implements Provider {
           }
         }
       }
-      this.history.push({ role: "user", content: text }, { role: "assistant", content: reply });
+      const marker = images.length ? `[${images.length} image${images.length > 1 ? "s" : ""} attached]` : "";
+      this.history.push({ role: "user", content: [marker, text].filter(Boolean).join(" ") }, { role: "assistant", content: reply });
       this.finish({ type: "done" });
     } catch (err: any) {
       if (controller.signal.aborted) return this.finish({ type: "error", message: "Conversation reset." });

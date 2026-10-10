@@ -50,11 +50,74 @@ function addMsg(kind, text) {
   return div;
 }
 
+/** A message of the user's, with its pictures: thumbnails when we have them, a note after a reload. */
+function addUserMsg(text, pics = [], count = pics.length) {
+  const div = document.createElement("div");
+  div.className = "msg user";
+  if (pics.length) {
+    const row = document.createElement("div");
+    row.className = "pics";
+    for (const url of pics) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "attached image";
+      row.append(img);
+    }
+    div.append(row);
+  } else if (count) {
+    const note = document.createElement("div");
+    note.className = "pics-note";
+    note.textContent = `🖼 ${count} image${count > 1 ? "s" : ""}`;
+    div.append(note);
+  }
+  if (text) div.append(document.createTextNode(text));
+  log.append(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
 function setBusy(on) {
   // In pro mode replies come whenever the terminal session sends them, so never lock the input.
   busy = on && state.mode !== "attached";
   send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
+  if (busy) markActivity();
+  renderWorking();
 }
+
+// --- "still working" feedback ---------------------------------------------------------
+// Shown while a reply is in progress but nothing is arriving: before the first word, and
+// during tool calls. Text that is streaming in is its own proof of life, so the dots hide then.
+
+const QUIET_MS = 1200; // no text for this long: show the dots
+const SLOW_MS = 8000; // no activity for this long: add the elapsed time
+let lastActivity = 0;
+let thinkingNudged = false;
+const runningTools = new Map(); // tool id -> name
+let statusText = null; // what the server says she is doing (e.g. compacting), while it lasts
+
+function markActivity() {
+  lastActivity = Date.now();
+  thinkingNudged = false;
+}
+
+function renderWorking() {
+  const el = $("working");
+  const quiet = Date.now() - lastActivity;
+  // While an approval card waits for the user, she is not working, so don't pretend.
+  const show = busy && permEls.size === 0 && (quiet > QUIET_MS || runningTools.size > 0 || statusText !== null);
+  el.hidden = !show;
+  if (!show) return;
+  const tools = [...runningTools.values()];
+  let text = statusText ?? (tools.length ? `Working: ${tools[tools.length - 1]}…` : "Thinking…");
+  if (quiet > SLOW_MS) text += ` ${Math.round(quiet / 1000)}s`;
+  $("working-text").textContent = text;
+  // Her face should say "busy" through the quiet stretches, whatever mood the last words had.
+  if (quiet > QUIET_MS * 2 && !thinkingNudged) {
+    thinkingNudged = true;
+    avatar.setEmotion("thinking");
+  }
+}
+setInterval(renderWorking, 500);
 
 // The bubble is a glimpse, not the transcript: show the latest few lines only.
 const BUBBLE_MAX = 220;
@@ -68,6 +131,7 @@ function showBubble(text) {
 }
 
 function onDelta(text) {
+  markActivity();
   clearTimeout(calmTimer);
   if (!botEl) {
     spoken = 0;
@@ -102,6 +166,8 @@ function speakRest() {
 function endTurn() {
   speakRest();
   toolEls.clear();
+  runningTools.clear();
+  statusText = null;
   for (const id of [...permEls.keys()]) resolvePermission(id, "Cancelled");
   if (!voice.enabled) avatar.setTalking(false);
   botEl = null;
@@ -114,16 +180,111 @@ function endTurn() {
 
 // --- work mode: folder, tool activity and approvals ---------------------------------
 
-let state = { mode: "chat", projectDir: null, sessionId: null, model: "", allowedTools: [] };
+let state = { mode: "chat", projectDir: null, sessionId: null, model: "", allowedTools: [], permissionMode: "manual" };
 let wantWork = false; // the user clicked Work but has not chosen a folder yet
 const toolEls = new Map();
 const permEls = new Map();
+
+// --- popover menus that front the (hidden) <select>s -------------------------------
+// The select stays the source of truth: the rest of this file reads and sets it as before,
+// and the menu only mirrors it, so call refresh() after changing a select from code.
+
+const menuDescriptions = {
+  provider: { claude: "Claude Code: the full model, tools in work mode", ollama: "A model running on your own machine (chat only)" },
+  "permission-mode": {
+    manual: "She asks before each action",
+    plan: "She plans, and changes nothing until you approve",
+    acceptEdits: "File edits go ahead; other actions still ask",
+    auto: "She runs on her own and pauses if anything looks unsafe",
+  },
+};
+const menuRefreshers = [];
+const closeMenus = () => document.querySelectorAll(".menu-pop").forEach((p) => p.remove());
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
+
+function makeMenu(select, title) {
+  const wrap = document.createElement("div");
+  wrap.className = "menu";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("aria-haspopup", "menu");
+  button.setAttribute("aria-expanded", "false");
+  const text = document.createElement("span");
+  button.append(text, Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "svg"), {}));
+  button.lastChild.setAttribute("viewBox", "0 0 24 24");
+  button.lastChild.setAttribute("width", "12");
+  button.lastChild.setAttribute("height", "12");
+  button.lastChild.innerHTML = '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  wrap.append(button);
+  const close = (focus) => {
+    wrap.querySelector(".menu-pop")?.remove();
+    button.setAttribute("aria-expanded", "false");
+    if (focus) button.focus();
+  };
+  const open = () => {
+    closeMenus();
+    document.querySelectorAll(".menu > button").forEach((b) => b.setAttribute("aria-expanded", "false"));
+    const pop = document.createElement("div");
+    pop.className = "menu-pop";
+    pop.setAttribute("role", "menu");
+    pop.append(Object.assign(document.createElement("div"), { className: "menu-title", textContent: title }));
+    for (const option of select.options) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", String(option.value === select.value));
+      const label = document.createElement("span");
+      label.append(Object.assign(document.createElement("span"), { className: "item-label", textContent: option.text }));
+      const desc = menuDescriptions[select.id]?.[option.value];
+      if (desc) label.append(Object.assign(document.createElement("span"), { className: "item-desc", textContent: desc }));
+      item.append(label);
+      if (option.value === select.value) item.append(Object.assign(document.createElement("span"), { className: "check", textContent: "✓" }));
+      item.onclick = () => {
+        close(true);
+        if (option.value !== select.value) {
+          select.value = option.value;
+          select.dispatchEvent(new Event("change"));
+          refresh();
+        }
+      };
+      pop.append(item);
+    }
+    pop.addEventListener("keydown", (e) => {
+      const items = [...pop.querySelectorAll("button")];
+      const i = items.indexOf(document.activeElement);
+      if (e.key === "Escape") close(true);
+      else if (e.key === "ArrowDown") items[(i + 1) % items.length].focus();
+      else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length].focus();
+      else return;
+      e.preventDefault();
+    });
+    wrap.append(pop);
+    button.setAttribute("aria-expanded", "true");
+    (pop.querySelector('[aria-checked="true"]') ?? pop.querySelector("button")).focus();
+  };
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    button.getAttribute("aria-expanded") === "true" ? close(false) : open();
+  });
+  const refresh = () => {
+    text.textContent = select.selectedOptions[0]?.text ?? "";
+    button.disabled = select.disabled;
+    button.title = select.title;
+  };
+  refresh();
+  menuRefreshers.push(refresh);
+  $("menus").append(wrap);
+  return wrap;
+}
+const providerMenu = makeMenu($("provider"), "Brain");
+const ollamaMenu = makeMenu($("ollama-model"), "Ollama model");
+const permissionMenu = makeMenu($("permission-mode"), "Permission mode");
 
 function renderBrain() {
   $("provider").value = state.provider ?? "claude";
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
-  picker.hidden = !ollama;
+  ollamaMenu.hidden = !ollama;
   if (ollama) {
     const models = state.ollamaModels ?? [];
     picker.replaceChildren(
@@ -134,6 +295,7 @@ function renderBrain() {
   const noTools = state.canUseTools === false;
   $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
   $("provider").disabled = state.mode === "attached";
+  menuRefreshers.forEach((refresh) => refresh());
 }
 
 function renderMode() {
@@ -142,15 +304,21 @@ function renderMode() {
   $("mode-chat").disabled = attached;
   $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
+  $("attach").disabled = attached;
+  $("attach").title = attached ? "Images cannot be sent to a terminal session" : "Attach images (or paste or drop them)";
   if (attached) {
     $("mode-chat").classList.remove("on");
     $("mode-work").classList.remove("on");
+    permissionMenu.hidden = true;
     $("workbar").hidden = false;
     $("workinfo").textContent = "Pro mode: connected to your terminal Claude Code session. Permissions are handled there.";
     setBusy(false);
     return;
   }
   const work = state.mode === "work";
+  $("permission-mode").value = state.permissionMode;
+  permissionMenu.hidden = !work;
+  menuRefreshers.forEach((refresh) => refresh());
   $("mode-chat").classList.toggle("on", !work);
   $("mode-work").classList.toggle("on", work);
   $("workbar").hidden = !(work || wantWork);
@@ -234,7 +402,7 @@ function handle(msg) {
       log.replaceChildren();
       toolEls.clear();
       for (const item of msg.items) {
-        if (item.type === "user") addMsg("user", item.text);
+        if (item.type === "user") addUserMsg(item.text, [], item.images ?? 0);
         else if (item.type === "bot") {
           const { clean } = parseReply(item.text);
           if (clean) addMsg("bot", clean);
@@ -280,8 +448,17 @@ function handle(msg) {
     case "notice":
       addMsg("sys", msg.text);
       break;
+    case "status":
+      statusText = msg.text;
+      markActivity();
+      renderWorking();
+      break;
     case "tool": {
       const icon = { running: "⏳", done: "✓", error: "✗" }[msg.status];
+      markActivity();
+      if (msg.status === "running") runningTools.set(msg.id, msg.name);
+      else runningTools.delete(msg.id);
+      renderWorking();
       let el = toolEls.get(msg.id);
       if (!el) {
         // text after a tool call belongs in a new message, so the log keeps its order
@@ -319,7 +496,7 @@ function handle(msg) {
       break;
     case "user":
       voice.cancel();
-      addMsg("user", msg.text);
+      addUserMsg(msg.text, msg.images ?? []);
       showBubble("");
       avatar.setEmotion("thinking");
       setBusy(true);
@@ -366,14 +543,154 @@ function connect() {
   };
 }
 
+// --- attaching images ---------------------------------------------------------------
+// Pictures are shrunk here first (long edge 1568 px, what the model works at anyway), which
+// keeps messages small; the server still enforces its own limits.
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const MAX_IMAGES = 5;
+const MAX_EDGE = 1568;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+let attachments = []; // { mediaType, data (base64), url (data URL, for the preview) }
+
+function readAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareImage(file) {
+  const name = file.name || "That image";
+  if (!IMAGE_TYPES.includes(file.type)) throw new Error(`${name} is not a PNG, JPEG, GIF or WebP image.`);
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+  if (!bitmap) throw new Error(`${name} could not be read as an image.`);
+  let blob = file;
+  let type = file.type;
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  if (scale < 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    type = file.type === "image/jpeg" ? "image/jpeg" : "image/png"; // a resized GIF or WebP loses its animation
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, type, 0.9));
+  }
+  bitmap.close();
+  if (!blob || blob.size > MAX_IMAGE_BYTES) throw new Error(`${name} is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
+  const url = await readAsDataURL(blob);
+  return { mediaType: type, data: url.slice(url.indexOf(",") + 1), url };
+}
+
+async function addFiles(files) {
+  for (const file of files) {
+    if (attachments.length >= MAX_IMAGES) {
+      addMsg("sys", `At most ${MAX_IMAGES} images per message.`);
+      break;
+    }
+    try {
+      attachments.push(await prepareImage(file));
+    } catch (err) {
+      addMsg("sys", err.message);
+    }
+  }
+  renderAttachments();
+}
+
+function renderAttachments() {
+  const box = $("attachments");
+  box.hidden = attachments.length === 0;
+  box.replaceChildren(
+    ...attachments.map((a, i) => {
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      const img = document.createElement("img");
+      img.src = a.url;
+      img.alt = `attachment ${i + 1}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "✕";
+      remove.setAttribute("aria-label", "Remove image");
+      remove.onclick = () => {
+        attachments.splice(i, 1);
+        renderAttachments();
+      };
+      thumb.append(img, remove);
+      return thumb;
+    }),
+  );
+}
+
+const browserCommands = {
+  "/copy": () => {
+    const last = [...log.querySelectorAll(".msg.bot")].pop();
+    if (last) navigator.clipboard?.writeText(last.textContent).then(() => addMsg("sys", "Copied her last reply."));
+    else addMsg("sys", "She has not said anything yet.");
+  },
+  "/export": () => {
+    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool")].map((el) =>
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.textContent}` : `> ${el.textContent}`,
+    );
+    if (!lines.length) return addMsg("sys", "Nothing to export yet.");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([lines.join("\n\n") + "\n"], { type: "text/markdown" }));
+    link.download = `conversation-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+  "/voice": () => {
+    const button = $("voice");
+    if (button.hidden) addMsg("sys", "This browser has no speech synthesis.");
+    else button.click();
+  },
+};
+
 function submit() {
   const text = input.value.trim();
-  if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "user", text }));
+  if ((!text && attachments.length === 0) || busy || ws?.readyState !== WebSocket.OPEN) return;
+  if (attachments.length === 0 && Object.hasOwn(browserCommands, text)) {
+    // These need this page (clipboard, downloads, the voice button), so they never reach the server.
+    browserCommands[text]();
+    input.value = "";
+    input.style.height = "auto";
+    return;
+  }
+  ws.send(JSON.stringify({ type: "user", text, images: attachments.map(({ mediaType, data }) => ({ mediaType, data })) }));
+  attachments = [];
+  renderAttachments();
   input.value = "";
   input.style.height = "auto";
 }
 
+$("attach").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", () => {
+  addFiles([...$("file").files]);
+  $("file").value = ""; // so choosing the same file again still fires
+});
+input.addEventListener("paste", (e) => {
+  const pictures = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+  if (pictures.length === 0) return; // plain text pastes as usual
+  e.preventDefault();
+  addFiles(pictures);
+});
+const panel = document.querySelector(".panel");
+const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+panel.addEventListener("dragover", (e) => {
+  if (!hasFiles(e) || $("attach").disabled) return;
+  e.preventDefault();
+  panel.classList.add("drop-target");
+});
+panel.addEventListener("dragleave", (e) => {
+  if (!panel.contains(e.relatedTarget)) panel.classList.remove("drop-target");
+});
+panel.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  panel.classList.remove("drop-target");
+  if (!$("attach").disabled) addFiles([...e.dataTransfer.files]);
+});
 $("form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -387,6 +704,10 @@ $("reset").addEventListener("click", () => ws?.send(JSON.stringify({ type: "rese
 $("provider").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: $("provider").value }));
   renderBrain(); // snaps back to the server's answer if it refuses
+});
+$("permission-mode").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "permission-mode", value: $("permission-mode").value }));
+  renderMode(); // snaps back to the server's answer if it refuses
 });
 $("ollama-model").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: "ollama", model: $("ollama-model").value }));
@@ -452,3 +773,44 @@ $("zoom").addEventListener("click", () => {
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));
 
 connect();
+
+// --- resizable divider ----------------------------------------------------------------
+// The left column's share of the width, kept between 30% and 70% and remembered across visits.
+(() => {
+  const main = document.querySelector("main");
+  const divider = $("divider");
+  const MIN = 30, MAX = 70, DEFAULT = 62;
+  const clamp = (v) => Math.min(MAX, Math.max(MIN, v));
+  const set = (percent, save = true) => {
+    const value = clamp(percent);
+    main.style.setProperty("--stage", `${value}%`);
+    divider.setAttribute("aria-valuenow", String(Math.round(value)));
+    if (save) try { localStorage.setItem("stageWidth", String(value)); } catch {}
+  };
+  let saved = DEFAULT;
+  try { saved = Number(localStorage.getItem("stageWidth")) || DEFAULT; } catch {}
+  set(saved, false);
+  const current = () => Number(divider.getAttribute("aria-valuenow"));
+  divider.addEventListener("pointerdown", (e) => {
+    divider.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing");
+  });
+  divider.addEventListener("pointermove", (e) => {
+    if (!divider.hasPointerCapture(e.pointerId)) return;
+    const box = main.getBoundingClientRect();
+    set(((e.clientX - box.left) / box.width) * 100);
+  });
+  const stop = () => document.body.classList.remove("resizing");
+  divider.addEventListener("pointerup", stop);
+  divider.addEventListener("pointercancel", stop);
+  divider.addEventListener("dblclick", () => set(DEFAULT));
+  divider.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowLeft") set(current() - step);
+    else if (e.key === "ArrowRight") set(current() + step);
+    else if (e.key === "Home") set(MIN);
+    else if (e.key === "End") set(MAX);
+    else return;
+    e.preventDefault();
+  });
+})();

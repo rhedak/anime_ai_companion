@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,14 +12,17 @@ import { TerminalLink } from "./terminal-link.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
+import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
+import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
-import type { Decision, Mode, PermissionRequest, Provider, SessionConfig } from "./providers/types.ts";
+import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
 const workspace = join(root, "workspace");
+const customCssPath = join(root, "data/custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only: this server can run Claude Code, so never expose it on the network.
 const host = "127.0.0.1";
@@ -43,8 +47,27 @@ const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 const personaAttached = await readFile(join(root, "persona-attached.md"), "utf8");
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
-// Always start in chat mode: work mode can change files, so it is an explicit choice each time.
+// Start in work mode when there is a folder to work in, unless --chat says otherwise.
+// `anaico` passes the folder it was started from as --project-dir; that folder is only
+// pre-filled here, not saved, until the user picks one in the UI.
 let mode: Mode = "chat";
+{
+  const flag = process.argv.indexOf("--project-dir");
+  const wanted = flag >= 0 ? process.argv[flag + 1] : settings.projectDir;
+  if (wanted) {
+    const check = await checkProjectDir(wanted);
+    if (check.ok) {
+      settings.projectDir = check.dir;
+      if (settings.provider === "claude" && !process.argv.includes("--chat")) mode = "work";
+    } else {
+      if (settings.projectDir === wanted) settings.projectDir = null;
+      console.log(`Starting in chat mode: ${check.reason}`);
+    }
+  }
+}
+
+// Not saved: loosening approvals (auto, accept edits) is a choice made again each run.
+let permissionMode: PermissionMode = "manual";
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
@@ -58,6 +81,7 @@ const sessionConfig = (): SessionConfig => ({
       ? (settings.ollamaModel ?? "")
       : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
+  permissionMode,
 });
 
 const persona = (config: SessionConfig) =>
@@ -101,6 +125,7 @@ const modeInfo = () => ({
   model: sessionConfig().model,
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
+  permissionMode,
 });
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, canUndo: avatar.canUndo });
@@ -141,6 +166,13 @@ const securityHeaders = {
 
 const server = createServer(async (req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (path === "/custom.css") {
+    // The user's own styling (see public/theme.css). Missing file: an empty sheet, not a 404.
+    const css = await readFile(customCssPath).catch(() => "");
+    res.writeHead(200, { "content-type": mime[".css"], "cache-control": "no-cache", ...securityHeaders });
+    res.end(css);
+    return;
+  }
   const file = normalize(join(publicDir, path === "/" ? "index.html" : path));
   if (file !== publicDir && !file.startsWith(publicDir + sep)) {
     res.writeHead(403).end();
@@ -159,7 +191,7 @@ const server = createServer(async (req, res) => {
 });
 
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
 // Browsers connect on /ws (only from our own origin); a terminal session's channel shim
 // connects on /attach with the token from data/attach-token.
@@ -250,9 +282,253 @@ const link = new TerminalLink({
   },
 });
 
+/** Tells the user something in their chat log only (not stored, not sent to other tabs). */
+type Say = (text: string) => void;
+
+/** Why a settings change cannot happen right now, or null. */
+function cannotChange(what: string): string | null {
+  if (link.connected) return `A terminal session is connected: ${what} there, or close it first.`;
+  if (provider.busy) return "Wait for her to finish the current reply first.";
+  return null;
+}
+
+async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
+  const blocked = cannotChange("switch modes");
+  if (blocked) return say(blocked);
+  if (wanted === "work") {
+    if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code for work mode.");
+    const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
+    if (!folder) return say("Choose a project folder first.");
+    const check = await checkProjectDir(folder);
+    if (!check.ok) return say(check.reason);
+    settings.projectDir = check.dir;
+    await saveSettings(settingsPath, settings);
+  }
+  mode = wanted;
+  provider.configure(sessionConfig());
+  broadcast(modeInfo());
+}
+
+function changePermissionMode(value: PermissionMode, say: Say): void {
+  const blocked = cannotChange("permissions are handled");
+  if (blocked) say(blocked);
+  else {
+    permissionMode = value;
+    provider.configure(sessionConfig());
+  }
+  broadcast(modeInfo());
+}
+
+const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto" };
+
+interface CommandContext {
+  /** Everything after the command name. */
+  args: string;
+  /** The full line as typed. */
+  text: string;
+  say: Say;
+}
+
+/**
+ * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
+ * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
+ */
+const slashCommands: Record<
+  string,
+  {
+    help: string;
+    /** Needs Claude Code underneath: with another brain the command says so instead of pretending. */
+    claudeOnly?: boolean;
+    run: (ctx: CommandContext) => void | Promise<void>;
+  }
+> = {
+  help: {
+    help: "list these commands",
+    run: ({ say }) => {
+      const claude = settings.provider === "claude";
+      say(
+        Object.entries(slashCommands)
+          .map(([name, c]) => `/${name}: ${c.help}${c.claudeOnly && !claude ? " (needs Claude Code)" : ""}`)
+          .join("\n"),
+      );
+    },
+  },
+  clear: { help: "forget the conversation and start fresh", run: () => resetConversation() },
+  new: { help: "same as /clear", run: () => resetConversation() },
+  compact: {
+    help: "summarise the conversation to free up context",
+    claudeOnly: true,
+    run: ({ text, say }) => {
+      if (link.connected) return say("A terminal session is connected: use /compact there.");
+      if (provider.busy) return say("Wait for her to finish the current reply first.");
+      transcript.user(text);
+      broadcast({ type: "user", text });
+      runTurn(text, { raw: true });
+    },
+  },
+  resume: {
+    help: "list earlier conversations in this folder, then /resume <number> to continue one",
+    claudeOnly: true,
+    run: ({ args, say }) => resumeCommand(args, say),
+  },
+  status: {
+    help: "show the brain, model, mode, folder and session",
+    run: ({ say }) => {
+      const info = modeInfo();
+      say(
+        [
+          `Brain: ${provider.name}`,
+          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionMode}` : ""}`,
+          `Folder: ${settings.projectDir ?? "(none)"}`,
+          `Session: ${provider.sessionId ?? "(none)"}`,
+        ].join("\n"),
+      );
+    },
+  },
+  cost: {
+    help: "what this conversation has used so far (an estimate)",
+    claudeOnly: true,
+    run: ({ say }) => {
+      const u = provider.usage;
+      if (!u) return say("This brain does not report usage.");
+      if (u.turns === 0) return say("Nothing yet: usage shows after her next reply.");
+      const context = u.contextTokens === null ? "unknown" : `~${u.contextTokens.toLocaleString("en-US")} tokens`;
+      say(
+        `This conversation: about $${u.costUsd.toFixed(4)} at API prices (a subscription is not billed per token).\n` +
+          `Context in use: ${context}. /compact frees it up.`,
+      );
+    },
+  },
+  model: {
+    help: "show or set the model, e.g. /model opus (until the server restarts)",
+    run: ({ args, say }) => {
+      if (settings.provider === "ollama") return say("Pick the Ollama model in the dropdown.");
+      const current = mode === "work" ? settings.workModel : settings.chatModel;
+      if (!args) return say(`Model: ${current} (${mode} mode)`);
+      if (!/^[A-Za-z0-9][\w.\-\[\]]{0,59}$/.test(args)) return say("That does not look like a model name.");
+      const blocked = cannotChange("change the model");
+      if (blocked) return say(blocked);
+      if (mode === "work") settings.workModel = args;
+      else settings.chatModel = args;
+      provider.configure(sessionConfig());
+      broadcast(modeInfo());
+      say(`Model set to ${args} for ${mode} mode, until the server restarts.`);
+    },
+  },
+  chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
+  work: { help: "switch to work mode, optionally for a folder: /work ~/project", claudeOnly: true, run: ({ args, say }) => switchMode("work", args, say) },
+  permissions: {
+    help: "ask, plan, accept (edits) or auto: how work mode handles approvals",
+    claudeOnly: true,
+    run: ({ args, say }) => {
+      const key = args.toLowerCase();
+      const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
+      if (!wanted) return say(`Permissions: ${permissionMode}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
+      changePermissionMode(wanted, say);
+    },
+  },
+  plan: { help: "same as /permissions plan", claudeOnly: true, run: ({ say }) => changePermissionMode("plan", say) },
+  rc: {
+    help: "remote control from claude.ai or the phone (not built in; shows how to do it yourself)",
+    claudeOnly: true,
+    run: ({ say }) => remoteControlHint(say),
+  },
+  "remote-control": { help: "same as /rc", claudeOnly: true, run: ({ say }) => remoteControlHint(say) },
+  rewind: {
+    help: "roll back to an earlier point (not available in the companion)",
+    claudeOnly: true,
+    run: ({ say }) =>
+      say(
+        "/rewind is not available in the companion: it relies on Claude Code's own interactive checkpoints. " +
+          `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
+      ),
+  },
+  copy: { help: "copy her last reply to the clipboard", run: () => {} },
+  export: { help: "download the conversation as a Markdown file", run: () => {} },
+  voice: { help: "turn spoken replies on or off", run: () => {} },
+};
+Object.setPrototypeOf(slashCommands, null); // so "/constructor" is just unknown
+
+/** `cd <folder> && claude --resume <id>` for continuing this conversation in a terminal. */
+function resumeCommandLine(): string {
+  const folder = sessionCwd();
+  const quoted = /^[\w@%+=:,./-]+$/.test(folder) ? folder : `'${folder.replace(/'/g, `'\\''`)}'`;
+  return `: cd ${quoted} && claude --resume ${provider.sessionId}`;
+}
+
+function remoteControlHint(say: Say): void {
+  say(
+    "Remote control is not available in the companion. It links a session to claude.ai or the Claude app through Anthropic's servers, " +
+      "and a remote client would be answering permission questions outside the approval cards here. " +
+      `To use it, start a terminal session with it enabled and keep the browser out of that conversation${resumeCommandLine()} --remote-control`,
+  );
+}
+
+/** Where Claude Code is (or would be) running, so where its sessions are stored. */
+const sessionCwd = () => (mode === "work" ? sessionConfig().cwd : workspace);
+let lastListing: SessionInfo[] = [];
+
+function ago(date: Date): string {
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60 * 48) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} days ago`;
+}
+
+async function resumeCommand(args: string, say: Say): Promise<void> {
+  if (!provider.resume) return say("/resume needs Claude Code; this model has no saved sessions.");
+  const blocked = cannotChange("resume there");
+  if (blocked) return say(blocked);
+  const cwd = sessionCwd();
+  if (!args) {
+    lastListing = await listSessions(cwd);
+    if (lastListing.length === 0) return say(`No earlier conversations in ${cwd}.`);
+    const lines = lastListing.map(
+      (s, i) => `${i + 1}. ${ago(s.modified)} · ${s.title}${s.id === provider.sessionId ? " (current)" : ""}`,
+    );
+    return say(`Conversations in ${cwd}:\n${lines.join("\n")}\nContinue one with /resume <number>.`);
+  }
+  const chosen = /^\d+$/.test(args) ? lastListing[Number(args) - 1] : args.length >= 4 ? lastListing.find((s) => s.id.startsWith(args.toLowerCase())) : undefined;
+  if (!chosen) return say(lastListing.length ? "No such entry. Run /resume to see the list." : "Run /resume first to see the list.");
+  if (chosen.id === provider.sessionId) return say("That is the current conversation.");
+  const path = sessionPath(cwd, chosen.id);
+  if (!path || !existsSync(path)) return say("That conversation is no longer on disk.");
+  let items;
+  try {
+    items = await loadSessionItems(path);
+  } catch (err) {
+    return say(String(err instanceof Error ? err.message : err));
+  }
+  provider.resume(chosen.id);
+  transcript.clear();
+  transcript.items = items;
+  notesForModel = [];
+  pendingPermissions.clear();
+  persistTranscript();
+  broadcast({ type: "history", items: transcript.snapshot() });
+  broadcast(modeInfo());
+  broadcast({ type: "notice", text: `Resumed: ${chosen.title}` });
+}
+
+function parseSlash(text: string): { name: string; args: string } | null {
+  const match = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+  return match ? { name: match[1].toLowerCase(), args: (match[2] ?? "").trim() } : null;
+}
+
+function resetConversation(): void {
+  provider.reset();
+  transcript.clear();
+  persistTranscript();
+  notesForModel = [];
+  pendingPermissions.clear();
+  broadcast({ type: "reset" });
+  broadcast(modeInfo());
+}
+
 /** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(userText: string): void {
-  const toModel = withNotes(userText);
+function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] } = {}): void {
+  // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
+  const toModel = opts.raw ? userText : withNotes(userText);
   let reply = "";
   const applyNewTags = makeTagApplier();
 
@@ -271,6 +547,8 @@ function runTurn(userText: string): void {
     } else if (event.type === "permission-cancelled") {
       pendingPermissions.delete(event.id);
       broadcast(event);
+    } else if (event.type === "status" || event.type === "notice") {
+      broadcast(event);
     } else {
       pendingPermissions.clear();
       applyNewTags(reply);
@@ -281,7 +559,7 @@ function runTurn(userText: string): void {
         broadcast(event);
       });
     }
-  });
+  }, opts.images);
 }
 
 wss.on("connection", (ws) => {
@@ -300,33 +578,40 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
-    if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
-      transcript.user(msg.text);
-      broadcast({ type: "user", text: msg.text });
+    if (msg.type === "user" && typeof msg.text === "string" && (msg.text.trim() || msg.images?.length)) {
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      const images = parseImages(msg.images);
+      if (typeof images === "string") return say(images);
+      if (images.length && link.connected) return say("Images cannot be sent to a terminal session; attach them there.");
+      const command = images.length ? null : parseSlash(msg.text);
+      if (command) {
+        const known = slashCommands[command.name];
+        if (!known) say(`Unknown command /${command.name}. Try /help.`);
+        else if (known.claudeOnly && settings.provider !== "claude") {
+          say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
+        } else await known.run({ args: command.args, text: msg.text, say });
+        return;
+      }
+      transcript.user(msg.text, images.length);
+      broadcast({ type: "user", text: msg.text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
       if (link.connected) link.send(withNotes(msg.text));
-      else runTurn(msg.text);
+      else runTurn(msg.text, { images });
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
-      if (!["allow", "allow-session", "deny"].includes(decision) || !pendingPermissions.has(msg.id)) return;
+      const request = pendingPermissions.get(msg.id);
+      if (!["allow", "allow-session", "deny"].includes(decision) || !request) return;
       pendingPermissions.delete(msg.id);
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
-    } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
-      const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
-      if (link.connected) return notice("A terminal session is connected. Close it (or /exit) to switch modes.");
-      if (provider.busy) return notice("Wait for her to finish the current reply first.");
-      if (msg.mode === "work") {
-        if (!provider.canUseTools) return notice("This model cannot use tools. Switch to Claude Code for work mode.");
-        const wanted = typeof msg.projectDir === "string" && msg.projectDir.trim() ? msg.projectDir : settings.projectDir;
-        if (!wanted) return notice("Choose a project folder first.");
-        const check = await checkProjectDir(wanted);
-        if (!check.ok) return notice(check.reason);
-        settings.projectDir = check.dir;
-        await saveSettings(settingsPath, settings);
+      if (request.tool === "ExitPlanMode" && decision !== "deny") {
+        // The approved plan ends plan mode inside Claude Code; keep the selector truthful.
+        permissionMode = "manual";
+        broadcast(modeInfo());
       }
-      mode = msg.mode;
-      provider.configure(sessionConfig());
-      broadcast(modeInfo());
+    } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
+      await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
+      changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (link.connected) return notice("A terminal session is connected. Close it first.");
@@ -360,13 +645,7 @@ wss.on("connection", (ws) => {
       provider.configure(sessionConfig());
       broadcast(modeInfo());
     } else if (msg.type === "reset") {
-      provider.reset();
-      transcript.clear();
-      persistTranscript();
-      notesForModel = [];
-      pendingPermissions.clear();
-      broadcast({ type: "reset" });
-      broadcast(modeInfo());
+      resetConversation();
     } else if (msg.type === "look-undo") {
       if (await avatar.undo()) {
         transcript.look(["undid the last change"]);
