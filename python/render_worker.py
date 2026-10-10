@@ -84,6 +84,13 @@ def coerce(name, type_str, raw):
     raise ValueError(f"unsupported field type {type_str}")
 
 
+def show(value):
+    """A value as the model wrote it: true, false, none, #rrggbb."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return "none" if value is None else value
+
+
 def trial_render(character):
     render_character(params_from_dict(character))
 
@@ -133,7 +140,7 @@ def op_patch(req):
             except Exception as exc:
                 target[name] = previous
                 raise ValueError(f"rendering failed ({exc})") from exc
-            applied.append(f"{key}={value}")
+            applied.append(f"{key}={show(value)}")
         except (ValueError, TypeError) as exc:
             rejected.append({"key": key, "reason": str(exc)})
     return {"character": character, "applied": applied, "rejected": rejected}

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
@@ -156,6 +157,7 @@ wss.on("connection", (ws) => {
 
 server.listen(port, host, () => {
   console.log(`Companion ready: http://${host}:${port}  (${provider.name})`);
+  if (process.argv.includes("--open")) openBrowser(`http://${host}:${port}`);
   void shareNudge(
     [
       { name: "anime_ai_companion", dir: root, url: "https://github.com/rhedak/anime_ai_companion" },
@@ -164,6 +166,14 @@ server.listen(port, host, () => {
     join(root, "data/nudge.json"),
   );
 });
+
+function openBrowser(url: string): void {
+  const [cmd, ...args] =
+    process.platform === "darwin" ? ["open", url]
+    : process.platform === "win32" ? ["cmd", "/c", "start", "", url]
+    : ["xdg-open", url];
+  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+}
 
 const shutdown = () => {
   provider.close();

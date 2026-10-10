@@ -37,10 +37,15 @@ function setBusy(on) {
   send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
 }
 
+// The bubble is a glimpse, not the transcript: show the latest few lines only.
+const BUBBLE_MAX = 220;
 function showBubble(text) {
   bubble.hidden = !text;
+  if (text.length > BUBBLE_MAX) {
+    const tail = text.slice(-BUBBLE_MAX);
+    text = "…" + tail.slice(tail.search(/\s/) + 1);
+  }
   bubble.textContent = text;
-  bubble.scrollTop = bubble.scrollHeight;
 }
 
 function onDelta(text) {
@@ -70,7 +75,8 @@ function endTurn() {
 function handle(msg) {
   switch (msg.type) {
     case "hello":
-      $("status").textContent = `connected · ${msg.provider}`;
+      $("status").textContent = "connected";
+      $("status").title = msg.provider;
       $("dot").classList.add("on");
       avatar.setVersion(msg.version);
       setBusy(busy);

@@ -22,7 +22,6 @@ export function createAvatar(host, requestFrames) {
   const parser = new DOMParser();
 
   function setView() {
-    host.classList.toggle("full", full);
     const svg = host.firstElementChild;
     if (svg) svg.setAttribute("viewBox", full ? FULL_BODY : CLOSE_UP);
   }
@@ -32,6 +31,7 @@ export function createAvatar(host, requestFrames) {
     if (!frames) return;
     const svg = frames[index].cloneNode(true);
     svg.setAttribute("viewBox", full ? FULL_BODY : CLOSE_UP);
+    svg.setAttribute("preserveAspectRatio", "xMidYMax meet");
     host.replaceChildren(svg);
     shown = index;
   }
