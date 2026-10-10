@@ -22,6 +22,7 @@ import { permissionModes, type Decision, type Mode, type PermissionMode, type Pe
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
 const workspace = join(root, "workspace");
+const customCssPath = join(root, "data/custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only: this server can run Claude Code, so never expose it on the network.
 const host = "127.0.0.1";
@@ -165,6 +166,13 @@ const securityHeaders = {
 
 const server = createServer(async (req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (path === "/custom.css") {
+    // The user's own styling (see public/theme.css). Missing file: an empty sheet, not a 404.
+    const css = await readFile(customCssPath).catch(() => "");
+    res.writeHead(200, { "content-type": mime[".css"], "cache-control": "no-cache", ...securityHeaders });
+    res.end(css);
+    return;
+  }
   const file = normalize(join(publicDir, path === "/" ? "index.html" : path));
   if (file !== publicDir && !file.startsWith(publicDir + sep)) {
     res.writeHead(403).end();

@@ -94,6 +94,22 @@ chat). `anaico --chat` starts in chat mode instead; the folder is still pre-fill
 switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
 saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
 
+## Changing how it looks
+
+All colours, fonts, corner radii and sizes of the interface are CSS variables at the top of
+[`public/theme.css`](public/theme.css), with a comment on each. `public/style.css` only uses them.
+To restyle it, put your changes in **`data/custom.css`** (create it; it is yours, git ignores it, updates
+never overwrite it, and deleting it restores the default look). It loads last and a page reload shows
+the change, so you can simply ask an AI assistant: "edit `data/custom.css` to make the chat panel light
+with a blue accent and rounded corners; the variables are documented in `public/theme.css`".
+
+```css
+:root { --accent: #4f9d69; --surface: #22302a; --panel: #17201c; --radius-lg: 6px; --font-heading: "Courier New", monospace; }
+```
+
+Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Mio's own
+appearance (hair, clothes, face) is separate: ask her to change it in chat.
+
 ## Images
 
 The **📎** button next to the message box attaches up to 5 pictures (PNG, JPEG, GIF or WebP, up to 5 MB
