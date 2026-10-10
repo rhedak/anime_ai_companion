@@ -10,6 +10,7 @@ import { shareNudge } from "./share-nudge.ts";
 import { TerminalLink } from "./terminal-link.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
+import { resolveCreatorSrc } from "./creator.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -26,7 +27,7 @@ await mkdir(workspace, { recursive: true });
 const personaBase = await readFile(join(root, "persona.md"), "utf8");
 const emotions = JSON.parse(await readFile(join(root, "emotions.json"), "utf8"));
 
-const creatorSrc = process.env.CREATOR_SRC ?? resolve(root, "../anime-character-creator/src");
+const creatorSrc = await resolveCreatorSrc();
 const avatar = new AvatarService({
   creatorSrc,
   python: process.env.PYTHON ?? "python3",

@@ -23,6 +23,13 @@
   "engines": {
     "node": ">=22.18"
   },
+  "bin": {
+    "anaico": "src/cli.ts"
+  },
+  "creator": {
+    "url": "https://github.com/rhedak/anime-character-creator.git",
+    "ref": "v0.1.0"
+  },
   "scripts": {
     "start": "node src/server.ts",
     "open": "node src/server.ts --open",
