@@ -61,6 +61,48 @@ function addMsg(kind, text) {
   return div;
 }
 
+// --- !commands ------------------------------------------------------------------------
+const shellEls = new Map();
+
+/** A `!command` and what it printed; `output` null while it is still running. */
+function addShell(command, output, code) {
+  const div = document.createElement("div");
+  div.className = "msg shell";
+  div.dataset.raw = `$ ${command}`;
+  const head = document.createElement("div");
+  head.className = "shell-cmd";
+  head.textContent = `$ ${command}`;
+  div.append(head);
+  log.append(div);
+  if (output === null) {
+    div.classList.add("running");
+    const wait = document.createElement("div");
+    wait.className = "shell-wait";
+    wait.textContent = "running…";
+    div.append(wait);
+  } else fillShell(div, output, code);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+function fillShell(div, output, code) {
+  div.classList.remove("running");
+  div.querySelector(".shell-wait")?.remove();
+  if (output.trim()) {
+    const pre = document.createElement("pre");
+    pre.textContent = output.replace(/\n$/, "");
+    div.append(pre);
+  }
+  if (code !== 0) {
+    const status = document.createElement("div");
+    status.className = "shell-status";
+    status.textContent = code === null ? "stopped" : `exit ${code}`;
+    div.append(status);
+  }
+  div.dataset.raw = `$ ${div.querySelector(".shell-cmd").textContent.slice(2)}\n${output}`;
+  log.scrollTop = log.scrollHeight;
+}
+
 /** A message of the user's, with its pictures: thumbnails when we have them, a note after a reload. */
 function addUserMsg(text, pics = [], count = pics.length) {
   const div = document.createElement("div");
@@ -427,7 +469,8 @@ function handle(msg) {
         else if (item.type === "bot") {
           const { clean } = parseReply(item.text);
           if (clean) addMsg("bot", clean);
-        } else if (item.type === "look") addMsg("look", `✨ new look: ${item.applied.join(", ")}`);
+        } else if (item.type === "shell") addShell(item.command, item.output, item.code);
+        else if (item.type === "look") addMsg("look", `✨ new look: ${item.applied.join(", ")}`);
         else if (item.type === "tool") {
           const icon = { running: "⏳", done: "✓", error: "✗" }[item.status === "running" ? "done" : item.status];
           addMsg(`tool ${item.status === "error" ? "error" : "done"}`, `${icon} ${item.name}${item.summary ? " · " + item.summary : ""}`);
@@ -522,6 +565,15 @@ function handle(msg) {
       avatar.setEmotion("thinking");
       setBusy(true);
       break;
+    case "shell":
+      shellEls.set(msg.id, addShell(msg.command, null, null));
+      break;
+    case "shell-done": {
+      const el = shellEls.get(msg.id);
+      if (el) fillShell(el, msg.output, msg.code);
+      shellEls.delete(msg.id);
+      break;
+    }
     case "avatar":
       addMsg("look", `✨ new look: ${msg.applied.join(", ")}`);
       avatar.setVersion(msg.version);
@@ -651,8 +703,8 @@ const browserCommands = {
     else addMsg("sys", "She has not said anything yet.");
   },
   "/export": () => {
-    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool")].map((el) =>
-      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : `> ${el.textContent}`,
+    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool, .msg.shell")].map((el) =>
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
     );
     if (!lines.length) return addMsg("sys", "Nothing to export yet.");
     const link = document.createElement("a");
@@ -678,6 +730,8 @@ function submit() {
     input.style.height = "auto";
     return;
   }
+  $("shell-hint").hidden = true;
+  $("form").classList.remove("shell");
   ws.send(JSON.stringify({ type: "user", text, images: attachments.map(({ mediaType, data }) => ({ mediaType, data })) }));
   attachments = [];
   renderAttachments();
@@ -685,6 +739,12 @@ function submit() {
   input.style.height = "auto";
 }
 
+// A leading ! means "run this in the shell": show it, since nothing asks before it runs.
+input.addEventListener("input", () => {
+  const shell = /^!\s*\S/.test(input.value);
+  $("shell-hint").hidden = !shell;
+  $("form").classList.toggle("shell", shell);
+});
 $("attach").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", () => {
   addFiles([...$("file").files]);

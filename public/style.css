@@ -99,6 +99,14 @@ button:disabled.seg { opacity: .4; }
 .msg .pics img { max-height: 160px; max-width: 100%; border-radius: var(--radius-sm); }
 .msg .pics:last-child { margin-bottom: 0; }
 .msg .pics-note { font-size: 12px; opacity: .8; }
+.msg.shell { align-self: stretch; max-width: 100%; padding: 8px 12px; border-radius: var(--radius-md); background: var(--code-bg); border: 1px solid var(--line); font: 12.5px/1.45 var(--font-mono); }
+.msg.shell .shell-cmd { color: var(--accent); overflow-wrap: anywhere; }
+.msg.shell pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 320px; overflow: auto; }
+.msg.shell .shell-wait, .msg.shell .shell-status { margin-top: 4px; color: var(--muted); }
+.msg.shell .shell-status { color: var(--error-text); }
+.shell-hint { padding: 0 6px; font-size: 12px; color: var(--warn-text); }
+form.composer.shell { border-color: var(--warn-text); }
+form.composer.shell textarea { font-family: var(--font-mono); }
 .msg.perm { align-self: stretch; max-width: 100%; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: var(--radius-md); }
 .perm-title { font-weight: 600; margin-bottom: 4px; }
 .perm-desc { font-size: var(--font-size-small); color: var(--muted); margin-bottom: 6px; }

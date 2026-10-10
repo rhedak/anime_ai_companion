@@ -7,7 +7,8 @@ export type TranscriptItem =
   | { type: "user"; text: string; images?: number }
   | { type: "bot"; text: string }
   | { type: "tool"; id: string; name: string; summary: string; status: "running" | "done" | "error" }
-  | { type: "look"; applied: string[] };
+  | { type: "look"; applied: string[] }
+  | { type: "shell"; command: string; output: string; code: number | null };
 
 export interface TranscriptMeta {
   provider: string;
@@ -45,6 +46,12 @@ export class Transcript {
     const known = this.items.find((i) => i.type === "tool" && i.id === event.id);
     if (known) Object.assign(known, event);
     else this.items.push({ ...event });
+  }
+
+  /** A `!command` the user ran, with what it printed. */
+  shell(item: { command: string; output: string; code: number | null }): void {
+    this.flush();
+    this.items.push({ type: "shell", ...item });
   }
 
   look(applied: string[]): void {

@@ -166,6 +166,15 @@ without text works too. Only a count is kept in the saved chat log, so after a r
 way to "🖼 2 images". With Ollama they need
 a vision model (e.g. `llava`), and only the message that carries them sees them.
 
+## Shell commands with `!`
+
+In work mode, a message that starts with `!` runs in your project folder straight away, like Claude
+Code's bash mode: `!ls`, `!git status`. The output appears in the chat (with the exit code if it
+failed) and is passed to her with your next message, so she knows what you saw. There is no approval card,
+because you typed the command yourself, so the composer turns amber with a reminder while the line starts
+with `!`. Commands run in your shell without a terminal and without input, so they cannot ask questions
+or open editors; they stop after 2 minutes and their output is cut at 100 KB. Chat mode refuses them.
+
 ## Slash commands
 
 Type these in the chat box (`/help` lists them):
@@ -239,7 +248,8 @@ this once a week at startup (local check only, no network); `COMPANION_NO_NUDGE=
 
 Because the server can run Claude Code, it is built to be reachable only by you:
 
-- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin.
+- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. Because `!command`
+  runs without approval, this is the line that matters: nothing but your own page may talk to the server.
 - The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
   click the approval buttons for you).
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,

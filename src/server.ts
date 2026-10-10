@@ -15,6 +15,8 @@ import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from ".
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
+import { randomUUID } from "node:crypto";
+import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
@@ -390,7 +392,7 @@ const slashCommands: Record<
       say(
         Object.entries(slashCommands)
           .map(([name, c]) => `/${name}: ${c.help}${c.claudeOnly && !claude ? " (needs Claude Code)" : ""}`)
-          .join("\n"),
+          .join("\n") + "\n!command: run a shell command in your project folder (work mode), e.g. !git status",
       );
     },
   },
@@ -523,6 +525,33 @@ function remoteControlHint(say: Say): void {
   );
 }
 
+let shellRunning = false;
+
+/** `!command` in the chat box: run it in the project folder and tell the model afterwards, like Claude Code's bash mode. */
+async function runBang(command: string, say: Say): Promise<void> {
+  if (mode !== "work") return say("!commands run in work mode, in your project folder. Switch to Work first.");
+  if (shellRunning) return say("A command is still running; wait for it to finish.");
+  shellRunning = true;
+  const id = randomUUID();
+  broadcast({ type: "shell", id, command });
+  try {
+    const result = await runShell(command, settings.projectDir ?? workspace);
+    const output =
+      result.output +
+      (result.truncated ? "\n[output cut off]" : "") +
+      (result.timedOut ? "\n[stopped after 2 minutes]" : "");
+    transcript.shell({ command, output, code: result.code });
+    persistTranscript();
+    // The model did not see this; tell it with her next message.
+    notesForModel.push(
+      `the user ran a shell command themselves in ${settings.projectDir ?? workspace}: $ ${command} (exit ${result.code ?? "none"}). It printed: ${output.trim().slice(0, 4000).replace(/\n{2,}/g, "\n") || "(nothing)"}`,
+    );
+    broadcast({ type: "shell-done", id, output, code: result.code });
+  } finally {
+    shellRunning = false;
+  }
+}
+
 /** Where Claude Code is (or would be) running, so where its sessions are stored. */
 const sessionCwd = () => (mode === "work" ? sessionConfig().cwd : workspace);
 let lastListing: SessionInfo[] = [];
@@ -651,6 +680,8 @@ wss.on("connection", (ws) => {
       const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
       const images = parseImages(msg.images);
       if (typeof images === "string") return say(images);
+      const bang = images.length ? null : /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
+      if (bang) return void (await runBang(bang[1], say));
       const command = images.length ? null : parseSlash(msg.text);
       if (command) {
         const known = slashCommands[command.name];
