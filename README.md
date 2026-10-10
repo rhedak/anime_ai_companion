@@ -88,6 +88,8 @@ there, like a regular Claude Code session. She asks first:
   reads **Choose folder…** and opens your system's folder dialog (macOS, or Linux with `zenity` or
   `kdialog`; elsewhere type the path), starting in the current folder; picking one switches to it.
   Enter in the box always means "use what I typed".
+- The folder settings above the chat fold away with the **−** button into a one-line summary (**+** or a click
+  on it opens them again), for more room; the choice is remembered in the browser.
 - By default your own Claude Code setup is **not** loaded: a folder's `.claude/settings*.json` hooks
   and allow rules, your user settings and MCP servers do not apply, so opening an unfamiliar folder
   runs nothing of its own. The **Use my Claude Code setup** checkbox (or `/setup on`) loads them, as

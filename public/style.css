@@ -64,7 +64,13 @@ button:disabled.seg { opacity: .4; }
 input.name-edit { font: 500 22px/1 var(--font-heading); color: var(--text); background: var(--fill-1); border: 1px solid var(--focus); border-radius: var(--radius-sm); padding: 2px 6px; margin-left: -6px; outline: none; max-width: 14em; }
 .panel h1 { margin: 0; font: 500 22px/1 var(--font-heading); color: var(--text); }
 .workbar { padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--fill-1); }
-.workrow { display: flex; gap: 8px; }
+.workrow { display: flex; gap: 8px; align-items: center; }
+button.icon.small { width: 26px; height: 26px; flex: none; font-size: 16px; line-height: 1; border: 1px solid var(--line); }
+.worksummary { display: none; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--font-size-small); color: var(--muted); }
+.worksummary-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workbar.collapsed { padding-top: 6px; padding-bottom: 6px; }
+.workbar.collapsed .worksummary { display: flex; }
+.workbar.collapsed .workbody { display: none; }
 .workrow input { flex: 1; min-width: 0; padding: 7px 10px; font: var(--font-size-small) var(--font-mono); }
 .setuprow { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--text); cursor: pointer; }
 .setuprow .muted { color: var(--muted); }

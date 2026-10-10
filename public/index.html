@@ -40,14 +40,21 @@
         <button id="reset" class="ghost" title="Start a fresh conversation">New chat</button>
       </header>
       <div id="workbar" class="workbar" hidden>
+        <div id="worksummary" class="worksummary">
+          <span id="worksummary-text" class="worksummary-text"></span>
+          <button id="workbar-expand" type="button" class="icon small" aria-expanded="false" aria-controls="workbody" title="Show work settings" aria-label="Show work settings">+</button>
+        </div>
+        <div id="workbody" class="workbody">
         <div id="workrow" class="workrow">
           <input id="folder" type="text" placeholder="/path/to/your/project" spellcheck="false" autocomplete="off">
           <button id="folder-set" class="ghost">Work here</button>
+          <button id="workbar-collapse" type="button" class="icon small" aria-expanded="true" aria-controls="workbody" title="Hide work settings" aria-label="Hide work settings">−</button>
         </div>
         <label id="setuprow" class="setuprow" title="Load your own Claude Code settings, hooks, rules and MCP servers, like in a terminal. Hooks run commands, so it is off until you turn it on.">
           <input type="checkbox" id="use-setup"> Use my Claude Code setup <span class="muted">(settings, hooks, MCP servers)</span>
         </label>
         <div id="workinfo" class="workinfo"></div>
+        </div>
       </div>
       <div id="log" class="log"></div>
       <div id="working" class="working" role="status" aria-live="polite" hidden>

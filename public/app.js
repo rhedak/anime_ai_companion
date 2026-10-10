@@ -522,6 +522,7 @@ function renderMode() {
   $("workbar").hidden = !(work || wantWork);
   if (state.projectDir && document.activeElement !== $("folder")) $("folder").value = state.projectDir;
   renderFolderButton();
+  renderWorkSummary();
   const info = $("workinfo");
   info.replaceChildren();
   if (!work) {
@@ -981,6 +982,28 @@ $("mode-work").addEventListener("click", () => {
     $("folder").focus();
   }
 });
+// The work bar can fold away to a one-line summary, to give the chat more room.
+function setWorkbarCollapsed(collapsed, remember = true) {
+  $("workbar").classList.toggle("collapsed", collapsed);
+  $("workbar-expand").setAttribute("aria-expanded", String(!collapsed));
+  $("workbar-collapse").setAttribute("aria-expanded", String(!collapsed));
+  if (!remember) return; // restoring the saved state: no focus change
+  try { localStorage.setItem("workbarCollapsed", collapsed ? "1" : "0"); } catch {}
+  (collapsed ? $("workbar-expand") : $("workbar-collapse")).focus({ preventScroll: true }); // keep the keyboard where it was
+}
+function renderWorkSummary() {
+  const dir = state.projectDir;
+  const name = dir ? dir.replace(/\/+$/, "").split("/").pop() : "";
+  $("worksummary-text").textContent = dir ? `📁 ${name || dir}` : "No folder chosen";
+  $("worksummary-text").title = dir ?? "";
+}
+$("workbar-collapse").addEventListener("click", () => setWorkbarCollapsed(true));
+$("workbar-expand").addEventListener("click", () => setWorkbarCollapsed(false));
+try {
+  if (localStorage.getItem("workbarCollapsed") === "1") setWorkbarCollapsed(true, false);
+} catch {}
+$("worksummary-text").addEventListener("click", () => setWorkbarCollapsed(false));
+
 // "Work here" applies what is typed; once she already works in that folder the same button opens a folder dialog,
 // since the next thing someone wants there is a different folder.
 let picking = false;
