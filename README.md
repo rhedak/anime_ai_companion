@@ -57,7 +57,7 @@ your audio to Google, which would break the "stays on your machine" promise.
 ## Looks: undo, save, load
 
 She can redesign herself at any time, so it is reversible: **Undo** steps back through her recent
-changes, **Save look** stores the current look by name, and the **Looks** menu loads one. She can load
+changes, **Save look** stores the current look by name, and the **Looks** menu loads one, or switches to any of the 19 built-in **Presets** (Undo brings the old look back). She can load
 a saved look herself too (`[avatar load=name]`). Saved looks are plain files in `data/looks/`; delete a
 file to delete a look.
 

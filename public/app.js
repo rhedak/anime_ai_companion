@@ -451,8 +451,18 @@ function handle(msg) {
     case "looks": {
       $("undo-look").disabled = !msg.canUndo;
       const select = $("looks");
-      select.replaceChildren(new Option("Looks…", ""), ...msg.names.map((n) => new Option(n, n)));
-      select.disabled = msg.names.length === 0;
+      const group = (label, options) => {
+        const g = document.createElement("optgroup");
+        g.label = label;
+        g.append(...options);
+        return g;
+      };
+      select.replaceChildren(
+        new Option("Looks…", ""),
+        ...(msg.names.length ? [group("My looks", msg.names.map((n) => new Option(n, `look:${n}`)))] : []),
+        ...(msg.presets?.length ? [group("Presets", msg.presets.map((n) => new Option(n, `preset:${n}`)))] : []),
+      );
+      select.disabled = select.options.length === 1;
       break;
     }
     case "notice":
@@ -746,8 +756,9 @@ renderMode();
 
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {
-  const name = $("looks").value;
-  if (name) ws?.send(JSON.stringify({ type: "look-load", name }));
+  const [kind, ...rest] = $("looks").value.split(":");
+  const name = rest.join(":");
+  if (name) ws?.send(JSON.stringify({ type: kind === "preset" ? "look-preset" : "look-load", name }));
   $("looks").value = "";
 });
 $("save-look").addEventListener("click", () => {

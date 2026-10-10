@@ -141,6 +141,21 @@ export class AvatarService {
     }
   }
 
+  get presetNames(): string[] {
+    return this.schema?.presets ?? [];
+  }
+
+  /** Switch to one of the built-in characters (a whole new look). */
+  loadPreset(name: string): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      if (!this.presetNames.includes(name)) return false;
+      await this.adopt((await this.call("base", { name })).character);
+      return true;
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
   /** Switch to a saved look. */
   loadLook(name: string): Promise<boolean> {
     const run = this.queue.then(async () => {

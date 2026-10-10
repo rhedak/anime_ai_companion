@@ -128,7 +128,7 @@ const modeInfo = () => ({
   permissionMode,
 });
 
-const looksInfo = () => ({ type: "looks", names: avatar.lookNames, canUndo: avatar.canUndo });
+const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
 
 async function refreshOllamaModels(): Promise<void> {
   const before = JSON.stringify(ollamaModels);
@@ -667,6 +667,13 @@ wss.on("connection", (ws) => {
       if (await avatar.loadLook(msg.name)) {
         transcript.look([`load=${msg.name}`]);
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
+      }
+      broadcast(looksInfo());
+    } else if (msg.type === "look-preset" && typeof msg.name === "string") {
+      if (await avatar.loadPreset(msg.name)) {
+        transcript.look([`base=${msg.name}`]);
+        notesForModel.push(`The user switched your look to the '${msg.name}' preset from the menu.`);
+        broadcast({ type: "avatar", version: avatar.version, applied: [`base=${msg.name}`] });
       }
       broadcast(looksInfo());
     } else if (msg.type === "look-delete" && typeof msg.name === "string") {
