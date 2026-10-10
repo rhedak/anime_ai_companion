@@ -102,6 +102,7 @@ Type these in the chat box (`/help` lists them):
 | --- | --- |
 | `/compact [focus]` | summarise the conversation to free up context; she keeps the gist |
 | `/clear`, `/new` | start a fresh conversation, like **New chat** |
+| `/resume [number]` | list earlier conversations in the current folder (newest first), or continue one; the chat log is rebuilt from Claude Code's own session file |
 | `/cost` | what the conversation has used: an API-price estimate and how full the context is |
 | `/model [name]` | show or set the model for the current mode (`/model opus`), until the server restarts |
 | `/chat`, `/work [folder]` | switch modes |
@@ -110,6 +111,10 @@ Type these in the chat box (`/help` lists them):
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |
 | `/voice` | turn spoken replies on or off |
+
+`/resume` looks in the folder she is working in (the project folder in work mode, her own `workspace/`
+in chat mode), so it also finds sessions you started in a terminal there; switch modes first to look
+elsewhere. It is refused mid-reply and with Ollama.
 
 Anything else that looks like `/word` is reported as unknown instead of being sent to her; paths like
 `/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply, and `/compact`

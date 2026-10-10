@@ -102,6 +102,14 @@ export class ClaudeCodeProvider implements Provider {
     this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
   }
 
+  resume(sessionId: string): void {
+    if (this.listener) throw new Error("Wait for the current reply to finish first.");
+    this.killProcess();
+    this.sessionIdValue = sessionId;
+    this.hasHistory = true; // the next message starts claude with --resume
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
+  }
+
   close(): void {
     this.killProcess();
     if (this.listener) this.finish({ type: "error", message: "Conversation reset." });

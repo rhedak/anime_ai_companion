@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import { TerminalLink } from "./terminal-link.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
+import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -340,6 +342,10 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
       runTurn(text, { raw: true });
     },
   },
+  resume: {
+    help: "list earlier conversations in this folder, then /resume <number> to continue one",
+    run: ({ args, say }) => resumeCommand(args, say),
+  },
   status: {
     help: "show the brain, model, mode, folder and session",
     run: ({ say }) => {
@@ -400,6 +406,52 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
   voice: { help: "turn spoken replies on or off", run: () => {} },
 };
 Object.setPrototypeOf(slashCommands, null); // so "/constructor" is just unknown
+
+/** Where Claude Code is (or would be) running, so where its sessions are stored. */
+const sessionCwd = () => (mode === "work" ? sessionConfig().cwd : workspace);
+let lastListing: SessionInfo[] = [];
+
+function ago(date: Date): string {
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60 * 48) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} days ago`;
+}
+
+async function resumeCommand(args: string, say: Say): Promise<void> {
+  if (!provider.resume) return say("/resume needs Claude Code; this model has no saved sessions.");
+  const blocked = cannotChange("resume there");
+  if (blocked) return say(blocked);
+  const cwd = sessionCwd();
+  if (!args) {
+    lastListing = await listSessions(cwd);
+    if (lastListing.length === 0) return say(`No earlier conversations in ${cwd}.`);
+    const lines = lastListing.map(
+      (s, i) => `${i + 1}. ${ago(s.modified)} · ${s.title}${s.id === provider.sessionId ? " (current)" : ""}`,
+    );
+    return say(`Conversations in ${cwd}:\n${lines.join("\n")}\nContinue one with /resume <number>.`);
+  }
+  const chosen = /^\d+$/.test(args) ? lastListing[Number(args) - 1] : args.length >= 4 ? lastListing.find((s) => s.id.startsWith(args.toLowerCase())) : undefined;
+  if (!chosen) return say(lastListing.length ? "No such entry. Run /resume to see the list." : "Run /resume first to see the list.");
+  if (chosen.id === provider.sessionId) return say("That is the current conversation.");
+  const path = sessionPath(cwd, chosen.id);
+  if (!path || !existsSync(path)) return say("That conversation is no longer on disk.");
+  let items;
+  try {
+    items = await loadSessionItems(path);
+  } catch (err) {
+    return say(String(err instanceof Error ? err.message : err));
+  }
+  provider.resume(chosen.id);
+  transcript.clear();
+  transcript.items = items;
+  notesForModel = [];
+  pendingPermissions.clear();
+  persistTranscript();
+  broadcast({ type: "history", items: transcript.snapshot() });
+  broadcast(modeInfo());
+  broadcast({ type: "notice", text: `Resumed: ${chosen.title}` });
+}
 
 function parseSlash(text: string): { name: string; args: string } | null {
   const match = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/i.exec(text.trim());
