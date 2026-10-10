@@ -9,7 +9,10 @@ body {
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text);
   background: radial-gradient(1200px 700px at 30% 20%, var(--bg2), var(--bg1));
 }
-main { display: grid; grid-template-columns: 1fr minmax(320px, 440px); height: 100%; }
+main { --stage: 62%; display: grid; grid-template-columns: var(--stage) 8px minmax(0, 1fr); height: 100%; }
+body.resizing { cursor: col-resize; user-select: none; }
+.divider { cursor: col-resize; background: rgba(255,255,255,.06); transition: background .15s; touch-action: none; }
+.divider:hover, .divider:focus-visible, body.resizing .divider { background: var(--accent2); outline: none; }
 .stage { position: relative; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; min-height: 0; }
 .avatar { width: 100%; height: min(96%, 840px); animation: bob 5s ease-in-out infinite; filter: drop-shadow(0 18px 36px rgba(0,0,0,.45)); }
 .avatar.talking { animation-duration: 1.6s; }
@@ -60,6 +63,7 @@ button.ghost { background: rgba(255,255,255,.12); padding: 6px 12px; font-size: 
 button.ghost:hover { background: rgba(255,255,255,.2); }
 @media (max-width: 800px) {
   main { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; }
+  .divider { display: none; }
     .bubble { display: none; }
 }
 .credit { padding: 8px 14px 10px; font-size: 12px; color: var(--muted); text-align: center; }

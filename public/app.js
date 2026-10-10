@@ -675,3 +675,44 @@ $("zoom").addEventListener("click", () => {
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));
 
 connect();
+
+// --- resizable divider ----------------------------------------------------------------
+// The left column's share of the width, kept between 30% and 70% and remembered across visits.
+(() => {
+  const main = document.querySelector("main");
+  const divider = $("divider");
+  const MIN = 30, MAX = 70, DEFAULT = 62;
+  const clamp = (v) => Math.min(MAX, Math.max(MIN, v));
+  const set = (percent, save = true) => {
+    const value = clamp(percent);
+    main.style.setProperty("--stage", `${value}%`);
+    divider.setAttribute("aria-valuenow", String(Math.round(value)));
+    if (save) try { localStorage.setItem("stageWidth", String(value)); } catch {}
+  };
+  let saved = DEFAULT;
+  try { saved = Number(localStorage.getItem("stageWidth")) || DEFAULT; } catch {}
+  set(saved, false);
+  const current = () => Number(divider.getAttribute("aria-valuenow"));
+  divider.addEventListener("pointerdown", (e) => {
+    divider.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing");
+  });
+  divider.addEventListener("pointermove", (e) => {
+    if (!divider.hasPointerCapture(e.pointerId)) return;
+    const box = main.getBoundingClientRect();
+    set(((e.clientX - box.left) / box.width) * 100);
+  });
+  const stop = () => document.body.classList.remove("resizing");
+  divider.addEventListener("pointerup", stop);
+  divider.addEventListener("pointercancel", stop);
+  divider.addEventListener("dblclick", () => set(DEFAULT));
+  divider.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowLeft") set(current() - step);
+    else if (e.key === "ArrowRight") set(current() + step);
+    else if (e.key === "Home") set(MIN);
+    else if (e.key === "End") set(MAX);
+    else return;
+    e.preventDefault();
+  });
+})();
