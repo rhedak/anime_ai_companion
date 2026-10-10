@@ -145,6 +145,25 @@ export class AvatarService {
     return this.schema?.presets ?? [];
   }
 
+  private thumbnails: Promise<Record<string, string>> | null = null;
+
+  /** Each preset drawn once with a neutral face, for the gallery. The presets never change, so this is kept. */
+  presetThumbnails(): Promise<Record<string, string>> {
+    this.thumbnails ??= (async () => {
+      const out: Record<string, string> = {};
+      for (const name of this.presetNames) {
+        const { character } = await this.call("base", { name });
+        const { svgs } = await this.call("frames", { character, face: {}, mouth: [0] });
+        out[name] = svgs[0];
+      }
+      return out;
+    })().catch((err) => {
+      this.thumbnails = null; // try again next time
+      throw err;
+    });
+    return this.thumbnails;
+  }
+
   /** Switch to one of the built-in characters (a whole new look). */
   loadPreset(name: string): Promise<boolean> {
     const run = this.queue.then(async () => {

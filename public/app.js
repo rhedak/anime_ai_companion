@@ -460,11 +460,16 @@ function handle(msg) {
       select.replaceChildren(
         new Option("Looks…", ""),
         ...(msg.names.length ? [group("My looks", msg.names.map((n) => new Option(n, `look:${n}`)))] : []),
-        ...(msg.presets?.length ? [group("Presets", msg.presets.map((n) => new Option(n, `preset:${n}`)))] : []),
+        ...(msg.presets?.length ? [new Option("Presets…", "gallery")] : []),
       );
       select.disabled = select.options.length === 1;
+      presetNames = msg.presets ?? [];
       break;
     }
+    case "preset-thumbs":
+      presetThumbs = msg.svgs;
+      gallerySlot?.();
+      break;
     case "notice":
       addMsg("sys", msg.text);
       break;
@@ -754,11 +759,74 @@ $("folder").addEventListener("keydown", (e) => {
 });
 renderMode();
 
+// --- preset gallery ------------------------------------------------------------------
+let presetNames = [];
+let presetThumbs = null; // { name: svg } once the server has sent them
+
+function closeGallery() {
+  document.querySelector(".gallery")?.remove();
+}
+
+function openGallery() {
+  if (document.querySelector(".gallery")) return closeGallery();
+  const box = document.createElement("div");
+  box.className = "gallery";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-label", "Choose a preset character");
+  const grid = document.createElement("div");
+  grid.className = "gallery-grid";
+  box.append(Object.assign(document.createElement("div"), { className: "gallery-title", textContent: "Presets: pick a character" }), grid);
+  document.querySelector(".stage").append(box);
+  const fill = () => {
+    grid.replaceChildren(
+      ...presetNames.map((name) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "preset";
+        item.title = name;
+        const pic = document.createElement("span");
+        pic.className = "preset-pic";
+        // our own renderer's SVG; show the head and shoulders
+        if (presetThumbs?.[name]) pic.innerHTML = presetThumbs[name].replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
+        item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name }));
+        item.onclick = () => {
+          closeGallery();
+          ws?.send(JSON.stringify({ type: "look-preset", name }));
+        };
+        return item;
+      }),
+    );
+  };
+  const fillAndFocus = () => {
+    fill();
+    grid.querySelector("button")?.focus(); // so arrow keys and Escape work from the start
+  };
+  fillAndFocus();
+  if (!presetThumbs) {
+    gallerySlot = fillAndFocus;
+    ws?.send(JSON.stringify({ type: "preset-thumbs" }));
+  }
+  box.addEventListener("keydown", (e) => {
+    const items = [...grid.querySelectorAll("button")];
+    const i = items.indexOf(document.activeElement);
+    const columns = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + columns, ArrowUp: i - columns }[e.key];
+    if (e.key === "Escape") closeGallery();
+    else if (next !== undefined && items[next]) items[next].focus();
+    else return;
+    e.preventDefault();
+  });
+}
+let gallerySlot = null;
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".gallery, #looks")) closeGallery();
+});
+
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {
-  const [kind, ...rest] = $("looks").value.split(":");
-  const name = rest.join(":");
-  if (name) ws?.send(JSON.stringify({ type: kind === "preset" ? "look-preset" : "look-load", name }));
+  const value = $("looks").value;
+  if (value === "gallery") openGallery();
+  else if (value.startsWith("look:")) ws?.send(JSON.stringify({ type: "look-load", name: value.slice(5) }));
   $("looks").value = "";
 });
 $("save-look").addEventListener("click", () => {

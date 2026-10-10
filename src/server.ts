@@ -669,6 +669,12 @@ wss.on("connection", (ws) => {
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
       }
       broadcast(looksInfo());
+    } else if (msg.type === "preset-thumbs") {
+      try {
+        ws.send(JSON.stringify({ type: "preset-thumbs", svgs: await avatar.presetThumbnails() }));
+      } catch (err) {
+        console.error("preset thumbnails failed:", err);
+      }
     } else if (msg.type === "look-preset" && typeof msg.name === "string") {
       if (await avatar.loadPreset(msg.name)) {
         transcript.look([`base=${msg.name}`]);
