@@ -21,6 +21,14 @@ export type ProviderEvent =
 
 export type Mode = "chat" | "work";
 
+/**
+ * How work mode treats tool calls: "manual" asks for everything not pre-approved, "plan" lets her
+ * read and propose a plan only, "acceptEdits" also lets her edit files without asking, and
+ * "auto" lets Claude Code's own safety classifier approve routine actions.
+ */
+export type PermissionMode = "manual" | "plan" | "acceptEdits" | "auto";
+export const permissionModes: readonly PermissionMode[] = ["manual", "plan", "acceptEdits", "auto"];
+
 export interface SessionConfig {
   mode: Mode;
   /** Folder the session works in. Only meaningful in work mode. */
@@ -28,6 +36,8 @@ export interface SessionConfig {
   model: string;
   /** Tools pre-approved without asking (work mode). */
   allowedTools: string[];
+  /** How approvals work in work mode. */
+  permissionMode: PermissionMode;
 }
 
 /**

@@ -14,7 +14,7 @@ import { resolveCreatorSrc } from "./creator.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
-import type { Decision, Mode, PermissionRequest, Provider, SessionConfig } from "./providers/types.ts";
+import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
@@ -62,6 +62,9 @@ let mode: Mode = "chat";
   }
 }
 
+// Not saved: loosening approvals (auto, accept edits) is a choice made again each run.
+let permissionMode: PermissionMode = "manual";
+
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
@@ -74,6 +77,7 @@ const sessionConfig = (): SessionConfig => ({
       ? (settings.ollamaModel ?? "")
       : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
+  permissionMode,
 });
 
 const persona = (config: SessionConfig) =>
@@ -117,6 +121,7 @@ const modeInfo = () => ({
   model: sessionConfig().model,
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
+  permissionMode,
 });
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, canUndo: avatar.canUndo });
@@ -323,10 +328,16 @@ wss.on("connection", (ws) => {
       else runTurn(msg.text);
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
-      if (!["allow", "allow-session", "deny"].includes(decision) || !pendingPermissions.has(msg.id)) return;
+      const request = pendingPermissions.get(msg.id);
+      if (!["allow", "allow-session", "deny"].includes(decision) || !request) return;
       pendingPermissions.delete(msg.id);
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
+      if (request.tool === "ExitPlanMode" && decision !== "deny") {
+        // The approved plan ends plan mode inside Claude Code; keep the selector truthful.
+        permissionMode = "manual";
+        broadcast(modeInfo());
+      }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (link.connected) return notice("A terminal session is connected. Close it (or /exit) to switch modes.");
@@ -342,6 +353,15 @@ wss.on("connection", (ws) => {
       }
       mode = msg.mode;
       provider.configure(sessionConfig());
+      broadcast(modeInfo());
+    } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
+      const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (link.connected) notice("A terminal session is connected. Permissions are handled there.");
+      else if (provider.busy) notice("Wait for her to finish the current reply first.");
+      else {
+        permissionMode = msg.value;
+        provider.configure(sessionConfig());
+      }
       broadcast(modeInfo());
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));

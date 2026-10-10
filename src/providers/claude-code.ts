@@ -142,7 +142,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools } = this.config;
+    const { mode, model, allowedTools, permissionMode } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -167,6 +167,7 @@ export class ClaudeCodeProvider implements Provider {
         "--permission-prompt-tool", "stdio",
       );
       if (allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
+      if (permissionMode !== "manual") args.push("--permission-mode", permissionMode);
     }
     return args;
   }

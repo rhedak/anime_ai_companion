@@ -49,6 +49,14 @@
           <input id="folder" type="text" placeholder="/path/to/your/project" spellcheck="false" autocomplete="off">
           <button id="folder-set" class="ghost">Work here</button>
         </div>
+        <label id="permrow" class="permrow">Permissions
+          <select id="permission-mode" title="How she handles approvals in work mode">
+            <option value="manual">Ask for each action</option>
+            <option value="plan">Plan first (no changes)</option>
+            <option value="acceptEdits">Accept edits</option>
+            <option value="auto">Auto (Claude decides)</option>
+          </select>
+        </label>
         <div id="workinfo" class="workinfo"></div>
       </div>
       <div id="log" class="log"></div>

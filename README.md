@@ -76,6 +76,11 @@ there, like a regular Claude Code session. She asks first:
 
 - Every action that is not pre-approved shows an approval card with the **exact** command or file
   content. Choose *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried.
+- The **Permissions** menu changes how approvals work: *Ask for each action* (the default),
+  *Plan first* (she reads and proposes a plan; nothing changes until you approve it), *Accept edits*
+  (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves
+  routine actions and blocks risky ones, so fewer cards reach you). It resets to *Ask* on every start
+  and cannot be changed mid-reply; changing it keeps the conversation.
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
 - Your folder's own `.claude/settings*.json` hooks and rules are **not** loaded in this mode, and
   the home directory or `/` cannot be chosen as a folder.
@@ -159,7 +164,7 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,
   plain-text only for free text), even though the character renderer now escapes text itself (older
   checkouts of it did not). The SVG is also sanitised in the browser before it is shown.
-- Work mode never skips permissions, shows the exact command or content you approve, and does not load a
+- Work mode never skips permissions (even *Auto* leaves risky actions to Claude Code's safety checks), shows the exact command or content you approve, and does not load a
   folder's own hooks or settings.
 
 Found something? Please open an issue, or report it privately if it is serious.

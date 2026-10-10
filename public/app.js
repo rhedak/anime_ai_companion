@@ -152,7 +152,7 @@ function endTurn() {
 
 // --- work mode: folder, tool activity and approvals ---------------------------------
 
-let state = { mode: "chat", projectDir: null, sessionId: null, model: "", allowedTools: [] };
+let state = { mode: "chat", projectDir: null, sessionId: null, model: "", allowedTools: [], permissionMode: "manual" };
 let wantWork = false; // the user clicked Work but has not chosen a folder yet
 const toolEls = new Map();
 const permEls = new Map();
@@ -180,6 +180,7 @@ function renderMode() {
   $("mode-chat").disabled = attached;
   $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
+  $("permrow").hidden = attached;
   if (attached) {
     $("mode-chat").classList.remove("on");
     $("mode-work").classList.remove("on");
@@ -189,6 +190,7 @@ function renderMode() {
     return;
   }
   const work = state.mode === "work";
+  $("permission-mode").value = state.permissionMode;
   $("mode-chat").classList.toggle("on", !work);
   $("mode-work").classList.toggle("on", work);
   $("workbar").hidden = !(work || wantWork);
@@ -429,6 +431,10 @@ $("reset").addEventListener("click", () => ws?.send(JSON.stringify({ type: "rese
 $("provider").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: $("provider").value }));
   renderBrain(); // snaps back to the server's answer if it refuses
+});
+$("permission-mode").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "permission-mode", value: $("permission-mode").value }));
+  renderMode(); // snaps back to the server's answer if it refuses
 });
 $("ollama-model").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: "ollama", model: $("ollama-model").value }));
