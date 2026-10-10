@@ -59,6 +59,9 @@ button:disabled.seg { opacity: .4; }
 /* ---- chat panel ---- */
 .panel { display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); min-height: 0; }
 .panel header { display: flex; justify-content: space-between; align-items: center; padding: 14px var(--panel-padding); border-bottom: 1px solid var(--line); }
+.panel h1.name { cursor: text; border-radius: var(--radius-sm); padding: 2px 6px; margin-left: -6px; }
+.panel h1.name:hover, .panel h1.name:focus-visible { background: var(--hover); outline: none; }
+input.name-edit { font: 500 22px/1 var(--font-heading); color: var(--text); background: var(--fill-1); border: 1px solid var(--focus); border-radius: var(--radius-sm); padding: 2px 6px; margin-left: -6px; outline: none; max-width: 14em; }
 .panel h1 { margin: 0; font: 500 22px/1 var(--font-heading); color: var(--text); }
 .workbar { padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--fill-1); }
 .workrow { display: flex; gap: 8px; }

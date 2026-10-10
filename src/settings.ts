@@ -14,6 +14,8 @@ export interface Settings {
   projectDir: string | null;
   chatModel: string;
   workModel: string;
+  /** What the companion is called. */
+  name: string;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
   effort: Effort | "default";
   /** Tools pre-approved in work mode. Reads in the folder are cheap; everything else asks. */
@@ -26,6 +28,7 @@ const defaults = (): Settings => ({
   projectDir: null,
   chatModel: "haiku",
   workModel: "sonnet",
+  name: "Mio",
   effort: "default",
   allowedTools: ["Read", "Grep", "Glob"],
 });
@@ -39,6 +42,7 @@ export async function loadSettings(path: string): Promise<Settings> {
     // first run
   }
   const settings = { ...defaults(), ...saved };
+  settings.name = cleanName(String(settings.name)) ?? "Mio";
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
   if (process.env.COMPANION_PROVIDER === "ollama" || process.env.COMPANION_PROVIDER === "claude") {
@@ -61,9 +65,18 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, projectDir, effort } = settings;
+  const { provider, ollamaModel, projectDir, effort, name } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, projectDir, effort }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, projectDir, effort, name }, null, 2));
+}
+
+/**
+ * A companion name: 1 to 24 letters, digits, spaces and a little punctuation, or null. The name goes
+ * into her system prompt, so nothing that could carry instructions (brackets, newlines, quotes) is allowed.
+ */
+export function cleanName(input: string): string | null {
+  const name = input.replace(/\s+/g, " ").trim();
+  return /^[\p{L}\p{N} .'’_-]{1,24}$/u.test(name) && /[\p{L}\p{N}]/u.test(name) ? name : null;
 }
 
 export type FolderCheck = { ok: true; dir: string } | { ok: false; reason: string };

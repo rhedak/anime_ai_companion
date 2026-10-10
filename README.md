@@ -109,6 +109,13 @@ Only a server started with `--daemon` is managed this way: `--stop` and `--resta
 that is running in another terminal. The server only listens on `127.0.0.1`, and a background server is
 no different.
 
+## Her name
+
+Click her name at the top (or use `/rename Hana`) to rename her: Enter saves, Esc cancels. The name is
+saved in `data/settings.json`, shown in the page title and exports, used in her system prompt
+(`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
+letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
+
 ## Changing how it looks
 
 All colours, fonts, corner radii and sizes of the interface are CSS variables at the top of

@@ -451,7 +451,64 @@ function renderBrain() {
   menuRefreshers.forEach((refresh) => refresh());
 }
 
+function renderName() {
+  const name = state.name ?? "Mio";
+  const heading = $("name");
+  if (heading.tagName === "H1") heading.textContent = name;
+  document.title = name;
+}
+
+function startRename() {
+  const heading = $("name");
+  if (heading.tagName !== "H1") return;
+  const input = document.createElement("input");
+  input.id = "name";
+  input.className = "name name-edit";
+  input.value = state.name ?? "Mio";
+  input.maxLength = 24;
+  input.setAttribute("aria-label", "Companion name");
+  input.size = Math.max(4, input.value.length + 1);
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    const back = document.createElement("h1");
+    back.id = "name";
+    back.className = "name";
+    back.tabIndex = 0;
+    back.setAttribute("role", "button");
+    back.title = "Click to rename";
+    input.replaceWith(back);
+    wireName(back);
+    renderName();
+    if (save && value && value !== (state.name ?? "Mio")) ws?.send(JSON.stringify({ type: "rename", name: value }));
+    back.focus();
+  };
+  input.addEventListener("input", () => (input.size = Math.max(4, input.value.length + 1)));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") finish(true);
+    else if (e.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
+  heading.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function wireName(heading) {
+  heading.addEventListener("click", startRename);
+  heading.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      startRename();
+    }
+  });
+}
+wireName($("name"));
+
 function renderMode() {
+  renderName();
   renderBrain();
   $("mode-work").disabled = state.canUseTools === false;
   $("setuprow").hidden = state.mode !== "work";
@@ -796,7 +853,7 @@ const browserCommands = {
   },
   "/export": () => {
     const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool, .msg.shell, .msg.pic-strip")].map((el) =>
-      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("pic-strip") ? el.dataset.raw : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**${state.name ?? "Mio"}:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("pic-strip") ? el.dataset.raw : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
     );
     if (!lines.length) return addMsg("sys", "Nothing to export yet.");
     const link = document.createElement("a");

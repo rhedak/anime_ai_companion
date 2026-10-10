@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
-import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
+import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -98,7 +98,7 @@ const sessionConfig = (): SessionConfig => ({
 });
 
 const persona = (config: SessionConfig) =>
-  personaBase +
+  personaBase.replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -152,6 +152,7 @@ const meterInfo = () => {
 
 const modeInfo = () => ({
   type: "mode",
+  name: settings.name,
   mode,
   provider: settings.provider,
   canUseTools: provider.canUseTools,
@@ -385,6 +386,17 @@ function changeClaudeSetup(on: boolean, say: Say): void {
   broadcast(modeInfo());
 }
 
+async function rename(input: string, say: Say): Promise<void> {
+  const name = cleanName(input);
+  if (!name) return say("A name can have 1 to 24 letters, numbers, spaces and . ' - _");
+  if (name === settings.name) return;
+  settings.name = name;
+  await saveSettings(settingsPath, settings);
+  // Her running session keeps the old prompt until it restarts, so tell her directly.
+  notesForModel.push(`the user renamed you: your name is now ${name}.`);
+  broadcast(modeInfo());
+}
+
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else {
@@ -512,6 +524,10 @@ const slashCommands: Record<
       const now = effectiveEffort();
       say(`Effort: ${now ?? "Claude's default"}${settings.effort === "default" ? " (from your Claude settings)" : ""}. Use /effort ${efforts.join(" | ")} | default`);
     },
+  },
+  rename: {
+    help: "rename the companion: /rename Hana (or click her name at the top)",
+    run: ({ args, say }) => (args ? rename(args, say) : say(`She is called ${settings.name}. Use /rename <new name>`)),
   },
   setup: {
     help: "work mode: use your own Claude Code setup (settings, hooks, MCP servers): /setup on | off",
@@ -766,6 +782,9 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "rename" && typeof msg.name === "string") {
+      await rename(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      ws.send(JSON.stringify(modeInfo())); // puts the old name back in a box whose edit was refused
     } else if (msg.type === "stop") {
       stopWork((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "effort" && (msg.value === "default" || isEffort(msg.value))) {
