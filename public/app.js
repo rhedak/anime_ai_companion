@@ -11,6 +11,7 @@ let busy = false;
 let botEl = null;
 let raw = "";
 let calmTimer = null;
+let talkTimer = null;
 
 // Strips [emotion:x] tags (including a half-streamed one at the end) and returns the last emotion.
 function parseReply(text) {
@@ -33,7 +34,8 @@ function addMsg(kind, text) {
 }
 
 function setBusy(on) {
-  busy = on;
+  // In pro mode replies come whenever the terminal session sends them, so never lock the input.
+  busy = on && state.mode !== "attached";
   send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
 }
 
@@ -82,6 +84,17 @@ const toolEls = new Map();
 const permEls = new Map();
 
 function renderMode() {
+  const attached = state.mode === "attached";
+  $("mode-chat").disabled = $("mode-work").disabled = attached;
+  $("workrow").hidden = attached;
+  if (attached) {
+    $("mode-chat").classList.remove("on");
+    $("mode-work").classList.remove("on");
+    $("workbar").hidden = false;
+    $("workinfo").textContent = "Pro mode: connected to your terminal Claude Code session. Permissions are handled there.";
+    setBusy(false);
+    return;
+  }
   const work = state.mode === "work";
   $("mode-chat").classList.toggle("on", !work);
   $("mode-work").classList.toggle("on", work);
@@ -166,6 +179,21 @@ function handle(msg) {
       if (msg.mode === "work") wantWork = false;
       renderMode();
       break;
+    case "say": {
+      // A whole message from the terminal session (pro mode), not a stream.
+      clearTimeout(calmTimer);
+      clearTimeout(talkTimer);
+      const { clean, emotion } = parseReply(msg.text);
+      if (emotion) avatar.setEmotion(emotion);
+      if (clean) {
+        addMsg("bot", clean);
+        showBubble(clean);
+        avatar.setTalking(true);
+        talkTimer = setTimeout(() => avatar.setTalking(false), Math.min(9000, 700 + clean.length * 45));
+      }
+      calmTimer = setTimeout(() => avatar.setEmotion("neutral"), 9000 + clean.length * 45);
+      break;
+    }
     case "notice":
       addMsg("sys", msg.text);
       break;

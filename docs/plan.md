@@ -52,8 +52,8 @@ connected when it was built). Phase 0 below covers this.
 
 ## Phases
 
-> **Status 2026-10-10:** Phases 0, 1 and 2 are done (see the notes under each). Next: the
-> Phase 3 spike, then Phase 5 (Ollama) and Phase 6 polish.
+> **Status 2026-10-10:** Phases 0 to 4 are done (see the notes under each). Next: Phase 5
+> (Ollama) and Phase 6 polish.
 
 ### Phase 0: confirm what exists (small) ✅ done
 
@@ -128,7 +128,20 @@ reason permissions stay on and the dialog shows exact commands; Pro usage limits
 (work mode uses far more than chat); the persona must not make her less careful
 with tools.
 
-### Phase 3: Pro mode, spike first (terminal owns the session)
+### Phase 3: Pro mode, spike first (terminal owns the session) ✅ done
+
+**Finding: it works.** Claude Code's *channels* (research preview; needs a claude.ai login, an
+interactive session, and `--dangerously-load-development-channels` for a custom channel) let an MCP
+server push messages into a running session and expose a reply tool. Verified in a real interactive
+session started in tmux: a browser message arrived as `← companion: ...`, the model answered through
+the `reply` tool with an `[emotion:...]` and an `[avatar ...]` tag, and both took effect in the
+browser. Quirks: a confirmation dialog on every start, a folder-trust dialog the first time in a
+folder, and a spurious "no MCP server configured with that name" banner (the channel works anyway).
+The interactive session starts in auto mode on Pro, which suits "the terminal manages permissions".
+Permission *relay* to the browser exists in the channel contract but is deliberately not used.
+
+Original questions, kept for the record:
+
 
 The terminal session runs the tools and owns permissions (including auto mode).
 The browser must be fed by it and, ideally, feed it. Two directions, two
@@ -155,7 +168,13 @@ option, and a decision on what Pro mode can promise. Timebox: one day.
 Done when: you can run `claude` in a terminal with the companion plugged in and
 watch her speak, emote and change her look from that session.
 
-### Phase 4: Pro mode, build
+### Phase 4: Pro mode, build ✅ done
+
+Built: `src/channel-shim.ts` (the stdio MCP channel Claude Code spawns), `src/terminal-link.ts` (the
+server side: token-checked `/attach`, one terminal at a time, no browser Origin allowed),
+`npm run attach` (`src/attach-cli.ts`), `persona-attached.md`, a "say" message and an "attached" mode
+in the UI, and tests for the link's security rules. Original scope:
+
 
 Depends on the spike. Likely scope: an `Attached` backend implementing the same
 interface, a launcher (`npm run attach` printing the command or config to start

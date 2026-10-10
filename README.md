@@ -61,6 +61,28 @@ there, like a regular Claude Code session. She asks first:
 
 The server always starts in chat mode.
 
+## Pro mode: your own terminal session
+
+Prefer your normal terminal? Keep the server running (`npm start`), then start Claude Code *with the
+companion attached*, in whatever project you like:
+
+```bash
+cd ~/my-project
+npm --prefix ~/anime_ai_companion run attach -- --permission-mode auto   # extra args go to `claude`
+```
+
+The browser now talks to **that** session: your messages arrive in it as `<channel>` events, and she
+answers through a `reply` tool, so she speaks, emotes and changes her look in the browser while you
+keep the full terminal UI. Permissions are handled in the terminal, exactly as in any Claude Code
+session (including auto mode). Close the session and the browser returns to chat mode.
+
+What to expect: it uses Claude Code's *channels*, a research-preview feature, so Claude Code asks you
+once per start to confirm the development channel (choose "I am using this for local development") and
+shows a harmless "no MCP server configured with that name" line. It needs a claude.ai login (Pro is
+fine) and an interactive session, not `-p`. Replies arrive whole instead of streaming. The channel is
+a local shim (`src/channel-shim.ts`) that talks to the server over `127.0.0.1` with a random token in
+`data/attach-token`; only one terminal can attach at a time.
+
 ## How it works
 
 - **Emotions:** she starts replies with tags like `[emotion:happy]`; `emotions.json` maps each to

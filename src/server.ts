@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { readFile, mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
 import { shareNudge } from "./share-nudge.ts";
+import { TerminalLink } from "./terminal-link.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { checkProjectDir, loadSettings, saveSettings } from "./settings.ts";
@@ -34,6 +36,7 @@ const avatar = new AvatarService({
 await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
+const personaAttached = await readFile(join(root, "persona-attached.md"), "utf8");
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
 // Always start in chat mode: work mode can change files, so it is an explicit choice each time.
@@ -58,7 +61,7 @@ const provider: Provider = new ClaudeCodeProvider({
 
 const modeInfo = () => ({
   type: "mode",
-  mode,
+  mode: link.connected ? "attached" : mode,
   projectDir: settings.projectDir,
   model: sessionConfig().model,
   sessionId: provider.sessionId,
@@ -92,11 +95,19 @@ const server = createServer(async (req, res) => {
 });
 
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
-const wss = new WebSocketServer({
-  server,
-  path: "/ws",
-  // Block other websites in the browser from talking to this local backend.
-  verifyClient: ({ origin }: { origin: string }) => allowedOrigins.has(origin),
+const wss = new WebSocketServer({ noServer: true });
+
+// Browsers connect on /ws (only from our own origin); a terminal session's channel shim
+// connects on /attach with the token from data/attach-token.
+server.on("upgrade", (req, socket, head) => {
+  const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (path === "/ws" && allowedOrigins.has(String(req.headers.origin))) {
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  } else if (path === "/attach" && link.handleUpgrade(req, socket, head)) {
+    // handled by the link
+  } else {
+    socket.destroy();
+  }
 });
 
 const clients = new Set<WebSocket>();
@@ -105,24 +116,21 @@ const broadcast = (msg: unknown) => {
   for (const c of clients) if (c.readyState === c.OPEN) c.send(data);
 };
 
+const attachToken = randomBytes(24).toString("hex");
+await mkdir(join(root, "data"), { recursive: true });
+await writeFile(join(root, "data/attach-token"), attachToken, { mode: 0o600 });
+
 // Problems with the model's avatar tags, passed back to it with the next user message.
 let notesForModel: string[] = [];
 
-/** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(userText: string): void {
-  const notes = notesForModel;
-  notesForModel = [];
-  const toModel = notes.length
-    ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}`
-    : userText;
-
-  let reply = "";
-  let tagsSeen = 0;
-  const applyNewTags = () => {
+/** Applies each complete [avatar ...] tag in a growing reply exactly once, in order. */
+function makeTagApplier(): (reply: string) => void {
+  let seen = 0;
+  return (reply) => {
     const tags = findAvatarTags(reply);
-    for (; tagsSeen < tags.length; tagsSeen++) {
+    for (; seen < tags.length; seen++) {
       avatar
-        .applyPatch(tags[tagsSeen])
+        .applyPatch(tags[seen])
         .then(({ applied, rejected }) => {
           if (applied.length) broadcast({ type: "avatar", version: avatar.version, applied });
           if (rejected.length) {
@@ -135,11 +143,41 @@ function runTurn(userText: string): void {
         .catch((err) => console.error("avatar patch failed:", err));
     }
   };
+}
+
+/** Prepends any pending notes about the model's own mistakes to the user's message. */
+function withNotes(userText: string): string {
+  const notes = notesForModel;
+  notesForModel = [];
+  return notes.length ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}` : userText;
+}
+
+// Pro mode: a terminal Claude Code session connected through the channel shim.
+const link = new TerminalLink({
+  token: attachToken,
+  persona: () => personaBase + "\n" + avatar.promptSection() + "\n" + personaAttached,
+  onSay: (text) => {
+    makeTagApplier()(text);
+    // Let avatar changes land before she "speaks", so the new look is there for the words.
+    avatar.settled().finally(() => broadcast({ type: "say", text }));
+  },
+  onChange: () => {
+    if (link.connected) provider.close(); // one brain at a time
+    pendingPermissions.clear();
+    broadcast(modeInfo());
+  },
+});
+
+/** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
+function runTurn(userText: string): void {
+  const toModel = withNotes(userText);
+  let reply = "";
+  const applyNewTags = makeTagApplier();
 
   provider.send(toModel, (event) => {
     if (event.type === "delta") {
       reply += event.text;
-      applyNewTags();
+      applyNewTags(reply);
       broadcast(event);
     } else if (event.type === "tool") {
       broadcast(event);
@@ -151,7 +189,7 @@ function runTurn(userText: string): void {
       broadcast(event);
     } else {
       pendingPermissions.clear();
-      applyNewTags();
+      applyNewTags(reply);
       // Let queued avatar changes land before the turn is reported finished.
       avatar.settled().finally(() => broadcast(event));
     }
@@ -173,7 +211,8 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
       broadcast({ type: "user", text: msg.text });
-      runTurn(msg.text);
+      if (link.connected) link.send(withNotes(msg.text));
+      else runTurn(msg.text);
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
       if (!["allow", "allow-session", "deny"].includes(decision) || !pendingPermissions.has(msg.id)) return;
@@ -182,6 +221,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "permission-resolved", id: msg.id, decision });
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (link.connected) return notice("A terminal session is connected. Close it (or /exit) to switch modes.");
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       if (msg.mode === "work") {
         const wanted = typeof msg.projectDir === "string" && msg.projectDir.trim() ? msg.projectDir : settings.projectDir;
