@@ -417,14 +417,36 @@ function connect() {
   };
 }
 
-function submit() {
-  const text = input.value.trim();
-  if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
-  if (text === "/copy") {
-    // Needs the clipboard of this page, so it is handled here and never sent.
+const browserCommands = {
+  "/copy": () => {
     const last = [...log.querySelectorAll(".msg.bot")].pop();
     if (last) navigator.clipboard?.writeText(last.textContent).then(() => addMsg("sys", "Copied her last reply."));
     else addMsg("sys", "She has not said anything yet.");
+  },
+  "/export": () => {
+    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool")].map((el) =>
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.textContent}` : `> ${el.textContent}`,
+    );
+    if (!lines.length) return addMsg("sys", "Nothing to export yet.");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([lines.join("\n\n") + "\n"], { type: "text/markdown" }));
+    link.download = `conversation-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+  "/voice": () => {
+    const button = $("voice");
+    if (button.hidden) addMsg("sys", "This browser has no speech synthesis.");
+    else button.click();
+  },
+};
+
+function submit() {
+  const text = input.value.trim();
+  if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
+  if (Object.hasOwn(browserCommands, text)) {
+    // These need this page (clipboard, downloads, the voice button), so they never reach the server.
+    browserCommands[text]();
     input.value = "";
     input.style.height = "auto";
     return;

@@ -320,7 +320,7 @@ interface CommandContext {
 
 /**
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
- * model. `copy` runs in the browser; it is listed here so /help shows it.
+ * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
  */
 const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) => void | Promise<void> }> = {
   help: {
@@ -396,6 +396,8 @@ const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) =
   },
   plan: { help: "same as /permissions plan", run: ({ say }) => changePermissionMode("plan", say) },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
+  export: { help: "download the conversation as a Markdown file", run: () => {} },
+  voice: { help: "turn spoken replies on or off", run: () => {} },
 };
 Object.setPrototypeOf(slashCommands, null); // so "/constructor" is just unknown
 

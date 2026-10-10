@@ -108,6 +108,8 @@ Type these in the chat box (`/help` lists them):
 | `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
+| `/export` | download the conversation as a Markdown file |
+| `/voice` | turn spoken replies on or off |
 
 Anything else that looks like `/word` is reported as unknown instead of being sent to her; paths like
 `/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply, and `/compact`
