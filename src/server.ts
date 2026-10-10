@@ -314,7 +314,11 @@ const MAX_SHOWN_PER_REPLY = 8;
 async function collectShownImages(reply: string): Promise<ShownRecord[]> {
   const records: ShownRecord[] = [];
   const problems: string[] = [];
-  for (const requested of [...new Set(findImageTags(reply))].slice(0, MAX_SHOWN_PER_REPLY)) {
+  const wanted = [...new Set(findImageTags(reply))];
+  if (wanted.length > MAX_SHOWN_PER_REPLY) {
+    problems.push(`only ${MAX_SHOWN_PER_REPLY} pictures can be shown per reply, so the last ${wanted.length - MAX_SHOWN_PER_REPLY} were left out; show them in a follow-up message`);
+  }
+  for (const requested of wanted.slice(0, MAX_SHOWN_PER_REPLY)) {
     const checked = await checkShownImage(requested, sessionConfig().cwd);
     if ("error" in checked) problems.push(checked.error);
     else records.push({ id: randomUUID(), name: checked.name, path: checked.path, root: checked.root, mime: checked.mime });

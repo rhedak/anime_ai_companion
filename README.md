@@ -181,7 +181,7 @@ When she makes or finds an image in your project folder (a screenshot, a chart, 
 with an `[image path/to/file.png]` tag in her reply: small thumbnails appear under her message, and
 clicking one opens a viewer (arrow keys or the side buttons to move between several, Esc to close).
 Your own attached pictures open in the same viewer. Only real PNG, JPEG, GIF and WebP files up to
-10 MB inside the project folder are shown, symlinks that lead out of it are refused, and she is told when
+10 MB inside the project folder are shown (at most 8 per reply; she is told if she named more), symlinks that lead out of it are refused, and she is told when
 a path did not work. The chat log keeps only the file's location, not a copy, so a picture that has been
 deleted or moved later no longer loads after a reload.
 
