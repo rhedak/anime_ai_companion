@@ -87,6 +87,8 @@ button:disabled.seg { opacity: .4; }
 .perm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .perm-actions button { padding: 6px 12px; font-size: var(--font-size-small); }
 .perm-actions .deny { background: var(--fill-2); color: var(--text); }
+.perm-more { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+.perm-more button { padding: 5px 10px; font-size: 12px; }
 .perm-done { font-size: var(--font-size-small); color: var(--muted); }
 .working { display: flex; align-items: center; gap: 8px; padding: 2px 4px 6px; font-size: 12px; color: var(--muted); }
 .working .dots { display: inline-flex; gap: 4px; }

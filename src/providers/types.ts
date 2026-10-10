@@ -76,6 +76,8 @@ export interface Provider {
   configure(config: SessionConfig): void;
   /** Forget the conversation and start fresh. */
   reset(): void;
+  /** Change how tool approvals work right now, even in the middle of a reply (only backends with tools). */
+  setPermissionMode?(mode: PermissionMode): void;
   /** Continue an earlier conversation by its id (only backends with their own sessions). */
   resume?(sessionId: string): void;
   close(): void;

@@ -371,14 +371,24 @@ function addPermission(req) {
   }
   const actions = document.createElement("div");
   actions.className = "perm-actions";
-  const button = (label, cls, decision) => {
+  const button = (label, cls, decision, mode) => {
     const b = document.createElement("button");
     b.textContent = label;
     b.className = cls;
-    b.onclick = () => ws.send(JSON.stringify({ type: "permission-reply", id: req.id, decision }));
+    b.onclick = () => ws.send(JSON.stringify({ type: "permission-reply", id: req.id, decision, ...(mode ? { mode } : {}) }));
     return b;
   };
   actions.append(button("Allow once", "allow", "allow"), button("Allow for this session", "session", "allow-session"), button("Deny", "deny", "deny"));
+  // Like the terminal's "yes, and don't ask again": allow this and change how she asks from now on.
+  if (req.tool !== "ExitPlanMode") {
+    const more = document.createElement("div");
+    more.className = "perm-more";
+    if (state.permissionMode !== "acceptEdits" && /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(req.tool)) {
+      more.append(button("Allow, and accept all edits", "ghost", "allow", "acceptEdits"));
+    }
+    if (state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
+    if (more.children.length) actions.append(more);
+  }
   card.append(pre, actions);
   log.append(card);
   log.scrollTop = log.scrollHeight;

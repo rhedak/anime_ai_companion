@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
 import type { ImageInput } from "../images.ts";
-import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
+import type { Decision, PermissionMode, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
 export interface ClaudeCodeOptions {
   config: SessionConfig;
@@ -91,6 +91,18 @@ export class ClaudeCodeProvider implements Provider {
     if (!pending || !this.proc) return;
     this.pending.delete(id);
     this.proc.stdin.write(permissionResponse(id, decision, pending.input, pending.suggestions, message) + "\n");
+  }
+
+  setPermissionMode(mode: PermissionMode): void {
+    // Remember it for when the process is restarted, and tell a running one right away.
+    this.config = { ...this.config, permissionMode: mode };
+    this.proc?.stdin.write(
+      JSON.stringify({
+        type: "control_request",
+        request_id: `mode-${randomUUID()}`,
+        request: { subtype: "set_permission_mode", mode: mode === "manual" ? "default" : mode },
+      }) + "\n",
+    );
   }
 
   configure(config: SessionConfig): void {

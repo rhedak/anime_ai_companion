@@ -309,12 +309,14 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   broadcast(modeInfo());
 }
 
+/** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
 function changePermissionMode(value: PermissionMode, say: Say): void {
-  const blocked = cannotChange("permissions are handled");
-  if (blocked) say(blocked);
+  if (link.connected) say("A terminal session is connected: permissions are handled there.");
+  else if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else {
     permissionMode = value;
-    provider.configure(sessionConfig());
+    if (provider.setPermissionMode) provider.setPermissionMode(value);
+    else provider.configure(sessionConfig());
   }
   broadcast(modeInfo());
 }
@@ -603,6 +605,10 @@ wss.on("connection", (ws) => {
       pendingPermissions.delete(msg.id);
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
+      // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && request.tool !== "ExitPlanMode") {
+        changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
         // The approved plan ends plan mode inside Claude Code; keep the selector truthful.
         permissionMode = "manual";

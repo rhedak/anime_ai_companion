@@ -80,7 +80,9 @@ there, like a regular Claude Code session. She asks first:
   *Plan first* (she reads and proposes a plan; nothing changes until you approve it), *Accept edits*
   (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves
   routine actions and blocks risky ones, so fewer cards reach you). It resets to *Ask* on every start
-  and cannot be changed mid-reply; changing it keeps the conversation.
+  and can be changed at any time, even while an approval card is waiting; the conversation carries on.
+  Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
+  Auto*, like the terminal's "yes, and don't ask again".
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
 - Your folder's own `.claude/settings*.json` hooks and rules are **not** loaded in this mode, and
   the home directory or `/` cannot be chosen as a folder.
