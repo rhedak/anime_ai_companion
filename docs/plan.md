@@ -52,7 +52,10 @@ connected when it was built). Phase 0 below covers this.
 
 ## Phases
 
-### Phase 0: confirm what exists (small)
+> **Status 2026-10-10:** Phases 0, 1 and 2 are done (see the notes under each). Next: the
+> Phase 3 spike, then Phase 5 (Ollama) and Phase 6 polish.
+
+### Phase 0: confirm what exists (small) ✅ done
 
 - Open the page, run a conversation, check animation timing, crop with hats and
   full body, reconnect after a server restart, two tabs at once.
@@ -63,7 +66,7 @@ connected when it was built). Phase 0 below covers this.
 Done when: a ten-minute conversation, including two redesigns, works without
 touching the terminal.
 
-### Phase 1: session abstraction
+### Phase 1: session abstraction ✅ done
 
 The provider interface only knows text deltas. Work mode needs more events, so
 widen it before building on it.
@@ -79,7 +82,20 @@ widen it before building on it.
 Done when: existing chat behaviour is unchanged and tool events reach the browser
 (shown as small status lines such as "running `npm test`...").
 
-### Phase 2: Normal mode, work edition (browser owns the session)
+### Phase 2: Normal mode, work edition (browser owns the session) ✅ done
+
+**What was built, and what the spike found.** `claude -p --permission-prompt-tool stdio` makes the
+CLI emit `control_request` / `can_use_tool` lines on stdout (tool, exact input, suggested rules) and
+wait for a `control_response` (`allow` with `updatedInput`, or `deny` with a message) on stdin. This
+is the protocol the Agent SDK's `canUseTool` uses, so no extra MCP bridge was needed. A denial comes
+back to the model as an error tool result, and it does not retry. "Allow for this session" echoes the
+suggested rule back with `destination: "session"`, so nothing is written to the project's settings.
+The wire format is not a documented API: `test/fixtures/claude-stream.jsonl` records it and
+`test/claude-stream.test.ts` pins it. Decisions: work mode defaults to Sonnet, `AskUserQuestion` is
+disabled (she asks in chat), `--setting-sources ""` keeps a folder's hooks from running, and the
+server always starts in chat mode. Not yet done from the list below: a UI to edit the pre-approved
+list (it lives in `data/settings.json`).
+
 
 1. **Spike (first, half a day):** how `--permission-prompt-tool` works on the
    installed CLI version: the tool contract, the allow / deny response shape, and

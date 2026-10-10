@@ -21,8 +21,19 @@
     <section class="panel">
       <header>
         <h1>Mio</h1>
+        <div class="seg-group" role="group" aria-label="Mode">
+          <button id="mode-chat" class="seg on" title="Just chat: no tools">Chat</button>
+          <button id="mode-work" class="seg" title="Let her work in a project folder; you approve each action">Work</button>
+        </div>
         <button id="reset" class="ghost" title="Start a fresh conversation">New chat</button>
       </header>
+      <div id="workbar" class="workbar" hidden>
+        <div class="workrow">
+          <input id="folder" type="text" placeholder="/path/to/your/project" spellcheck="false" autocomplete="off">
+          <button id="folder-set" class="ghost">Work here</button>
+        </div>
+        <div id="workinfo" class="workinfo"></div>
+      </div>
       <div id="log" class="log"></div>
       <form id="form">
         <textarea id="input" rows="1" placeholder="Say something… or ask her to change her look" autofocus></textarea>

@@ -37,12 +37,29 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 
 | Env var | Default | |
 | --- | --- | --- |
-| `COMPANION_MODEL` | `haiku` | model alias passed to `claude --model` |
-| `COMPANION_TOOLS` | `""` | Claude Code tools she may use (`""` = chat only) |
+| `COMPANION_MODEL` | `haiku` | model used for chat |
+| `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
 | `COMPANION_PRESET` | `linnea` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
 | `PORT` | `3737` | |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
+
+## Work mode
+
+Flip the **Work** switch, pick a project folder, and she can read and edit files and run commands
+there, like a regular Claude Code session. She asks first:
+
+- Every action that is not pre-approved shows an approval card with the **exact** command or file
+  content. Choose *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried.
+- Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
+- Your folder's own `.claude/settings*.json` hooks and rules are **not** loaded in this mode, and
+  the home directory or `/` cannot be chosen as a folder.
+- Work mode uses a stronger model (`COMPANION_WORK_MODEL`, default `sonnet`) and counts against your
+  plan limits faster than chatting.
+- The bar under the header shows `claude --resume <session id>`: you can continue the same
+  conversation in a terminal. Only one side should write at a time.
+
+The server always starts in chat mode.
 
 ## How it works
 

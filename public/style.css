@@ -52,3 +52,27 @@ button.ghost:hover { background: rgba(255,255,255,.2); }
 }
 .credit { padding: 8px 14px 10px; font-size: 12px; color: var(--muted); text-align: center; }
 .credit a { color: inherit; }
+
+.seg-group { display: flex; background: rgba(255,255,255,.08); border-radius: 12px; padding: 3px; gap: 2px; }
+button.seg { background: transparent; color: var(--muted); padding: 5px 14px; font-size: 13px; border-radius: 9px; }
+button.seg.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+.workbar { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); }
+.workrow { display: flex; gap: 8px; }
+.workrow input {
+  flex: 1; min-width: 0; padding: 7px 10px; border-radius: 10px; font: 13px ui-monospace, Menlo, monospace;
+  border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: var(--text);
+}
+.workinfo { margin-top: 6px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.workinfo code { font: 12px ui-monospace, Menlo, monospace; color: var(--text); }
+.workinfo button { all: unset; cursor: pointer; text-decoration: underline; margin-left: 6px; }
+.msg.tool { align-self: flex-start; max-width: 100%; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); background: rgba(255,255,255,.05); padding: 5px 9px; border-radius: 8px; }
+.msg.tool .st { margin-right: 6px; }
+.msg.tool.error { color: #ff9fb0; }
+.msg.perm { align-self: stretch; max-width: 100%; background: rgba(255, 200, 120, .1); border: 1px solid rgba(255, 200, 120, .35); }
+.perm-title { font-weight: 600; margin-bottom: 4px; }
+.perm-desc { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.perm-input { margin: 0 0 8px; padding: 8px 10px; max-height: 160px; overflow: auto; background: rgba(0,0,0,.3); border-radius: 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.perm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.perm-actions button { padding: 6px 12px; font-size: 13px; }
+.perm-actions .deny { background: rgba(255,255,255,.14); }
+.perm-done { font-size: 13px; color: var(--muted); }
