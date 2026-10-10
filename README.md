@@ -132,6 +132,14 @@ code blocks, lists, quotes and http(s) links. It is built from plain DOM nodes, 
 nothing she writes can inject markup. `/copy` and `/export` keep the Markdown source. The speech bubble
 over her head and spoken replies stay plain text.
 
+## Automatic compaction
+
+Claude Code compacts the conversation by itself when the context is nearly full, also behind this
+browser; she keeps a summary and a note appears in the chat ("compacted automatically, about 106k → 19k
+tokens"). The app sets the trigger to 95% of the window, like the terminal. To change it, start the
+server with `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=80` (any percentage). `/compact` does it on demand, and the
+`ctx` figure in the usage line shows how close you are.
+
 ## The usage line
 
 Under the message box a small line shows the model and its effort, e.g. `Sonnet 5.5 (high)`, your Claude **session** (five-hour) and **week**

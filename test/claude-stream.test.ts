@@ -81,8 +81,10 @@ test("/compact progress shows as status events and a compaction notice", () => {
     { kind: "status", text: null },
   ]);
   assert.deepEqual(parseStreamLine(line({ subtype: "compact_boundary", compact_metadata: { trigger: "manual" } })), [
-    { kind: "compacted" },
+    { kind: "compacted", auto: false, before: null, after: null },
   ]);
+  const auto = line({ subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 105689, post_tokens: 19364 } });
+  assert.deepEqual(parseStreamLine(auto), [{ kind: "compacted", auto: true, before: 105689, after: 19364 }]);
 });
 
 test("a result carries the conversation's cost and how much context the last request used", () => {

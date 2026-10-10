@@ -165,6 +165,9 @@ export class ClaudeCodeProvider implements Provider {
       CLAUDE_CODE_DISABLE_CRON: "1",
       CLAUDE_CODE_DISABLE_CFC_PROMPT: "1",
       CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
+      // Claude Code compacts on its own when the context is nearly full, also in this headless mode;
+      // pin the point to 95% of the window (like the terminal) unless the user's environment says otherwise.
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? "95",
     };
     if (this.config.mode === "chat") {
       env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS = "1";
@@ -270,7 +273,13 @@ export class ClaudeCodeProvider implements Provider {
         this.listener?.({ type: "status", text: item.text });
         break;
       case "compacted":
-        this.listener?.({ type: "notice", text: "Conversation compacted: she keeps a summary, the log above stays as it is." });
+        this.listener?.({
+          type: "notice",
+          text:
+            (item.auto ? "The conversation was compacted automatically" : "Conversation compacted") +
+            (item.before && item.after ? ` (about ${Math.round(item.before / 1000)}k → ${Math.round(item.after / 1000)}k tokens)` : "") +
+            ": she keeps a summary, the log above stays as it is.",
+        });
         break;
       case "result":
         this.hasHistory = true;

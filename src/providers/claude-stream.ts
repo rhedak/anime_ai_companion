@@ -26,7 +26,7 @@ export type StreamItem =
     }
   | { kind: "permission-cancel"; requestId: string }
   | { kind: "status"; text: string | null }
-  | { kind: "compacted" }
+  | { kind: "compacted"; auto: boolean; before: number | null; after: number | null }
   | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null; contextWindow: number | null };
 
 export function parseStreamLine(line: string): StreamItem[] {
@@ -43,7 +43,11 @@ export function parseStreamLine(line: string): StreamItem[] {
       }
       // `/compact` reports progress as status events: "compacting", then null when done.
       if (msg.subtype === "status") return [{ kind: "status", text: msg.status === "compacting" ? "Compacting the conversation…" : null }];
-      if (msg.subtype === "compact_boundary") return [{ kind: "compacted" }];
+      if (msg.subtype === "compact_boundary") {
+        const meta = msg.compact_metadata ?? {};
+        const tokens = (v: unknown) => (typeof v === "number" ? v : null);
+        return [{ kind: "compacted", auto: meta.trigger === "auto", before: tokens(meta.pre_tokens), after: tokens(meta.post_tokens) }];
+      }
       return [];
 
     case "rate_limit_event": {
