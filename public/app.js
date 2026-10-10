@@ -1,5 +1,6 @@
 import { createAvatar } from "./avatar.js";
 import { createVoice, takeSentences } from "./speech.js";
+import { renderMarkdown } from "./markdown.js";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -41,10 +42,20 @@ function parseReply(text) {
 
 let gesturesDone = 0; // gestures of the current reply already played
 
+/** Her replies are shown as Markdown; the source stays in data-raw for /copy and /export. */
+function setMsgText(el, text) {
+  if (el.classList.contains("bot")) {
+    el.dataset.raw = text;
+    renderMarkdown(text, el);
+  } else {
+    el.textContent = text;
+  }
+}
+
 function addMsg(kind, text) {
   const div = document.createElement("div");
   div.className = `msg ${kind}`;
-  div.textContent = text;
+  setMsgText(div, text);
   log.append(div);
   log.scrollTop = log.scrollHeight;
   return div;
@@ -150,7 +161,7 @@ function onDelta(text) {
       spoken += ready.length;
     }
   }
-  botEl.textContent = clean;
+  setMsgText(botEl, clean);
   showBubble(clean);
   log.scrollTop = log.scrollHeight;
 }
@@ -276,6 +287,9 @@ function makeMenu(select, title) {
   });
   const refresh = () => {
     text.textContent = select.selectedOptions[0]?.text ?? "";
+    if (select.id === "effort" && select.value === "default" && state.effortNow) {
+      text.textContent = `${state.effortNow[0].toUpperCase()}${state.effortNow.slice(1)} (default)`;
+    }
     button.disabled = select.disabled;
     button.title = select.title;
   };
@@ -666,12 +680,12 @@ function renderAttachments() {
 const browserCommands = {
   "/copy": () => {
     const last = [...log.querySelectorAll(".msg.bot")].pop();
-    if (last) navigator.clipboard?.writeText(last.textContent).then(() => addMsg("sys", "Copied her last reply."));
+    if (last) navigator.clipboard?.writeText(last.dataset.raw ?? last.textContent).then(() => addMsg("sys", "Copied her last reply."));
     else addMsg("sys", "She has not said anything yet.");
   },
   "/export": () => {
     const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool")].map((el) =>
-      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.textContent}` : `> ${el.textContent}`,
+      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**Mio:** ${el.dataset.raw ?? el.textContent}` : `> ${el.textContent}`,
     );
     if (!lines.length) return addMsg("sys", "Nothing to export yet.");
     const link = document.createElement("a");

@@ -160,6 +160,7 @@ const modeInfo = () => ({
   allowedTools: settings.allowedTools,
   permissionMode,
   effort: settings.effort,
+  effortNow: effectiveEffort(),
 });
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });

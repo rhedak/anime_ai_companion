@@ -112,6 +112,13 @@ with a blue accent and rounded corners; the variables are documented in `public/
 Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Mio's own
 appearance (hair, clothes, face) is separate: ask her to change it in chat.
 
+## How her replies are shown
+
+Her replies render a small, safe Markdown subset: paragraphs, headings, **bold**, *italic*, `code`,
+code blocks, lists, quotes and http(s) links. It is built from plain DOM nodes, never HTML, so
+nothing she writes can inject markup. `/copy` and `/export` keep the Markdown source. The speech bubble
+over her head and spoken replies stay plain text.
+
 ## The usage line
 
 Under the message box a small line shows the model and its effort, e.g. `Sonnet 5.5 (high)`, your Claude **session** (five-hour) and **week**
