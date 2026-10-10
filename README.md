@@ -154,8 +154,8 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 - The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
   click the approval buttons for you).
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,
-  plain-text only for free text), because the character renderer does not escape text. The SVG is also
-  sanitised in the browser before it is shown.
+  plain-text only for free text), even though the character renderer now escapes text itself (older
+  checkouts of it did not). The SVG is also sanitised in the browser before it is shown.
 - Work mode never skips permissions, shows the exact command or content you approve, and does not load a
   folder's own hooks or settings.
 
