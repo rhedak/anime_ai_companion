@@ -16,6 +16,7 @@ import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
+import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { checkProjectDir, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
@@ -114,6 +115,28 @@ const providers: Record<ProviderName, Provider> = {
 };
 let provider: Provider = providers[settings.provider];
 
+/** What the footer shows. Limits belong to the account, so they outlive a /clear; the context belongs to the conversation. */
+const account: { model: string | null; session: Limit | null; week: Limit | null; limitsAt: number | null } = {
+  model: null,
+  session: null,
+  week: null,
+  limitsAt: null,
+};
+
+const meterInfo = () => {
+  const usage = provider.usage;
+  const ctx = usage?.contextTokens != null && usage.contextWindow ? Math.min(1, usage.contextTokens / usage.contextWindow) : null;
+  const claude = settings.provider === "claude";
+  return {
+    type: "meter",
+    model: claude ? (account.model ? prettyModel(account.model) : null) : provider.name,
+    session: claude ? account.session : null,
+    week: claude ? account.week : null,
+    limitsAt: account.limitsAt,
+    ctx,
+  };
+};
+
 const modeInfo = () => ({
   type: "mode",
   mode: link.connected ? "attached" : mode,
@@ -210,6 +233,11 @@ const clients = new Set<WebSocket>();
 const broadcast = (msg: unknown) => {
   const data = JSON.stringify(msg);
   for (const c of clients) if (c.readyState === c.OPEN) c.send(data);
+  // Whatever changed the mode, brain or conversation may have changed the footer too.
+  if ((msg as { type?: string }).type === "mode") {
+    const meter = JSON.stringify(meterInfo());
+    for (const c of clients) if (c.readyState === c.OPEN) c.send(meter);
+  }
 };
 
 const attachToken = randomBytes(24).toString("hex");
@@ -551,6 +579,14 @@ function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] 
       broadcast(event);
     } else if (event.type === "status" || event.type === "notice") {
       broadcast(event);
+    } else if (event.type === "limits") {
+      account.session = event.session;
+      account.week = event.week;
+      account.limitsAt = Date.now();
+      broadcast(meterInfo());
+    } else if (event.type === "model") {
+      account.model = event.name;
+      broadcast(meterInfo());
     } else {
       pendingPermissions.clear();
       applyNewTags(reply);
@@ -559,6 +595,7 @@ function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] 
         transcript.flush();
         persistTranscript();
         broadcast(event);
+        broadcast(meterInfo()); // the context grew
       });
     }
   }, opts.images);
@@ -569,6 +606,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   ws.send(JSON.stringify(modeInfo()));
   ws.send(JSON.stringify(looksInfo()));
+  ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   void refreshOllamaModels();

@@ -39,7 +39,7 @@ export class ClaudeCodeProvider implements Provider {
   private hasHistory = false;
   private pending = new Map<string, PendingPermission>();
   private tools = new Map<string, { name: string; summary: string }>();
-  private usageValue: Usage = { turns: 0, costUsd: 0, contextTokens: null };
+  private usageValue: Usage = { turns: 0, costUsd: 0, contextTokens: null, contextWindow: null };
 
   constructor(opts: ClaudeCodeOptions) {
     this.opts = opts;
@@ -117,7 +117,7 @@ export class ClaudeCodeProvider implements Provider {
     if (this.listener) this.finish({ type: "error", message: "Conversation reset." });
     this.sessionIdValue = randomUUID();
     this.hasHistory = false;
-    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null, contextWindow: null };
   }
 
   resume(sessionId: string): void {
@@ -125,7 +125,7 @@ export class ClaudeCodeProvider implements Provider {
     this.killProcess();
     this.sessionIdValue = sessionId;
     this.hasHistory = true; // the next message starts claude with --resume
-    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null, contextWindow: null };
   }
 
   close(): void {
@@ -278,11 +278,16 @@ export class ClaudeCodeProvider implements Provider {
           // The CLI's total covers the whole conversation: it restores it when a session is resumed.
           costUsd: item.costUsd ?? this.usageValue.costUsd,
           contextTokens: item.contextTokens ?? this.usageValue.contextTokens,
+          contextWindow: item.contextWindow ?? this.usageValue.contextWindow,
         };
         this.pending.clear();
         this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
         break;
+      case "limits":
+        this.listener?.({ type: "limits", session: item.session, week: item.week });
+        break;
       case "init":
+        if (item.model) this.listener?.({ type: "model", name: item.model });
         break;
     }
   }

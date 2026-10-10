@@ -466,6 +466,10 @@ function handle(msg) {
       presetNames = msg.presets ?? [];
       break;
     }
+    case "meter":
+      meter = msg;
+      renderMeter();
+      break;
     case "preset-thumbs":
       presetThumbs = msg.svgs;
       gallerySlot?.();
@@ -758,6 +762,49 @@ $("folder").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("folder-set").click();
 });
 renderMode();
+
+// --- usage footer ----------------------------------------------------------------------
+let meter = null;
+const STALE_MS = 10 * 60 * 1000; // limits only update when she replies; older numbers are dimmed
+
+function percent(fraction) {
+  return `${Math.round(fraction * 100)}%`;
+}
+
+function resetText(resetsAt) {
+  if (!resetsAt) return "";
+  const when = new Date(resetsAt * 1000);
+  const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const sameDay = when.toDateString() === new Date().toDateString();
+  return sameDay ? time : `${when.toLocaleDateString([], { month: "numeric", day: "numeric" })} ${time}`;
+}
+
+function renderMeter() {
+  const box = $("meter");
+  if (!meter) return void (box.hidden = true);
+  const stale = meter.limitsAt === null || Date.now() - meter.limitsAt > STALE_MS;
+  const parts = [];
+  const add = (text, fraction, title) => {
+    const span = document.createElement("span");
+    span.textContent = text;
+    span.title = title;
+    if (fraction >= 0.95) span.className = "bad";
+    else if (fraction >= 0.8) span.className = "warn";
+    parts.push(span);
+  };
+  if (meter.model) add(meter.model, 0, "The model answering you");
+  if (meter.session) {
+    add(`session: ${percent(meter.session.used)}${meter.session.resetsAt ? ` (resets ${resetText(meter.session.resetsAt)})` : ""}`, meter.session.used, "Your five-hour usage window with Claude" + (stale ? " (as of her last reply)" : ""));
+  }
+  if (meter.week) {
+    add(`week: ${percent(meter.week.used)}${meter.week.resetsAt ? ` (resets ${resetText(meter.week.resetsAt)})` : ""}`, meter.week.used, "Your seven-day usage window with Claude" + (stale ? " (as of her last reply)" : ""));
+  }
+  if (meter.ctx !== null) add(`ctx: ${percent(meter.ctx)}`, meter.ctx, "How full her memory of this conversation is. /compact frees it up.");
+  box.replaceChildren(...parts.flatMap((p, i) => (i ? [document.createTextNode(" | "), p] : [p])));
+  box.classList.toggle("stale", stale && Boolean(meter.session || meter.week));
+  box.hidden = parts.length === 0;
+}
+setInterval(() => meter && renderMeter(), 60_000);
 
 // --- preset gallery ------------------------------------------------------------------
 let presetNames = [];

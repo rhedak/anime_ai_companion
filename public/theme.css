@@ -37,6 +37,7 @@
   --ok: #5be3a0;               /* connected */
   --bad: #e0486b;              /* disconnected */
   --error-text: #ff9fb0;
+  --warn-text: #e8b45a;        /* usage getting high */
   --warn-bg: rgba(255, 200, 120, .1);
   --warn-line: rgba(255, 200, 120, .35);
 

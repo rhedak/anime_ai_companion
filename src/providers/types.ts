@@ -1,4 +1,5 @@
 import type { ImageInput } from "../images.ts";
+import type { Limit } from "./claude-stream.ts";
 
 export interface PermissionRequest {
   id: string;
@@ -21,6 +22,8 @@ export type ProviderEvent =
   /** What she is doing while no text arrives (e.g. compacting); null clears it. */
   | { type: "status"; text: string | null }
   | { type: "notice"; text: string }
+  | { type: "limits"; session: Limit | null; week: Limit | null }
+  | { type: "model"; name: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -33,6 +36,8 @@ export interface Usage {
   costUsd: number;
   /** Tokens sent with the last request, i.e. roughly how full the context window is. */
   contextTokens: number | null;
+  /** Size of the model's context window, so the above can be shown as a percentage. */
+  contextWindow: number | null;
 }
 
 /**

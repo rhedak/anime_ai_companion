@@ -4,8 +4,15 @@
  * format is not a stable API; the fixtures in test/fixtures show what we rely on.
  */
 
+/** How much of a usage window is used (0 to 1) and when it resets (unix seconds). */
+export interface Limit {
+  used: number;
+  resetsAt: number | null;
+}
+
 export type StreamItem =
-  | { kind: "init"; sessionId: string }
+  | { kind: "init"; sessionId: string; model: string | null }
+  | { kind: "limits"; session: Limit | null; week: Limit | null }
   | { kind: "delta"; text: string }
   | { kind: "tool-start"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "tool-result"; id: string; isError: boolean }
@@ -20,7 +27,7 @@ export type StreamItem =
   | { kind: "permission-cancel"; requestId: string }
   | { kind: "status"; text: string | null }
   | { kind: "compacted" }
-  | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null };
+  | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null; contextWindow: number | null };
 
 export function parseStreamLine(line: string): StreamItem[] {
   let msg: any;
@@ -31,11 +38,24 @@ export function parseStreamLine(line: string): StreamItem[] {
   }
   switch (msg.type) {
     case "system":
-      if (msg.subtype === "init" && msg.session_id) return [{ kind: "init", sessionId: msg.session_id }];
+      if (msg.subtype === "init" && msg.session_id) {
+        return [{ kind: "init", sessionId: msg.session_id, model: typeof msg.model === "string" ? msg.model : null }];
+      }
       // `/compact` reports progress as status events: "compacting", then null when done.
       if (msg.subtype === "status") return [{ kind: "status", text: msg.status === "compacting" ? "Compacting the conversation…" : null }];
       if (msg.subtype === "compact_boundary") return [{ kind: "compacted" }];
       return [];
+
+    case "rate_limit_event": {
+      // Subscription limits: the five-hour "session" window and the seven-day "week" window.
+      const windows = msg.rate_limit_info?.unifiedWindows ?? {};
+      const limit = (w: any): Limit | null =>
+        typeof w?.utilization === "number" ? { used: w.utilization, resetsAt: typeof w.resetsAt === "number" ? w.resetsAt : null } : null;
+      const session = limit(windows.five_hour);
+      const week = limit(windows.seven_day);
+      // An event without the windows says nothing new: keep what we know rather than blank it.
+      return session || week ? [{ kind: "limits", session, week }] : [];
+    }
 
     case "stream_event": {
       const delta = msg.event?.delta;
@@ -85,12 +105,25 @@ export function parseStreamLine(line: string): StreamItem[] {
           contextTokens: msg.usage
             ? (msg.usage.input_tokens ?? 0) + (msg.usage.cache_read_input_tokens ?? 0) + (msg.usage.cache_creation_input_tokens ?? 0)
             : null,
+          contextWindow: contextWindowOf(msg.modelUsage),
         },
       ];
 
     default:
       return [];
   }
+}
+
+/** "claude-sonnet-5-5" -> "Sonnet 5.5"; anything else is shown as it is. */
+export function prettyModel(id: string): string {
+  const match = /^claude-([a-z]+)-(\d+)-(\d+)$/.exec(id);
+  return match ? `${match[1][0].toUpperCase()}${match[1].slice(1)} ${match[2]}.${match[3]}` : id;
+}
+
+/** The context window of the model that answered (the first one listed if several did). */
+function contextWindowOf(modelUsage: any): number | null {
+  const first: any = modelUsage && typeof modelUsage === "object" ? Object.values(modelUsage)[0] : null;
+  return typeof first?.contextWindow === "number" ? first.contextWindow : null;
 }
 
 function blocks(msg: any): any[] {

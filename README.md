@@ -112,6 +112,14 @@ with a blue accent and rounded corners; the variables are documented in `public/
 Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Mio's own
 appearance (hair, clothes, face) is separate: ask her to change it in chat.
 
+## The usage line
+
+Under the message box a small line shows the model, your Claude **session** (five-hour) and **week**
+usage with their reset times, and **ctx**, how full her memory of this conversation is (`/compact` frees
+it up). Numbers turn amber above 80% and red above 95%. The limits come from Claude Code after each
+reply, so they are shown dimmed when they are over ten minutes old, and only for a Claude subscription;
+with Ollama only the model is shown. Colours are theme variables (`--warn-text`, `--error-text`).
+
 ## Images
 
 The **📎** button next to the message box attaches up to 5 pictures (PNG, JPEG, GIF or WebP, up to 5 MB

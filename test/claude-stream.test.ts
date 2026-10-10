@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseStreamLine, permissionResponse, summarizeTool } from "../src/providers/claude-stream.ts";
+import { parseStreamLine, permissionResponse, prettyModel, summarizeTool } from "../src/providers/claude-stream.ts";
 
 // Lines recorded from `claude -p --input-format stream-json --output-format stream-json
 // --permission-prompt-tool stdio`, trimmed and with paths anonymised.
@@ -16,7 +16,7 @@ test("parses the events the app relies on, in order", () => {
 });
 
 test("init carries the session id and deltas carry text", () => {
-  assert.deepEqual(items[0], { kind: "init", sessionId: "11111111-2222-3333-4444-555555555555" });
+  assert.deepEqual(items[0], { kind: "init", sessionId: "11111111-2222-3333-4444-555555555555", model: null });
   assert.deepEqual(items[1], { kind: "delta", text: "[emotion:thinking] Let me check." });
 });
 
@@ -93,7 +93,25 @@ test("a result carries the conversation's cost and how much context the last req
     total_cost_usd: 0.25,
     usage: { input_tokens: 2, cache_read_input_tokens: 2000, cache_creation_input_tokens: 500, output_tokens: 3 },
   });
-  assert.deepEqual(parseStreamLine(line), [{ kind: "result", isError: false, text: "hi", costUsd: 0.25, contextTokens: 2502 }]);
+  assert.deepEqual(parseStreamLine(line), [{ kind: "result", isError: false, text: "hi", costUsd: 0.25, contextTokens: 2502, contextWindow: null }]);
   const bare = parseStreamLine(JSON.stringify({ type: "result", result: "" }))[0];
-  assert.deepEqual(bare, { kind: "result", isError: false, text: "", costUsd: null, contextTokens: null });
+  assert.deepEqual(bare, { kind: "result", isError: false, text: "", costUsd: null, contextTokens: null, contextWindow: null });
+});
+
+test("the footer's inputs: model on init, usage limits, and the context window", () => {
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5-5" })), [
+    { kind: "init", sessionId: "s", model: "claude-sonnet-5-5" },
+  ]);
+  assert.equal(prettyModel("claude-sonnet-5-5"), "Sonnet 5.5");
+  assert.equal(prettyModel("llama3.2"), "llama3.2");
+  const limits = {
+    type: "rate_limit_event",
+    rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.48, resetsAt: 100 }, seven_day: { utilization: 0.18, resetsAt: 200 } } },
+  };
+  assert.deepEqual(parseStreamLine(JSON.stringify(limits)), [
+    { kind: "limits", session: { used: 0.48, resetsAt: 100 }, week: { used: 0.18, resetsAt: 200 } },
+  ]);
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: "rate_limit_event", rate_limit_info: {} })), []);
+  const result = parseStreamLine(JSON.stringify({ type: "result", result: "", modelUsage: { "claude-haiku-5-5": { contextWindow: 1000000 } } }))[0];
+  assert.equal((result as { contextWindow: number }).contextWindow, 1000000);
 });
