@@ -96,11 +96,22 @@ saved folder, and in chat mode otherwise. A server that is already running keeps
 
 ## Slash commands
 
-Type these in the chat box: `/compact [focus]` summarises the conversation to free up context (she
-keeps the gist and shows "Compacting…" meanwhile), `/clear` starts a fresh conversation like **New
-chat**, and `/help` lists them. Anything else that looks like `/word` is reported as unknown instead
-of being sent to her; paths like `/etc/hosts` are sent as usual. `/compact` needs Claude Code, not
-Ollama, and is refused mid-reply.
+Type these in the chat box (`/help` lists them):
+
+| Command | |
+| --- | --- |
+| `/compact [focus]` | summarise the conversation to free up context; she keeps the gist |
+| `/clear`, `/new` | start a fresh conversation, like **New chat** |
+| `/cost` | what the conversation has used: an API-price estimate and how full the context is |
+| `/model [name]` | show or set the model for the current mode (`/model opus`), until the server restarts |
+| `/chat`, `/work [folder]` | switch modes |
+| `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
+| `/status` | brain, model, mode, folder and session id |
+| `/copy` | copy her last reply to the clipboard |
+
+Anything else that looks like `/word` is reported as unknown instead of being sent to her; paths like
+`/etc/hosts` are sent as usual. Commands that change settings are refused mid-reply, and `/compact`
+and `/cost` need Claude Code (not Ollama).
 
 ## Pro mode: your own terminal session
 

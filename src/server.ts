@@ -271,16 +271,137 @@ const link = new TerminalLink({
   },
 });
 
-/** Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the model. */
-const slashCommands: Record<string, string> = {
-  clear: "forget the conversation and start fresh",
-  compact: "summarise the conversation to free up context",
-  help: "list these commands",
+/** Tells the user something in their chat log only (not stored, not sent to other tabs). */
+type Say = (text: string) => void;
+
+/** Why a settings change cannot happen right now, or null. */
+function cannotChange(what: string): string | null {
+  if (link.connected) return `A terminal session is connected: ${what} there, or close it first.`;
+  if (provider.busy) return "Wait for her to finish the current reply first.";
+  return null;
+}
+
+async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
+  const blocked = cannotChange("switch modes");
+  if (blocked) return say(blocked);
+  if (wanted === "work") {
+    if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code for work mode.");
+    const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
+    if (!folder) return say("Choose a project folder first.");
+    const check = await checkProjectDir(folder);
+    if (!check.ok) return say(check.reason);
+    settings.projectDir = check.dir;
+    await saveSettings(settingsPath, settings);
+  }
+  mode = wanted;
+  provider.configure(sessionConfig());
+  broadcast(modeInfo());
+}
+
+function changePermissionMode(value: PermissionMode, say: Say): void {
+  const blocked = cannotChange("permissions are handled");
+  if (blocked) say(blocked);
+  else {
+    permissionMode = value;
+    provider.configure(sessionConfig());
+  }
+  broadcast(modeInfo());
+}
+
+const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto" };
+
+interface CommandContext {
+  /** Everything after the command name. */
+  args: string;
+  /** The full line as typed. */
+  text: string;
+  say: Say;
+}
+
+/**
+ * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
+ * model. `copy` runs in the browser; it is listed here so /help shows it.
+ */
+const slashCommands: Record<string, { help: string; run: (ctx: CommandContext) => void | Promise<void> }> = {
+  help: {
+    help: "list these commands",
+    run: ({ say }) => say(Object.entries(slashCommands).map(([name, c]) => `/${name}: ${c.help}`).join("\n")),
+  },
+  clear: { help: "forget the conversation and start fresh", run: () => resetConversation() },
+  new: { help: "same as /clear", run: () => resetConversation() },
+  compact: {
+    help: "summarise the conversation to free up context",
+    run: ({ text, say }) => {
+      if (link.connected) return say("A terminal session is connected: use /compact there.");
+      if (!provider.canUseTools) return say("/compact needs Claude Code; this model keeps the whole conversation.");
+      if (provider.busy) return say("Wait for her to finish the current reply first.");
+      transcript.user(text);
+      broadcast({ type: "user", text });
+      runTurn(text, { raw: true });
+    },
+  },
+  status: {
+    help: "show the brain, model, mode, folder and session",
+    run: ({ say }) => {
+      const info = modeInfo();
+      say(
+        [
+          `Brain: ${provider.name}`,
+          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionMode}` : ""}`,
+          `Folder: ${settings.projectDir ?? "(none)"}`,
+          `Session: ${provider.sessionId ?? "(none)"}`,
+        ].join("\n"),
+      );
+    },
+  },
+  cost: {
+    help: "what this conversation has used so far (an estimate)",
+    run: ({ say }) => {
+      const u = provider.usage;
+      if (!u) return say("This model does not report usage.");
+      if (u.turns === 0) return say("Nothing yet: usage shows after her next reply.");
+      const context = u.contextTokens === null ? "unknown" : `~${u.contextTokens.toLocaleString("en-US")} tokens`;
+      say(
+        `This conversation: about $${u.costUsd.toFixed(4)} at API prices (a subscription is not billed per token).\n` +
+          `Context in use: ${context}. /compact frees it up.`,
+      );
+    },
+  },
+  model: {
+    help: "show or set the model, e.g. /model opus (until the server restarts)",
+    run: ({ args, say }) => {
+      if (settings.provider === "ollama") return say("Pick the Ollama model in the dropdown.");
+      const current = mode === "work" ? settings.workModel : settings.chatModel;
+      if (!args) return say(`Model: ${current} (${mode} mode)`);
+      if (!/^[A-Za-z0-9][\w.\-\[\]]{0,59}$/.test(args)) return say("That does not look like a model name.");
+      const blocked = cannotChange("change the model");
+      if (blocked) return say(blocked);
+      if (mode === "work") settings.workModel = args;
+      else settings.chatModel = args;
+      provider.configure(sessionConfig());
+      broadcast(modeInfo());
+      say(`Model set to ${args} for ${mode} mode, until the server restarts.`);
+    },
+  },
+  chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
+  work: { help: "switch to work mode, optionally for a folder: /work ~/project", run: ({ args, say }) => switchMode("work", args, say) },
+  permissions: {
+    help: "ask, plan, accept (edits) or auto: how work mode handles approvals",
+    run: ({ args, say }) => {
+      const key = args.toLowerCase();
+      const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
+      if (!wanted) return say(`Permissions: ${permissionMode}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
+      changePermissionMode(wanted, say);
+    },
+  },
+  plan: { help: "same as /permissions plan", run: ({ say }) => changePermissionMode("plan", say) },
+  copy: { help: "copy her last reply to the clipboard", run: () => {} },
 };
-function slashCommand(text: string): string | null {
-  const match = /^\/([a-z][\w-]*)(?:\s|$)/i.exec(text.trim());
-  if (!match) return null;
-  return match[1].toLowerCase();
+Object.setPrototypeOf(slashCommands, null); // so "/constructor" is just unknown
+
+function parseSlash(text: string): { name: string; args: string } | null {
+  const match = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+  return match ? { name: match[1].toLowerCase(), args: (match[2] ?? "").trim() } : null;
 }
 
 function resetConversation(): void {
@@ -347,19 +468,12 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
-      const command = slashCommand(msg.text);
+      const command = parseSlash(msg.text);
       if (command) {
-        const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
-        if (command === "clear") resetConversation();
-        else if (command === "help") notice(Object.entries(slashCommands).map(([c, what]) => `/${c}: ${what}`).join("\n"));
-        else if (command === "compact") {
-          if (link.connected) return notice("A terminal session is connected: use /compact there.");
-          if (!provider.canUseTools) return notice("/compact needs Claude Code; this model keeps the whole conversation.");
-          if (provider.busy) return notice("Wait for her to finish the current reply first.");
-          transcript.user(msg.text);
-          broadcast({ type: "user", text: msg.text });
-          runTurn(msg.text, { raw: true });
-        } else notice(`Unknown command /${command}. Try /help.`);
+        const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+        const known = slashCommands[command.name];
+        if (known) await known.run({ args: command.args, text: msg.text, say });
+        else say(`Unknown command /${command.name}. Try /help.`);
         return;
       }
       transcript.user(msg.text);
@@ -379,30 +493,9 @@ wss.on("connection", (ws) => {
         broadcast(modeInfo());
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
-      const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
-      if (link.connected) return notice("A terminal session is connected. Close it (or /exit) to switch modes.");
-      if (provider.busy) return notice("Wait for her to finish the current reply first.");
-      if (msg.mode === "work") {
-        if (!provider.canUseTools) return notice("This model cannot use tools. Switch to Claude Code for work mode.");
-        const wanted = typeof msg.projectDir === "string" && msg.projectDir.trim() ? msg.projectDir : settings.projectDir;
-        if (!wanted) return notice("Choose a project folder first.");
-        const check = await checkProjectDir(wanted);
-        if (!check.ok) return notice(check.reason);
-        settings.projectDir = check.dir;
-        await saveSettings(settingsPath, settings);
-      }
-      mode = msg.mode;
-      provider.configure(sessionConfig());
-      broadcast(modeInfo());
+      await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
-      const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
-      if (link.connected) notice("A terminal session is connected. Permissions are handled there.");
-      else if (provider.busy) notice("Wait for her to finish the current reply first.");
-      else {
-        permissionMode = msg.value;
-        provider.configure(sessionConfig());
-      }
-      broadcast(modeInfo());
+      changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (link.connected) return notice("A terminal session is connected. Close it first.");

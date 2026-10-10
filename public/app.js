@@ -420,6 +420,15 @@ function connect() {
 function submit() {
   const text = input.value.trim();
   if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
+  if (text === "/copy") {
+    // Needs the clipboard of this page, so it is handled here and never sent.
+    const last = [...log.querySelectorAll(".msg.bot")].pop();
+    if (last) navigator.clipboard?.writeText(last.textContent).then(() => addMsg("sys", "Copied her last reply."));
+    else addMsg("sys", "She has not said anything yet.");
+    input.value = "";
+    input.style.height = "auto";
+    return;
+  }
   ws.send(JSON.stringify({ type: "user", text }));
   input.value = "";
   input.style.height = "auto";

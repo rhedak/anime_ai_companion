@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
-import type { Decision, Provider, ProviderEvent, SessionConfig } from "./types.ts";
+import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
 export interface ClaudeCodeOptions {
   config: SessionConfig;
@@ -38,6 +38,7 @@ export class ClaudeCodeProvider implements Provider {
   private hasHistory = false;
   private pending = new Map<string, PendingPermission>();
   private tools = new Map<string, { name: string; summary: string }>();
+  private usageValue: Usage = { turns: 0, costUsd: 0, contextTokens: null };
 
   constructor(opts: ClaudeCodeOptions) {
     this.opts = opts;
@@ -54,6 +55,10 @@ export class ClaudeCodeProvider implements Provider {
 
   get sessionId(): string {
     return this.sessionIdValue;
+  }
+
+  get usage(): Usage {
+    return this.usageValue;
   }
 
   get busy(): boolean {
@@ -94,6 +99,7 @@ export class ClaudeCodeProvider implements Provider {
     if (this.listener) this.finish({ type: "error", message: "Conversation reset." });
     this.sessionIdValue = randomUUID();
     this.hasHistory = false;
+    this.usageValue = { turns: 0, costUsd: 0, contextTokens: null };
   }
 
   close(): void {
@@ -241,6 +247,12 @@ export class ClaudeCodeProvider implements Provider {
         break;
       case "result":
         this.hasHistory = true;
+        this.usageValue = {
+          turns: this.usageValue.turns + 1,
+          // The CLI's total covers the whole conversation: it restores it when a session is resumed.
+          costUsd: item.costUsd ?? this.usageValue.costUsd,
+          contextTokens: item.contextTokens ?? this.usageValue.contextTokens,
+        };
         this.pending.clear();
         this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
         break;

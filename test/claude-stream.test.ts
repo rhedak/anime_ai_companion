@@ -84,3 +84,16 @@ test("/compact progress shows as status events and a compaction notice", () => {
     { kind: "compacted" },
   ]);
 });
+
+test("a result carries the conversation's cost and how much context the last request used", () => {
+  const line = JSON.stringify({
+    type: "result",
+    is_error: false,
+    result: "hi",
+    total_cost_usd: 0.25,
+    usage: { input_tokens: 2, cache_read_input_tokens: 2000, cache_creation_input_tokens: 500, output_tokens: 3 },
+  });
+  assert.deepEqual(parseStreamLine(line), [{ kind: "result", isError: false, text: "hi", costUsd: 0.25, contextTokens: 2502 }]);
+  const bare = parseStreamLine(JSON.stringify({ type: "result", result: "" }))[0];
+  assert.deepEqual(bare, { kind: "result", isError: false, text: "", costUsd: null, contextTokens: null });
+});

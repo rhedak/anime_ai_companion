@@ -24,6 +24,15 @@ export type ProviderEvent =
 
 export type Mode = "chat" | "work";
 
+export interface Usage {
+  /** Replies since the server started. */
+  turns: number;
+  /** Estimated API-equivalent cost of the whole conversation; a subscription is not billed per token. */
+  costUsd: number;
+  /** Tokens sent with the last request, i.e. roughly how full the context window is. */
+  contextTokens: number | null;
+}
+
 /**
  * How work mode treats tool calls: "manual" asks for everything not pre-approved, "plan" lets her
  * read and propose a plan only, "acceptEdits" also lets her edit files without asking, and
@@ -53,6 +62,8 @@ export interface Provider {
   readonly canUseTools: boolean;
   /** Id of the underlying conversation, if the backend has one (for `claude --resume`). */
   readonly sessionId: string | null;
+  /** What this conversation has used so far, if the backend can tell. */
+  readonly usage?: Usage;
   /** True while a reply is in progress. */
   readonly busy: boolean;
   /** Send a user message; events stream back through `onEvent` until "done" or "error". */

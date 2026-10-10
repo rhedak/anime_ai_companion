@@ -20,7 +20,7 @@ export type StreamItem =
   | { kind: "permission-cancel"; requestId: string }
   | { kind: "status"; text: string | null }
   | { kind: "compacted" }
-  | { kind: "result"; isError: boolean; text: string };
+  | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null };
 
 export function parseStreamLine(line: string): StreamItem[] {
   let msg: any;
@@ -74,7 +74,19 @@ export function parseStreamLine(line: string): StreamItem[] {
       return [{ kind: "permission-cancel", requestId: msg.request_id }];
 
     case "result":
-      return [{ kind: "result", isError: Boolean(msg.is_error), text: String(msg.result ?? "") }];
+      return [
+        {
+          kind: "result",
+          isError: Boolean(msg.is_error),
+          text: String(msg.result ?? ""),
+          // Cumulative over the claude process, not per turn.
+          costUsd: typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null,
+          // Everything the last request sent: roughly how full the context window is.
+          contextTokens: msg.usage
+            ? (msg.usage.input_tokens ?? 0) + (msg.usage.cache_read_input_tokens ?? 0) + (msg.usage.cache_creation_input_tokens ?? 0)
+            : null,
+        },
+      ];
 
     default:
       return [];
