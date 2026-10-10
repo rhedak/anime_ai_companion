@@ -96,6 +96,16 @@ chat). `anaico --chat` starts in chat mode instead; the folder is still pre-fill
 switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
 saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
 
+### Running it in the background
+
+`anaico --daemon` starts the server in the background and returns; it keeps running after you close the
+terminal (its output goes to `data/server.log`). Take the same `--chat` and `--no-open` as usual.
+`anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
+starts it again in the folder you run it from (use it after an update, or to change folder or mode).
+Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
+that is running in another terminal. The server only listens on `127.0.0.1`, and a background server is
+no different. `--daemon` cannot be combined with `--pro`.
+
 ## Changing how it looks
 
 All colours, fonts, corner radii and sizes of the interface are CSS variables at the top of
