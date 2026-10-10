@@ -94,6 +94,16 @@ chat). `anaico --chat` starts in chat mode instead; the folder is still pre-fill
 switch is one click. A server started another way (`npm start`) begins in work mode only if it has a
 saved folder, and in chat mode otherwise. A server that is already running keeps its mode and folder.
 
+## Images
+
+The **📎** button next to the message box attaches up to 5 pictures (PNG, JPEG, GIF or WebP, up to 5 MB
+each); you can also paste an image or drop files onto the chat. The browser shrinks anything bigger
+than 1568 px on its long edge first (a resized GIF or WebP loses its animation), and the server checks
+the type, the real file contents and the sizes again. Pictures go to the model as they are and a picture
+without text works too. Only a count is kept in the saved chat log, so after a reload the thumbnails give
+way to "🖼 2 images". Pictures cannot be sent to a terminal session (pro mode). With Ollama they need
+a vision model (e.g. `llava`), and only the message that carries them sees them.
+
 ## Slash commands
 
 Type these in the chat box (`/help` lists them):

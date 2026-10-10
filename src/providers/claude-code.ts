@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
+import type { ImageInput } from "../images.ts";
 import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
 export interface ClaudeCodeOptions {
@@ -65,16 +66,21 @@ export class ClaudeCodeProvider implements Provider {
     return this.listener !== null;
   }
 
-  send(text: string, onEvent: (event: ProviderEvent) => void): void {
+  send(text: string, onEvent: (event: ProviderEvent) => void, images: ImageInput[] = []): void {
     if (this.listener) {
       onEvent({ type: "error", message: "Still answering the previous message." });
       return;
     }
     this.listener = onEvent;
+    const content =
+      images.length === 0
+        ? text
+        : [
+            ...(text.trim() ? [{ type: "text", text }] : []),
+            ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: i.data } })),
+          ];
     try {
-      this.ensureProcess().stdin.write(
-        JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
-      );
+      this.ensureProcess().stdin.write(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n");
     } catch (err) {
       this.finish({ type: "error", message: String(err) });
     }

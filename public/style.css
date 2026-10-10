@@ -34,6 +34,17 @@ main { display: grid; grid-template-columns: 1fr minmax(320px, 440px); height: 1
 .msg.bot { align-self: flex-start; background: rgba(255,255,255,.1); }
 .msg.look { align-self: center; color: #ffc4e6; font-size: 13px; }
 .msg.sys { align-self: center; color: var(--muted); font-size: 13px; }
+.attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.attachments[hidden] { display: none; }
+.attachments .thumb { position: relative; }
+.attachments img { display: block; height: 56px; max-width: 96px; object-fit: cover; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); }
+.attachments .thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: 12px; line-height: 20px; background: rgba(18,12,38,.95); border: 1px solid rgba(255,255,255,.3); }
+.msg .pics { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
+.msg .pics img { max-height: 160px; max-width: 100%; border-radius: 8px; }
+.msg .pics:last-child { margin-bottom: 0; }
+.msg .pics-note { font-size: 12px; opacity: .8; }
+.attach { padding: 0 12px; }
+.drop-target { outline: 2px dashed var(--accent2); outline-offset: -6px; }
 form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid rgba(255,255,255,.08); }
 textarea {
   flex: 1; resize: none; max-height: 140px; padding: 10px 12px; border-radius: 12px;

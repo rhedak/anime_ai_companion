@@ -12,6 +12,7 @@ import { TerminalLink } from "./terminal-link.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
+import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -182,7 +183,7 @@ const server = createServer(async (req, res) => {
 });
 
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
 // Browsers connect on /ws (only from our own origin); a terminal session's channel shim
 // connects on /attach with the token from data/attach-token.
@@ -517,7 +518,7 @@ function resetConversation(): void {
 }
 
 /** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(userText: string, opts: { raw?: boolean } = {}): void {
+function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] } = {}): void {
   // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
   const toModel = opts.raw ? userText : withNotes(userText);
   let reply = "";
@@ -550,7 +551,7 @@ function runTurn(userText: string, opts: { raw?: boolean } = {}): void {
         broadcast(event);
       });
     }
-  });
+  }, opts.images);
 }
 
 wss.on("connection", (ws) => {
@@ -569,10 +570,13 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
-    if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
-      const command = parseSlash(msg.text);
+    if (msg.type === "user" && typeof msg.text === "string" && (msg.text.trim() || msg.images?.length)) {
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      const images = parseImages(msg.images);
+      if (typeof images === "string") return say(images);
+      if (images.length && link.connected) return say("Images cannot be sent to a terminal session; attach them there.");
+      const command = images.length ? null : parseSlash(msg.text);
       if (command) {
-        const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
         const known = slashCommands[command.name];
         if (!known) say(`Unknown command /${command.name}. Try /help.`);
         else if (known.claudeOnly && settings.provider !== "claude") {
@@ -580,10 +584,10 @@ wss.on("connection", (ws) => {
         } else await known.run({ args: command.args, text: msg.text, say });
         return;
       }
-      transcript.user(msg.text);
-      broadcast({ type: "user", text: msg.text });
+      transcript.user(msg.text, images.length);
+      broadcast({ type: "user", text: msg.text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
       if (link.connected) link.send(withNotes(msg.text));
-      else runTurn(msg.text);
+      else runTurn(msg.text, { images });
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
       const request = pendingPermissions.get(msg.id);

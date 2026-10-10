@@ -50,6 +50,32 @@ function addMsg(kind, text) {
   return div;
 }
 
+/** A message of the user's, with its pictures: thumbnails when we have them, a note after a reload. */
+function addUserMsg(text, pics = [], count = pics.length) {
+  const div = document.createElement("div");
+  div.className = "msg user";
+  if (pics.length) {
+    const row = document.createElement("div");
+    row.className = "pics";
+    for (const url of pics) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "attached image";
+      row.append(img);
+    }
+    div.append(row);
+  } else if (count) {
+    const note = document.createElement("div");
+    note.className = "pics-note";
+    note.textContent = `🖼 ${count} image${count > 1 ? "s" : ""}`;
+    div.append(note);
+  }
+  if (text) div.append(document.createTextNode(text));
+  log.append(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
 function setBusy(on) {
   // In pro mode replies come whenever the terminal session sends them, so never lock the input.
   busy = on && state.mode !== "attached";
@@ -183,6 +209,8 @@ function renderMode() {
   $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
   $("permrow").hidden = attached;
+  $("attach").disabled = attached;
+  $("attach").title = attached ? "Images cannot be sent to a terminal session" : "Attach images (or paste or drop them)";
   if (attached) {
     $("mode-chat").classList.remove("on");
     $("mode-work").classList.remove("on");
@@ -276,7 +304,7 @@ function handle(msg) {
       log.replaceChildren();
       toolEls.clear();
       for (const item of msg.items) {
-        if (item.type === "user") addMsg("user", item.text);
+        if (item.type === "user") addUserMsg(item.text, [], item.images ?? 0);
         else if (item.type === "bot") {
           const { clean } = parseReply(item.text);
           if (clean) addMsg("bot", clean);
@@ -370,7 +398,7 @@ function handle(msg) {
       break;
     case "user":
       voice.cancel();
-      addMsg("user", msg.text);
+      addUserMsg(msg.text, msg.images ?? []);
       showBubble("");
       avatar.setEmotion("thinking");
       setBusy(true);
@@ -417,6 +445,86 @@ function connect() {
   };
 }
 
+// --- attaching images ---------------------------------------------------------------
+// Pictures are shrunk here first (long edge 1568 px, what the model works at anyway), which
+// keeps messages small; the server still enforces its own limits.
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const MAX_IMAGES = 5;
+const MAX_EDGE = 1568;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+let attachments = []; // { mediaType, data (base64), url (data URL, for the preview) }
+
+function readAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareImage(file) {
+  const name = file.name || "That image";
+  if (!IMAGE_TYPES.includes(file.type)) throw new Error(`${name} is not a PNG, JPEG, GIF or WebP image.`);
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+  if (!bitmap) throw new Error(`${name} could not be read as an image.`);
+  let blob = file;
+  let type = file.type;
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  if (scale < 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    type = file.type === "image/jpeg" ? "image/jpeg" : "image/png"; // a resized GIF or WebP loses its animation
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, type, 0.9));
+  }
+  bitmap.close();
+  if (!blob || blob.size > MAX_IMAGE_BYTES) throw new Error(`${name} is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
+  const url = await readAsDataURL(blob);
+  return { mediaType: type, data: url.slice(url.indexOf(",") + 1), url };
+}
+
+async function addFiles(files) {
+  for (const file of files) {
+    if (attachments.length >= MAX_IMAGES) {
+      addMsg("sys", `At most ${MAX_IMAGES} images per message.`);
+      break;
+    }
+    try {
+      attachments.push(await prepareImage(file));
+    } catch (err) {
+      addMsg("sys", err.message);
+    }
+  }
+  renderAttachments();
+}
+
+function renderAttachments() {
+  const box = $("attachments");
+  box.hidden = attachments.length === 0;
+  box.replaceChildren(
+    ...attachments.map((a, i) => {
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      const img = document.createElement("img");
+      img.src = a.url;
+      img.alt = `attachment ${i + 1}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "✕";
+      remove.setAttribute("aria-label", "Remove image");
+      remove.onclick = () => {
+        attachments.splice(i, 1);
+        renderAttachments();
+      };
+      thumb.append(img, remove);
+      return thumb;
+    }),
+  );
+}
+
 const browserCommands = {
   "/copy": () => {
     const last = [...log.querySelectorAll(".msg.bot")].pop();
@@ -443,19 +551,48 @@ const browserCommands = {
 
 function submit() {
   const text = input.value.trim();
-  if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
-  if (Object.hasOwn(browserCommands, text)) {
+  if ((!text && attachments.length === 0) || busy || ws?.readyState !== WebSocket.OPEN) return;
+  if (attachments.length === 0 && Object.hasOwn(browserCommands, text)) {
     // These need this page (clipboard, downloads, the voice button), so they never reach the server.
     browserCommands[text]();
     input.value = "";
     input.style.height = "auto";
     return;
   }
-  ws.send(JSON.stringify({ type: "user", text }));
+  ws.send(JSON.stringify({ type: "user", text, images: attachments.map(({ mediaType, data }) => ({ mediaType, data })) }));
+  attachments = [];
+  renderAttachments();
   input.value = "";
   input.style.height = "auto";
 }
 
+$("attach").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", () => {
+  addFiles([...$("file").files]);
+  $("file").value = ""; // so choosing the same file again still fires
+});
+input.addEventListener("paste", (e) => {
+  const pictures = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+  if (pictures.length === 0) return; // plain text pastes as usual
+  e.preventDefault();
+  addFiles(pictures);
+});
+const panel = document.querySelector(".panel");
+const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+panel.addEventListener("dragover", (e) => {
+  if (!hasFiles(e) || $("attach").disabled) return;
+  e.preventDefault();
+  panel.classList.add("drop-target");
+});
+panel.addEventListener("dragleave", (e) => {
+  if (!panel.contains(e.relatedTarget)) panel.classList.remove("drop-target");
+});
+panel.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  panel.classList.remove("drop-target");
+  if (!$("attach").disabled) addFiles([...e.dataTransfer.files]);
+});
 $("form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }

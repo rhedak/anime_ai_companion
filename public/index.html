@@ -64,7 +64,10 @@
         <span class="dots"><i></i><i></i><i></i></span>
         <span id="working-text"></span>
       </div>
+      <div id="attachments" class="attachments" hidden></div>
       <form id="form">
+        <button id="attach" type="button" class="ghost attach" title="Attach images (or paste or drop them)" aria-label="Attach images">📎</button>
+        <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
         <textarea id="input" rows="1" placeholder="Say something… or ask her to change her look" autofocus></textarea>
         <button id="send" type="submit">Send</button>
       </form>

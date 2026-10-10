@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export type TranscriptItem =
-  | { type: "user"; text: string }
+  | { type: "user"; text: string; images?: number }
   | { type: "bot"; text: string }
   | { type: "tool"; id: string; name: string; summary: string; status: "running" | "done" | "error" }
   | { type: "look"; applied: string[] };
@@ -30,9 +30,10 @@ export class Transcript {
     this.path = path;
   }
 
-  user(text: string): void {
+  /** Attached pictures are not kept, only how many there were. */
+  user(text: string, images = 0): void {
     this.flush();
-    this.items.push({ type: "user", text });
+    this.items.push({ type: "user", text, ...(images ? { images } : {}) });
   }
 
   delta(text: string): void {

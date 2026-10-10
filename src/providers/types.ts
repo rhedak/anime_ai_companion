@@ -1,3 +1,5 @@
+import type { ImageInput } from "../images.ts";
+
 export interface PermissionRequest {
   id: string;
   tool: string;
@@ -66,8 +68,8 @@ export interface Provider {
   readonly usage?: Usage;
   /** True while a reply is in progress. */
   readonly busy: boolean;
-  /** Send a user message; events stream back through `onEvent` until "done" or "error". */
-  send(text: string, onEvent: (event: ProviderEvent) => void): void;
+  /** Send a user message (with any attached images); events stream back through `onEvent` until "done" or "error". */
+  send(text: string, onEvent: (event: ProviderEvent) => void, images?: ImageInput[]): void;
   /** Answer a "permission" event. */
   respondPermission(id: string, decision: Decision, message?: string): void;
   /** Change mode, folder, model or pre-approved tools. The conversation continues. */
