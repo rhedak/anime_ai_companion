@@ -110,6 +110,7 @@ a local shim (`src/channel-shim.ts`) that talks to the server over `127.0.0.1` w
 
 ## How it works
 
+- **Gestures:** `[gesture:wave]` and `[gesture:cheer]` raise an arm for a moment (two pose frames).
 - **Emotions:** she starts replies with tags like `[emotion:happy]`; `emotions.json` maps each to
   face settings. The server renders a few mouth openings and a blink per emotion and the browser
   flips between them while text streams.
@@ -143,6 +144,22 @@ something in your checkout of [anime-character-creator](https://github.com/rheda
 a pull request would make it better for everyone, and it is very welcome. Small ones are great.
 See [CONTRIBUTING.md](CONTRIBUTING.md). If either checkout has local changes, the server mentions
 this once a week at startup (local check only, no network); `COMPANION_NO_NUDGE=1` turns it off.
+
+## Security model
+
+Because the server can run Claude Code, it is built to be reachable only by you:
+
+- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin; the terminal
+  link needs a random token (`data/attach-token`, mode 0600) and refuses anything that looks like a browser.
+- The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
+  click the approval buttons for you).
+- Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,
+  plain-text only for free text), because the character renderer does not escape text. The SVG is also
+  sanitised in the browser before it is shown.
+- Work mode never skips permissions, shows the exact command or content you approve, and does not load a
+  folder's own hooks or settings.
+
+Found something? Please open an issue, or report it privately if it is serious.
 
 ## Credits
 

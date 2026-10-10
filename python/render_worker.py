@@ -32,6 +32,9 @@ for _name, _cls in SECTIONS.items():
     FIELDS[_name] = {f.name: f for f in dataclasses.fields(_cls)}
 
 HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+# Free-text values (wristband_text, hair_clip, ...) end up inside the SVG, and the creator does
+# not escape them, so only plain words are accepted: no markup characters, quotes or slashes.
+PLAIN_TEXT = re.compile(r"^[A-Za-z0-9_.,!?' -]{1,40}$")
 
 
 def locate(key):
@@ -80,6 +83,8 @@ def coerce(name, type_str, raw):
             raise ValueError(f"hairstyle must be one of {', '.join(HAIRSTYLES)}")
         if name == "body" and raw not in BODY_TYPES:
             raise ValueError(f"body must be one of {', '.join(BODY_TYPES)}")
+        if not PLAIN_TEXT.match(raw):
+            raise ValueError("text may only use letters, digits and simple punctuation (up to 40 characters)")
         return raw
     raise ValueError(f"unsupported field type {type_str}")
 
@@ -149,6 +154,15 @@ def op_patch(req):
 def op_frames(req):
     character = json.loads(json.dumps(req["character"]))
     character["face"].update(req.get("face", {}))
+    if "poses" in req:
+        # one frame per pose (a pose overrides top-level fields such as right_arm_out), mouth at rest
+        character["face"]["mouth_open"] = req["mouth"][0]
+        character["face"]["eyes_closed"] = False
+        out = []
+        for pose in req["poses"]:
+            posed = {**character, **{k: v for k, v in pose.items() if k in TOP}}
+            out.append(render_character(params_from_dict(posed)))
+        return {"svgs": out}
     svgs = []
     for mouth in req["mouth"]:
         character["face"]["mouth_open"] = mouth

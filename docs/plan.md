@@ -196,7 +196,8 @@ against a real Ollama (none installed here), only against its documented HTTP AP
 
 ### Phase 6: polish (any order, as wanted) — in progress
 
-Done so far: chat history across reloads and restarts (the Claude Code session is resumed), undo and
+Done so far: gestures (`[gesture:wave]`, `[gesture:cheer]`), a security review of what the model can
+put on the page (free text is validated, SVG is sanitised, strict CSP), chat history across reloads and restarts (the Claude Code session is resumed), undo and
 saved looks (and `[avatar load=name]`), spoken replies (browser speech synthesis; recognition left out on
 privacy grounds), and trimming Claude Code's auto memory and unused prompt sections for the headless
 session. Still open: backgrounds and poses (the creator can pose arms and take a background), a

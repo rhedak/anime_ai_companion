@@ -3,9 +3,15 @@ import { createVoice, takeSentences } from "./speech.js";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
-const avatar = createAvatar($("avatar"), (emotion) => {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "frames", emotion }));
-});
+const avatar = createAvatar(
+  $("avatar"),
+  (emotion) => {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "frames", emotion }));
+  },
+  (emotion, gesture) => {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "gesture-frames", emotion, gesture }));
+  },
+);
 const log = $("log"), input = $("input"), send = $("send"), bubble = $("bubble");
 
 // With voice on, her mouth follows the speech; otherwise it follows the arriving text.
@@ -23,13 +29,17 @@ let talkTimer = null;
 // Strips [emotion:x] tags (including a half-streamed one at the end) and returns the last emotion.
 function parseReply(text) {
   let emotion = null;
+  const gestures = [];
   const clean = text
     .replace(/\[emotion:(\w+)\]/g, (_, e) => ((emotion = e.toLowerCase()), ""))
+    .replace(/\[gesture:(\w+)\]/g, (_, g) => (gestures.push(g.toLowerCase()), ""))
     .replace(/\[avatar\b[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
-  return { clean, emotion };
+  return { clean, emotion, gestures };
 }
+
+let gesturesDone = 0; // gestures of the current reply already played
 
 function addMsg(kind, text) {
   const div = document.createElement("div");
@@ -65,8 +75,9 @@ function onDelta(text) {
     avatar.setEmotion("thinking");
   }
   raw += text;
-  const { clean, emotion } = parseReply(raw);
+  const { clean, emotion, gestures } = parseReply(raw);
   if (emotion) avatar.setEmotion(emotion);
+  for (; gesturesDone < gestures.length; gesturesDone++) avatar.gesture(gestures[gesturesDone]);
   if (!voice.enabled) avatar.setTalking(clean.length > 0);
   else {
     const { ready } = takeSentences(clean.slice(spoken));
@@ -95,6 +106,7 @@ function endTurn() {
   if (!voice.enabled) avatar.setTalking(false);
   botEl = null;
   raw = "";
+  gesturesDone = 0;
   setBusy(false);
   clearTimeout(calmTimer);
   calmTimer = setTimeout(() => avatar.setEmotion("neutral"), 9000);
@@ -243,8 +255,9 @@ function handle(msg) {
       // A whole message from the terminal session (pro mode), not a stream.
       clearTimeout(calmTimer);
       clearTimeout(talkTimer);
-      const { clean, emotion } = parseReply(msg.text);
+      const { clean, emotion, gestures } = parseReply(msg.text);
       if (emotion) avatar.setEmotion(emotion);
+      for (const g of gestures) avatar.gesture(g);
       if (clean) {
         addMsg("bot", clean);
         showBubble(clean);
@@ -275,6 +288,7 @@ function handle(msg) {
         speakRest();
         botEl = null;
         raw = "";
+        gesturesDone = 0;
         el = document.createElement("div");
         el.innerHTML = '<span class="st"></span><span class="tx"></span>';
         log.append(el);
@@ -316,6 +330,9 @@ function handle(msg) {
       break;
     case "frames":
       avatar.receiveFrames(msg);
+      break;
+    case "gesture-frames":
+      avatar.receiveGesture(msg);
       break;
     case "delta":
       onDelta(msg.text);

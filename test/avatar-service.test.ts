@@ -71,3 +71,18 @@ test("saved looks can be loaded by the user or by the model, and bad names are r
     s.close();
   }
 });
+
+test("gesture frames are two different poses, and unknown gestures are refused", { skip }, async () => {
+  const s = await service();
+  try {
+    const wave = await s.gestureFrames("neutral", "wave");
+    assert.equal(wave?.length, 2);
+    assert.notEqual(wave![0], wave![1]);
+    const rest = await s.frames("neutral");
+    assert.notEqual(wave![0], rest[0]);
+    assert.equal(await s.gestureFrames("neutral", "backflip"), null);
+    assert.equal(await s.gestureFrames("neutral", "wave"), wave); // cached
+  } finally {
+    s.close();
+  }
+});

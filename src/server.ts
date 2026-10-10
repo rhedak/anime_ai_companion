@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
@@ -120,16 +120,37 @@ const mime: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+// Defence in depth for a page that talks to a server able to run commands: no inline or
+// foreign scripts at all, no framing (clickjacking the approval buttons), nothing leaves the origin.
+const securityHeaders = {
+  "content-security-policy": [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    `connect-src 'self' ws://${host}:${port} ws://localhost:${port}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join("; "),
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+};
+
 const server = createServer(async (req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const file = normalize(join(publicDir, path === "/" ? "index.html" : path));
-  if (!file.startsWith(publicDir)) {
+  if (file !== publicDir && !file.startsWith(publicDir + sep)) {
     res.writeHead(403).end();
     return;
   }
   try {
     const body = await readFile(file);
-    res.writeHead(200, { "content-type": mime[extname(file)] ?? "application/octet-stream" });
+    res.writeHead(200, {
+      "content-type": mime[extname(file)] ?? "application/octet-stream",
+      ...securityHeaders,
+    });
     res.end(body);
   } catch {
     res.writeHead(404).end("Not found");
@@ -375,6 +396,14 @@ wss.on("connection", (ws) => {
       broadcast(modeInfo());
       broadcast({ type: "avatar", version: avatar.version, applied: ["back to the original look"] });
       broadcast(looksInfo());
+    } else if (msg.type === "gesture-frames" && typeof msg.emotion === "string" && typeof msg.gesture === "string") {
+      try {
+        const version = avatar.version;
+        const svgs = await avatar.gestureFrames(msg.emotion, msg.gesture);
+        if (svgs) ws.send(JSON.stringify({ type: "gesture-frames", version, emotion: msg.emotion, gesture: msg.gesture, svgs }));
+      } catch (err) {
+        console.error("gesture frames failed:", err);
+      }
     } else if (msg.type === "frames" && typeof msg.emotion === "string") {
       try {
         const version = avatar.version;

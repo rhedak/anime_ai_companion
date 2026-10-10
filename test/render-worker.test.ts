@@ -28,6 +28,15 @@ test("render worker validates patches and renders frames", { skip: !existsSync(c
     assert.deepEqual(patched.applied, ["hair_color=#ff0000", "outfit.hat_color=#222222"]);
     assert.deepEqual(patched.rejected.map((r: any) => r.key), ["hairstyle", "bogus"]);
 
+    // free text goes into the SVG unescaped by the creator, so markup must never get through
+    const evil = await call({
+      op: "patch",
+      character,
+      set: { wristband_text: '"/><script>alert(1)</script>', hair_clip: "<svg/onload=alert(1)>", "outfit.wristband_text": "fine words" },
+    });
+    assert.deepEqual(evil.applied, ["outfit.wristband_text=fine words"]);
+    assert.deepEqual(evil.rejected.map((r: any) => r.key), ["wristband_text", "hair_clip"]);
+
     const frames = await call({ op: "frames", character: patched.character, face: {}, mouth: [0, 0.5] });
     assert.equal(frames.svgs.length, 3); // two mouth openings plus a blink
     assert.ok(frames.svgs.every((svg: string) => svg.startsWith("<svg")));
