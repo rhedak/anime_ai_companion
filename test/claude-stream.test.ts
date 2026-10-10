@@ -115,3 +115,14 @@ test("the footer's inputs: model on init, usage limits, and the context window",
   const result = parseStreamLine(JSON.stringify({ type: "result", result: "", modelUsage: { "claude-haiku-5-5": { contextWindow: 1000000 } } }))[0];
   assert.equal((result as { contextWindow: number }).contextWindow, 1000000);
 });
+
+test("context use is the last request of a turn, not the sum of all its requests", () => {
+  const request = (n: number) => ({ type: "message", input_tokens: 1, cache_read_input_tokens: n, cache_creation_input_tokens: 0 });
+  const result = {
+    type: "result",
+    result: "",
+    // three requests in one turn (two tool calls): the top level adds them up
+    usage: { input_tokens: 3, cache_read_input_tokens: 300_000, cache_creation_input_tokens: 0, iterations: [request(90_000), request(100_000), request(110_000)] },
+  };
+  assert.equal((parseStreamLine(JSON.stringify(result))[0] as { contextTokens: number }).contextTokens, 110_001);
+});

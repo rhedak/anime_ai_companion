@@ -101,10 +101,7 @@ export function parseStreamLine(line: string): StreamItem[] {
           text: String(msg.result ?? ""),
           // Cumulative over the claude process, not per turn.
           costUsd: typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null,
-          // Everything the last request sent: roughly how full the context window is.
-          contextTokens: msg.usage
-            ? (msg.usage.input_tokens ?? 0) + (msg.usage.cache_read_input_tokens ?? 0) + (msg.usage.cache_creation_input_tokens ?? 0)
-            : null,
+          contextTokens: contextTokensOf(msg.usage),
           contextWindow: contextWindowOf(msg.modelUsage),
         },
       ];
@@ -112,6 +109,18 @@ export function parseStreamLine(line: string): StreamItem[] {
     default:
       return [];
   }
+}
+
+/**
+ * What the last request of the turn sent: roughly how full the context window is. A turn with tool
+ * calls makes several requests and the top-level usage adds them all up, which would overstate it
+ * many times over; the per-request `iterations` list has the real figure.
+ */
+function contextTokensOf(usage: any): number | null {
+  if (!usage) return null;
+  const sent = (u: any) => (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+  const requests = Array.isArray(usage.iterations) ? usage.iterations.filter((i: any) => i && i.type !== "compaction") : [];
+  return sent(requests.length ? requests[requests.length - 1] : usage);
 }
 
 /** "claude-sonnet-5-5" -> "Sonnet 5.5"; anything else is shown as it is. */
