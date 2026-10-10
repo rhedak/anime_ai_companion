@@ -174,7 +174,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools, permissionMode, effort } = this.config;
+    const { mode, model, allowedTools, permissionMode, effort, claudeSetup } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -183,13 +183,13 @@ export class ClaudeCodeProvider implements Provider {
       "--include-partial-messages",
       "--model", model,
       "--append-system-prompt", this.opts.persona(this.config),
-      // Skip claude.ai connectors and user/project settings: smaller turns, and a
-      // folder's own hooks or allow rules never run in someone else's session.
-      "--strict-mcp-config",
-      "--setting-sources", "",
       this.hasHistory ? "--resume" : "--session-id", this.sessionIdValue,
     ];
     if (effort) args.push("--effort", effort);
+    // By default skip claude.ai connectors and user/project settings: smaller turns, and a
+    // folder's own hooks or allow rules never run in someone else's session. Work mode can
+    // opt in to the user's own setup (settings, hooks, MCP servers).
+    if (!(mode === "work" && claudeSetup)) args.push("--strict-mcp-config", "--setting-sources", "");
     if (mode === "chat") {
       args.push("--tools", "");
     } else {

@@ -329,6 +329,8 @@ function renderMode() {
   $("mode-chat").disabled = attached;
   $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
+  $("setuprow").hidden = attached || state.mode !== "work";
+  $("use-setup").checked = Boolean(state.claudeSetup);
   $("attach").disabled = attached;
   $("attach").title = attached ? "Images cannot be sent to a terminal session" : "Attach images (or paste or drop them)";
   if (attached) {
@@ -758,6 +760,9 @@ $("reset").addEventListener("click", () => ws?.send(JSON.stringify({ type: "rese
 $("provider").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: $("provider").value }));
   renderBrain(); // snaps back to the server's answer if it refuses
+});
+$("use-setup").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "claude-setup", value: $("use-setup").checked }));
 });
 $("effort").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "effort", value: $("effort").value }));

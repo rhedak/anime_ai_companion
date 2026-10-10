@@ -84,8 +84,11 @@ there, like a regular Claude Code session. She asks first:
   Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
   Auto*, like the terminal's "yes, and don't ask again".
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
-- Your folder's own `.claude/settings*.json` hooks and rules are **not** loaded in this mode, and
-  the home directory or `/` cannot be chosen as a folder.
+- By default your own Claude Code setup is **not** loaded: a folder's `.claude/settings*.json` hooks
+  and allow rules, your user settings and MCP servers do not apply, so opening an unfamiliar folder
+  runs nothing of its own. The **Use my Claude Code setup** checkbox (or `/setup on`) loads them, as
+  in a terminal; hooks run commands, so it is off at every start. The home directory or `/` cannot be
+  chosen as a folder.
 - Work mode uses a stronger model (`COMPANION_WORK_MODEL`, default `sonnet`) and counts against your
   plan limits faster than chatting.
 - The bar under the header shows `claude --resume <session id>`: you can continue the same
@@ -171,6 +174,7 @@ Type these in the chat box (`/help` lists them):
 | `/rc`, `/remote-control` | not built in: explains why and prints the terminal command to use it yourself |
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
+| `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |

@@ -70,6 +70,8 @@ let mode: Mode = "chat";
 
 // Not saved: loosening approvals (auto, accept edits) is a choice made again each run.
 let permissionMode: PermissionMode = "manual";
+/** Like the permission mode, never saved: hooks run commands, so each start begins isolated. */
+let claudeSetup = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
@@ -91,6 +93,7 @@ const sessionConfig = (): SessionConfig => ({
       : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
   permissionMode,
+  claudeSetup,
   effort: effectiveEffort(),
 });
 
@@ -159,6 +162,7 @@ const modeInfo = () => ({
   sessionId: provider.sessionId,
   allowedTools: settings.allowedTools,
   permissionMode,
+  claudeSetup,
   effort: settings.effort,
   effortNow: effectiveEffort(),
 });
@@ -360,6 +364,20 @@ async function changeEffort(value: Effort | "default", say: Say): Promise<void> 
   broadcast(modeInfo());
 }
 
+function changeClaudeSetup(on: boolean, say: Say): void {
+  const blocked = cannotChange("change this");
+  if (blocked) say(blocked);
+  else if (!provider.canUseTools) say("This model cannot use tools, so there is no Claude Code setup to load.");
+  else {
+    claudeSetup = on;
+    provider.configure(sessionConfig()); // restarts claude; the conversation carries on
+    if (on && mode === "work") {
+      say("Using your Claude Code setup in work mode: your user and project settings, hooks, rules and MCP servers now apply.");
+    }
+  }
+  broadcast(modeInfo());
+}
+
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (link.connected) say("A terminal session is connected: permissions are handled there.");
   else if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
@@ -487,6 +505,15 @@ const slashCommands: Record<
       if (wanted === "default" || isEffort(wanted)) return changeEffort(wanted, say);
       const now = effectiveEffort();
       say(`Effort: ${now ?? "Claude's default"}${settings.effort === "default" ? " (from your Claude settings)" : ""}. Use /effort ${efforts.join(" | ")} | default`);
+    },
+  },
+  setup: {
+    help: "work mode: use your own Claude Code setup (settings, hooks, MCP servers): /setup on | off",
+    claudeOnly: true,
+    run: ({ args, say }) => {
+      const wanted = args.toLowerCase();
+      if (wanted === "on" || wanted === "off") return changeClaudeSetup(wanted === "on", say);
+      say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
     },
   },
   plan: { help: "same as /permissions plan", claudeOnly: true, run: ({ say }) => changePermissionMode("plan", say) },
@@ -688,6 +715,8 @@ wss.on("connection", (ws) => {
       await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "effort" && (msg.value === "default" || isEffort(msg.value))) {
       await changeEffort(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "claude-setup" && typeof msg.value === "boolean") {
+      changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {

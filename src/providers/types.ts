@@ -58,6 +58,11 @@ export interface SessionConfig {
   allowedTools: string[];
   /** How approvals work in work mode. */
   permissionMode: PermissionMode;
+  /**
+   * Work mode only: load the user's own Claude Code setup (user and project settings, hooks,
+   * MCP servers) instead of running isolated. Off by default, because hooks run commands.
+   */
+  claudeSetup: boolean;
   /** How hard Claude thinks (`--effort`); null leaves it to Claude Code's default. */
   effort: Effort | null;
 }
