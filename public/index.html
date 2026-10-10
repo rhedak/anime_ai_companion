@@ -37,34 +37,30 @@
         </div>
         <button id="reset" class="ghost" title="Start a fresh conversation">New chat</button>
       </header>
-      <div class="brainbar">
-        <label>Brain
-          <select id="provider" title="Which model powers her">
-            <option value="claude">Claude Code</option>
-            <option value="ollama">Ollama (local)</option>
-          </select>
-        </label>
-        <select id="ollama-model" title="Installed Ollama models" hidden></select>
-      </div>
       <div id="workbar" class="workbar" hidden>
         <div id="workrow" class="workrow">
           <input id="folder" type="text" placeholder="/path/to/your/project" spellcheck="false" autocomplete="off">
           <button id="folder-set" class="ghost">Work here</button>
         </div>
-        <label id="permrow" class="permrow">Permissions
-          <select id="permission-mode" title="How she handles approvals in work mode">
-            <option value="manual">Ask for each action</option>
-            <option value="plan">Plan first (no changes)</option>
-            <option value="acceptEdits">Accept edits</option>
-            <option value="auto">Auto (Claude decides)</option>
-          </select>
-        </label>
         <div id="workinfo" class="workinfo"></div>
       </div>
       <div id="log" class="log"></div>
       <div id="working" class="working" role="status" aria-live="polite" hidden>
         <span class="dots"><i></i><i></i><i></i></span>
         <span id="working-text"></span>
+      </div>
+      <div hidden>
+        <select id="provider" title="Which model powers her">
+          <option value="claude">Claude Code</option>
+          <option value="ollama">Ollama (local)</option>
+        </select>
+        <select id="ollama-model" title="Installed Ollama models"></select>
+        <select id="permission-mode" title="How she handles approvals in work mode">
+          <option value="manual">Ask for each action</option>
+          <option value="plan">Plan first (no changes)</option>
+          <option value="acceptEdits">Accept edits</option>
+          <option value="auto">Auto (Claude decides)</option>
+        </select>
       </div>
       <form id="form" class="composer">
         <div id="attachments" class="attachments" hidden></div>
@@ -74,9 +70,12 @@
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          <div class="composer-right">
+            <div id="menus" class="menus"></div>
           <button id="send" type="submit" class="icon send" title="Send" aria-label="Send">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
+          </div>
         </div>
       </form>
       <footer class="credit">

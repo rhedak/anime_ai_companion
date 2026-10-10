@@ -185,11 +185,106 @@ let wantWork = false; // the user clicked Work but has not chosen a folder yet
 const toolEls = new Map();
 const permEls = new Map();
 
+// --- popover menus that front the (hidden) <select>s -------------------------------
+// The select stays the source of truth: the rest of this file reads and sets it as before,
+// and the menu only mirrors it, so call refresh() after changing a select from code.
+
+const menuDescriptions = {
+  provider: { claude: "Claude Code: the full model, tools in work mode", ollama: "A model running on your own machine (chat only)" },
+  "permission-mode": {
+    manual: "She asks before each action",
+    plan: "She plans, and changes nothing until you approve",
+    acceptEdits: "File edits go ahead; other actions still ask",
+    auto: "She runs on her own and pauses if anything looks unsafe",
+  },
+};
+const menuRefreshers = [];
+const closeMenus = () => document.querySelectorAll(".menu-pop").forEach((p) => p.remove());
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
+
+function makeMenu(select, title) {
+  const wrap = document.createElement("div");
+  wrap.className = "menu";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("aria-haspopup", "menu");
+  button.setAttribute("aria-expanded", "false");
+  const text = document.createElement("span");
+  button.append(text, Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "svg"), {}));
+  button.lastChild.setAttribute("viewBox", "0 0 24 24");
+  button.lastChild.setAttribute("width", "12");
+  button.lastChild.setAttribute("height", "12");
+  button.lastChild.innerHTML = '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  wrap.append(button);
+  const close = (focus) => {
+    wrap.querySelector(".menu-pop")?.remove();
+    button.setAttribute("aria-expanded", "false");
+    if (focus) button.focus();
+  };
+  const open = () => {
+    closeMenus();
+    document.querySelectorAll(".menu > button").forEach((b) => b.setAttribute("aria-expanded", "false"));
+    const pop = document.createElement("div");
+    pop.className = "menu-pop";
+    pop.setAttribute("role", "menu");
+    pop.append(Object.assign(document.createElement("div"), { className: "menu-title", textContent: title }));
+    for (const option of select.options) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", String(option.value === select.value));
+      const label = document.createElement("span");
+      label.append(Object.assign(document.createElement("span"), { className: "item-label", textContent: option.text }));
+      const desc = menuDescriptions[select.id]?.[option.value];
+      if (desc) label.append(Object.assign(document.createElement("span"), { className: "item-desc", textContent: desc }));
+      item.append(label);
+      if (option.value === select.value) item.append(Object.assign(document.createElement("span"), { className: "check", textContent: "✓" }));
+      item.onclick = () => {
+        close(true);
+        if (option.value !== select.value) {
+          select.value = option.value;
+          select.dispatchEvent(new Event("change"));
+          refresh();
+        }
+      };
+      pop.append(item);
+    }
+    pop.addEventListener("keydown", (e) => {
+      const items = [...pop.querySelectorAll("button")];
+      const i = items.indexOf(document.activeElement);
+      if (e.key === "Escape") close(true);
+      else if (e.key === "ArrowDown") items[(i + 1) % items.length].focus();
+      else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length].focus();
+      else return;
+      e.preventDefault();
+    });
+    wrap.append(pop);
+    button.setAttribute("aria-expanded", "true");
+    (pop.querySelector('[aria-checked="true"]') ?? pop.querySelector("button")).focus();
+  };
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    button.getAttribute("aria-expanded") === "true" ? close(false) : open();
+  });
+  const refresh = () => {
+    text.textContent = select.selectedOptions[0]?.text ?? "";
+    button.disabled = select.disabled;
+    button.title = select.title;
+  };
+  refresh();
+  menuRefreshers.push(refresh);
+  $("menus").append(wrap);
+  return wrap;
+}
+const providerMenu = makeMenu($("provider"), "Brain");
+const ollamaMenu = makeMenu($("ollama-model"), "Ollama model");
+const permissionMenu = makeMenu($("permission-mode"), "Permission mode");
+
 function renderBrain() {
   $("provider").value = state.provider ?? "claude";
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
-  picker.hidden = !ollama;
+  ollamaMenu.hidden = !ollama;
   if (ollama) {
     const models = state.ollamaModels ?? [];
     picker.replaceChildren(
@@ -200,6 +295,7 @@ function renderBrain() {
   const noTools = state.canUseTools === false;
   $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
   $("provider").disabled = state.mode === "attached";
+  menuRefreshers.forEach((refresh) => refresh());
 }
 
 function renderMode() {
@@ -208,12 +304,12 @@ function renderMode() {
   $("mode-chat").disabled = attached;
   $("mode-work").disabled = attached || state.canUseTools === false;
   $("workrow").hidden = attached;
-  $("permrow").hidden = attached;
   $("attach").disabled = attached;
   $("attach").title = attached ? "Images cannot be sent to a terminal session" : "Attach images (or paste or drop them)";
   if (attached) {
     $("mode-chat").classList.remove("on");
     $("mode-work").classList.remove("on");
+    permissionMenu.hidden = true;
     $("workbar").hidden = false;
     $("workinfo").textContent = "Pro mode: connected to your terminal Claude Code session. Permissions are handled there.";
     setBusy(false);
@@ -221,6 +317,8 @@ function renderMode() {
   }
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
+  permissionMenu.hidden = !work;
+  menuRefreshers.forEach((refresh) => refresh());
   $("mode-chat").classList.toggle("on", !work);
   $("mode-work").classList.toggle("on", work);
   $("workbar").hidden = !(work || wantWork);
