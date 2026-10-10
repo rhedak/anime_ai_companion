@@ -10,14 +10,11 @@ A local, browser-based anime companion that is **drawn by code and driven by
 Claude Code**. You can chat with her, ask her to redesign herself, and work with
 her on real tasks (run commands, edit files) as in a normal Claude Code session.
 
-Two ways to work, same screen:
-
-| | Normal mode | Pro mode |
-| --- | --- | --- |
-| Who owns the Claude Code session | The Node server (headless `claude`) | Your own terminal (`claude`, interactive) |
-| Who decides permissions | The browser: pre-approved list, or approve in the chat | The terminal: its own prompts or auto mode |
-| Browser is | The whole product | A face and chat UI for the terminal session |
-| Audience | Anyone | You, with a terminal open in parallel |
+One way to work: the Node server owns a headless `claude` session, and the browser decides permissions
+(a pre-approved list, or approve in the chat). *Pro mode* (your own interactive terminal session driving the
+browser through a channel) was built in phases 3 and 4 below and later **removed**: the default mode grew
+permission modes, `/compact`, `/resume`, images, and an opt-in to load your own Claude Code setup, which
+covered what it was a workaround for. Those phases are kept as history.
 
 ## Principles
 

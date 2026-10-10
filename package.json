@@ -33,15 +33,12 @@
   "scripts": {
     "start": "node src/server.ts",
     "open": "node src/server.ts --open",
-    "attach": "node src/attach-cli.ts",
     "dev": "node --watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "ws": "^8.18.0",
-    "zod": "^4.6.5"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

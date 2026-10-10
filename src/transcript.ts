@@ -40,12 +40,6 @@ export class Transcript {
     this.pending += text;
   }
 
-  /** A complete message that did not stream (pro mode). */
-  say(text: string): void {
-    this.flush();
-    this.items.push({ type: "bot", text });
-  }
-
   tool(event: Extract<TranscriptItem, { type: "tool" }>): void {
     this.flush(); // text before a tool call is its own message
     const known = this.items.find((i) => i.type === "tool" && i.id === event.id);

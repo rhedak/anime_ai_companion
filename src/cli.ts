@@ -4,7 +4,6 @@
  *
  *   anaico                    start the server in work mode for this folder, and open the browser
  *   anaico --chat             start in chat mode instead (the folder is still pre-filled)
- *   anaico --pro [claude args]   also start Claude Code in this folder with the companion channel
  *   anaico --daemon           run the server in the background; it keeps running after the terminal closes
  *   anaico --status | --stop | --restart    look at, stop or restart that background server
  *
@@ -20,14 +19,12 @@ const port = Number(process.env.PORT ?? 3737);
 const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: anaico [--chat] [--pro] [--no-open] [claude args...]
+  console.log(`Usage: anaico [--chat] [--no-open]
        anaico --daemon [--chat] [--no-open]
        anaico --status | --stop | --restart [--chat] [--no-open]
 
   (no flags)   start the companion in work mode for the current folder and open the browser
   --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
-  --pro        also start Claude Code in the current folder with the companion channel;
-               every other argument goes to claude (e.g. --permission-mode auto)
   --no-open    do not open the browser
 
   --daemon     run the server in the background; it keeps running after you close the terminal.
@@ -42,11 +39,14 @@ const daemon = args.includes("--daemon");
 const status = args.includes("--status");
 const stop = args.includes("--stop");
 const restart = args.includes("--restart");
-const pro = args.includes("--pro");
 const chat = args.includes("--chat");
 const open = !args.includes("--no-open");
-const own = new Set(["--pro", "--no-open", "--chat", "--daemon", "--status", "--stop", "--restart"]);
-const rest = args.filter((a) => !own.has(a));
+const known = new Set(["--no-open", "--chat", "--daemon", "--status", "--stop", "--restart", "--help", "-h"]);
+const unknown = args.filter((a) => !known.has(a));
+if (unknown.length) {
+  console.error(`Unknown option: ${unknown.join(" ")}${unknown.includes("--pro") ? " (the --pro terminal mode was removed; use the Work mode in the browser, and /setup on to load your own Claude Code setup)" : ""}\nTry: anaico --help`);
+  process.exit(2);
+}
 const url = `http://127.0.0.1:${port}`;
 
 async function serverUp(): Promise<boolean> {
@@ -123,10 +123,6 @@ function startDaemon(): number {
 }
 
 if (status || stop || restart || daemon) {
-  if (pro) {
-    console.error("--pro needs this terminal; it cannot be combined with the background server.");
-    process.exit(2);
-  }
   const saved = readDaemon();
   const running = saved !== null && isOurServer(saved.pid);
 
@@ -194,16 +190,5 @@ function stopServer(): void {
 process.on("SIGINT", () => { stopServer(); process.exit(130); });
 process.on("SIGTERM", () => { stopServer(); process.exit(143); });
 
-if (!pro) {
-  if (!server) process.exit(0); // nothing of ours to wait for
-  console.log("Companion running. Press Ctrl+C to stop.");
-} else {
-  const attach = spawn(process.execPath, [join(root, "src/attach-cli.ts"), ...rest], {
-    cwd: process.cwd(),
-    stdio: "inherit",
-  });
-  attach.on("exit", (code) => {
-    stopServer();
-    process.exit(code ?? 0);
-  });
-}
+if (!server) process.exit(0); // nothing of ours to wait for
+console.log("Companion running. Press Ctrl+C to stop.");

@@ -107,7 +107,7 @@ terminal (its output goes to `data/server.log`). Take the same `--chat` and `--n
 starts it again in the folder you run it from (use it after an update, or to change folder or mode).
 Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
 that is running in another terminal. The server only listens on `127.0.0.1`, and a background server is
-no different. `--daemon` cannot be combined with `--pro`.
+no different.
 
 ## Changing how it looks
 
@@ -155,7 +155,7 @@ each); you can also paste an image or drop files onto the chat. The browser shri
 than 1568 px on its long edge first (a resized GIF or WebP loses its animation), and the server checks
 the type, the real file contents and the sizes again. Pictures go to the model as they are and a picture
 without text works too. Only a count is kept in the saved chat log, so after a reload the thumbnails give
-way to "🖼 2 images". Pictures cannot be sent to a terminal session (pro mode). With Ollama they need
+way to "🖼 2 images". With Ollama they need
 a vision model (e.g. `llava`), and only the message that carries them sees them.
 
 ## Slash commands
@@ -189,28 +189,6 @@ Anything else that looks like `/word` is reported as unknown instead of being se
 need Claude Code (`/compact`, `/cost`, `/resume`, `/work`, `/permissions`, `/plan`, `/rc`, `/rewind`) say
 so plainly when another brain, such as Ollama, is active, instead of pretending to work.
 
-
-## Pro mode: your own terminal session
-
-Prefer your normal terminal? Keep the server running (`npm start`), then start Claude Code *with the
-companion attached*, in whatever project you like:
-
-```bash
-cd ~/my-project
-npm --prefix ~/anime_ai_companion run attach -- --permission-mode auto   # extra args go to `claude`
-```
-
-The browser now talks to **that** session: your messages arrive in it as `<channel>` events, and she
-answers through a `reply` tool, so she speaks, emotes and changes her look in the browser while you
-keep the full terminal UI. Permissions are handled in the terminal, exactly as in any Claude Code
-session (including auto mode). Close the session and the browser returns to chat mode.
-
-What to expect: it uses Claude Code's *channels*, a research-preview feature, so Claude Code asks you
-once per start to confirm the development channel (choose "I am using this for local development") and
-shows a harmless "no MCP server configured with that name" line. It needs a claude.ai login (Pro is
-fine) and an interactive session, not `-p`. Replies arrive whole instead of streaming. The channel is
-a local shim (`src/channel-shim.ts`) that talks to the server over `127.0.0.1` with a random token in
-`data/attach-token`; only one terminal can attach at a time.
 
 ## How it works
 
@@ -253,8 +231,7 @@ this once a week at startup (local check only, no network); `COMPANION_NO_NUDGE=
 
 Because the server can run Claude Code, it is built to be reachable only by you:
 
-- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin; the terminal
-  link needs a random token (`data/attach-token`, mode 0600) and refuses anything that looks like a browser.
+- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin.
 - The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
   click the approval buttons for you).
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,

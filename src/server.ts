@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -8,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
 import { shareNudge } from "./share-nudge.ts";
-import { TerminalLink } from "./terminal-link.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { findAvatarTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
@@ -46,7 +44,6 @@ const avatar = new AvatarService({
 await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
-const personaAttached = await readFile(join(root, "persona-attached.md"), "utf8");
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
@@ -152,7 +149,7 @@ const meterInfo = () => {
 
 const modeInfo = () => ({
   type: "mode",
-  mode: link.connected ? "attached" : mode,
+  mode,
   provider: settings.provider,
   canUseTools: provider.canUseTools,
   ollamaModels,
@@ -232,14 +229,11 @@ const server = createServer(async (req, res) => {
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
-// Browsers connect on /ws (only from our own origin); a terminal session's channel shim
-// connects on /attach with the token from data/attach-token.
+// Browsers connect on /ws, and only from our own origin.
 server.on("upgrade", (req, socket, head) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   if (path === "/ws" && allowedOrigins.has(String(req.headers.origin))) {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
-  } else if (path === "/attach" && link.handleUpgrade(req, socket, head)) {
-    // handled by the link
   } else {
     socket.destroy();
   }
@@ -256,9 +250,7 @@ const broadcast = (msg: unknown) => {
   }
 };
 
-const attachToken = randomBytes(24).toString("hex");
 await mkdir(join(root, "data"), { recursive: true });
-await writeFile(join(root, "data/attach-token"), attachToken, { mode: 0o600 });
 
 /** Save the visible log and the session it belongs to (debounced a little: turns end often). */
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -307,37 +299,17 @@ function withNotes(userText: string): string {
   return notes.length ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}` : userText;
 }
 
-// Pro mode: a terminal Claude Code session connected through the channel shim.
-const link = new TerminalLink({
-  token: attachToken,
-  persona: () => personaBase + "\n" + avatar.promptSection() + "\n" + personaAttached,
-  onSay: (text) => {
-    makeTagApplier()(text);
-    // Let avatar changes land before she "speaks", so the new look is there for the words.
-    avatar.settled().finally(() => {
-      transcript.say(text);
-      broadcast({ type: "say", text });
-    });
-  },
-  onChange: () => {
-    if (link.connected) provider.close(); // one brain at a time
-    pendingPermissions.clear();
-    broadcast(modeInfo());
-  },
-});
-
 /** Tells the user something in their chat log only (not stored, not sent to other tabs). */
 type Say = (text: string) => void;
 
 /** Why a settings change cannot happen right now, or null. */
-function cannotChange(what: string): string | null {
-  if (link.connected) return `A terminal session is connected: ${what} there, or close it first.`;
+function cannotChange(): string | null {
   if (provider.busy) return "Wait for her to finish the current reply first.";
   return null;
 }
 
 async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
-  const blocked = cannotChange("switch modes");
+  const blocked = cannotChange();
   if (blocked) return say(blocked);
   if (wanted === "work") {
     if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code for work mode.");
@@ -356,7 +328,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
 /** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
 async function changeEffort(value: Effort | "default", say: Say): Promise<void> {
   if (settings.provider !== "claude") return say("Effort only applies to Claude.");
-  const blocked = cannotChange("change the effort");
+  const blocked = cannotChange();
   if (blocked) return say(blocked);
   settings.effort = value;
   await saveSettings(settingsPath, settings);
@@ -365,7 +337,7 @@ async function changeEffort(value: Effort | "default", say: Say): Promise<void> 
 }
 
 function changeClaudeSetup(on: boolean, say: Say): void {
-  const blocked = cannotChange("change this");
+  const blocked = cannotChange();
   if (blocked) say(blocked);
   else if (!provider.canUseTools) say("This model cannot use tools, so there is no Claude Code setup to load.");
   else {
@@ -379,8 +351,7 @@ function changeClaudeSetup(on: boolean, say: Say): void {
 }
 
 function changePermissionMode(value: PermissionMode, say: Say): void {
-  if (link.connected) say("A terminal session is connected: permissions are handled there.");
-  else if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
+  if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else {
     permissionMode = value;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
@@ -429,7 +400,6 @@ const slashCommands: Record<
     help: "summarise the conversation to free up context",
     claudeOnly: true,
     run: ({ text, say }) => {
-      if (link.connected) return say("A terminal session is connected: use /compact there.");
       if (provider.busy) return say("Wait for her to finish the current reply first.");
       transcript.user(text);
       broadcast({ type: "user", text });
@@ -476,7 +446,7 @@ const slashCommands: Record<
       const current = mode === "work" ? settings.workModel : settings.chatModel;
       if (!args) return say(`Model: ${current} (${mode} mode)`);
       if (!/^[A-Za-z0-9][\w.\-\[\]]{0,59}$/.test(args)) return say("That does not look like a model name.");
-      const blocked = cannotChange("change the model");
+      const blocked = cannotChange();
       if (blocked) return say(blocked);
       if (mode === "work") settings.workModel = args;
       else settings.chatModel = args;
@@ -566,7 +536,7 @@ function ago(date: Date): string {
 
 async function resumeCommand(args: string, say: Say): Promise<void> {
   if (!provider.resume) return say("/resume needs Claude Code; this model has no saved sessions.");
-  const blocked = cannotChange("resume there");
+  const blocked = cannotChange();
   if (blocked) return say(blocked);
   const cwd = sessionCwd();
   if (!args) {
@@ -681,7 +651,6 @@ wss.on("connection", (ws) => {
       const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
       const images = parseImages(msg.images);
       if (typeof images === "string") return say(images);
-      if (images.length && link.connected) return say("Images cannot be sent to a terminal session; attach them there.");
       const command = images.length ? null : parseSlash(msg.text);
       if (command) {
         const known = slashCommands[command.name];
@@ -693,8 +662,7 @@ wss.on("connection", (ws) => {
       }
       transcript.user(msg.text, images.length);
       broadcast({ type: "user", text: msg.text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
-      if (link.connected) link.send(withNotes(msg.text));
-      else runTurn(msg.text, { images });
+      runTurn(msg.text, { images });
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
       const request = pendingPermissions.get(msg.id);
@@ -721,7 +689,6 @@ wss.on("connection", (ws) => {
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
-      if (link.connected) return notice("A terminal session is connected. Close it first.");
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       if (msg.provider === "ollama") {
         await refreshOllamaModels();

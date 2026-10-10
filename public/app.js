@@ -88,8 +88,7 @@ function addUserMsg(text, pics = [], count = pics.length) {
 }
 
 function setBusy(on) {
-  // In pro mode replies come whenever the terminal session sends them, so never lock the input.
-  busy = on && state.mode !== "attached";
+  busy = on;
   send.disabled = on || !ws || ws.readyState !== WebSocket.OPEN;
   if (busy) markActivity();
   renderWorking();
@@ -308,7 +307,7 @@ function renderBrain() {
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
   ollamaMenu.hidden = !ollama;
-  effortMenu.hidden = ollama || state.mode === "attached";
+  effortMenu.hidden = ollama;
   $("effort").value = state.effort ?? "default";
   if (ollama) {
     const models = state.ollamaModels ?? [];
@@ -319,29 +318,14 @@ function renderBrain() {
   }
   const noTools = state.canUseTools === false;
   $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
-  $("provider").disabled = state.mode === "attached";
   menuRefreshers.forEach((refresh) => refresh());
 }
 
 function renderMode() {
   renderBrain();
-  const attached = state.mode === "attached";
-  $("mode-chat").disabled = attached;
-  $("mode-work").disabled = attached || state.canUseTools === false;
-  $("workrow").hidden = attached;
-  $("setuprow").hidden = attached || state.mode !== "work";
+  $("mode-work").disabled = state.canUseTools === false;
+  $("setuprow").hidden = state.mode !== "work";
   $("use-setup").checked = Boolean(state.claudeSetup);
-  $("attach").disabled = attached;
-  $("attach").title = attached ? "Images cannot be sent to a terminal session" : "Attach images (or paste or drop them)";
-  if (attached) {
-    $("mode-chat").classList.remove("on");
-    $("mode-work").classList.remove("on");
-    permissionMenu.hidden = true;
-    $("workbar").hidden = false;
-    $("workinfo").textContent = "Pro mode: connected to your terminal Claude Code session. Permissions are handled there.";
-    setBusy(false);
-    return;
-  }
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
   permissionMenu.hidden = !work;
@@ -456,25 +440,6 @@ function handle(msg) {
       if (msg.mode === "work") wantWork = false;
       renderMode();
       break;
-    case "say": {
-      // A whole message from the terminal session (pro mode), not a stream.
-      clearTimeout(calmTimer);
-      clearTimeout(talkTimer);
-      const { clean, emotion, gestures } = parseReply(msg.text);
-      if (emotion) avatar.setEmotion(emotion);
-      for (const g of gestures) avatar.gesture(g);
-      if (clean) {
-        addMsg("bot", clean);
-        showBubble(clean);
-        if (voice.enabled) voice.speak(clean);
-        else {
-          avatar.setTalking(true);
-          talkTimer = setTimeout(() => avatar.setTalking(false), Math.min(9000, 700 + clean.length * 45));
-        }
-      }
-      calmTimer = setTimeout(() => avatar.setEmotion("neutral"), 9000 + clean.length * 45);
-      break;
-    }
     case "looks": {
       $("undo-look").disabled = !msg.canUndo;
       const select = $("looks");
