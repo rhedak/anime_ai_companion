@@ -763,6 +763,17 @@ renderMode();
 let presetNames = [];
 let presetThumbs = null; // { name: svg } once the server has sent them
 
+/**
+ * Inline SVGs share one id namespace per page, and each drawing refers to ids such as the
+ * eye clip paths; without a prefix the thumbnails would all use the main avatar's, so their eyes vanish.
+ */
+function uniqueIds(svg, prefix) {
+  return svg
+    .replace(/\bid="([^"]+)"/g, (_, id) => `id="${prefix}${id}"`)
+    .replace(/url\(#([^)]+)\)/g, (_, id) => `url(#${prefix}${id})`)
+    .replace(/href="#([^"]+)"/g, (_, id) => `href="#${prefix}${id}"`);
+}
+
 function closeGallery() {
   document.querySelector(".gallery")?.remove();
 }
@@ -787,7 +798,7 @@ function openGallery() {
         const pic = document.createElement("span");
         pic.className = "preset-pic";
         // our own renderer's SVG; show the head and shoulders
-        if (presetThumbs?.[name]) pic.innerHTML = presetThumbs[name].replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
+        if (presetThumbs?.[name]) pic.innerHTML = uniqueIds(presetThumbs[name], `preset-${name}-`).replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
         item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name }));
         item.onclick = () => {
           closeGallery();
