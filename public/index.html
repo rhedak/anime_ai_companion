@@ -66,12 +66,18 @@
         <span class="dots"><i></i><i></i><i></i></span>
         <span id="working-text"></span>
       </div>
-      <div id="attachments" class="attachments" hidden></div>
-      <form id="form">
-        <button id="attach" type="button" class="ghost attach" title="Attach images (or paste or drop them)" aria-label="Attach images">📎</button>
-        <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+      <form id="form" class="composer">
+        <div id="attachments" class="attachments" hidden></div>
         <textarea id="input" rows="1" placeholder="Say something… or ask her to change her look" autofocus></textarea>
-        <button id="send" type="submit">Send</button>
+        <div class="composer-bar">
+          <button id="attach" type="button" class="icon attach" title="Attach images (or paste or drop them)" aria-label="Attach images">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          <button id="send" type="submit" class="icon send" title="Send" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
       </form>
       <footer class="credit">
         Drawn by <a href="https://github.com/rhedak/anime-character-creator" target="_blank" rel="noopener">anime-character-creator</a>
