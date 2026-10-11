@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { frameMime, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
@@ -133,4 +135,63 @@ test("served types follow the extension", () => {
   assert.equal(frameMime("a.png"), "image/png");
   assert.equal(frameMime("a.WEBP"), "image/webp");
   assert.equal(frameMime("a.jpeg"), "image/jpeg");
+});
+
+test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {
+  const img = png(10, 10);
+  const mine = await mkdtemp(join(tmpdir(), "frames-"));
+  const shipped = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    for (const [dir, credit] of [[mine, "my own"], [shipped, "shipped"]]) {
+      await mkdir(join(dir, "fan"));
+      await writeFile(join(dir, "fan", "neutral.png"), img);
+      await writeFile(join(dir, "fan", "credit.txt"), `${credit}\n\x07 line two`);
+    }
+    await mkdir(join(shipped, "only-shipped"));
+    await writeFile(join(shipped, "only-shipped", "neutral.png"), img);
+    await writeFile(join(shipped, "only-shipped", "NOTICE.md"), "terms");
+    assert.deepEqual(await listPacks(mine, shipped), ["fan", "only-shipped"]);
+
+    const fan = await readPack([mine, shipped], "fan", emotions);
+    assert.ok(fan.ok);
+    assert.equal(fan.pack.credit, "my own  line two"); // control characters never reach the page
+    assert.equal(packInfo(fan.pack).credit, "my own  line two");
+    assert.doesNotMatch(fan.pack.notes.join("\n"), /credit\.txt|NOTICE/);
+
+    const only = await readPack([mine, shipped], "only-shipped", emotions);
+    assert.ok(only.ok);
+    assert.equal(only.pack.credit, undefined);
+    assert.match(only.pack.notes.join("\n"), /terms of use: read NOTICE\.md in .*only-shipped/);
+    assert.deepEqual([...only.pack.files.keys()], ["neutral.png"]); // the text files are never served
+
+    await writeFile(join(shipped, "only-shipped", "credit.txt"), "x".repeat(301));
+    const long = await readPack([mine, shipped], "only-shipped", emotions);
+    assert.ok(long.ok);
+    assert.equal(long.pack.credit, undefined);
+    assert.match(long.pack.notes.join("\n"), /credit\.txt is longer than 300/);
+  } finally {
+    await rm(mine, { recursive: true, force: true });
+    await rm(shipped, { recursive: true, force: true });
+  }
+});
+
+test("the Miku pack that ships with the app is complete, and carries its credit and its terms", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
+  const r = await readPack(join(root, "packs"), "miku", names);
+  assert.ok(r.ok);
+  for (const emotion of names) {
+    const e = r.pack.emotions[emotion];
+    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  }
+  assert.equal(r.pack.files.size, names.length * 5);
+  assert.match(r.pack.credit ?? "", /Crypton Future Media, INC\. www\.piapro\.net/);
+  assert.match(r.pack.credit ?? "", /non-commercial/i);
+  const notes = r.pack.notes.join("\n");
+  assert.match(notes, /NOTICE\.md/);
+  assert.doesNotMatch(notes, /different size|Not used|No pictures for/); // nothing odd about the set itself
+  const notice = await readFile(join(root, "packs/miku/NOTICE.md"), "utf8");
+  for (const needed of ["Piapro Character License", "Non-commercial only", "sublicens", "piapro.net/license/pcl"]) {
+    assert.ok(notice.includes(needed), `NOTICE.md should mention "${needed}"`);
+  }
 });

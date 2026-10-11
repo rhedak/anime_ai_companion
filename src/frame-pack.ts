@@ -8,10 +8,13 @@
  *   happy.png, happy-blink.png, happy-talk1.png ...   the same for any emotion in emotions.json
  *
  * An emotion without pictures falls back to neutral, a missing blink means no blink, and missing talk
- * frames mean the page only bobs her. PNG, WebP and JPEG are accepted; SVG is not, because an image the
+ * frames mean the page only bobs her. Two optional text files describe where the pictures come from:
+ * `credit.txt` (one line, shown on the page the whole time the pack is on) and `NOTICE.md` (terms of use,
+ * which `/frames` points to). A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
  * server hands out must never be able to run script.
  */
-import { open, readdir, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface PackEmotion {
@@ -28,6 +31,8 @@ export interface FramePack {
   files: Map<string, { path: string; mtimeMs: number }>;
   /** Things the user should know: odd sizes, files that were not understood, emotions that fall back. */
   notes: string[];
+  /** The one-line credit from credit.txt, shown wherever the pack is. */
+  credit?: string;
 }
 
 export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: string };
@@ -35,10 +40,12 @@ export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: st
 /** What the page needs to show a pack. The urls carry the file's change time so a replaced picture is refetched. */
 export interface PackInfo {
   name: string;
+  credit?: string;
   emotions: Record<string, { idle: string; blink?: string; talk: string[] }>;
 }
 
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
+const MAX_CREDIT = 300;
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 const FRAME_FILE = /^([a-z][a-z0-9_]*)(?:-(blink)|-talk(\d{1,2}))?\.(png|webp|jpe?g)$/i;
@@ -48,21 +55,30 @@ export const isPackName = (name: string): boolean => PACK_NAME.test(name) && !na
 export const frameMime = (file: string): string =>
   /\.png$/i.test(file) ? "image/png" : /\.webp$/i.test(file) ? "image/webp" : "image/jpeg";
 
-/** The packs in a folder, by name. */
-export async function listPacks(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((e) => e.isDirectory() && isPackName(e.name))
-    .map((e) => e.name)
-    .sort((a, b) => a.localeCompare(b));
+/** The packs in these folders (the user's own first, then the ones shipped with the app), by name. */
+export async function listPacks(...dirs: string[]): Promise<string[]> {
+  const names = new Set<string>();
+  for (const dir of dirs) {
+    for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (e.isDirectory() && isPackName(e.name)) names.add(e.name);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /** Reads a pack's folder and works out which picture is which. Never throws for a bad folder. */
-export async function readPack(dir: string, name: string, emotions: string[]): Promise<PackResult> {
+export async function readPack(dirs: string | string[], name: string, emotions: string[]): Promise<PackResult> {
   if (!isPackName(name)) return { ok: false, reason: `"${name}" is not a usable pack name (letters, digits, space, . _ -).` };
-  const folder = join(dir, name);
-  const entries = await readdir(folder, { withFileTypes: true }).catch(() => null);
-  if (!entries) return { ok: false, reason: `There is no folder ${join("data/frames", name)}.` };
+  let folder = "";
+  let entries: Dirent[] | null = null;
+  for (const dir of [dirs].flat()) {
+    entries = await readdir(join(dir, name), { withFileTypes: true }).catch(() => null);
+    if (entries) {
+      folder = join(dir, name);
+      break;
+    }
+  }
+  if (!entries) return { ok: false, reason: `There is no pack called "${name}" in data/frames.` };
 
   const notes: string[] = [];
   const files = new Map<string, { path: string; mtimeMs: number }>();
@@ -103,7 +119,7 @@ export async function readPack(dir: string, name: string, emotions: string[]): P
     }
     result[emotion] = { idle: slot.idle, blink: slot.blink, talk: slot.talk.sort((a, b) => a[0] - b[0]).map(([, f]) => f) };
   }
-  if (!result.neutral) return { ok: false, reason: `${join("data/frames", name)} needs a neutral.png (her face at rest).` };
+  if (!result.neutral) return { ok: false, reason: `the pack "${name}" needs a neutral.png (her face at rest).` };
 
   const reference = sizes.get(result.neutral.idle);
   const odd = [...files.keys()].filter((f) => sizes.get(f) !== reference);
@@ -115,8 +131,15 @@ export async function readPack(dir: string, name: string, emotions: string[]): P
   }
   const plain = emotions.filter((e) => !result[e]);
   if (plain.length) notes.push(`No pictures for ${plain.join(", ")}: she shows neutral for those.`);
-  if (ignored.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN].png/.webp/.jpg): ${ignored.join(", ")}.`);
-  return { ok: true, pack: { name, emotions: result, files, notes } };
+  const known = new Set(["credit.txt", "NOTICE.md"]);
+  const unused = ignored.filter((f) => !known.has(f));
+  if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN].png/.webp/.jpg): ${unused.join(", ")}.`);
+  const credit = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .trim();
+  if (credit.length > MAX_CREDIT) notes.push(`credit.txt is longer than ${MAX_CREDIT} characters and was not used.`);
+  if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read NOTICE.md in ${folder} before you use or share it.`);
+  return { ok: true, pack: { name, emotions: result, files, notes, credit: credit && credit.length <= MAX_CREDIT ? credit : undefined } };
 }
 
 export function packInfo(pack: FramePack): PackInfo {
@@ -125,7 +148,7 @@ export function packInfo(pack: FramePack): PackInfo {
   for (const [emotion, e] of Object.entries(pack.emotions)) {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };
   }
-  return { name: pack.name, emotions };
+  return { name: pack.name, credit: pack.credit, emotions };
 }
 
 /** Width and height from the first bytes of a PNG, WebP or JPEG; null for anything else. */

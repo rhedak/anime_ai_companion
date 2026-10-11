@@ -861,6 +861,8 @@ function handle(msg) {
     case "pack":
       avatar.usePack(msg.pack);
       $("zoom").hidden = avatar.packed; // a set of pictures has one framing
+      $("pack-credit").textContent = msg.pack?.credit ?? "";
+      $("pack-credit").hidden = !msg.pack?.credit;
       break;
     case "frames":
       avatar.receiveFrames(msg);

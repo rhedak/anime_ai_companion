@@ -64,6 +64,8 @@ const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
 const framesDir = join(root, "data/frames");
+/** Where packs are looked for: the user's own first, then the ones that come with the app. */
+const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
 /** Reads the chosen pack's folder again, so pictures replaced on disk show on the next page load. */
 async function refreshPack(): Promise<string[]> {
@@ -71,7 +73,7 @@ async function refreshPack(): Promise<string[]> {
     activePack = null;
     return [];
   }
-  const result = await readPack(framesDir, settings.framePack, Object.keys(emotions));
+  const result = await readPack(packDirs, settings.framePack, Object.keys(emotions));
   activePack = result.ok ? result.pack : null;
   return result.ok ? result.pack.notes : [result.reason];
 }
@@ -716,11 +718,11 @@ const slashCommands: Record<
     run: async ({ args, say }) => {
       const wanted = args.trim();
       if (!wanted) {
-        const packs = await listPacks(framesDir);
+        const packs = await listPacks(...packDirs);
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
         return say(
           `${using} ` +
-            (packs.length ? `Packs in data/frames: ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
+            (packs.length ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
         );
       }
       if (wanted.toLowerCase() === "off") {
@@ -732,14 +734,20 @@ const slashCommands: Record<
         return say("Back to the drawn avatar.");
       }
       if (!isPackName(wanted)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-      const result = await readPack(framesDir, wanted, Object.keys(emotions));
+      const result = await readPack(packDirs, wanted, Object.keys(emotions));
       if (!result.ok) return say(result.reason);
       settings.framePack = wanted;
       await saveSettings(settingsPath, settings);
       activePack = result.pack;
       notesForModel.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
       broadcast(packMessage());
-      say([`Showing the pack "${wanted}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`, ...result.pack.notes].join("\n"));
+      say(
+        [
+          `Showing the pack "${wanted}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
+          ...(result.pack.credit ? [`Credit: ${result.pack.credit}`] : []),
+          ...result.pack.notes,
+        ].join("\n"),
+      );
     },
   },
   phone: {
