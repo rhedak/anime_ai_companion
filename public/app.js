@@ -53,6 +53,33 @@ function setMsgText(el, text) {
   }
 }
 
+/** The /phone card: a QR code for the first link, drawn from the server's rows of 1 and 0, and all the links. */
+function addPhoneCard(links, rows) {
+  const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. They work like a password, so keep them to yourself:");
+  const ns = "http://www.w3.org/2000/svg";
+  const n = rows.length;
+  const quiet = 4; // the blank border a scanner needs
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${n + 2 * quiet} ${n + 2 * quiet}`);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "QR code for the phone link");
+  svg.style.cssText = "display:block;width:min(240px,100%);margin:8px 0;background:#fff;border-radius:6px";
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("fill", "#000");
+  path.setAttribute(
+    "d",
+    rows.flatMap((row, y) => [...row].flatMap((cell, x) => (cell === "1" ? [`M${x + quiet} ${y + quiet}h1v1h-1z`] : []))).join(""),
+  );
+  svg.append(path);
+  const list = document.createElement("div");
+  list.style.cssText = "word-break:break-all;font-family:monospace;font-size:.85em";
+  list.textContent = links.join("\n");
+  list.style.whiteSpace = "pre-wrap";
+  div.append(svg, list);
+  log.scrollTop = log.scrollHeight;
+}
+
 function addMsg(kind, text) {
   const div = document.createElement("div");
   div.className = `msg ${kind}`;
@@ -748,6 +775,9 @@ function handle(msg) {
       break;
     case "notice":
       addMsg("sys", msg.text);
+      break;
+    case "phone":
+      if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String));
       break;
     case "status":
       statusText = msg.text;

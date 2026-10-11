@@ -5,6 +5,7 @@
  * this machine must carry a secret token, as a cookie the first visit to `/?t=<token>` sets. The pure
  * parts live here so they can be tested without a server.
  */
+import qrcode from "qrcode-generator";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -104,19 +105,32 @@ export function socketAllowed(
   );
 }
 
-/** IPv4 addresses other devices can reach this machine on, plus its Bonjour name (stable across DHCP changes). */
+/**
+ * IPv4 addresses other devices can reach this machine on, then its Bonjour name (stable across DHCP changes,
+ * but Android does not always resolve it). The Wi-Fi and Ethernet ports (`en0`...) come first: VPN tunnels
+ * (`utun`) have addresses a phone on the same network cannot use, so the first link is the one to try.
+ */
 export function lanHosts(interfaces = networkInterfaces(), ownName = hostname()): string[] {
-  const hosts: string[] = [];
-  const bonjour = ownName.endsWith(".local") ? ownName : `${ownName}.local`;
-  hosts.push(bonjour);
-  for (const list of Object.values(interfaces)) {
+  const physical: string[] = [];
+  const other: string[] = [];
+  for (const [name, list] of Object.entries(interfaces)) {
     for (const i of list ?? []) {
-      if (i.family === "IPv4" && !i.internal && !i.address.startsWith("169.254.")) hosts.push(i.address);
+      if (i.family !== "IPv4" || i.internal || i.address.startsWith("169.254.")) continue;
+      (/^(en|eth|wlan|wl)\d/.test(name) ? physical : other).push(i.address);
     }
   }
-  return hosts;
+  return [...physical, ...other, ownName.endsWith(".local") ? ownName : `${ownName}.local`];
 }
 
 export function phoneLinks(port: number, token: string, hosts = lanHosts()): string[] {
   return hosts.map((h) => `http://${h}:${port}/?t=${token}`);
+}
+
+/** A QR code as rows of "1" (dark) and "0", for the page to draw; scanning it opens the link. */
+export function qrRows(text: string): string[] {
+  const qr = qrcode(0, "M"); // the smallest version that fits, with moderate error correction
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  return Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => (qr.isDark(r, c) ? "1" : "0")).join(""));
 }

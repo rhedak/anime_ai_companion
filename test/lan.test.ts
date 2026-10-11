@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { cookieValue, gateRequest, hostHeaderAllowed, isLoopbackAddress, lanHosts, loadToken, newToken, phoneLinks, saveToken, socketAllowed, tokenMatches } from "../src/lan.ts";
+import { cookieValue, gateRequest, hostHeaderAllowed, isLoopbackAddress, lanHosts, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed, tokenMatches } from "../src/lan.ts";
 
 const token = newToken();
 const cookie = `other=1; anaico=${token}`;
@@ -84,10 +84,11 @@ test("a network WebSocket needs the cookie and a page from the same address", ()
   assert.equal(socketAllowed({ headers: { ...ok, host: "evil.example.com", origin: "http://evil.example.com" } }, token), false);
 });
 
-test("the phone links name this machine by its Bonjour name and by address", () => {
+test("the phone links list the Wi-Fi address first, VPN tunnels after it, and the Bonjour name last", () => {
   const hosts = lanHosts(
     {
       lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true } as never],
+      utun4: [{ address: "10.2.0.2", family: "IPv4", internal: false } as never],
       en0: [
         { address: "192.168.1.20", family: "IPv4", internal: false } as never,
         { address: "fe80::1", family: "IPv6", internal: false } as never,
@@ -96,6 +97,20 @@ test("the phone links name this machine by its Bonjour name and by address", () 
     },
     "henriks-macbook",
   );
-  assert.deepEqual(hosts, ["henriks-macbook.local", "192.168.1.20"]);
-  assert.deepEqual(phoneLinks(3737, "T", hosts), ["http://henriks-macbook.local:3737/?t=T", "http://192.168.1.20:3737/?t=T"]);
+  assert.deepEqual(hosts, ["192.168.1.20", "10.2.0.2", "henriks-macbook.local"]);
+  assert.deepEqual(phoneLinks(3737, "T", hosts)[0], "http://192.168.1.20:3737/?t=T");
+});
+
+test("the QR code is a square grid of 1 and 0 with the three finder squares", () => {
+  const rows = qrRows(`http://192.168.1.20:3737/?t=${token}`);
+  assert.ok(rows.length >= 25 && rows.length <= 57);
+  assert.ok(rows.every((r) => r.length === rows.length && /^[01]+$/.test(r)));
+  const n = rows.length;
+  // each finder pattern is a 7x7 ring with a solid 3x3 centre, in three corners (not bottom right)
+  for (const [r, c] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
+    assert.equal(rows[r].slice(c, c + 7), "1111111");
+    assert.equal(rows[r + 1].slice(c, c + 7), "1000001");
+    assert.equal(rows[r + 3].slice(c + 2, c + 5), "111");
+  }
+  assert.notEqual(rows[n - 7].slice(n - 7, n - 7 + 7), "1111111");
 });

@@ -22,7 +22,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
-import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
+import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -506,6 +506,8 @@ interface CommandContext {
   /** The full line as typed. */
   text: string;
   say: Say;
+  /** Sends one message to the page that typed the command (not stored, not sent to other tabs). */
+  reply: (msg: unknown) => void;
   /** The command came from a device on the network (--lan), not from this machine. */
   remote: boolean;
 }
@@ -672,7 +674,7 @@ const slashCommands: Record<
   },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
-    run: async ({ args, say, remote }) => {
+    run: async ({ args, say, reply, remote }) => {
       if (remote) return say(remoteRefusal);
       if (!lan) return say("Phone access is off. Restart with `anaico --lan` (or `npm start -- --lan`) to turn it on; it is off again at every start.");
       if (args.trim() === "new") {
@@ -680,7 +682,8 @@ const slashCommands: Record<
         for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
         say("Made a new link. Phones that used the old one are signed out.");
       }
-      say(`Open one of these on the phone. It works like a password, so keep it to yourself:\n${phoneLinks(port, lanToken).join("\n")}`);
+      const links = phoneLinks(port, lanToken);
+      reply({ type: "phone", links, qr: qrRows(links[0]) });
     },
   },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
@@ -1025,7 +1028,7 @@ wss.on("connection", (ws) => {
         else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
         else if (known.claudeOnly && settings.provider !== "claude") {
           say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
-        } else await known.run({ args: command.args, text: msg.text, say, remote });
+        } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
         return;
       }
       if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");

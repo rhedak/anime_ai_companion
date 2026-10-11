@@ -146,10 +146,10 @@ a session from your phone while the computer does the work. It is **off at every
 each time, like a looser permission mode.
 
 1. Start with `--lan`. It prints a few links ending in `?t=<token>`, one per way the phone can reach this
-   computer (its `.local` name, then its addresses). Type `/phone` in the chat to see them again.
-2. Open one on the phone, on the same Wi-Fi. The first visit signs the phone in (a cookie) and removes the
-   token from the address, so the page stays open without it. Send yourself the link in a message app; the
-   token is long on purpose.
+   computer (the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name). Type
+   `/phone` in the chat to see them again, with a **QR code** for the first one: scan it with the phone's camera.
+2. Open the link on the phone, on the same Wi-Fi. The first visit signs the phone in (a cookie) and removes the
+   token from the address, so the page stays open without it.
 3. `/phone new` makes a new token and signs every phone out.
 
 What a phone can do: chat, answer the approval cards, stop her, switch between chat and work in the saved
@@ -161,7 +161,10 @@ The token is a password, and the connection is plain `http`, so use it only on a
 café Wi-Fi), and not through a tunnel you do not control. For use away from home, put the computer and the phone
 on a private network such as Tailscale and use the computer's address there; `--lan` lists it among the links.
 The token is saved in `data/lan-token` (only you can read it). On the phone's plain-`http` page the browser
-withholds the clipboard, so the copy buttons do nothing there. macOS asks once whether `node` may accept
+withholds the clipboard, so the copy buttons do nothing there. If the page does not load at all
+(`ERR_ADDRESS_UNREACHABLE`), the network is in the way, not the app: turn off a VPN on the phone, and look for
+"client isolation" or "AP isolation" in the router's Wi-Fi settings, which lets Wi-Fi devices reach the router
+but not each other. macOS asks once whether `node` may accept
 incoming connections: allow it.
 
 ## Her name
