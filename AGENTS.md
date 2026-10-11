@@ -80,7 +80,12 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 The server can run an agent that edits files and runs commands. These are not optional:
 
-- Listen on `127.0.0.1` only. Reject WebSocket connections from other origins.
+- Listen on `127.0.0.1` only. Reject WebSocket connections from other origins. The one exception is the
+  user's own `--lan` flag (`src/lan.ts`): off at every start, never a default, never an env var or a saved
+  setting. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
+  and `Origin`, and such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
+  turn on `/setup`, or change the project folder. Any new message type that does one of those must check
+  `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
 - Work mode shows the exact command or file change and waits, unless the user has chosen a
   looser mode. Do not add a skip-permissions flag, and do not make a loose mode the default.
 - Permission mode is memory only. Every server start comes back to Ask.
