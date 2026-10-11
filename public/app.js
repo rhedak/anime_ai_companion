@@ -747,24 +747,17 @@ function handle(msg) {
       if (msg.mode === "work") wantWork = false;
       renderMode();
       break;
-    case "looks": {
+    case "looks":
       $("undo-look").disabled = !msg.canUndo;
-      const select = $("looks");
-      const group = (label, options) => {
-        const g = document.createElement("optgroup");
-        g.label = label;
-        g.append(...options);
-        return g;
-      };
-      select.replaceChildren(
-        new Option("Looks…", ""),
-        ...(msg.names.length ? [group("My looks", msg.names.map((n) => new Option(n, `look:${n}`)))] : []),
-        ...(msg.presets?.length ? [new Option("Presets…", "gallery")] : []),
-      );
-      select.disabled = select.options.length === 1;
+      lastLooks = msg;
       presetNames = msg.presets ?? [];
+      renderLooksMenu();
       break;
-    }
+    case "packs":
+      packNames = msg.names ?? [];
+      activePackName = msg.active ?? null;
+      renderLooksMenu();
+      break;
     case "meter":
       meter = msg;
       renderMeter();
@@ -1211,7 +1204,28 @@ function renderMeter() {
 }
 setInterval(() => meter && renderMeter(), 60_000);
 
-// --- preset gallery ------------------------------------------------------------------
+// --- looks menu and its galleries (presets, packs) --------------------------------------
+let lastLooks = { names: [], presets: [] };
+let packNames = [];
+let activePackName = null; // the picture pack in use, or null for the drawn avatar
+
+function renderLooksMenu() {
+  const select = $("looks");
+  const group = (label, options) => {
+    const g = document.createElement("optgroup");
+    g.label = label;
+    g.append(...options);
+    return g;
+  };
+  select.replaceChildren(
+    new Option("Looks…", ""),
+    ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
+    ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
+    ...(packNames.length ? [new Option("Packs…", "packs")] : []),
+  );
+  select.disabled = select.options.length === 1;
+}
+
 let presetNames = [];
 let presetThumbs = null; // { name: svg } once the server has sent them
 
@@ -1230,17 +1244,52 @@ function closeGallery() {
   document.querySelector(".gallery")?.remove();
 }
 
-function openGallery() {
+/** One choice in the packs gallery: a pack's neutral picture, or null for the drawn avatar. */
+function packItem(name) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "preset";
+  item.title = name ?? "The avatar drawn by code";
+  if (name === activePackName) item.setAttribute("aria-current", "true");
+  const pic = document.createElement("span");
+  pic.className = "preset-pic";
+  if (name === null) {
+    pic.classList.add("plain");
+    pic.textContent = "drawn by code";
+  } else {
+    const img = document.createElement("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = `/pack-thumb/${encodeURIComponent(name)}`;
+    pic.append(img);
+  }
+  item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name ?? "Drawn avatar" }));
+  item.onclick = () => {
+    closeGallery();
+    if (name !== activePackName) ws?.send(JSON.stringify({ type: "pack-select", name }));
+  };
+  return item;
+}
+
+function openGallery(kind = "presets") {
   if (document.querySelector(".gallery")) return closeGallery();
+  const packs = kind === "packs";
   const box = document.createElement("div");
   box.className = "gallery";
   box.setAttribute("role", "dialog");
-  box.setAttribute("aria-label", "Choose a preset character");
+  box.setAttribute("aria-label", packs ? "Choose a picture pack" : "Choose a preset character");
   const grid = document.createElement("div");
   grid.className = "gallery-grid";
-  box.append(Object.assign(document.createElement("div"), { className: "gallery-title", textContent: "Presets: pick a character" }), grid);
+  box.append(
+    Object.assign(document.createElement("div"), {
+      className: "gallery-title",
+      textContent: packs ? "Packs: your own pictures instead of the drawn avatar" : "Presets: pick a character",
+    }),
+    grid,
+  );
   document.querySelector(".stage").append(box);
   const fill = () => {
+    if (packs) return grid.replaceChildren(...[null, ...packNames].map(packItem));
     grid.replaceChildren(
       ...presetNames.map((name) => {
         const item = document.createElement("button");
@@ -1265,7 +1314,7 @@ function openGallery() {
     grid.querySelector("button")?.focus(); // so arrow keys and Escape work from the start
   };
   fillAndFocus();
-  if (!presetThumbs) {
+  if (!packs && !presetThumbs) {
     gallerySlot = fillAndFocus;
     ws?.send(JSON.stringify({ type: "preset-thumbs" }));
   }
@@ -1288,7 +1337,8 @@ document.addEventListener("click", (e) => {
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {
   const value = $("looks").value;
-  if (value === "gallery") openGallery();
+  if (value === "gallery") openGallery("presets");
+  else if (value === "packs") openGallery("packs");
   else if (value.startsWith("look:")) ws?.send(JSON.stringify({ type: "look-load", name: value.slice(5) }));
   $("looks").value = "";
 });

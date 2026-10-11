@@ -78,6 +78,8 @@ async function refreshPack(): Promise<string[]> {
   return result.ok ? result.pack.notes : [result.reason];
 }
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
+/** The packs the Looks menu offers, and which one is on. */
+const packsMessage = async () => ({ type: "packs", names: await listPacks(...packDirs), active: settings.framePack });
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
@@ -299,6 +301,24 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": record.mime, "cache-control": "private, max-age=3600", ...securityHeaders });
     res.end(await readFile(record.path));
+    return;
+  }
+  const thumb = /^\/pack-thumb\/([^/]+)$/.exec(path);
+  if (thumb) {
+    // The gallery's picture of a pack: its neutral picture, for any pack in the folders, not only the one in use.
+    let name = "";
+    try {
+      name = decodeURIComponent(thumb[1]);
+    } catch {}
+    const found = isPackName(name) ? await readPack(packDirs, name, Object.keys(emotions)) : null;
+    const file = found?.ok ? found.pack.emotions.neutral.idle : "";
+    const body = found?.ok && (await readFile(found.pack.files.get(file)!.path).catch(() => null));
+    if (!body) {
+      res.writeHead(404).end("Not found");
+      return;
+    }
+    res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...securityHeaders });
+    res.end(body);
     return;
   }
   const frame = /^\/frames\/([^/]+)\/([^/]+)$/.exec(path);
@@ -566,6 +586,36 @@ function remoteBlocked(name: string, args: string): boolean {
   return false;
 }
 
+/** Shows a picture pack (by folder name) or, with null, the drawn avatar again. Used by /frames and the Looks menu. */
+async function choosePack(name: string | null, say: Say): Promise<void> {
+  if (name === null) {
+    if (!settings.framePack) return say("Already showing the drawn avatar.");
+    settings.framePack = null;
+    await saveSettings(settingsPath, settings);
+    await refreshPack();
+    notesForModel.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
+    broadcast(packMessage());
+    broadcast(await packsMessage());
+    return say("Back to the drawn avatar.");
+  }
+  if (!isPackName(name)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
+  const result = await readPack(packDirs, name, Object.keys(emotions));
+  if (!result.ok) return say(result.reason);
+  settings.framePack = name;
+  await saveSettings(settingsPath, settings);
+  activePack = result.pack;
+  notesForModel.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
+  broadcast(packMessage());
+  broadcast(await packsMessage());
+  say(
+    [
+      `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
+      ...(result.pack.credit ? [`Credit: ${result.pack.credit}`] : []),
+      ...result.pack.notes,
+    ].join("\n"),
+  );
+}
+
 /**
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
  * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
@@ -725,29 +775,7 @@ const slashCommands: Record<
             (packs.length ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
         );
       }
-      if (wanted.toLowerCase() === "off") {
-        settings.framePack = null;
-        await saveSettings(settingsPath, settings);
-        await refreshPack();
-        notesForModel.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
-        broadcast(packMessage());
-        return say("Back to the drawn avatar.");
-      }
-      if (!isPackName(wanted)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-      const result = await readPack(packDirs, wanted, Object.keys(emotions));
-      if (!result.ok) return say(result.reason);
-      settings.framePack = wanted;
-      await saveSettings(settingsPath, settings);
-      activePack = result.pack;
-      notesForModel.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
-      broadcast(packMessage());
-      say(
-        [
-          `Showing the pack "${wanted}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
-          ...(result.pack.credit ? [`Credit: ${result.pack.credit}`] : []),
-          ...result.pack.notes,
-        ].join("\n"),
-      );
+      await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
   },
   phone: {
@@ -1071,7 +1099,13 @@ wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
-  void refreshPack().then(() => ws.readyState === ws.OPEN && ws.send(JSON.stringify(packMessage())));
+  void refreshPack()
+    .then(async () => {
+      if (ws.readyState !== ws.OPEN) return;
+      ws.send(JSON.stringify(packMessage()));
+      ws.send(JSON.stringify(await packsMessage()));
+    })
+    .catch((err) => console.error("could not send the packs:", err));
   ws.send(JSON.stringify(modeInfo()));
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
@@ -1215,11 +1249,14 @@ wss.on("connection", (ws) => {
       broadcast(looksInfo());
     } else if (msg.type === "look-load" && typeof msg.name === "string") {
       if (await avatar.loadLook(msg.name)) {
+        if (settings.framePack) await choosePack(null, () => {}); // a drawn look was picked: show it
         notesForModel.push(`The user switched your look to their saved look '${msg.name}' from the menu.`);
         transcript.look([`load=${msg.name}`]);
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
       }
       broadcast(looksInfo());
+    } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
+      await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "preset-thumbs") {
       try {
         ws.send(JSON.stringify({ type: "preset-thumbs", svgs: await avatar.presetThumbnails() }));
@@ -1228,6 +1265,7 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "look-preset" && typeof msg.name === "string") {
       if (await avatar.loadPreset(msg.name)) {
+        if (settings.framePack) await choosePack(null, () => {}); // a drawn look was picked: show it
         transcript.look([`base=${msg.name}`]);
         notesForModel.push(`The user switched your look to the '${msg.name}' preset from the menu.`);
         broadcast({ type: "avatar", version: avatar.version, applied: [`base=${msg.name}`] });

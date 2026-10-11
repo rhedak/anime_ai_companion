@@ -68,12 +68,13 @@ file to delete a look.
 ## Your own pictures instead of the drawn avatar
 
 If you would rather show her as pictures from an AI image tool (or your own drawings), put a set of images
-in `data/frames/<name>/` and type `/frames <name>`: a rest picture, a blink, a few mouth openings, and one set
-per emotion if you like. Only `neutral.png` is required. `/frames off` goes back to the drawn avatar.
+in `data/frames/<name>/` and pick it from **Looks → Packs…** (or type `/frames <name>`): a rest picture, a blink, a few mouth openings, and one set
+per emotion if you like. Only `neutral.png` is required. Choosing the drawn avatar in that gallery (or `/frames off`) goes back, and so does
+picking one of your saved looks or a preset.
 `docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
 and how to get a consistent set out of an image tool.
 
-A **Hatsune Miku** pack comes with the app: `/frames miku`. She is Crypton's character, so that pack is
+A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/frames miku`). She is Crypton's character, so that pack is
 unofficial fan art for **non-commercial** use under the Piapro Character License, with a credit line shown on
 screen. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
 yourself: this project cannot grant you the right to use the character.

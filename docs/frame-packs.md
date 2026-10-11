@@ -2,7 +2,9 @@
 
 A frame pack is a folder of pictures she is shown with, in place of the body the character creator draws.
 Make the pictures with any image tool (or draw them), put them in `data/frames/<name>/`, and type
-`/frames <name>`. `/frames off` brings the drawn avatar back; `/frames` lists the packs.
+`/frames <name>`, or pick it from **Looks → Packs…**, a gallery that shows each pack's neutral picture next to
+the drawn avatar. `/frames off` (or choosing the drawn avatar there) brings it back, and so does choosing a
+saved look or a preset from the Looks menu; `/frames` lists the packs.
 
 The pictures are only ever shown from your own machine. Nothing is uploaded, and no Python is needed to
 *show* a pack (the drawn avatar's renderer still starts with the server).
