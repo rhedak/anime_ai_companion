@@ -7,6 +7,11 @@ Make the pictures with any image tool (or draw them), put them in `data/frames/<
 The pictures are only ever shown from your own machine. Nothing is uploaded, and no Python is needed to
 *show* a pack (the drawn avatar's renderer still starts with the server).
 
+## Where packs live
+
+Your own packs go in `data/frames/<name>/`. Packs that come with the app are in `packs/<name>/`; a pack of the
+same name in `data/frames` wins, so you can override one. `/frames` lists both.
+
 ## The files
 
 The names say what each picture is. There is no manifest.
@@ -19,7 +24,14 @@ The names say what each picture is. There is no manifest.
 | `happy.png`, `happy-blink.png`, `happy-talk1.png` ... | the same for any other emotion |
 
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
-`thinking`. When she shows an emotion the pack has no picture for, she shows `neutral`. A missing blink means
+`thinking`. Two optional text files describe where the pictures come from:
+
+- `credit.txt`: one line (up to 300 characters) shown on the page the whole time the pack is on. Use it when
+  the character belongs to someone who asks for credit.
+- `NOTICE.md`: terms of use. `/frames <name>` points to it. A pack of someone else's character needs one, and
+  anyone who shares such a pack should read the licence of that character first.
+
+When she shows an emotion the pack has no picture for, she shows `neutral`. A missing blink means
 she does not blink in that emotion; missing talk pictures mean she only bobs while she speaks. PNG, WebP and
 JPEG work, each up to 8 MB. (SVG is refused on purpose: a picture the server hands out must not be able to
 run script.)
@@ -74,13 +86,30 @@ picture swaps. So:
    cannot make a transparent background, generate on one flat colour and remove it the same way for every
    picture, or the edge of the hair will differ from frame to frame. An opaque picture also works; it just shows as
    a rectangle.
-5. **Check it before making the rest.** Open `neutral.png` and `neutral-blink.png` in an image viewer and
+5. **Let only the face change.** Even good edit tools move the hair or the outline by a pixel or two. Once
+   you have the edits, line each one up with `neutral.png` and copy over only the part that is meant to change: the
+   eyes for a blink, the mouth for a talk picture, the face for an emotion. Everything else then stays
+   identical across all pictures and she never twitches. `python/finish_pack.py` does it (its docstring says how to
+   name the edits and what to adjust); the Miku pack was made with it:
+   `uv run --with pillow --with numpy python python/finish_pack.py <folder> --white`.
+6. **Check it before making the rest.** Open `neutral.png` and `neutral-blink.png` in an image viewer and
    flip between them: only the eyelids should move. If the whole head shifts, redo the blink first.
    `/frames <name>` then shows it in the page.
 
 Start small. `neutral.png` alone already works; add `neutral-blink.png` and a `neutral-talk1.png` next, then the
 emotions you use most (`happy`, `thinking`). Names are case-insensitive, and files she does not recognise are
 listed and ignored.
+
+## The Miku pack
+
+`packs/miku/` was made from a base picture of the character cropped to the same framing as the Linnea sample
+(900 × 1024, the 580 × 660 ratio), then one edit per picture with Grok Imagine (35 pictures, about $2.50 in
+all). Each edit got the picture to change as its only reference and an instruction of this shape, which worked
+well: *"Edit Image 1. Output the same picture again with one change only. Keep everything else identical: same
+framing and crop, head position, pose, hair, outfit, colours, line weight and plain white background. The one
+change: <what changes>."* Blinks and mouth openings were edited from that emotion's own picture. The character
+is Crypton's, so the pack is not MIT: see `packs/miku/NOTICE.md`. The pictures are lossless WebP at 720 × 819
+(about 350 KB each): lossy encoding would put faint noise back into the parts that are meant to be identical.
 
 ## How it is built
 

@@ -73,6 +73,11 @@ per emotion if you like. Only `neutral.png` is required. `/frames off` goes back
 `docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
 and how to get a consistent set out of an image tool.
 
+A **Hatsune Miku** pack comes with the app: `/frames miku`. She is Crypton's character, so that pack is
+unofficial fan art for **non-commercial** use under the Piapro Character License, with a credit line shown on
+screen. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
+yourself: this project cannot grant you the right to use the character.
+
 ## Local models with Ollama
 
 Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing
@@ -379,7 +384,11 @@ Found something? Please open an issue, or report it privately if it is serious.
   (MIT), a program that draws them from parametric shapes, not by hand and not by image generation.
   Please keep saying so if you share what it makes.
 - [`ws`](https://github.com/websockets/ws) for WebSockets.
+- `packs/miku`: Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
+  [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
 
 ## Licence
 
-[MIT](LICENSE).
+[MIT](LICENSE), **except `packs/miku/`**, which shows a character that belongs to Crypton Future Media and
+may only be used non-commercially under the terms in [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md). Delete
+that folder if you build something commercial from this code.
