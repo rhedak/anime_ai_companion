@@ -39,7 +39,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | --- | --- | --- |
 | `COMPANION_MODEL` | `haiku` | model used for chat |
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
-| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code) or `ollama` (local models); also switchable in the UI |
+| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent) or `ollama` (local models); also switchable in the UI |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama |
 | `COMPANION_PRESET` | `linnea` | starting character (any preset of the creator) |
@@ -69,6 +69,15 @@ and choose the model in the dropdown. The same persona and the same `[emotion:..
 tags drive the avatar, though small models follow the tag protocol less reliably. Ollama is chat
 only: no tools, so Work mode is unavailable with it. Switching brains starts a fresh conversation.
 
+## Cursor
+
+Pick **Cursor** under *Brain* and she is driven by `cursor-agent` on your machine (Composer, Grok, or
+any other model that agent lists). Sign in once with `cursor-agent login`, or set `CURSOR_API_KEY`.
+The conversation still goes to Cursor; files stay on this machine. Chat mode is read-only. Work mode
+asks with the same approval card as Claude, and the Permissions menu adds **Run everything**
+(`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets
+to Ask every time the server starts. Auto and Accept edits stay Claude Code modes.
+
 ## Work mode
 
 Flip the **Work** switch, pick a project folder, and she can read and edit files and run commands
@@ -79,7 +88,8 @@ there, like a regular Claude Code session. She asks first:
 - The **Permissions** menu changes how approvals work: *Ask for each action* (the default),
   *Plan first* (she reads and proposes a plan; nothing changes until you approve it), *Accept edits*
   (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves
-  routine actions and blocks risky ones, so fewer cards reach you). It resets to *Ask* on every start
+  routine actions and blocks risky ones, so fewer cards reach you). With Cursor, the menu is Ask,
+  Plan and **Run everything** instead of Accept edits and Auto. It resets to *Ask* on every start
   and can be changed at any time, even while an approval card is waiting; the conversation carries on.
   Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
   Auto*, like the terminal's "yes, and don't ask again".
@@ -213,11 +223,11 @@ Type these in the chat box (`/help` lists them):
 | --- | --- |
 | `/compact [focus]` | summarise the conversation to free up context; she keeps the gist |
 | `/clear`, `/new` | start a fresh conversation, like **New chat** |
-| `/resume [number]` | list earlier conversations in the current folder (newest first), or continue one; the chat log is rebuilt from Claude Code's own session file |
+| `/resume [number]` | list earlier conversations in the current folder (newest first), or continue one; with Claude the chat log is rebuilt from Claude Code's session file, with Cursor she remembers it and the screen starts clean |
 | `/cost` | what the conversation has used: an API-price estimate and how full the context is |
 | `/model [name]` | show or set the model for the current mode (`/model opus`), until the server restarts |
 | `/chat`, `/work [folder]` | switch modes |
-| `/permissions [ask\|plan\|accept\|auto]`, `/plan` | the Permissions menu, from the keyboard |
+| `/permissions [ask\|plan\|accept\|auto\|everything]`, `/plan` | the Permissions menu, from the keyboard; `everything` is Cursor's Run everything |
 | `/rc`, `/remote-control` | not built in: explains why and prints the terminal command to use it yourself |
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |

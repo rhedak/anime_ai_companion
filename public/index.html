@@ -64,9 +64,11 @@
       <div hidden>
         <select id="provider" title="Which model powers her">
           <option value="claude">Claude Code</option>
+          <option value="cursor">Cursor</option>
           <option value="ollama">Ollama (local)</option>
         </select>
         <select id="ollama-model" title="Installed Ollama models"></select>
+        <select id="cursor-model" title="Models on your Cursor account"></select>
         <select id="effort" title="How hard she thinks: more effort is slower and uses more of your limits">
           <option value="default">Default effort</option>
           <option value="low">Low</option>
@@ -80,6 +82,7 @@
           <option value="plan">Plan first (no changes)</option>
           <option value="acceptEdits">Accept edits</option>
           <option value="auto">Auto (Claude decides)</option>
+          <option value="everything" hidden>Run everything</option>
         </select>
       </div>
       <form id="form" class="composer">

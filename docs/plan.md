@@ -1,259 +1,246 @@
-# Plan: from chat companion to a companion you can work with
+# Plan: Cursor, Composer and Grok as a brain
 
-Written 2026-10-10. Covers what exists, the two ways of working with her
-(browser-owned and terminal-owned sessions), the order to build them in, and
-what is still unknown.
+Written 2026-10-11. Replaces the 2026-10-10 roadmap. Phases 0–5 of that file are
+shipped (chat, work mode, permissions, Ollama, and the polish in the README).
+This file is only the next brain.
+
+**Status 2026-10-11:** implemented. Cursor is a brain via `cursor-agent acp`
+(not the SDK). Chat is Ask mode, work mode uses the approval card, and Run
+Everything is `--force`. Auto-review is not wired through ACP in the installed
+CLI, so Auto and Accept edits stay Claude-only.
 
 ## Goal
 
-A local, browser-based anime companion that is **drawn by code and driven by
-Claude Code**. You can chat with her, ask her to redesign herself, and work with
-her on real tasks (run commands, edit files) as in a normal Claude Code session.
+Pick **Cursor** in the Brain menu and talk to her through a local Cursor agent,
+on **Composer** or **Grok** (or any other model the account's catalog lists).
+The face, the tags, the chat log and the page stay as they are. Claude Code and
+Ollama stay.
 
-One way to work: the Node server owns a headless `claude` session, and the browser decides permissions
-(a pre-approved list, or approve in the chat). *Pro mode* (your own interactive terminal session driving the
-browser through a channel) was built in phases 3 and 4 below and later **removed**: the default mode grew
-permission modes, `/compact`, `/resume`, images, and an opt-in to load your own Claude Code setup, which
-covered what it was a workaround for. Those phases are kept as history.
+## What Cursor actually is here
 
-## Principles
+One provider, not three. Composer and Grok are model ids inside Cursor. The
+TypeScript SDK (`@cursor/sdk`) runs the same agent loop the IDE uses:
 
-- **One interface, two backends.** The chat UI, the avatar and the tag protocol
-  do not change between modes; only the session backend does.
-- **Local only.** The server binds to 127.0.0.1 and rejects foreign WebSocket
-  origins. It can run Claude Code, so it is never exposed to a network.
-- **Never bypass permissions.** Work mode asks, or uses an explicit allow-list.
-  No `--dangerously-skip-permissions`.
-- **The creator is a dependency, not a fork.** `../anime-character-creator` is
-  imported and never modified. Anything it lacks is requested there.
-- **The avatar and the persona are provider-agnostic.** Plain-text tags, so an
-  Ollama backend can use them unchanged.
+- **Local** means the loop and the files stay on this machine (`local: { cwd }`).
+  The model call still goes to Cursor. This is a third privacy story, next to
+  "Claude sees the conversation" and "Ollama never leaves the machine".
+- Auth is a user API key (`CURSOR_API_KEY`) or `Cursor.auth.login()` (a browser
+  login that mints one). The SDK does not pick up a desktop Cursor login by
+  itself. The key stays in the server process. The page never sees it.
+- Model ids come from `Cursor.models.list()` for that key. `composer-2.5` is the
+  current Composer id (`composer-2` is rerouted to it). Grok's id is whatever
+  the catalog returns for the account; hard-coding one will go stale.
+- Node 22.13 or newer. This repo already requires 22.18. Import `@cursor/sdk`
+  directly. The app has no build step, so the bundled single-file entry is the
+  wrong one.
 
-## Where we are (done)
+Cloud agents (a Cursor VM, a cloned repo, a PR) are out of scope. So is calling
+xAI's API directly: Grok arrives as a Cursor model, or not at all.
 
-- Browser UI: chat, speech bubble, close-up / full-body toggle, "Reset look".
-- `claude -p` headless session over stream-json, Haiku by default, chat only
-  (`--tools ""`), persona appended to the system prompt, claude.ai connectors and
-  user settings switched off to keep turns small.
-- Avatar drawn by the creator through a Python worker. Emotions
-  (`[emotion:x]`) pick pre-rendered frames; the browser flips frames to blink and
-  move her mouth while text streams.
-- Self-customisation: `[avatar key=value ...]` is parsed as it streams, validated
-  and coerced in Python, applied and saved to `data/avatar.json`. Rejected keys are
-  reported back to the model on its next turn.
-- Provider interface (`src/providers/types.ts`), with Claude Code as the first
-  implementation.
+## What already fits the provider interface
 
-Not yet verified: the page in a real browser (the Chrome extension was not
-connected when it was built). Phase 0 below covers this.
+`Provider` in `src/providers/types.ts` is enough. A `CursorProvider` maps:
 
-## Phases
+| Companion | SDK |
+| --- | --- |
+| `send` + `delta` | `agent.send`, `onDelta` `text-delta` (the tag parser already strips `[emotion]` / `[avatar]` / `[image]` from streamed text) |
+| attached pictures | `send({ text, images: [{ data, mimeType }] })` |
+| tool status lines | `tool_call` events (`running` / `completed` / `error`) |
+| stop button, Ctrl+C | `run.cancel()` |
+| session id, survive a restart | `agent.agentId`, `Agent.resume` |
+| fresh conversation | dispose and `Agent.create` again |
+| chat mode, no tools | `tools: []` |
+| plan mode | `mode: "plan"` then `mode: "agent"` |
+| token counts | `usage` events and `result.usage` |
+| images she shows, `!command`, Markdown, voice, looks | already in the server and the page; they do not care which brain spoke |
 
-> **Status 2026-10-10:** Phases 0 to 5 are done (see the notes under each). Next: Phase 6
-> polish, in any order.
+Chat mode is the same shape as Ollama: a system prompt, streamed text, tags,
+no tools. Work mode is where it stops fitting.
 
-### Phase 0: confirm what exists (small) ✅ done
+## The gap: she must still ask
 
-- Open the page, run a conversation, check animation timing, crop with hats and
-  full body, reconnect after a server restart, two tabs at once.
-- Tune `emotions.json` (brows are the weak lever; move lids and mouth).
-- Fix whatever shows up. Add a start script that opens the browser and stops
-  every child process on exit.
+Two different Cursor surfaces get confused here.
 
-Done when: a ten-minute conversation, including two redesigns, works without
-touching the terminal.
+**`@cursor/sdk` does not ask.** A local SDK agent runs shell, edit and write
+with no approval callback. `local.autoReview` lets the classifier allow or
+deny, and a denial is not raised to the user. Hooks are files on disk, with
+no programmatic callback. That path cannot drive the approval card.
 
-### Phase 1: session abstraction ✅ done
+**The Cursor agent can.** That is the agent in the IDE and in `cursor-agent`,
+not the SDK. `cursor-agent acp` speaks the Agent Client Protocol on stdin /
+stdout, the same shape as Claude's `--permission-prompt-tool stdio`:
 
-The provider interface only knows text deltas. Work mode needs more events, so
-widen it before building on it.
+1. `initialize`, then `authenticate` (`cursor_login`, or a key already set).
+2. `session/new` with the project folder as `cwd`. Modes are `agent`, `plan`
+   and `ask` (read-only).
+3. `session/prompt` sends the user message. `session/update` streams text
+   chunks and tool calls.
+4. Before a tool runs, the process sends `session/request_permission` and
+   **waits**. The request carries the tool call, including its raw input, and
+   options whose kinds are allow-once, allow-always and reject-once. The
+   client answers on stdin. No answer means the tool does not run.
+5. `session/cancel` stops the turn. `session/load` resumes one.
 
-- Events: `delta`, `done`, `error`, plus `tool_use` (name, short summary, result
-  status) and `permission_request` (id, tool, input, reason).
-- A `respondToPermission(id, allow | deny, remember?)` call.
-- Session info exposed to the UI: session ID, model, working directory, mode.
-- Keep `ClaudeCodeProvider` as the only implementation; add tests for the
-  stream-json parsing with recorded sample output (the CLI format can change
-  between versions).
+Allow once / Allow for this session / Deny already match those three kinds.
+`cursor-agent --auto-review` is the IDE's Auto-review (safe calls run, the
+rest prompt). `--force` (alias `--yolo`) is **Run Everything**: every tool
+runs, and an explicit deny rule still blocks. It is a permission choice, not
+the default.
 
-Done when: existing chat behaviour is unchanged and tool events reach the browser
-(shown as small status lines such as "running `npm test`...").
+On this machine `agent` on `PATH` is the Grok CLI. The Cursor binary is
+`cursor-agent`. Spawn that one.
 
-### Phase 2: Normal mode, work edition (browser owns the session) ✅ done
+`systemPrompt` is a second spike, smaller. On the SDK it **replaces** Cursor's
+coding prompt (local agents only, not kept across `Agent.resume`, and some
+accounts cannot set it — the first `send` then fails and names
+`--system-prompt`). Tool schemas still load. Chat wants the replacement:
+`persona.md` is the whole prompt, same as Ollama. ACP's `session/new` has no
+system-prompt field in the public schema, so the spike has to find where the
+persona goes (a Cursor extension field, a rule, or the SDK for chat only).
+Work mode needs a real task afterwards, because a replaced prompt can forget
+how to use tools.
 
-**What was built, and what the spike found.** `claude -p --permission-prompt-tool stdio` makes the
-CLI emit `control_request` / `can_use_tool` lines on stdout (tool, exact input, suggested rules) and
-wait for a `control_response` (`allow` with `updatedInput`, or `deny` with a message) on stdin. This
-is the protocol the Agent SDK's `canUseTool` uses, so no extra MCP bridge was needed. A denial comes
-back to the model as an error tool result, and it does not retry. "Allow for this session" echoes the
-suggested rule back with `destination: "session"`, so nothing is written to the project's settings.
-The wire format is not a documented API: `test/fixtures/claude-stream.jsonl` records it and
-`test/claude-stream.test.ts` pins it. Decisions: work mode defaults to Sonnet, `AskUserQuestion` is
-disabled (she asks in chat), `--setting-sources ""` keeps a folder's hooks from running, and the
-server always starts in chat mode. Not yet done from the list below: a UI to edit the pre-approved
-list (it lives in `data/settings.json`).
+`settingSources` stays empty, the way Claude runs with `--setting-sources ""`.
+A folder's hooks, rules and MCP servers stay unloaded unless we later add an
+explicit opt-in, off at every start, matching **Use my Claude Code setup**.
 
-
-1. **Spike (first, half a day):** how `--permission-prompt-tool` works on the
-   installed CLI version: the tool contract, the allow / deny response shape, and
-   what it receives for each tool. Record sample exchanges. This decides the
-   design below; if it does not fit, fall back to allow-lists only.
-2. **Permission bridge:** a small stdio MCP server, launched with the session via
-   `--mcp-config` and `--permission-prompt-tool`, that forwards each request to the
-   Node server and waits for the browser's answer. Timeout means deny.
-3. **UI:** a dialog in the chat, worded in character ("Can I run `npm test`?"),
-   showing the exact command or file path and diff. Buttons: allow once, allow for
-   this session, deny. No "always" in the first version.
-4. **Pre-approved list:** `--allowedTools` with a conservative default (read-only
-   tools and a few safe `Bash(...)` patterns), editable in a settings file the UI
-   can show.
-5. **Project folder:** the user picks the working directory (validated, must
-   exist, shown prominently). Default stays the empty `workspace/` sandbox.
-   `--add-dir` for extras.
-6. **Chat vs work toggle:** chat mode keeps `--tools ""` (cheap, safe, Haiku).
-   Work mode enables tools and offers a model choice, since Haiku may be too weak
-   for real coding. Switching restarts the process and resumes the session.
-7. **Show the session ID** in the UI with a copy button, so `claude --resume <id>`
-   works from a terminal (one writer at a time).
-
-Done when: from the browser you can ask her to fix a failing test in a chosen
-folder, approve the commands she asks to run, and see the result, with no
-terminal involved.
-
-Risks: prompt injection (file contents or web pages steering the model) is the
-reason permissions stay on and the dialog shows exact commands; Pro usage limits
-(work mode uses far more than chat); the persona must not make her less careful
-with tools.
-
-### Phase 3: Pro mode, spike first (terminal owns the session) ✅ done
-
-**Finding: it works.** Claude Code's *channels* (research preview; needs a claude.ai login, an
-interactive session, and `--dangerously-load-development-channels` for a custom channel) let an MCP
-server push messages into a running session and expose a reply tool. Verified in a real interactive
-session started in tmux: a browser message arrived as `← companion: ...`, the model answered through
-the `reply` tool with an `[emotion:...]` and an `[avatar ...]` tag, and both took effect in the
-browser. Quirks: a confirmation dialog on every start, a folder-trust dialog the first time in a
-folder, and a spurious "no MCP server configured with that name" banner (the channel works anyway).
-The interactive session starts in auto mode on Pro, which suits "the terminal manages permissions".
-Permission *relay* to the browser exists in the channel contract but is deliberately not used.
-
-Original questions, kept for the record:
-
-
-The terminal session runs the tools and owns permissions (including auto mode).
-The browser must be fed by it and, ideally, feed it. Two directions, two
-questions:
-
-**Out (session to browser)**, in order of preference:
-1. **MCP tools** the session calls: `say`, `set_emotion`, `set_avatar`. Clean and
-   structured, but the model must use them instead of plain replies.
-2. **Hooks** (for example on stop) that forward the final reply to the server.
-3. **Tailing the session transcript** on disk. Needs no setup, but is fragile and
-   whole-message only.
-
-**In (browser to session):**
-1. A push mechanism for MCP servers into a running session ("channels"): does it
-   exist in the installed version, and what does it allow?
-2. Fallback: a blocking `wait_for_user_message` tool loop. Works but hacky
-   (timeouts, context growth, no clean interrupt).
-3. Fallback of the fallback: no input from the browser; you type in the terminal
-   and she reacts in the browser. Still a good feature.
-
-Spike deliverable: a one-page finding with a working prototype of the best
-option, and a decision on what Pro mode can promise. Timebox: one day.
-
-Done when: you can run `claude` in a terminal with the companion plugged in and
-watch her speak, emote and change her look from that session.
-
-### Phase 4: Pro mode, build ✅ done
-
-Built: `src/channel-shim.ts` (the stdio MCP channel Claude Code spawns), `src/terminal-link.ts` (the
-server side: token-checked `/attach`, one terminal at a time, no browser Origin allowed),
-`npm run attach` (`src/attach-cli.ts`), `persona-attached.md`, a "say" message and an "attached" mode
-in the UI, and tests for the link's security rules. Original scope:
-
-
-Depends on the spike. Likely scope: an `Attached` backend implementing the same
-interface, a launcher (`npm run attach` printing the command or config to start
-the terminal session with the right MCP config and persona), and a status
-indicator in the UI showing which mode and session she is connected to.
-
-### Phase 5: other providers ✅ done
-
-Built: `src/providers/ollama.ts` (streaming `/api/chat`, in-memory history, friendly errors),
-`canUseTools` on the provider interface so the UI disables Work for tool-less backends, a Brain picker
-with the installed models, a persisted choice, and tests against a fake Ollama server. Not tested
-against a real Ollama (none installed here), only against its documented HTTP API. Original scope:
-
-
-- Ollama provider for chat mode (streaming over its local HTTP API). Persona and
-  tags carry over; tools do not, so work mode is unavailable there.
-- Provider picker in the UI; capabilities reported by the provider (`canUseTools`,
-  `streams`) so the UI hides what is unavailable.
-
-### Phase 6: polish (any order, as wanted) — in progress
-
-Done so far: gestures (`[gesture:wave]`, `[gesture:cheer]`), a security review of what the model can
-put on the page (free text is validated, SVG is sanitised, strict CSP), chat history across reloads and restarts (the Claude Code session is resumed), undo and
-saved looks (and `[avatar load=name]`), spoken replies (browser speech synthesis; recognition left out on
-privacy grounds), and trimming Claude Code's auto memory and unused prompt sections for the headless
-session. Still open: backgrounds and poses (the creator can pose arms and take a background), a
-renderer interface for VRM or Live2D, running the creator in the browser via Pyodide, editing the
-pre-approved tools in the UI.
-
-
-- Persist chat history across restarts.
-- Voice: browser speech recognition in, a TTS service out, with mouth frames
-  driven by the audio.
-- Richer avatar: backgrounds and poses (the creator can pose arms), idle
-  animation, a gallery of saved looks, undo for a redesign.
-- Avatar renderer behind an interface so a VRM or Live2D renderer can replace the
-  SVG frames, if desired.
-- Run the creator in the browser via Pyodide (as its own web tool does) so the app
-  needs no Python process, which also helps if it is ever hosted.
-
-## Decisions made
+## Decisions
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Brain | Headless `claude` CLI on the user's login | Uses the plan the user already pays for; tools come for free |
-| Default model | Haiku | Cheap on Pro limits; fine for chat |
-| Avatar engine | `anime-character-creator`, rendered by Python | Real vector character, already parametric, expressions built in |
-| Expression protocol | Plain-text tags in the reply | Provider-agnostic, streams, easy to validate |
-| Avatar animation | Pre-rendered frames flipped in the browser | Cheap, deterministic, no per-frame round trip |
-| Server | Node + TypeScript, no build step | Node runs `.ts` directly |
+| Shape | One `cursor` provider, model picked from the catalog | Composer and Grok are models, not backends |
+| Runtime | Local agent only | Files stay here; cloud agents are a different product |
+| First slice | Chat, `tools: []`, persona as `systemPrompt` | No permission hole, tags already work |
+| Work mode | `cursor-agent acp`, permission requests answered by the existing card | Same pause as the IDE agent. The SDK's unattended tools stay unused |
+| Run Everything | Cursor-only menu entry, off at every start, spawned with `--force` | The IDE mode: no card unless Cursor still asks. Deny rules still apply |
+| Defaults | Composer for both modes when it is in the catalog; otherwise the first listed model | Grok is offered when the catalog has it, not required |
+| Key | `CURSOR_API_KEY` in the environment | Same pattern as not storing Claude credentials |
+| Isolation | `settingSources` unset, no hooks written anywhere | A companion session must not arm the user's Cursor |
+| Claude-only commands | Stay honest | `/compact`, `/effort`, `/setup`, `/rc`, `/rewind` keep saying they need Claude Code |
 
-## Open questions
+## Phases
 
-1. **Terms of use:** is driving the `claude` CLI from a local app on a Pro plan
-   fine for personal use, and where is the line if the project is shared? Check
-   the current terms before publishing anything.
-2. **Which permission mechanism** the CLI exposes for external approval (Phase 2
-   spike).
-3. **Which input path** exists for a terminal-owned session (Phase 3 spike).
-4. **Haiku in work mode:** is it good enough, or does work mode need Sonnet by
-   default?
-5. **One session or many:** today there is one companion and one conversation,
-   shared by every open tab. Is that the desired model?
-6. **Sharing the project:** the creator is a path dependency
-   (`../anime-character-creator`). Fine locally; vendoring or a Pyodide build
-   would be needed for anyone else.
+### 1. Spike (first, before any UI)
+
+A short script, not wired to the server. Timebox: half a day.
+
+1. Log in, call `Cursor.models.list()`, write down the Composer and Grok ids
+   this account actually has, plus any params (Composer has `fast`).
+2. One local agent, `tools: []`, `systemPrompt` set to the persona. Send a
+   sentence. Confirm text deltas, an `[emotion:…]` tag, and that a follow-up
+   remembers the first turn.
+3. Send one image. Cancel a run mid-reply.
+4. Resume the same `agentId` in a second process.
+5. Work probe: spawn `cursor-agent acp` against a throwaway folder, ask for a
+   one-line edit and for `echo hi`, and confirm `session/request_permission`
+   arrives with the raw command or diff and does not run until the client
+   answers. Record the option ids Cursor actually sends (allow-once,
+   allow-always, reject-once). Repeat with `--force` and confirm the edit and
+   `echo hi` run with no card, and that a denied command (a `permissions.deny`
+   rule) still does not run. Note any call that still asks under Run Everything
+   (file deletion, a write outside the folder, the browser).
+6. Find where the persona goes. Try an ACP extension field if one is
+   advertised, and try the SDK `systemPrompt` for a tools-off chat. Note
+   whether this account allows `systemPrompt`.
+
+Done when: a page of findings with one real permission round-trip, and a
+decision on where `persona.md` is injected.
+
+### 2. Chat brain
+
+- `src/providers/cursor.ts` implementing `Provider`. `canUseTools` is false
+  while work mode is not allowed. `send` streams deltas and always `wait()`s.
+  Dispose the agent on `close`.
+- Startup error in the chat if the key is missing or the catalog call fails,
+  with the dashboard place to make a key. No key field in the page.
+- Brain menu gains Cursor. A model menu lists `displayName` from the catalog
+  (Composer, Grok, the rest). Switching brains starts a fresh conversation,
+  as Ollama already does.
+- Persist provider, model id and `agentId` the way Claude persists a session
+  id, so a restart resumes.
+- Usage line: model name, and tokens when a run reports them. Session and week
+  limits stay Claude-only (they are Claude Code's). `/cost` can show tokens
+  for this brain once `usage` is filled; dollar figures only if `getUsage()`
+  actually returns them.
+- `/model` sets a catalog id. An unknown id is refused with the list.
+- Tests: map a recorded `text-delta` / `tool_call` / `usage` sequence onto
+  `ProviderEvent`s. The live SDK stays out of CI (it needs a key and network).
+
+Done when: with a key in the environment, Brain → Cursor, a conversation shows
+emotion tags on her face, a picture attaches, Stop cuts the reply, and a
+server restart continues the same agent.
+
+### 3. Work mode
+
+Spawn `cursor-agent acp` with the project folder as `cwd`. Map
+`session/request_permission` onto the existing `permission` event, and
+`respondPermission` onto the JSON-RPC result:
+
+| Card | ACP outcome |
+| --- | --- |
+| Allow once | `allow-once` |
+| Allow for this session | `allow-always` |
+| Deny | `reject-once` |
+
+The card shows `rawInput` (the command or the write) and any diff in the tool
+call content. Pre-approved reads (`Read`, `Grep`, `Glob`) match today's
+allow-list, answered inside the provider without a card when Cursor offers
+that. `plan` mode is Plan. `--auto-review` is Auto, and a call it still
+escalates uses the same card. Accept-edits ships when the CLI exposes that
+mode on this session. `session/cancel` is the stop button.
+
+**Run Everything** is a fifth Permissions entry, shown only while the brain is
+Cursor. Choosing it restarts the ACP process with `--force` and reloads the
+session, the way a Claude permission change takes effect immediately. The
+label in the menu says that tools run without a card. It is not saved: every
+server start comes back to Ask, same as the other permission modes. Claude's
+menu does not gain this entry. Auto stays the classifier. `/permissions
+everything` selects it.
+
+A `session/request_permission` that still arrives in this mode (Cursor does
+this for some deletions, for writes outside the workspace, and for the
+browser) is shown on the same card. Deny rules from the CLI config still win,
+because `--force` means "allow unless explicitly denied". Home and `/` stay
+refused as a folder.
+
+The SDK stays out of work mode. `--force` is used only for this menu choice,
+never as the way the process is started.
+
+- `cwd` is the project folder. Home and `/` stay refused.
+- Project MCP and hooks stay unloaded unless we later add an explicit opt-in,
+  off at every start, matching **Use my Claude Code setup**.
+- `!command` already runs in the server for any work-mode brain. Leave it.
+- `/resume` uses `session/load` for this folder's Cursor sessions, not Claude
+  session files.
+- The footer session line shows the ACP session id. It is not a `claude --resume` command.
+
+Done when: in a chosen folder she can change a file and run a command under the
+rule the spike picked, the page says which rule that is, and opening an
+unfamiliar folder runs none of that folder's Cursor hooks.
+
+## Out of scope
+
+- Cloud agents, PRs, the Cloud Agents REST API.
+- A direct Grok or xAI chat provider.
+- Replacing Claude Code, or teaching Ollama tools.
+- VRM, Live2D, Pyodide, and a UI for the pre-approved tool list. Those stayed
+  open at the end of the old plan and are still not this work.
 
 ## Risks
 
-- **CLI format drift:** the stream-json events are not a stable API. Mitigation:
-  recorded fixtures and a version check at startup.
-- **Usage limits:** work mode can burn a Pro window quickly. Mitigation: show
-  usage from the rate-limit events the CLI already emits.
-- **Prompt injection through tools:** mitigated by permissions, a visible working
-  directory, exact commands in the approval dialog and no permission bypass.
-- **Persona vs. tools:** a strong persona can crowd out the coding behaviour of
-  Claude Code's own prompt. Test with a real task before calling work mode done.
-- **Two writers on one session:** the terminal and the server must not both send
-  messages. The UI should show who currently holds the session.
-
-## Suggested order
-
-Phase 0, then Phase 1, then the Phase 2 spike. If the spike works, finish
-Phase 2; run the Phase 3 spike next, and only then decide how much of Pro mode to
-build. Phases 5 and 6 can be picked up whenever there is time.
+- **Account flag.** `systemPrompt` can be disabled. Chat then has no persona.
+  The spike finds out before the menu item exists.
+- **Catalog drift.** Model ids and params change. The menu reads the catalog
+  at startup; CI never asserts a particular Grok id.
+- **Prompt vs tools.** Replacing the system prompt can make work mode worse at
+  coding. Phase 3 includes one real edit, not only a stream test.
+- **Unattended tools.** The SDK and `cursor-agent -p` skip the card with no
+  switch to turn them back on. Work mode goes through ACP. `--force` is only
+  Run Everything, chosen in the menu, and a request Cursor still sends is
+  still shown.
+- **Wrong binary.** `agent` on this machine is the Grok CLI. The provider
+  spawns `cursor-agent`.
+- **Cost.** Composer and Grok bill the Cursor plan, the same pool as the IDE.
+  The usage line has to show something, even if it is only tokens.
+- **SDK churn.** Stream shapes and tool args are explicitly unstable. Pin the
+  mapping behind one module and a fixture test, the way `claude-stream.ts` does.

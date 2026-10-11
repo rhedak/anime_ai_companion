@@ -330,12 +330,17 @@ const permEls = new Map();
 // and the menu only mirrors it, so call refresh() after changing a select from code.
 
 const menuDescriptions = {
-  provider: { claude: "Claude Code: the full model, tools in work mode", ollama: "A model running on your own machine (chat only)" },
+  provider: {
+    claude: "Claude Code: the full model, tools in work mode",
+    cursor: "Cursor agent: Composer, Grok and the rest of your account",
+    ollama: "A model running on your own machine (chat only)",
+  },
   "permission-mode": {
     manual: "She asks before each action",
     plan: "She plans, and changes nothing until you approve",
     acceptEdits: "File edits go ahead; other actions still ask",
     auto: "She runs on her own and pauses if anything looks unsafe",
+    everything: "Every tool runs, unless a deny rule blocks it. Resets to Ask next start",
   },
 };
 menuDescriptions.effort = {
@@ -376,7 +381,7 @@ function makeMenu(select, title) {
     pop.className = "menu-pop";
     pop.setAttribute("role", "menu");
     pop.append(Object.assign(document.createElement("div"), { className: "menu-title", textContent: title }));
-    for (const option of select.options) {
+    for (const option of [...select.options].filter((option) => !option.hidden)) {
       const item = document.createElement("button");
       item.type = "button";
       item.setAttribute("role", "menuitemradio");
@@ -429,6 +434,7 @@ function makeMenu(select, title) {
 }
 const providerMenu = makeMenu($("provider"), "Brain");
 const ollamaMenu = makeMenu($("ollama-model"), "Ollama model");
+const cursorMenu = makeMenu($("cursor-model"), "Cursor model");
 const effortMenu = makeMenu($("effort"), "Effort");
 const permissionMenu = makeMenu($("permission-mode"), "Permission mode");
 
@@ -436,15 +442,31 @@ function renderBrain() {
   $("provider").value = state.provider ?? "claude";
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
+  const cursor = state.provider === "cursor";
   ollamaMenu.hidden = !ollama;
-  effortMenu.hidden = ollama;
+  cursorMenu.hidden = !cursor;
+  effortMenu.hidden = ollama || cursor;
   $("effort").value = state.effort ?? "default";
+  for (const option of $("permission-mode").options) {
+    const claudeOnly = option.value === "acceptEdits" || option.value === "auto";
+    option.hidden = cursor ? claudeOnly : option.value === "everything";
+  }
   if (ollama) {
     const models = state.ollamaModels ?? [];
     picker.replaceChildren(
       ...(models.length ? models : [state.ollamaModel ?? "(no models found)"]).map((m) => new Option(m, m, false, m === state.ollamaModel)),
     );
     picker.disabled = models.length === 0;
+  }
+  if (cursor) {
+    const models = state.cursorModels ?? [];
+    const current = state.cursorModel ?? "";
+    $("cursor-model").replaceChildren(
+      ...(models.length ? models : [{ id: current, name: current || "(waiting for Cursor)" }]).map(
+        (m) => new Option(m.name || m.id, m.id, false, m.id === current),
+      ),
+    );
+    $("cursor-model").disabled = models.length === 0;
   }
   const noTools = state.canUseTools === false;
   $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
@@ -511,7 +533,7 @@ function renderMode() {
   renderName();
   renderBrain();
   $("mode-work").disabled = state.canUseTools === false;
-  $("setuprow").hidden = state.mode !== "work";
+  $("setuprow").hidden = state.mode !== "work" || state.provider !== "claude";
   $("use-setup").checked = Boolean(state.claudeSetup);
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
@@ -529,13 +551,15 @@ function renderMode() {
     info.textContent = "Pick the folder she may work in. She asks before changing anything.";
     return;
   }
-  const resume = `claude --resume ${state.sessionId}`;
+  const cursor = state.provider === "cursor";
+  const resume = cursor ? state.sessionId ?? "" : `claude --resume ${state.sessionId}`;
   const copy = document.createElement("button");
   copy.textContent = "copy";
-  copy.title = "Continue this conversation in a terminal (only one side should write at a time)";
+  copy.title = cursor ? "Cursor session id" : "Continue this conversation in a terminal (only one side should write at a time)";
   copy.onclick = () => navigator.clipboard?.writeText(resume).then(() => (copy.textContent = "copied"));
-  const pre = state.allowedTools.length ? `, without asking: ${state.allowedTools.join(", ")}` : "";
-  info.append(`${state.model}${pre} · terminal: `);
+  const pre = !cursor && state.allowedTools.length ? `, without asking: ${state.allowedTools.join(", ")}` : "";
+  const runEverything = cursor && state.permissionMode === "everything" ? " · Run everything: tools run unless a deny rule blocks them" : "";
+  info.append(`${state.model}${pre}${runEverything}${cursor ? " · session: " : " · terminal: "}`);
   const code = document.createElement("code");
   code.textContent = resume;
   info.append(code, copy);
@@ -583,10 +607,13 @@ function addPermission(req) {
   if (req.tool !== "ExitPlanMode") {
     const more = document.createElement("div");
     more.className = "perm-more";
-    if (state.permissionMode !== "acceptEdits" && /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(req.tool)) {
+    if (state.provider !== "cursor" && state.permissionMode !== "acceptEdits" && /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(req.tool)) {
       more.append(button("Allow, and accept all edits", "ghost", "allow", "acceptEdits"));
     }
-    if (state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
+    if (state.provider !== "cursor" && state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
+    if (state.provider === "cursor" && state.permissionMode !== "everything") {
+      more.append(button("Allow, and run everything", "ghost", "allow", "everything"));
+    }
     if (more.children.length) actions.append(more);
   }
   card.append(pre, actions);
@@ -967,6 +994,9 @@ $("permission-mode").addEventListener("change", () => {
 });
 $("ollama-model").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: "ollama", model: $("ollama-model").value }));
+});
+$("cursor-model").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "provider", provider: "cursor", model: $("cursor-model").value }));
 });
 $("mode-chat").addEventListener("click", () => {
   wantWork = false;
