@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -22,6 +22,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
+import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -32,8 +33,13 @@ const publicDir = join(root, "public");
 const workspace = join(root, "workspace");
 const customCssPath = join(root, "data/custom.css");
 const port = Number(process.env.PORT ?? 3737);
-// Local only: this server can run Claude Code, so never expose it on the network.
+// Local only unless `--lan` is passed: this server can run Claude Code, so reaching it from the network is an
+// opt-in made again at every start, and every request from the network needs the token (src/lan.ts).
 const host = "127.0.0.1";
+const lan = process.argv.includes("--lan");
+const bindHost = lan ? "0.0.0.0" : host;
+const lanTokenPath = join(root, "data/lan-token");
+let lanToken = lan ? await loadToken(lanTokenPath) : "";
 
 await mkdir(workspace, { recursive: true });
 const personaBase = await readFile(join(root, "persona.md"), "utf8");
@@ -237,7 +243,7 @@ const securityHeaders = {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
-    `connect-src 'self' ws://${host}:${port} ws://localhost:${port}`,
+    `connect-src 'self' ws://${host}:${port} ws://localhost:${port}`, // 'self' covers the phone's own address
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
@@ -247,7 +253,21 @@ const securityHeaders = {
   "referrer-policy": "no-referrer",
 };
 
+/** Pages and files go to this machine freely; over the network only with the token (see src/lan.ts). */
+function letThrough(req: IncomingMessage, res: ServerResponse): boolean {
+  if (isLoopbackAddress(req.socket.remoteAddress)) return true;
+  const gate = lan ? gateRequest(req, lanToken) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
+  if (gate.action === "allow") return true;
+  if (gate.action === "sign-in") {
+    res.writeHead(302, { "set-cookie": sessionCookie(lanToken), location: gate.location, "cache-control": "no-store", ...securityHeaders }).end();
+  } else {
+    res.writeHead(gate.status, { "content-type": "text/plain; charset=utf-8", ...securityHeaders }).end(gate.text);
+  }
+  return false;
+}
+
 const server = createServer(async (req, res) => {
+  if (!letThrough(req, res)) return;
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
   if (shown) {
@@ -289,11 +309,17 @@ const server = createServer(async (req, res) => {
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
-// Browsers connect on /ws, and only from our own origin.
+// Browsers connect on /ws, and only from our own origin. From the network (--lan) that also takes the token cookie.
+const remoteSockets = new WeakSet<WebSocket>();
 server.on("upgrade", (req, socket, head) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
-  if (path === "/ws" && allowedOrigins.has(String(req.headers.origin))) {
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  const local = isLoopbackAddress(req.socket.remoteAddress);
+  const ok = local ? allowedOrigins.has(String(req.headers.origin)) : lan && socketAllowed(req, lanToken);
+  if (path === "/ws" && ok) {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      if (!local) remoteSockets.add(ws);
+      wss.emit("connection", ws, req);
+    });
   } else {
     socket.destroy();
   }
@@ -480,6 +506,21 @@ interface CommandContext {
   /** The full line as typed. */
   text: string;
   say: Say;
+  /** The command came from a device on the network (--lan), not from this machine. */
+  remote: boolean;
+}
+
+/** What a phone may not do: anything that loosens approvals or reaches into this machine without a card. */
+const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
+const looserThanAsk = (mode: unknown) => mode !== "manual" && mode !== "plan";
+
+/** The slash commands that would loosen approvals, load the user's hooks, or point her at another folder. */
+function remoteBlocked(name: string, args: string): boolean {
+  const a = args.trim().toLowerCase();
+  if (name === "work") return a !== ""; // /work alone returns to the saved folder
+  if (name === "setup") return a === "on";
+  if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
+  return false;
 }
 
 /**
@@ -628,6 +669,19 @@ const slashCommands: Record<
         "/rewind is not available in the companion: it relies on Claude Code's own interactive checkpoints. " +
           `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
       ),
+  },
+  phone: {
+    help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
+    run: async ({ args, say, remote }) => {
+      if (remote) return say(remoteRefusal);
+      if (!lan) return say("Phone access is off. Restart with `anaico --lan` (or `npm start -- --lan`) to turn it on; it is off again at every start.");
+      if (args.trim() === "new") {
+        lanToken = await saveToken(lanTokenPath, newToken());
+        for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
+        say("Made a new link. Phones that used the old one are signed out.");
+      }
+      say(`Open one of these on the phone. It works like a password, so keep it to yourself:\n${phoneLinks(port, lanToken).join("\n")}`);
+    },
   },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
   export: { help: "download the conversation as a Markdown file", run: () => {} },
@@ -933,6 +987,7 @@ function runTurn(
 }
 
 wss.on("connection", (ws) => {
+  const remote = remoteSockets.has(ws);
   clients.add(ws);
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   ws.send(JSON.stringify(modeInfo()));
@@ -962,14 +1017,15 @@ wss.on("connection", (ws) => {
       const images = parseImages(msg.images);
       if (typeof images === "string") return say(images);
       const bang = images.length ? null : /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
-      if (bang) return void (await runBang(bang[1], say));
+      if (bang) return remote ? say(remoteRefusal) : void (await runBang(bang[1], say));
       const command = images.length ? null : parseSlash(msg.text);
       if (command) {
         const known = slashCommands[command.name];
         if (!known) say(`Unknown command /${command.name}. Try /help.`);
+        else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
         else if (known.claudeOnly && settings.provider !== "claude") {
           say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
-        } else await known.run({ args: command.args, text: msg.text, say });
+        } else await known.run({ args: command.args, text: msg.text, say, remote });
         return;
       }
       if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");
@@ -986,7 +1042,7 @@ wss.on("connection", (ws) => {
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
-      if (decision !== "deny" && permissionModes.includes(msg.mode) && request.tool !== "ExitPlanMode") {
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && looserThanAsk(msg.mode)) && request.tool !== "ExitPlanMode") {
         changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
@@ -995,8 +1051,9 @@ wss.on("connection", (ws) => {
         broadcast(modeInfo());
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
-      await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      await switchMode(msg.mode, remote ? undefined : msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pick-folder") {
+      if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       await chooseFolder((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "rename" && typeof msg.name === "string") {
       await rename(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
@@ -1006,8 +1063,10 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "effort" && (msg.value === "default" || isEffort(msg.value))) {
       await changeEffort(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "claude-setup" && typeof msg.value === "boolean") {
+      if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
+      if (remote && looserThanAsk(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
@@ -1145,8 +1204,9 @@ if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) 
     });
 }
 
-server.listen(port, host, () => {
+server.listen(port, bindHost, () => {
   console.log(`Companion ready: http://${host}:${port}  (${provider.name})`);
+  if (lan) console.log(`Phone access is on. Open one of these on the phone (it is a password, keep it to yourself):\n  ${phoneLinks(port, lanToken).join("\n  ")}`);
   if (process.argv.includes("--open")) openBrowser(`http://${host}:${port}`);
   void shareNudge(
     [

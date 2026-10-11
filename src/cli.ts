@@ -19,13 +19,15 @@ const port = Number(process.env.PORT ?? 3737);
 const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: anaico [--chat] [--no-open]
-       anaico --daemon [--chat] [--no-open]
-       anaico --status | --stop | --restart [--chat] [--no-open]
+  console.log(`Usage: anaico [--chat] [--no-open] [--lan]
+       anaico --daemon [--chat] [--no-open] [--lan]
+       anaico --status | --stop | --restart [--chat] [--no-open] [--lan]
 
   (no flags)   start the companion in work mode for the current folder and open the browser
   --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
   --no-open    do not open the browser
+  --lan        also let devices on your network in (your phone): it prints a link with a secret token, and
+               /phone in the chat shows it again. Off again at every start. Only on a network you trust.
 
   --daemon     run the server in the background; it keeps running after you close the terminal.
                Log: data/server.log
@@ -41,7 +43,8 @@ const stop = args.includes("--stop");
 const restart = args.includes("--restart");
 const chat = args.includes("--chat");
 const open = !args.includes("--no-open");
-const known = new Set(["--no-open", "--chat", "--daemon", "--status", "--stop", "--restart", "--help", "-h"]);
+const lan = args.includes("--lan");
+const known = new Set(["--no-open", "--lan", "--chat", "--daemon", "--status", "--stop", "--restart", "--help", "-h"]);
 const unknown = args.filter((a) => !known.has(a));
 if (unknown.length) {
   console.error(`Unknown option: ${unknown.join(" ")}${unknown.includes("--pro") ? " (the --pro terminal mode was removed; use the Work mode in the browser, and /setup on to load your own Claude Code setup)" : ""}\nTry: anaico --help`);
@@ -110,7 +113,7 @@ function startDaemon(): number {
     // no log yet
   }
   const log = openSync(logFile, "a");
-  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : [])];
+  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : []), ...(lan ? ["--lan"] : [])];
   // detached: its own session, so closing this terminal does not signal it.
   const child = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], {
     detached: true,
@@ -149,7 +152,7 @@ if (status || stop || restart || daemon) {
 
   // --daemon or --restart: start it
   if (await serverUp()) {
-    console.log(`Companion already running on ${url}, leaving it as it is (use --restart to apply new options).`);
+    console.log(`Companion already running on ${url}, leaving it as it is (use --restart to apply new options${lan ? ", such as --lan" : ""}).`);
     process.exit(0);
   }
   const pid = startDaemon();
@@ -166,7 +169,7 @@ if (status || stop || restart || daemon) {
 
 let server: ChildProcess | null = null;
 if (!(await serverUp())) {
-  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : [])];
+  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : []), ...(lan ? ["--lan"] : [])];
   server = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], { stdio: "inherit" });
   const started = server;
   started.on("exit", (code) => {
@@ -179,7 +182,7 @@ if (!(await serverUp())) {
     process.exit(1);
   }
 } else {
-  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it (its folder and mode stay as they are).`);
+  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it (its folder and mode stay as they are${lan ? "; --lan only applies to a server this command starts, so stop it first" : ""}).`);
 }
 
 function stopServer(): void {

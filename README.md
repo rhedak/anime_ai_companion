@@ -136,8 +136,33 @@ terminal (its output goes to `data/server.log`). Take the same `--chat` and `--n
 `anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
 starts it again in the folder you run it from (use it after an update, or to change folder or mode).
 Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
-that is running in another terminal. The server only listens on `127.0.0.1`, and a background server is
-no different.
+that is running in another terminal. Unless you start it with `--lan` (next section), the server only
+listens on `127.0.0.1`, and a background server is no different.
+
+## Controlling her from your phone
+
+`anaico --lan` (or `npm start -- --lan`) also lets other devices on your network in, so you can carry on
+a session from your phone while the computer does the work. It is **off at every start**: you ask for it
+each time, like a looser permission mode.
+
+1. Start with `--lan`. It prints a few links ending in `?t=<token>`, one per way the phone can reach this
+   computer (its `.local` name, then its addresses). Type `/phone` in the chat to see them again.
+2. Open one on the phone, on the same Wi-Fi. The first visit signs the phone in (a cookie) and removes the
+   token from the address, so the page stays open without it. Send yourself the link in a message app; the
+   token is long on purpose.
+3. `/phone new` makes a new token and signs every phone out.
+
+What a phone can do: chat, answer the approval cards, stop her, switch between chat and work in the saved
+folder, change the look. What it cannot, because these run without a card or reach into the computer: `!commands`,
+the loose permission modes (Auto, Accept edits, Run everything), `/setup on`, picking another project folder.
+Those are done on the computer itself.
+
+The token is a password, and the connection is plain `http`, so use it only on a network you trust (not
+café Wi-Fi), and not through a tunnel you do not control. For use away from home, put the computer and the phone
+on a private network such as Tailscale and use the computer's address there; `--lan` lists it among the links.
+The token is saved in `data/lan-token` (only you can read it). On the phone's plain-`http` page the browser
+withholds the clipboard, so the copy buttons do nothing there. macOS asks once whether `node` may accept
+incoming connections: allow it.
 
 ## Her name
 
@@ -289,7 +314,7 @@ so plainly when another brain, such as Ollama, is active, instead of pretending 
   turn. Your current look is saved in `data/avatar.json` (git-ignored).
 - **Providers:** `src/providers/types.ts` is the interface and Claude Code is the first
   implementation. The tags are plain text, so other backends (for example Ollama) can reuse them.
-- The server listens on `127.0.0.1` only and rejects WebSocket connections from other origins.
+- The server listens on `127.0.0.1` only, unless you pass `--lan`, and rejects WebSocket connections from other origins.
 
 The roadmap is in [docs/plan.md](docs/plan.md).
 
@@ -321,6 +346,11 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 
 - It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. Because `!command`
   runs without approval, this is the line that matters: nothing but your own page may talk to the server.
+- `--lan` is the one way past that, and it is opt-in at every start. Then every page, file and WebSocket
+  from another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local
+  address or `.local` name (against DNS rebinding), and, for the WebSocket, an `Origin` equal to that address.
+  Such a device can still not run `!commands`, loosen the permission mode or load your Claude Code setup.
+  Connections from the computer itself are unchanged, so a tunnel or reverse proxy on it is not given a way in.
 - The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
   click the approval buttons for you).
 - Everything the model chooses is validated: avatar values are coerced per field (hex colours, numbers,
