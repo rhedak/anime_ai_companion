@@ -11,7 +11,8 @@ import { Transcript, claudeSessionExists, type ShownRecord } from "./transcript.
 import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
 import { resolveCreatorSrc } from "./creator.ts";
 import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
-import { listSessions, loadSessionItems, sessionPath, type SessionInfo } from "./sessions.ts";
+import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
+import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -22,7 +23,7 @@ import { checkShownImage } from "./shown-images.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
-import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
+import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type ProviderEvent, type SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
@@ -115,6 +116,13 @@ const claudeResumable =
     ? savedLog.sessionId
     : undefined;
 if (!claudeResumable && savedLog?.provider === "claude") transcript.clear(); // its session is gone: start clean
+/** How big her memory is and when she last answered: a cold prompt cache makes the next message expensive. */
+const convo: ConversationState = {
+  contextTokens: claudeResumable ? savedLog?.contextTokens ?? null : null,
+  lastReplyAt: claudeResumable ? savedLog?.lastReplyAt ?? null : null,
+};
+/** A message waiting for the user to decide how to pay for a cold cache (see coldCacheOffer). */
+let heldMessage: { text: string; images: ImageInput[] } | null = null;
 const cursorResumable = savedLog?.provider === "cursor" ? savedLog.sessionId ?? undefined : undefined;
 
 const providers: Record<ProviderName, Provider> = {
@@ -293,7 +301,7 @@ function persistTranscript(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     transcript
-      .save({ provider: settings.provider, sessionId: provider.sessionId })
+      .save({ provider: settings.provider, sessionId: provider.sessionId, ...convo })
       .catch((err) => console.error("could not save the transcript:", err));
   }, 300);
 }
@@ -374,8 +382,19 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
     settings.projectDir = check.dir;
     await saveSettings(settingsPath, settings);
   }
+  const before = { mode, cwd: sessionConfig().cwd };
   mode = wanted;
   provider.configure(sessionConfig());
+  // Claude Code sends the system prompt it recorded when the conversation began, which keeps the prompt cache
+  // intact across restarts but means the work-mode rules in the new persona never reach her. Tell her instead.
+  const now = sessionConfig();
+  if (settings.provider === "claude" && transcript.items.length > 0 && (before.mode !== mode || (mode === "work" && before.cwd !== now.cwd))) {
+    notesForModel.push(
+      mode === "work"
+        ? `the user switched you to work mode. ${personaWork.replace(/\s+/g, " ").trim()} Project folder: ${now.cwd}.`
+        : "the user switched you back to chat mode: you have no tools now, and the work-mode rules no longer apply.",
+    );
+  }
   broadcast(modeInfo());
 }
 
@@ -737,6 +756,10 @@ async function resumeCommand(args: string, say: Say): Promise<void> {
     return say(String(err instanceof Error ? err.message : err));
   }
   provider.resume(chosen.id);
+  dropHeldMessage();
+  const size = await sessionContext(path).catch(() => null);
+  convo.contextTokens = size?.contextTokens ?? null;
+  convo.lastReplyAt = size ? size.modified.getTime() : null;
   transcript.clear();
   transcript.items = items;
   notesForModel = [];
@@ -752,8 +775,15 @@ function parseSlash(text: string): { name: string; args: string } | null {
   return match ? { name: match[1].toLowerCase(), args: (match[2] ?? "").trim() } : null;
 }
 
+function forgetConversationSize(): void {
+  convo.contextTokens = null;
+  convo.lastReplyAt = null;
+  dropHeldMessage();
+}
+
 function resetConversation(): void {
   provider.reset();
+  forgetConversationSize();
   transcript.clear();
   persistTranscript();
   notesForModel = [];
@@ -762,8 +792,63 @@ function resetConversation(): void {
   broadcast(modeInfo());
 }
 
+/** Shows the user's message in the log and sends it to the brain. */
+function sendUser(text: string, images: ImageInput[], onFinish?: (event: ProviderEvent) => void): void {
+  transcript.user(text, images.length);
+  broadcast({ type: "user", text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
+  runTurn(text, { images, onFinish });
+}
+
+/**
+ * Her memory of a long conversation sits in Claude's prompt cache, which expires after about an hour. A message
+ * sent after that has to send the whole conversation again at full price, which for a long one is a big part
+ * of the usage limit. So the message waits while the user chooses: send it as it is, summarise first (Claude
+ * Code's /compact, like "resume from summary" in the terminal), or hold it back.
+ */
+function offerColdCache(text: string, images: ImageInput[], cold: { tokens: number; idleMinutes: number }): void {
+  heldMessage = { text, images };
+  broadcast(coldCacheCard(cold));
+}
+
+const coldCacheCard = (cold: { tokens: number; idleMinutes: number }) => ({
+  type: "cold-cache",
+  tokens: formatTokens(cold.tokens),
+  idle: formatIdle(cold.idleMinutes),
+  text: heldMessage?.text ?? "",
+});
+
+function dropHeldMessage(): void {
+  if (!heldMessage) return;
+  heldMessage = null;
+  broadcast({ type: "cold-resolved", choice: "dropped" });
+}
+
+function answerColdCache(choice: string, say: Say): void {
+  const held = heldMessage;
+  if (!held) return;
+  if (choice !== "send" && choice !== "summarise" && choice !== "cancel") return;
+  if (provider.busy) return say("Wait for her to finish the current reply first.");
+  heldMessage = null;
+  broadcast({ type: "cold-resolved", choice });
+  if (choice === "send") return sendUser(held.text, held.images);
+  if (choice === "cancel") return;
+  transcript.user("/compact");
+  broadcast({ type: "user", text: "/compact" });
+  runTurn("/compact", {
+    raw: true,
+    onFinish: (event) => {
+      if (event.type === "done") return sendUser(held.text, held.images);
+      // The summary did not happen: do not spend a cold read on the message behind the user's back.
+      broadcast({ type: "notice", text: `The summary failed, so this was not sent: ${held.text}` });
+    },
+  });
+}
+
 /** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] } = {}): void {
+function runTurn(
+  userText: string,
+  opts: { raw?: boolean; images?: ImageInput[]; onFinish?: (event: ProviderEvent) => void } = {},
+): void {
   // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
   const toModel = opts.raw ? userText : withNotes(userText);
   let reply = "";
@@ -806,9 +891,16 @@ function runTurn(userText: string, opts: { raw?: boolean; images?: ImageInput[] 
           transcript.images(images);
           broadcast({ type: "images", images: images.map(({ id, name }) => ({ id, name })) });
         }
+        if (event.type === "done") {
+          // After a /compact, the size the CLI reports still describes the conversation before it.
+          const compacted = opts.raw && /^\/compact\b/.test(userText);
+          convo.contextTokens = compacted ? null : provider.usage?.contextTokens ?? null;
+          convo.lastReplyAt = Date.now();
+        }
         persistTranscript();
         broadcast(event);
         broadcast(meterInfo()); // the context grew
+        opts.onFinish?.(event);
       });
     }
   }, opts.images);
@@ -827,6 +919,8 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: "notice", text: "Could not resume that Cursor session, so this is a new conversation." }));
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
+  const cold = heldMessage ? coldCache(convo) ?? { tokens: convo.contextTokens ?? 0, idleMinutes: 0 } : null;
+  if (cold) ws.send(JSON.stringify(coldCacheCard(cold)));
   void refreshOllamaModels();
   ws.on("close", () => clients.delete(ws));
   ws.on("message", async (raw) => {
@@ -851,9 +945,12 @@ wss.on("connection", (ws) => {
         } else await known.run({ args: command.args, text: msg.text, say });
         return;
       }
-      transcript.user(msg.text, images.length);
-      broadcast({ type: "user", text: msg.text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
-      runTurn(msg.text, { images });
+      if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");
+      const cold = settings.provider === "claude" && !provider.busy ? coldCache(convo) : null;
+      if (cold) return offerColdCache(msg.text, images, cold);
+      sendUser(msg.text, images);
+    } else if (msg.type === "cold-reply" && typeof msg.choice === "string") {
+      answerColdCache(msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
       const request = pendingPermissions.get(msg.id);
@@ -912,6 +1009,7 @@ wss.on("connection", (ws) => {
         provider.close();
         provider = providers[settings.provider];
         provider.reset(); // a new brain does not share the other one's memory
+        forgetConversationSize();
         transcript.clear();
         persistTranscript();
         notesForModel = [];
@@ -936,6 +1034,7 @@ wss.on("connection", (ws) => {
       resetConversation();
     } else if (msg.type === "look-undo") {
       if (await avatar.undo()) {
+        notesForModel.push("The user undid your last look change from the menu.");
         transcript.look(["undid the last change"]);
         broadcast({ type: "avatar", version: avatar.version, applied: ["undid the last change"] });
       }
@@ -947,6 +1046,7 @@ wss.on("connection", (ws) => {
       broadcast(looksInfo());
     } else if (msg.type === "look-load" && typeof msg.name === "string") {
       if (await avatar.loadLook(msg.name)) {
+        notesForModel.push(`The user switched your look to their saved look '${msg.name}' from the menu.`);
         transcript.look([`load=${msg.name}`]);
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
       }
@@ -970,6 +1070,7 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "reset-look") {
       await avatar.resetLook();
       provider.reset();
+      forgetConversationSize();
       transcript.clear();
       persistTranscript();
       pendingPermissions.clear();

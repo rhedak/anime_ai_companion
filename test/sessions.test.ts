@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { listSessions, loadSessionItems, sessionDirFor, sessionPath } from "../src/sessions.ts";
+import { listSessions, loadSessionItems, sessionContext, sessionDirFor, sessionPath } from "../src/sessions.ts";
 
 // Shaped like the lines in ~/.claude/projects/<folder>/<id>.jsonl, trimmed.
 const A = "11111111-2222-3333-4444-555555555555";
@@ -78,4 +78,34 @@ test("only well-formed session ids become paths", () => {
   assert.equal(sessionPath(cwd, "../../etc/passwd"), null);
   assert.equal(sessionPath(cwd, "notes"), null);
   assert.ok(sessionPath(cwd, A)?.endsWith(`${A}.jsonl`));
+});
+
+const withUsage = (usage: object, extra: object = {}) =>
+  line({ type: "assistant", message: { role: "assistant", model: "claude-sonnet-5-5", content: [{ type: "text", text: "hi" }], usage }, ...extra });
+
+test("the size of a session is what its last request sent, and its age is the file's", async () => {
+  const path = join(sessionDirFor(cwd), "cccccccc-0000-0000-0000-000000000000.jsonl");
+  await writeFile(
+    path,
+    [
+      withUsage({ input_tokens: 2, cache_read_input_tokens: 1000, cache_creation_input_tokens: 50 }),
+      withUsage({ input_tokens: 2, cache_read_input_tokens: 353_000, cache_creation_input_tokens: 850 }),
+      withUsage({ input_tokens: 0 }, { message: { role: "assistant", model: "<synthetic>", usage: { input_tokens: 0 } } }), // an interrupted turn
+      withUsage({ input_tokens: 9 }, { isSidechain: true }), // a sub-agent's request is not the conversation
+      "not json",
+    ].join("\n"),
+  );
+  await utimes(path, new Date("2026-02-02T10:00:00Z"), new Date("2026-02-02T10:00:00Z"));
+  const context = await sessionContext(path);
+  assert.equal(context.contextTokens, 353_852);
+  assert.equal(context.modified.toISOString(), "2026-02-02T10:00:00.000Z");
+});
+
+test("a session with no replies yet has no known size, and a huge file is only read from the end", async () => {
+  assert.equal((await sessionContext(join(sessionDirFor(cwd), `${B}.jsonl`))).contextTokens, null);
+  const big = join(sessionDirFor(cwd), "dddddddd-0000-0000-0000-000000000000.jsonl");
+  const filler = user("x".repeat(100_000));
+  const body = [withUsage({ input_tokens: 1, cache_read_input_tokens: 4 }), ...Array(30).fill(filler), withUsage({ input_tokens: 7, cache_read_input_tokens: 700 })].join("\n");
+  await writeFile(big, body);
+  assert.equal((await sessionContext(big)).contextTokens, 707);
 });

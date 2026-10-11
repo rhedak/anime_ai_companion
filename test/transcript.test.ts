@@ -41,7 +41,12 @@ test("saves and loads, keeping the session id", async () => {
   await a.save({ provider: "claude", sessionId: "11111111-2222-3333-4444-555555555555" });
 
   const b = new Transcript(path);
-  assert.deepEqual(await b.load(), { provider: "claude", sessionId: "11111111-2222-3333-4444-555555555555" });
+  assert.deepEqual(await b.load(), {
+    provider: "claude",
+    sessionId: "11111111-2222-3333-4444-555555555555",
+    contextTokens: null,
+    lastReplyAt: null,
+  });
   assert.deepEqual(b.items, a.items);
   assert.equal(await new Transcript(join(tmpdir(), "does-not-exist.json")).load(), null);
 });
@@ -61,4 +66,22 @@ test("finds a Claude Code session on disk, and rejects odd ids", async () => {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
   }
+});
+
+test("keeps how big the conversation was and when she last replied, for the cold-cache check", async () => {
+  const path = join(await mkdtemp(join(tmpdir(), "aic-")), "transcript.json");
+  const a = new Transcript(path);
+  a.user("hi");
+  await a.save({ provider: "claude", sessionId: "s1", contextTokens: 354_000, lastReplyAt: 1_700_000_000_000 });
+  const meta = await new Transcript(path).load();
+  assert.equal(meta?.contextTokens, 354_000);
+  assert.equal(meta?.lastReplyAt, 1_700_000_000_000);
+});
+
+test("a log saved before these were kept loads with them unknown", async () => {
+  const path = join(await mkdtemp(join(tmpdir(), "aic-")), "transcript.json");
+  await writeFile(path, JSON.stringify({ provider: "claude", sessionId: "s1", items: [] }));
+  const meta = await new Transcript(path).load();
+  assert.equal(meta?.contextTokens, null);
+  assert.equal(meta?.lastReplyAt, null);
 });

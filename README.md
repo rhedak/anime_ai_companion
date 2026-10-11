@@ -155,13 +155,30 @@ code blocks, lists, quotes and http(s) links. It is built from plain DOM nodes, 
 nothing she writes can inject markup. `/copy` and `/export` keep the Markdown source. The speech bubble
 over her head and spoken replies stay plain text.
 
-## Automatic compaction
+## Automatic compaction, and long conversations
 
-Claude Code compacts the conversation by itself when the context is nearly full, also behind this
-browser; she keeps a summary and a note appears in the chat ("compacted automatically, about 106k → 19k
-tokens"). The app sets the trigger to 95% of the window, like the terminal. To change it, start the
-server with `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=80` (any percentage). `/compact` does it on demand, and the
-`ctx` figure in the usage line shows how close you are.
+Claude Code compacts the conversation by itself when the context gets big, also behind this browser; she
+keeps a summary and a note appears in the chat ("compacted automatically, about 106k → 19k tokens"). The
+app asks for that at **200k tokens** (`--autocompact 200000`), not near the model's whole 1M window: a
+conversation that grows to several hundred thousand tokens makes every later message expensive. To change
+it, start the server with `COMPANION_AUTOCOMPACT=300000` (100000 to 1000000, or `auto` for Claude Code's own
+choice). `/compact` does it on demand, and the `ctx` figure in the usage line shows how close you are.
+
+Claude keeps the conversation in a prompt cache, so each message normally only pays for what is new. The
+cache lives about an hour. If you come back after that to a conversation of 100k tokens or more (or
+`/resume` an old one), the next message would have to send all of it again at full price, which can use a
+big share of your usage limit. So that message waits, and a card asks:
+
+- **Summarise, then send**: runs `/compact` first (like "resume from summary" in the terminal), then sends
+  your message. Reading the conversation once to summarise costs about what sending it would, but every
+  message after that is cheap. The summary loses some detail.
+- **Send as it is**: pays the full read once, keeps every detail.
+- **Don't send**: your text goes back into the message box.
+
+Restarting the app does not lose the cache by itself: Claude Code stores the system prompt with the
+conversation and reuses it on resume. That is also why a change made after the conversation began (a new
+look from the menu, a rename, switching to work mode) reaches her as a short note in your next message,
+not as a new system prompt.
 
 ## The usage line
 

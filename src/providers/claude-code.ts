@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import { parseAutocompact } from "../cache-guard.ts";
 import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
 import type { ImageInput } from "../images.ts";
 import type { Decision, PermissionMode, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
@@ -196,7 +197,12 @@ export class ClaudeCodeProvider implements Provider {
       "--verbose",
       "--include-partial-messages",
       "--model", model,
+      // Claude Code records the system prompt with the conversation and sends that same text again on every
+      // resume, so a changed look or name does not break the prompt cache. The app tells her about such
+      // changes in the next message instead (see notesForModel in server.ts).
       "--append-system-prompt", this.opts.persona(this.config),
+      // Compact at a fixed size instead of near the model's whole 1M window: see cache-guard.ts.
+      "--autocompact", parseAutocompact(process.env.COMPANION_AUTOCOMPACT),
       this.hasHistory ? "--resume" : "--session-id", this.sessionIdValue,
     ];
     if (effort) args.push("--effort", effort);

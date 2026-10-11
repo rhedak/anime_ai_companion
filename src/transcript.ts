@@ -24,6 +24,9 @@ export interface TranscriptMeta {
   provider: string;
   /** The Claude Code session this log belongs to, so a restart can resume it. */
   sessionId: string | null;
+  /** How big her memory of it was after the last reply, and when that was: enough to tell if the cache has gone cold. */
+  contextTokens?: number | null;
+  lastReplyAt?: number | null;
 }
 
 /**
@@ -100,7 +103,13 @@ export class Transcript {
     try {
       const saved = JSON.parse(await readFile(this.path, "utf8"));
       this.items = Array.isArray(saved.items) ? saved.items.slice(-500) : [];
-      return { provider: String(saved.provider), sessionId: saved.sessionId ?? null };
+      const number = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      return {
+        provider: String(saved.provider),
+        sessionId: saved.sessionId ?? null,
+        contextTokens: number(saved.contextTokens),
+        lastReplyAt: number(saved.lastReplyAt),
+      };
     } catch {
       return null;
     }

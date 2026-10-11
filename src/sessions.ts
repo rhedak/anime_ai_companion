@@ -23,6 +23,8 @@ export interface SessionInfo {
   title: string;
 }
 
+const TAIL_BYTES = 2 * 1024 * 1024;
+
 export const isSessionId = (text: string): boolean => SESSION_ID.test(text);
 
 export function projectsDir(): string {
@@ -54,6 +56,34 @@ export async function listSessions(cwd: string, limit = 10): Promise<SessionInfo
     if (title !== null) sessions.push({ id: name.slice(0, -6), modified, title });
   }
   return sessions;
+}
+
+/**
+ * How much the next message of this session has to carry (what her last request sent), and when it was
+ * last touched. Read from the end of the file, so a long session is not loaded for this.
+ */
+export async function sessionContext(path: string): Promise<{ contextTokens: number | null; modified: Date }> {
+  const { size, mtime } = await stat(path);
+  const file = await open(path, "r");
+  let tail: string;
+  try {
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await file.read(buffer, 0, length, size - length);
+    tail = buffer.toString("utf8", 0, bytesRead);
+  } finally {
+    await file.close();
+  }
+  const lines = tail.split("\n");
+  if (size > TAIL_BYTES) lines.shift(); // the first line is cut in the middle
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const entry = parse(lines[i]);
+    const usage = entry?.type === "assistant" && !entry.isSidechain ? entry.message?.usage : null;
+    if (!usage || entry.message?.model === "<synthetic>") continue;
+    const sent = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+    if (sent > 0) return { contextTokens: sent, modified: mtime };
+  }
+  return { contextTokens: null, modified: mtime };
 }
 
 /** Path of a session file if it exists in this folder's session directory. */

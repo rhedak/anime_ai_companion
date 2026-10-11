@@ -622,6 +622,52 @@ function addPermission(req) {
   permEls.set(req.id, { card, actions });
 }
 
+// A long conversation whose prompt cache has expired: the message waits until the user picks how to pay for it.
+let coldEl = null; // { card, actions, text }
+
+function addColdCache(msg) {
+  coldEl?.card.remove();
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Her memory of this chat has gone cold";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    `This conversation is about ${msg.tokens} tokens and she has been idle for ${msg.idle}. Claude's cache has expired, so ` +
+    "your message has to send all of it again at full price, which can use a large part of your usage limit. " +
+    "Summarising reads it once as well, but then every later message stays cheap; the summary loses some detail.";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const button = (label, cls, choice) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = () => ws.send(JSON.stringify({ type: "cold-reply", choice }));
+    return b;
+  };
+  actions.append(button("Summarise, then send", "allow", "summarise"), button("Send as it is", "session", "send"), button("Don't send", "deny", "cancel"));
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  coldEl = { card, actions, text: msg.text };
+}
+
+function resolveColdCache(choice) {
+  if (!coldEl) return;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  done.textContent = { summarise: "Summarising first, then sending", send: "Sent as it is", cancel: "Not sent", dropped: "Cancelled" }[choice] ?? "Done";
+  coldEl.actions.replaceWith(done);
+  // Not sent: give the user their words back instead of losing them.
+  if ((choice === "cancel" || choice === "dropped") && !input.value) {
+    input.value = coldEl.text;
+    input.dispatchEvent(new Event("input"));
+  }
+  coldEl = null;
+}
+
 function resolvePermission(id, text) {
   const el = permEls.get(id);
   if (!el) return;
@@ -637,6 +683,7 @@ function handle(msg) {
     case "history": {
       // The conversation so far, replayed to a freshly opened or reloaded tab.
       log.replaceChildren();
+      coldEl = null;
       toolEls.clear();
       for (const item of msg.items) {
         if (item.type === "user") addUserMsg(item.text, [], item.images ?? 0);
@@ -726,6 +773,12 @@ function handle(msg) {
     case "permission-cancelled":
       resolvePermission(msg.id, "Cancelled");
       break;
+    case "cold-cache":
+      addColdCache(msg);
+      break;
+    case "cold-resolved":
+      resolveColdCache(msg.choice);
+      break;
     case "hello":
       $("status").textContent = "connected";
       $("status").title = msg.provider;
@@ -780,6 +833,7 @@ function handle(msg) {
     case "reset":
       voice.cancel();
       log.replaceChildren();
+      coldEl = null;
       showBubble("");
       avatar.setEmotion("neutral");
       endTurn();
