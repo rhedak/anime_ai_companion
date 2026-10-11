@@ -333,6 +333,7 @@ const menuDescriptions = {
   provider: {
     claude: "Claude Code: the full model, tools in work mode",
     cursor: "Cursor agent: Composer, Grok and the rest of your account",
+    opencode: "opencode: the models your opencode install is signed into",
     ollama: "A model running on your own machine (chat only)",
   },
   "permission-mode": {
@@ -435,6 +436,7 @@ function makeMenu(select, title) {
 const providerMenu = makeMenu($("provider"), "Brain");
 const ollamaMenu = makeMenu($("ollama-model"), "Ollama model");
 const cursorMenu = makeMenu($("cursor-model"), "Cursor model");
+const opencodeMenu = makeMenu($("opencode-model"), "opencode model");
 const effortMenu = makeMenu($("effort"), "Effort");
 const permissionMenu = makeMenu($("permission-mode"), "Permission mode");
 
@@ -443,13 +445,15 @@ function renderBrain() {
   const picker = $("ollama-model");
   const ollama = state.provider === "ollama";
   const cursor = state.provider === "cursor";
+  const opencode = state.provider === "opencode";
   ollamaMenu.hidden = !ollama;
   cursorMenu.hidden = !cursor;
-  effortMenu.hidden = ollama || cursor;
+  opencodeMenu.hidden = !opencode;
+  effortMenu.hidden = ollama || cursor || opencode;
   $("effort").value = state.effort ?? "default";
   for (const option of $("permission-mode").options) {
     const claudeOnly = option.value === "acceptEdits" || option.value === "auto";
-    option.hidden = cursor ? claudeOnly : option.value === "everything";
+    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !cursor : false;
   }
   if (ollama) {
     const models = state.ollamaModels ?? [];
@@ -467,6 +471,16 @@ function renderBrain() {
       ),
     );
     $("cursor-model").disabled = models.length === 0;
+  }
+  if (opencode) {
+    const models = state.opencodeModels ?? [];
+    const current = state.opencodeModel ?? "";
+    $("opencode-model").replaceChildren(
+      ...(models.length ? models : [{ id: current, name: current || "(opencode default)" }]).map(
+        (m) => new Option(m.name || m.id, m.id, false, m.id === current),
+      ),
+    );
+    $("opencode-model").disabled = models.length === 0;
   }
   const noTools = state.canUseTools === false;
   $("mode-work").title = noTools ? "This model cannot use tools" : "Let her work in a project folder; you approve each action";
@@ -552,14 +566,15 @@ function renderMode() {
     return;
   }
   const cursor = state.provider === "cursor";
-  const resume = cursor ? state.sessionId ?? "" : `claude --resume ${state.sessionId}`;
+  const acp = cursor || state.provider === "opencode";
+  const resume = acp ? state.sessionId ?? "" : `claude --resume ${state.sessionId}`;
   const copy = document.createElement("button");
   copy.textContent = "copy";
-  copy.title = cursor ? "Cursor session id" : "Continue this conversation in a terminal (only one side should write at a time)";
+  copy.title = acp ? `${cursor ? "Cursor" : "opencode"} session id` : "Continue this conversation in a terminal (only one side should write at a time)";
   copy.onclick = () => navigator.clipboard?.writeText(resume).then(() => (copy.textContent = "copied"));
-  const pre = !cursor && state.allowedTools.length ? `, without asking: ${state.allowedTools.join(", ")}` : "";
+  const pre = !acp && state.allowedTools.length ? `, without asking: ${state.allowedTools.join(", ")}` : "";
   const runEverything = cursor && state.permissionMode === "everything" ? " · Run everything: tools run unless a deny rule blocks them" : "";
-  info.append(`${state.model}${pre}${runEverything}${cursor ? " · session: " : " · terminal: "}`);
+  info.append(`${state.model}${pre}${runEverything}${acp ? " · session: " : " · terminal: "}`);
   const code = document.createElement("code");
   code.textContent = resume;
   info.append(code, copy);
@@ -1051,6 +1066,9 @@ $("ollama-model").addEventListener("change", () => {
 });
 $("cursor-model").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "provider", provider: "cursor", model: $("cursor-model").value }));
+});
+$("opencode-model").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "provider", provider: "opencode", model: $("opencode-model").value }));
 });
 $("mode-chat").addEventListener("click", () => {
   wantWork = false;

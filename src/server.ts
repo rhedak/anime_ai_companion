@@ -16,6 +16,7 @@ import { listSessions, loadSessionItems, sessionContext, sessionPath, type Sessi
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
+import { OpenCodeProvider } from "./providers/opencode.ts";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
@@ -64,7 +65,7 @@ let mode: Mode = "chat";
     const check = await checkProjectDir(wanted);
     if (check.ok) {
       settings.projectDir = check.dir;
-      if ((settings.provider === "claude" || settings.provider === "cursor") && !process.argv.includes("--chat")) mode = "work";
+      if ((settings.provider === "claude" || settings.provider === "cursor" || settings.provider === "opencode") && !process.argv.includes("--chat")) mode = "work";
     } else {
       if (settings.projectDir === wanted) settings.projectDir = null;
       console.log(`Starting in chat mode: ${check.reason}`);
@@ -96,7 +97,9 @@ const sessionConfig = (): SessionConfig => ({
       ? (settings.ollamaModel ?? "")
       : settings.provider === "cursor"
         ? (settings.cursorModel ?? "")
-        : mode === "work" ? settings.workModel : settings.chatModel,
+        : settings.provider === "opencode"
+          ? (settings.opencodeModel ?? "")
+          : mode === "work" ? settings.workModel : settings.chatModel,
   allowedTools: settings.allowedTools,
   permissionMode,
   claudeSetup,
@@ -125,6 +128,7 @@ const convo: ConversationState = {
 /** A message waiting for the user to decide how to pay for a cold cache (see coldCacheOffer). */
 let heldMessage: { text: string; images: ImageInput[] } | null = null;
 const cursorResumable = savedLog?.provider === "cursor" ? savedLog.sessionId ?? undefined : undefined;
+const opencodeResumable = savedLog?.provider === "opencode" ? savedLog.sessionId ?? undefined : undefined;
 
 const providers: Record<ProviderName, Provider> = {
   claude: new ClaudeCodeProvider({
@@ -143,6 +147,12 @@ const providers: Record<ProviderName, Provider> = {
     chatCwd: workspace,
     persona,
     resumeSessionId: cursorResumable,
+  }),
+  opencode: new OpenCodeProvider({
+    config: sessionConfig(),
+    chatCwd: workspace,
+    persona,
+    resumeSessionId: opencodeResumable,
   }),
 };
 let provider: Provider = providers[settings.provider];
@@ -170,10 +180,14 @@ const meterInfo = () => {
   };
 };
 
+/** Cursor and opencode both speak ACP, so share the session, model and resume plumbing. */
+type AcpBrain = CursorProvider | OpenCodeProvider;
+const acpBrain = (): AcpBrain | null => (provider instanceof CursorProvider || provider instanceof OpenCodeProvider ? provider : null);
 const cursorBrain = () => (provider instanceof CursorProvider ? provider : null);
+const opencodeBrain = () => (provider instanceof OpenCodeProvider ? provider : null);
 
-/** What the work bar and /model show. Cursor's catalog ids are long; show the short name. */
-const shownModel = () => cursorBrain()?.modelLabel || sessionConfig().model;
+/** What the work bar and /model show. ACP catalog ids are long; show the short name. */
+const shownModel = () => acpBrain()?.modelLabel || sessionConfig().model;
 
 const modeInfo = () => ({
   type: "mode",
@@ -185,6 +199,8 @@ const modeInfo = () => ({
   ollamaModel: settings.ollamaModel,
   cursorModels: cursorBrain()?.availableModels ?? [],
   cursorModel: cursorBrain()?.modelId || settings.cursorModel,
+  opencodeModels: opencodeBrain()?.availableModels ?? [],
+  opencodeModel: opencodeBrain()?.modelId || settings.opencodeModel,
   projectDir: settings.projectDir,
   model: shownModel(),
   sessionId: provider.sessionId,
@@ -375,7 +391,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   const blocked = cannotChange();
   if (blocked) return say(blocked);
   if (wanted === "work") {
-    if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code or Cursor for work mode.");
+    if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code, Cursor or opencode for work mode.");
     const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
     if (!folder) return say("Choose a project folder first.");
     const check = await checkProjectDir(folder);
@@ -439,8 +455,8 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else if (value === "everything" && settings.provider !== "cursor") {
     say("Run everything is a Cursor mode. Claude stays on Ask, Plan, Accept edits or Auto.");
-  } else if (settings.provider === "cursor" && (value === "auto" || value === "acceptEdits")) {
-    say("Cursor here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.");
+  } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
+    say(`${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask and Plan${settings.provider === "cursor" ? " and Run everything" : ""}. Auto and Accept edits are Claude Code modes.`);
   } else {
     permissionMode = value;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
@@ -533,11 +549,13 @@ const slashCommands: Record<
     help: "show or set the model, e.g. /model opus (until the server restarts)",
     run: async ({ args, say }) => {
       if (settings.provider === "ollama") return say("Pick the Ollama model in the dropdown.");
-      if (settings.provider === "cursor") {
-        if (!args) return say(`Model: ${shownModel() || "(waiting for Cursor)"}`);
+      if (settings.provider === "cursor" || settings.provider === "opencode") {
+        const label = settings.provider === "cursor" ? "Cursor" : "opencode";
+        if (!args) return say(`Model: ${shownModel() || `(waiting for ${label})`}`);
         const blocked = cannotChange();
         if (blocked) return say(blocked);
-        settings.cursorModel = args;
+        if (settings.provider === "cursor") settings.cursorModel = args;
+        else settings.opencodeModel = args;
         await saveSettings(settingsPath, settings);
         provider.configure(sessionConfig());
         broadcast(modeInfo());
@@ -697,31 +715,32 @@ function ago(date: Date): string {
   return `${Math.round(minutes / 1440)} days ago`;
 }
 
-let lastCursorListing: { id: string; title: string; modified: Date }[] = [];
+let lastAcpListing: { id: string; title: string; modified: Date }[] = [];
 
-/** Cursor keeps the conversation in its own session. The on-screen log is ours, so resuming starts that screen clean. */
-async function resumeCursor(args: string, say: Say): Promise<void> {
-  const cursor = cursorBrain();
-  if (!cursor) return;
+/** Cursor and opencode keep the conversation in their own session. The on-screen log is ours, so resuming starts that screen clean. */
+async function resumeAcp(args: string, say: Say): Promise<void> {
+  const acp = acpBrain();
+  if (!acp) return;
   const blocked = cannotChange();
   if (blocked) return say(blocked);
   const cwd = sessionCwd();
+  const label = settings.provider === "cursor" ? "Cursor" : "opencode";
   if (!args) {
     try {
-      lastCursorListing = await cursor.listSessions(cwd);
+      lastAcpListing = await acp.listSessions(cwd);
     } catch (err) {
       return say(err instanceof Error ? err.message : String(err));
     }
-    if (lastCursorListing.length === 0) return say(`No earlier Cursor conversations in ${cwd}.`);
-    const lines = lastCursorListing.map(
-      (s, i) => `${i + 1}. ${ago(s.modified)} · ${s.title}${s.id === cursor.sessionId ? " (current)" : ""}`,
+    if (lastAcpListing.length === 0) return say(`No earlier ${label} conversations in ${cwd}.`);
+    const lines = lastAcpListing.map(
+      (s, i) => `${i + 1}. ${ago(s.modified)} · ${s.title}${s.id === acp.sessionId ? " (current)" : ""}`,
     );
     return say(`Conversations in ${cwd}:\n${lines.join("\n")}\nContinue one with /resume <number>. The screen starts clean; she still remembers it.`);
   }
-  const chosen = /^\d+$/.test(args) ? lastCursorListing[Number(args) - 1] : undefined;
-  if (!chosen) return say(lastCursorListing.length ? "No such entry. Run /resume to see the list." : "Run /resume first to see the list.");
-  if (chosen.id === cursor.sessionId) return say("That is the current conversation.");
-  cursor.resume(chosen.id);
+  const chosen = /^\d+$/.test(args) ? lastAcpListing[Number(args) - 1] : undefined;
+  if (!chosen) return say(lastAcpListing.length ? "No such entry. Run /resume to see the list." : "Run /resume first to see the list.");
+  if (chosen.id === acp.sessionId) return say("That is the current conversation.");
+  acp.resume(chosen.id);
   transcript.clear();
   notesForModel = [];
   pendingPermissions.clear();
@@ -732,8 +751,8 @@ async function resumeCursor(args: string, say: Say): Promise<void> {
 }
 
 async function resumeCommand(args: string, say: Say): Promise<void> {
-  if (settings.provider === "cursor") return resumeCursor(args, say);
-  if (!provider.resume) return say("/resume needs Claude Code or Cursor; this model has no saved sessions.");
+  if (settings.provider === "cursor" || settings.provider === "opencode") return resumeAcp(args, say);
+  if (!provider.resume) return say("/resume needs Claude Code, Cursor or opencode; this model has no saved sessions.");
   const blocked = cannotChange();
   if (blocked) return say(blocked);
   const cwd = sessionCwd();
@@ -914,10 +933,11 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
-  if (cursorBrain()?.lastError) ws.send(JSON.stringify({ type: "notice", text: cursorBrain()!.lastError }));
-  if (cursorBrain()?.replacedSession) {
-    cursorBrain()!.replacedSession = false;
-    ws.send(JSON.stringify({ type: "notice", text: "Could not resume that Cursor session, so this is a new conversation." }));
+  const acp = acpBrain();
+  if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
+  if (acp?.replacedSession) {
+    acp.replacedSession = false;
+    ws.send(JSON.stringify({ type: "notice", text: `Could not resume that ${settings.provider} session, so this is a new conversation.` }));
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   const cold = heldMessage ? coldCache(convo) ?? { tokens: convo.contextTokens ?? 0, idleMinutes: 0 } : null;
@@ -983,7 +1003,7 @@ wss.on("connection", (ws) => {
       changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
-    } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor")) {
+    } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       if (msg.provider === "ollama") {
@@ -1000,8 +1020,8 @@ wss.on("connection", (ws) => {
         mode = "chat"; // no tools on this backend
       }
       if (msg.provider === "cursor" && typeof msg.model === "string" && msg.model) settings.cursorModel = msg.model;
-      if (msg.provider === "cursor" && permissionMode === "auto") permissionMode = "manual";
-      if (msg.provider === "cursor" && permissionMode === "acceptEdits") permissionMode = "manual";
+      if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
+      if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
       if (msg.provider !== "cursor" && permissionMode === "everything") permissionMode = "manual";
       const switching = settings.provider !== msg.provider;
       settings.provider = msg.provider;
@@ -1018,16 +1038,17 @@ wss.on("connection", (ws) => {
         broadcast({ type: "reset" });
       }
       provider.configure(sessionConfig());
-      if (provider instanceof CursorProvider) {
+      if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) {
+        const label = provider instanceof CursorProvider ? "Cursor" : "opencode";
         try {
           await provider.whenReady();
-          await rememberCursorModel();
+          await rememberAcpModel();
         } catch (err) {
           notice(err instanceof Error ? err.message : String(err));
         }
         if (provider.replacedSession) {
           provider.replacedSession = false;
-          notice("Could not resume that Cursor session, so this is a new conversation.");
+          notice(`Could not resume that ${label} session, so this is a new conversation.`);
         }
       }
       broadcast(modeInfo());
@@ -1099,17 +1120,23 @@ wss.on("connection", (ws) => {
   });
 });
 
-async function rememberCursorModel(): Promise<void> {
-  const cursor = cursorBrain();
-  if (!cursor?.modelId || cursor.modelId === settings.cursorModel) return;
-  settings.cursorModel = cursor.modelId;
+async function rememberAcpModel(): Promise<void> {
+  const acp = acpBrain();
+  if (!acp?.modelId) return;
+  const key = settings.provider === "opencode" ? "opencodeModel" : "cursorModel";
+  if (acp.modelId === settings[key]) return;
+  settings[key] = acp.modelId;
   await saveSettings(settingsPath, settings);
 }
 
-if (provider instanceof CursorProvider) {
-  void provider.whenReady().then(() => rememberCursorModel().then(() => broadcast(modeInfo()))).catch((err) => {
-    console.error(`[cursor] ${err instanceof Error ? err.message : err}`);
-  });
+if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) {
+  const label = provider instanceof CursorProvider ? "cursor" : "opencode";
+  void provider
+    .whenReady()
+    .then(() => rememberAcpModel().then(() => broadcast(modeInfo())))
+    .catch((err) => {
+      console.error(`[${label}] ${err instanceof Error ? err.message : err}`);
+    });
 }
 
 server.listen(port, host, () => {

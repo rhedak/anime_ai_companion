@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, parse } from "node:path";
 import { isEffort, type Effort } from "./claude-settings.ts";
 
-export type ProviderName = "claude" | "ollama" | "cursor";
+export type ProviderName = "claude" | "ollama" | "cursor" | "opencode";
 
 export interface Settings {
   /** Which backend powers her. */
@@ -12,6 +12,8 @@ export interface Settings {
   ollamaModel: string | null;
   /** Model id from the Cursor agent's catalog. Null until the first session picks one. */
   cursorModel: string | null;
+  /** Model id from opencode's catalog, `provider/model`. Null keeps opencode's own default. */
+  opencodeModel: string | null;
   /** Folder she works in, in work mode. null until the user picks one. */
   projectDir: string | null;
   chatModel: string;
@@ -28,6 +30,7 @@ const defaults = (): Settings => ({
   provider: "claude",
   ollamaModel: null,
   cursorModel: null,
+  opencodeModel: null,
   projectDir: null,
   chatModel: "haiku",
   workModel: "sonnet",
@@ -48,10 +51,16 @@ export async function loadSettings(path: string): Promise<Settings> {
   settings.name = cleanName(String(settings.name)) ?? "Mio";
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
-  if (process.env.COMPANION_PROVIDER === "ollama" || process.env.COMPANION_PROVIDER === "claude" || process.env.COMPANION_PROVIDER === "cursor") {
+  if (
+    process.env.COMPANION_PROVIDER === "ollama" ||
+    process.env.COMPANION_PROVIDER === "claude" ||
+    process.env.COMPANION_PROVIDER === "cursor" ||
+    process.env.COMPANION_PROVIDER === "opencode"
+  ) {
     settings.provider = process.env.COMPANION_PROVIDER;
   }
   if (process.env.OLLAMA_MODEL) settings.ollamaModel = process.env.OLLAMA_MODEL;
+  if (process.env.COMPANION_OPENCODE_MODEL) settings.opencodeModel = process.env.COMPANION_OPENCODE_MODEL;
   if (process.env.COMPANION_WORK_MODEL) settings.workModel = process.env.COMPANION_WORK_MODEL;
   return settings;
 }
@@ -68,9 +77,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, projectDir, effort, name } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, projectDir, effort, name }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name }, null, 2));
 }
 
 /**

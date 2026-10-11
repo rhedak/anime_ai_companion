@@ -11,7 +11,7 @@ description; this file is what an agent needs beyond it. Find which of these the
 ## Run it
 
 You need Node 22.18+, Python 3.11+, and one brain: Claude Code (`claude` installed and signed in),
-Cursor (`cursor-agent`), or Ollama. It runs on the user's own machine with their own login.
+Cursor (`cursor-agent`), opencode, or Ollama. It runs on the user's own machine with their own login.
 
 Clone both repos **side by side** (the drawing code is a separate repo):
 
@@ -120,6 +120,27 @@ stdin/stdout. Spawn `cursor-agent`. A command named `agent` is not necessarily t
 - Model ids come from that session's catalog. Do not hardcode Composer or Grok ids; they change.
 - Tests must not need a Cursor login or a live agent. Fake the ACP process, as `test/cursor-acp.test.ts` does.
 
+**opencode** (`src/providers/opencode.ts`) is `opencode acp`, the same Agent Client Protocol
+Cursor speaks, so `server.ts` shares the session, model and resume plumbing between both
+(`acpBrain`, `resumeAcp`). Spawn `opencode`; `--pure` keeps external plugins out of the run. A
+command named `agent` is not necessarily that binary.
+
+- opencode's own permission defaults are permissive, so every start is given an isolated config
+  (`opencodeConfig()` in `src/providers/opencode-acp.ts`, sent as `OPENCODE_CONFIG_CONTENT`): Ask
+  everywhere, the pre-approved reads allowed, and chat mode denies every tool. Keep the isolation
+  env (`OPENCODE_DISABLE_PROJECT_CONFIG=1`) that leaves the project's config, plugins and MCP
+  servers unloaded.
+- Approvals are the same `session/request_permission` card as Cursor; the permission parser is
+  shared (`permissionResult` in `cursor-acp.ts`). Auto and Accept edits stay Claude-only, and there
+  is no opencode `--force`, so do not pretend Run Everything exists. The menu is Ask and Plan.
+- `session/new` answers `configOptions` (a `model` option with `provider/model` values, plus a
+  `mode` option) instead of Cursor's `models`; `parseModels` handles both shapes. Do not hardcode
+  opencode model ids; they change.
+- opencode authenticates with the credentials it already stores, so `initialize` alone suffices;
+  do not start an `authenticate` login flow.
+- Tests must not need an opencode login or a live agent. Fake the ACP process, as
+  `test/opencode-acp.test.ts` does.
+
 **Ollama** is chat only (`canUseTools` is false). Work mode stays unavailable.
 
 Switching brains starts a new conversation. The brains do not share memory.
@@ -135,7 +156,7 @@ Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is
 folder) and skip if it is missing. The creator needs Python 3.11 or newer. `uv sync` creates `.venv`
 (`pyproject.toml`, `.python-version`), and `src/python.ts` uses it when it exists, unless `PYTHON` is set;
 on an older `python3` the four avatar and render tests fail even though the code is fine. Keep new tests
-passing without a Claude or Cursor login.
+passing without a Claude, Cursor or opencode login.
 
 To watch a change work without touching anyone's real `data/`, run a copy of the repo with its own
 `data/`, a spare `PORT`, and (for the Claude brain) a stand-in `claude` first on the `PATH`.

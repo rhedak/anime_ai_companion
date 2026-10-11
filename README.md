@@ -41,7 +41,8 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | --- | --- | --- |
 | `COMPANION_MODEL` | `haiku` | model used for chat |
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
-| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent) or `ollama` (local models); also switchable in the UI |
+| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent), `opencode` or `ollama` (local models); also switchable in the UI |
+| `COMPANION_OPENCODE_MODEL` | opencode's own default | model for opencode, `provider/model` (e.g. `opencode/big-pickle`) |
 | `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama |
@@ -80,6 +81,16 @@ The conversation still goes to Cursor; files stay on this machine. Chat mode is 
 asks with the same approval card as Claude, and the Permissions menu adds **Run everything**
 (`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets
 to Ask every time the server starts. Auto and Accept edits stay Claude Code modes.
+
+## opencode
+
+Pick **opencode** under *Brain* and she is driven by `opencode acp` on your machine, signed into
+whatever models your opencode install already knows (choose one in the dropdown, or leave it on
+opencode's default). Sign in once with `opencode auth login`. The conversation goes through
+opencode; files stay on this machine. Chat mode is read-only. Work mode asks with the same approval
+card as Claude; the menu offers **Ask** and **Plan** only (opencode's own Auto and Run everything
+are not exposed). Every start runs isolated: your project's own `opencode.json`, plugins and MCP
+servers stay unloaded, and approvals reset to Ask.
 
 ## Work mode
 
