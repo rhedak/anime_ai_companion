@@ -1,5 +1,7 @@
 node_modules/
 .venv/
+# personal notes for Claude Code on this machine
+CLAUDE.local.md
 # your own avatar and local state
 data/
 workspace/*
