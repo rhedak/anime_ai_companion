@@ -158,6 +158,23 @@ test("a pack can carry its credit and its terms, and packs are found in the user
     assert.equal(packInfo(fan.pack).credit, "my own  line two");
     assert.doesNotMatch(fan.pack.notes.join("\n"), /credit\.txt|NOTICE/);
 
+    // a half-made folder of the user's own does not hide the finished pack that ships with the app
+    await mkdir(join(mine, "only-shipped"));
+    await writeFile(join(mine, "only-shipped", "base.png"), img);
+    const shadowed = await readPack([mine, shipped], "only-shipped", emotions);
+    assert.ok(shadowed.ok);
+    assert.match([...shadowed.pack.files.values()][0].path, new RegExp(`${shipped}`));
+    assert.deepEqual(await listPacks(mine, shipped), ["fan", "only-shipped"]);
+    // when no folder works, the user's own folder's problem is the one reported
+    await rm(join(shipped, "only-shipped"), { recursive: true });
+    const broken = await readPack([mine, shipped], "only-shipped", emotions);
+    assert.equal(broken.ok, false);
+    assert.match(!broken.ok ? broken.reason : "", /needs a neutral\.png/);
+    await mkdir(join(shipped, "only-shipped"));
+    await writeFile(join(shipped, "only-shipped", "neutral.png"), img);
+    await writeFile(join(shipped, "only-shipped", "NOTICE.md"), "terms");
+    await rm(join(mine, "only-shipped"), { recursive: true });
+
     const only = await readPack([mine, shipped], "only-shipped", emotions);
     assert.ok(only.ok);
     assert.equal(only.pack.credit, undefined);

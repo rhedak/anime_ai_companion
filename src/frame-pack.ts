@@ -69,16 +69,23 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
 /** Reads a pack's folder and works out which picture is which. Never throws for a bad folder. */
 export async function readPack(dirs: string | string[], name: string, emotions: string[]): Promise<PackResult> {
   if (!isPackName(name)) return { ok: false, reason: `"${name}" is not a usable pack name (letters, digits, space, . _ -).` };
-  let folder = "";
-  let entries: Dirent[] | null = null;
+  // The first folder that holds a working pack of this name wins, so a half-made folder of the user's own
+  // (just a base picture, say) does not hide a finished pack of the same name that ships with the app.
+  let failure: PackResult | null = null;
   for (const dir of [dirs].flat()) {
-    entries = await readdir(join(dir, name), { withFileTypes: true }).catch(() => null);
-    if (entries) {
-      folder = join(dir, name);
-      break;
-    }
+    const result = await readPackIn(dir, name, emotions);
+    if (result.ok) return result;
+    if (result.reason !== MISSING) failure ??= result;
   }
-  if (!entries) return { ok: false, reason: `There is no pack called "${name}" in data/frames.` };
+  return failure ?? { ok: false, reason: `There is no pack called "${name}" in data/frames.` };
+}
+
+const MISSING = "no such folder";
+
+async function readPackIn(dir: string, name: string, emotions: string[]): Promise<PackResult> {
+  const folder = join(dir, name);
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => null);
+  if (!entries) return { ok: false, reason: MISSING };
 
   const notes: string[] = [];
   const files = new Map<string, { path: string; mtimeMs: number }>();
