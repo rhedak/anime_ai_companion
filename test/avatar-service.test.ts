@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { AvatarService } from "../src/avatar.ts";
+import { pythonCommand } from "../src/python.ts";
 
 const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/src");
 
@@ -12,7 +13,7 @@ async function service() {
   const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
   const s = new AvatarService({
     creatorSrc,
-    python: process.env.PYTHON ?? "python3",
+    python: pythonCommand(),
     workerPath: resolve(import.meta.dirname, "../python/render_worker.py"),
     statePath: join(dir, "avatar.json"),
     looksDir: join(dir, "looks"),

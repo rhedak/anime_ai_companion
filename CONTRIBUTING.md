@@ -14,6 +14,7 @@ and no private fork to keep in sync. Small, focused pull requests are the easies
 
 ```bash
 npm install
+uv sync        # only if your python3 is older than 3.11
 npm run typecheck
 npm test
 ```

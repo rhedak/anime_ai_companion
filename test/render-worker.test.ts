@@ -4,12 +4,13 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
+import { pythonCommand } from "../src/python.ts";
 
 const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/src");
 const worker = resolve(import.meta.dirname, "../python/render_worker.py");
 
 test("render worker validates patches and renders frames", { skip: !existsSync(creatorSrc) && `creator not found at ${creatorSrc}` }, async () => {
-  const proc = spawn(process.env.PYTHON ?? "python3", ["-I", worker], {
+  const proc = spawn(pythonCommand(), ["-I", worker], {
     env: { ...process.env, CREATOR_SRC: creatorSrc },
   });
   const lines = createInterface({ input: proc.stdout })[Symbol.asyncIterator]();

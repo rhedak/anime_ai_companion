@@ -16,7 +16,8 @@ leaves it is the conversation your own `claude` sends to Anthropic.
 ## Requirements
 
 - **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step)
-- **Python 3.11 or newer** (the character renderer is pure standard-library Python)
+- **Python 3.11 or newer** (the character renderer is pure standard-library Python). If your `python3`
+  is older, `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically
 - **[Claude Code](https://code.claude.com)**, installed and signed in (`claude` on your PATH)
 - A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)**
   next to this repo, or point `CREATOR_SRC` at its `src` folder
@@ -28,6 +29,7 @@ git clone https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
+uv sync           # only if your python3 is older than 3.11: creates .venv, which the app then uses
 npm start          # then open http://127.0.0.1:3737
 ```
 
@@ -40,6 +42,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `COMPANION_MODEL` | `haiku` | model used for chat |
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
 | `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent) or `ollama` (local models); also switchable in the UI |
+| `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama |
 | `COMPANION_PRESET` | `linnea` | starting character (any preset of the creator) |

@@ -1,0 +1,12 @@
+[project]
+name = "anime-ai-companion-renderer"
+version = "0.1.0"
+description = "Python environment for the companion's render worker (python/render_worker.py)"
+requires-python = ">=3.11"
+# The worker uses only the standard library plus anime-character-creator, which it imports by path
+# (CREATOR_SRC, default ../anime-character-creator/src), so there is nothing to install. The environment
+# exists to pin a Python new enough for the creator.
+dependencies = []
+
+[tool.uv]
+package = false

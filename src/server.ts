@@ -6,6 +6,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService } from "./avatar.ts";
+import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists, type ShownRecord } from "./transcript.ts";
 import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
@@ -40,7 +41,7 @@ const emotions = JSON.parse(await readFile(join(root, "emotions.json"), "utf8"))
 const creatorSrc = await resolveCreatorSrc();
 const avatar = new AvatarService({
   creatorSrc,
-  python: process.env.PYTHON ?? "python3",
+  python: pythonCommand(),
   workerPath: join(root, "python/render_worker.py"),
   statePath: join(root, "data/avatar.json"),
   looksDir: join(root, "data/looks"),
