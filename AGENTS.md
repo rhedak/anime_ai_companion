@@ -131,8 +131,11 @@ command named `agent` is not necessarily that binary.
   env (`OPENCODE_DISABLE_PROJECT_CONFIG=1`) that leaves the project's config, plugins and MCP
   servers unloaded.
 - Approvals are the same `session/request_permission` card as Cursor; the permission parser is
-  shared (`permissionResult` in `cursor-acp.ts`). Auto and Accept edits stay Claude-only, and there
-  is no opencode `--force`, so do not pretend Run Everything exists. The menu is Ask and Plan.
+  shared (`permissionResult` in `cursor-acp.ts`). Auto and Accept edits stay Claude-only. There is
+  no opencode `--force`, so Run Everything is not a flag: the opt-in **Everything** permission mode
+  hands opencode a `{"*": "allow"}` permission config (`opencodeConfig()`), stays out of memory
+  after a restart, and switches between the modes by restarting the process (the launch key covers
+  the config). The menu is Ask, Plan and Everything.
 - `session/new` answers `configOptions` (a `model` option with `provider/model` values, plus a
   `mode` option) instead of Cursor's `models`; `parseModels` handles both shapes. Do not hardcode
   opencode model ids; they change.

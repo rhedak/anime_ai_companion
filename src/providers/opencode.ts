@@ -200,13 +200,13 @@ export class OpenCodeProvider implements Provider {
 
   /** Everything about the launch that must match, or the process is restarted (config, mode, folder). */
   private launchKey(): string {
-    return `${this.cwd()}\n${opencodeConfig(this.config.mode, this.config.allowedTools)}`;
+    return `${this.cwd()}\n${opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools)}`;
   }
 
   private env(): NodeJS.ProcessEnv {
     return {
       ...process.env,
-      OPENCODE_CONFIG_CONTENT: opencodeConfig(this.config.mode, this.config.allowedTools),
+      OPENCODE_CONFIG_CONTENT: opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools),
       // A project's own opencode.json, plugins and MCP servers can run code; keep them unloaded.
       OPENCODE_DISABLE_PROJECT_CONFIG: "1",
       OPENCODE_DISABLE_DEFAULT_PLUGINS: "1",

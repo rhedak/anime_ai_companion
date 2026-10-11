@@ -88,9 +88,9 @@ Pick **opencode** under *Brain* and she is driven by `opencode acp` on your mach
 whatever models your opencode install already knows (choose one in the dropdown, or leave it on
 opencode's default). Sign in once with `opencode auth login`. The conversation goes through
 opencode; files stay on this machine. Chat mode is read-only. Work mode asks with the same approval
-card as Claude; the menu offers **Ask** and **Plan** only (opencode's own Auto and Run everything
-are not exposed). Every start runs isolated: your project's own `opencode.json`, plugins and MCP
-servers stay unloaded, and approvals reset to Ask.
+card as Claude; the menu offers **Ask**, **Plan** and **Run everything** (an opt-in that lets every
+tool run without a card, and resets to Ask every server start). Every start runs isolated: your
+project's own `opencode.json`, plugins and MCP servers stay unloaded, and approvals reset to Ask.
 
 ## Work mode
 

@@ -341,7 +341,7 @@ const menuDescriptions = {
     plan: "She plans, and changes nothing until you approve",
     acceptEdits: "File edits go ahead; other actions still ask",
     auto: "She runs on her own and pauses if anything looks unsafe",
-    everything: "Every tool runs, unless a deny rule blocks it. Resets to Ask next start",
+    everything: "Every tool runs without a card; she keeps going until done. Resets to Ask next start",
   },
 };
 menuDescriptions.effort = {
@@ -453,7 +453,7 @@ function renderBrain() {
   $("effort").value = state.effort ?? "default";
   for (const option of $("permission-mode").options) {
     const claudeOnly = option.value === "acceptEdits" || option.value === "auto";
-    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !cursor : false;
+    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !(cursor || opencode) : false;
   }
   if (ollama) {
     const models = state.ollamaModels ?? [];
@@ -573,7 +573,7 @@ function renderMode() {
   copy.title = acp ? `${cursor ? "Cursor" : "opencode"} session id` : "Continue this conversation in a terminal (only one side should write at a time)";
   copy.onclick = () => navigator.clipboard?.writeText(resume).then(() => (copy.textContent = "copied"));
   const pre = !acp && state.allowedTools.length ? `, without asking: ${state.allowedTools.join(", ")}` : "";
-  const runEverything = cursor && state.permissionMode === "everything" ? " · Run everything: tools run unless a deny rule blocks them" : "";
+  const runEverything = acp && state.permissionMode === "everything" ? (state.provider === "opencode" ? " · Run everything: tools run without asking" : " · Run everything: tools run unless a deny rule blocks them") : "";
   info.append(`${state.model}${pre}${runEverything}${acp ? " · session: " : " · terminal: "}`);
   const code = document.createElement("code");
   code.textContent = resume;
@@ -622,11 +622,11 @@ function addPermission(req) {
   if (req.tool !== "ExitPlanMode") {
     const more = document.createElement("div");
     more.className = "perm-more";
-    if (state.provider !== "cursor" && state.permissionMode !== "acceptEdits" && /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(req.tool)) {
+    if (state.provider === "claude" && state.permissionMode !== "acceptEdits" && /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(req.tool)) {
       more.append(button("Allow, and accept all edits", "ghost", "allow", "acceptEdits"));
     }
-    if (state.provider !== "cursor" && state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
-    if (state.provider === "cursor" && state.permissionMode !== "everything") {
+    if (state.provider === "claude" && state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
+    if ((state.provider === "cursor" || state.provider === "opencode") && state.permissionMode !== "everything") {
       more.append(button("Allow, and run everything", "ghost", "allow", "everything"));
     }
     if (more.children.length) actions.append(more);

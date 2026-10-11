@@ -41,16 +41,19 @@ export function opencodeArgs(): string[] {
 
 /**
  * The config handed to opencode on every start, through OPENCODE_CONFIG_CONTENT (highest
- * priority). Two jobs: force Ask everywhere (opencode's own defaults let most tools run
- * unwatched), and pre-approve the cheap read-only tools the user already trusts. In chat mode
- * every tool is denied, so she cannot touch the disk at all.
+ * priority). Three shapes: chat denies every tool so she cannot touch the disk; work with
+ * Everything allowed (an opt-in that resets to Ask each server start, the analogue of Cursor's
+ * Run Everything) lets every tool run; work otherwise forces Ask everywhere except the
+ * pre-approved reads the user already trusts. This matters because opencode's own defaults are
+ * permissive and would run tools unwatched.
  *
  * This uses the v1 config shape (`permission` object). opencode v2 renamed it to `permissions`
  * with an ordered rule array; if the installed opencode is v2 this block is ignored and its
  * permissive defaults apply, which is why the provider is not the default brain.
  */
-export function opencodeConfig(mode: Mode, allowedTools: string[]): string {
+export function opencodeConfig(mode: Mode, permissionMode: PermissionMode, allowedTools: string[]): string {
   if (mode === "chat") return JSON.stringify({ autoupdate: false, permission: { "*": "deny" } });
+  if (permissionMode === "everything") return JSON.stringify({ autoupdate: false, permission: { "*": "allow" } });
   const permission: Record<string, unknown> = { "*": "ask" };
   const trusted = new Set(allowedTools.map((name) => name.toLowerCase()));
   for (const tool of ["read", "glob", "grep", "list"]) {

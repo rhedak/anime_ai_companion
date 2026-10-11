@@ -453,15 +453,21 @@ async function rename(input: string, say: Say): Promise<void> {
 
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
-  else if (value === "everything" && settings.provider !== "cursor") {
-    say("Run everything is a Cursor mode. Claude stays on Ask, Plan, Accept edits or Auto.");
+  else if (value === "everything" && settings.provider !== "cursor" && settings.provider !== "opencode") {
+    say("Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
   } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
-    say(`${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask and Plan${settings.provider === "cursor" ? " and Run everything" : ""}. Auto and Accept edits are Claude Code modes.`);
+    say(`${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`);
   } else {
     permissionMode = value;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
     else provider.configure(sessionConfig());
-    if (value === "everything") say("Run everything: she runs tools without a card, unless Cursor still asks. A deny rule still blocks. This resets to Ask the next time the server starts.");
+    if (value === "everything") {
+      say(
+        settings.provider === "cursor"
+          ? "Run everything: she runs tools without a card, unless Cursor still asks. A deny rule still blocks. This resets to Ask the next time the server starts."
+          : "Run everything: opencode runs every tool without a card. This resets to Ask the next time the server starts.",
+      );
+    }
   }
   broadcast(modeInfo());
 }
@@ -576,7 +582,7 @@ const slashCommands: Record<
   chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
   work: { help: "switch to work mode, optionally for a folder: /work ~/project", run: ({ args, say }) => switchMode("work", args, say) },
   permissions: {
-    help: "ask, plan, accept (edits), auto, or everything (Cursor): how work mode handles approvals",
+    help: "ask, plan, accept (edits), auto (Claude), or everything (Cursor, opencode): how work mode handles approvals",
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
@@ -1022,7 +1028,7 @@ wss.on("connection", (ws) => {
       if (msg.provider === "cursor" && typeof msg.model === "string" && msg.model) settings.cursorModel = msg.model;
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
       if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
-      if (msg.provider !== "cursor" && permissionMode === "everything") permissionMode = "manual";
+      if (msg.provider !== "cursor" && msg.provider !== "opencode" && permissionMode === "everything") permissionMode = "manual";
       const switching = settings.provider !== msg.provider;
       settings.provider = msg.provider;
       await saveSettings(settingsPath, settings);

@@ -26,15 +26,17 @@ test("opencode args: plain ACP without plugins, never a skip-permissions flag", 
   assert.deepEqual(opencodeArgs(), ["acp", "--pure"]);
 });
 
-test("chat denies every tool; work asks, with reads pre-approved", () => {
-  const chat = JSON.parse(opencodeConfig("chat", ["Read", "Grep", "Glob"]));
+test("chat denies every tool; work asks with reads pre-approved, or lets everything through", () => {
+  const chat = JSON.parse(opencodeConfig("chat", "manual", ["Read", "Grep", "Glob"]));
   assert.equal(chat.permission["*"], "deny");
   assert.equal(chat.autoupdate, false);
-  const work = JSON.parse(opencodeConfig("work", ["Read", "Grep", "Glob"]));
+  const work = JSON.parse(opencodeConfig("work", "manual", ["Read", "Grep", "Glob"]));
   assert.equal(work.permission["*"], "ask");
   assert.equal(work.permission.read, "allow");
   assert.equal(work.permission.grep, "allow");
   assert.equal(work.permission.bash, undefined);
+  const everything = JSON.parse(opencodeConfig("work", "everything", ["Read", "Grep", "Glob"]));
+  assert.equal(everything.permission["*"], "allow");
 });
 
 test("session mode: chat is plan, work is build unless planning first", () => {
