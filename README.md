@@ -65,6 +65,14 @@ changes, **Save look** stores the current look by name, and the **Looks** menu l
 a saved look herself too (`[avatar load=name]`). Saved looks are plain files in `data/looks/`; delete a
 file to delete a look.
 
+## Your own pictures instead of the drawn avatar
+
+If you would rather show her as pictures from an AI image tool (or your own drawings), put a set of images
+in `data/frames/<name>/` and type `/frames <name>`: a rest picture, a blink, a few mouth openings, and one set
+per emotion if you like. Only `neutral.png` is required. `/frames off` goes back to the drawn avatar.
+`docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
+and how to get a consistent set out of an image tool.
+
 ## Local models with Ollama
 
 Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing
@@ -291,6 +299,7 @@ Type these in the chat box (`/help` lists them):
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |

@@ -858,6 +858,10 @@ function handle(msg) {
       addMsg("look", `✨ new look: ${msg.applied.join(", ")}`);
       avatar.setVersion(msg.version);
       break;
+    case "pack":
+      avatar.usePack(msg.pack);
+      $("zoom").hidden = avatar.packed; // a set of pictures has one framing
+      break;
     case "frames":
       avatar.receiveFrames(msg);
       break;

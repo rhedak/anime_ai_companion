@@ -1,0 +1,136 @@
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import { frameMime, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
+
+const emotions = ["neutral", "happy", "sad", "thinking"];
+
+/** The first bytes of a PNG: enough for the size, which is all the server reads. */
+function png(width: number, height: number): Buffer {
+  const b = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b);
+  b.writeUInt32BE(13, 8);
+  b.write("IHDR", 12, "ascii");
+  b.writeUInt32BE(width, 16);
+  b.writeUInt32BE(height, 20);
+  return b;
+}
+
+async function withPack(files: Record<string, Buffer | string>, run: (dir: string) => Promise<void>) {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "mine"));
+    for (const [name, body] of Object.entries(files)) await writeFile(join(dir, "mine", name), body);
+    await run(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("pictures are told apart by their names, and talk frames by number", async () => {
+  const img = png(100, 120);
+  await withPack(
+    { "neutral.png": img, "neutral-blink.png": img, "neutral-talk2.png": img, "neutral-talk10.png": img, "neutral-talk1.png": img, "Happy.PNG": img, "happy-blink.webp": img },
+    async (dir) => {
+      const r = await readPack(dir, "mine", emotions);
+      assert.ok(r.ok);
+      assert.deepEqual(r.pack.emotions.neutral, { idle: "neutral.png", blink: "neutral-blink.png", talk: ["neutral-talk1.png", "neutral-talk2.png", "neutral-talk10.png"] });
+      assert.deepEqual(r.pack.emotions.happy, { idle: "Happy.PNG", blink: "happy-blink.webp", talk: [] });
+      assert.equal(r.pack.emotions.sad, undefined);
+      assert.ok(r.pack.notes.some((n) => /No pictures for sad, thinking: she shows neutral/.test(n)));
+    },
+  );
+});
+
+test("a pack needs a neutral picture", async () => {
+  await withPack({ "happy.png": png(10, 10) }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.equal(r.ok, false);
+    assert.match(!r.ok ? r.reason : "", /neutral\.png/);
+  });
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    const r = await readPack(dir, "missing", emotions);
+    assert.equal(r.ok, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("files that are not understood are reported and never served", async () => {
+  await withPack(
+    { "neutral.png": png(10, 10), "neutral.svg": "<svg onload=alert(1)/>", "sleepy.png": png(10, 10), "notes.txt": "x", "happy-blink.png": png(10, 10), ".DS_Store": "x" },
+    async (dir) => {
+      const r = await readPack(dir, "mine", emotions);
+      assert.ok(r.ok);
+      assert.deepEqual([...r.pack.files.keys()].sort(), ["neutral.png"]); // happy-blink has no happy.png
+      const notes = r.pack.notes.join("\n");
+      assert.match(notes, /Not used .*neutral\.svg, notes\.txt, sleepy\.png/);
+      assert.match(notes, /happy has no happy\.png/);
+      assert.doesNotMatch(notes, /DS_Store/);
+    },
+  );
+});
+
+test("frames of a different size than neutral are called out", async () => {
+  await withPack({ "neutral.png": png(100, 120), "neutral-blink.png": png(100, 130), "happy.png": png(100, 120) }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.ok(r.ok);
+    assert.match(r.pack.notes.join("\n"), /different size than neutral\.png \(100×120\).*neutral-blink\.png \(100×130\)/);
+  });
+});
+
+test("the page is told urls that change when a picture does", async () => {
+  await withPack({ "neutral.png": png(10, 10), "neutral-talk1.png": png(10, 10) }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.ok(r.ok);
+    const info = packInfo(r.pack);
+    assert.match(info.emotions.neutral.idle, /^\/frames\/mine\/neutral\.png\?v=\d+$/);
+    assert.equal(info.emotions.neutral.blink, undefined);
+    assert.equal(info.emotions.neutral.talk.length, 1);
+  });
+});
+
+test("pack names are plain folder names", async () => {
+  for (const ok of ["linnea", "My pack 2", "a.b-c_d"]) assert.equal(isPackName(ok), true, ok);
+  for (const bad of ["", ".", "..", "../x", "a/b", "a\\b", ".hidden", "x".repeat(41), "a..b", "<b>"]) assert.equal(isPackName(bad), false, bad);
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "b"));
+    await mkdir(join(dir, "a"));
+    await mkdir(join(dir, ".hidden"));
+    await writeFile(join(dir, "file.png"), "x");
+    assert.deepEqual(await listPacks(dir), ["a", "b"]);
+    assert.deepEqual(await listPacks(join(dir, "nope")), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sizes are read from PNG, WebP and JPEG headers", () => {
+  assert.deepEqual(sizeOf(png(580, 660)), { width: 580, height: 660 });
+  const vp8x = Buffer.alloc(30);
+  vp8x.write("RIFF", 0);
+  vp8x.write("WEBP", 8);
+  vp8x.write("VP8X", 12);
+  vp8x.writeUIntLE(1023, 24, 3);
+  vp8x.writeUIntLE(1535, 27, 3);
+  assert.deepEqual(sizeOf(vp8x), { width: 1024, height: 1536 });
+  const vp8l = Buffer.alloc(30);
+  vp8l.write("RIFF", 0);
+  vp8l.write("WEBP", 8);
+  vp8l.write("VP8L", 12);
+  vp8l.writeUInt32LE(499 | (599 << 14), 21);
+  assert.deepEqual(sizeOf(vp8l), { width: 500, height: 600 });
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x01, 0xf4, 0x03]);
+  assert.deepEqual(sizeOf(jpeg), { width: 500, height: 600 });
+  assert.equal(sizeOf(Buffer.from("not an image at all, just text")), null);
+});
+
+test("served types follow the extension", () => {
+  assert.equal(frameMime("a.png"), "image/png");
+  assert.equal(frameMime("a.WEBP"), "image/webp");
+  assert.equal(frameMime("a.jpeg"), "image/jpeg");
+});

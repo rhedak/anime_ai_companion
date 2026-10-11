@@ -22,6 +22,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
+import { frameMime, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
@@ -60,6 +61,22 @@ await avatar.start();
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
+
+// A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
+const framesDir = join(root, "data/frames");
+let activePack: FramePack | null = null;
+/** Reads the chosen pack's folder again, so pictures replaced on disk show on the next page load. */
+async function refreshPack(): Promise<string[]> {
+  if (!settings.framePack) {
+    activePack = null;
+    return [];
+  }
+  const result = await readPack(framesDir, settings.framePack, Object.keys(emotions));
+  activePack = result.ok ? result.pack : null;
+  return result.ok ? result.pack.notes : [result.reason];
+}
+const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
+await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
 // pre-filled here, not saved, until the user picks one in the UI.
@@ -282,6 +299,23 @@ const server = createServer(async (req, res) => {
     res.end(await readFile(record.path));
     return;
   }
+  const frame = /^\/frames\/([^/]+)\/([^/]+)$/.exec(path);
+  if (frame) {
+    // Only files the scan of the chosen pack found are sent, never a path taken from the url.
+    let name = "", file = "";
+    try {
+      [name, file] = [decodeURIComponent(frame[1]), decodeURIComponent(frame[2])];
+    } catch {}
+    const known = activePack?.name === name ? activePack.files.get(file) : undefined;
+    const body = known && (await readFile(known.path).catch(() => null));
+    if (!known || !body) {
+      res.writeHead(404).end("Not found");
+      return;
+    }
+    res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...securityHeaders });
+    res.end(body);
+    return;
+  }
   if (path === "/custom.css") {
     // The user's own styling (see public/theme.css). Missing file: an empty sheet, not a 404.
     const css = await readFile(customCssPath).catch(() => "");
@@ -358,6 +392,11 @@ function makeTagApplier(): (reply: string) => void {
   return (reply) => {
     const tags = findAvatarTags(reply);
     for (; seen < tags.length; seen++) {
+      if (activePack) {
+        const note = "Your look is a fixed set of pictures now: [avatar ...] tags and gestures change nothing. Do not use them.";
+        if (!notesForModel.includes(note)) notesForModel.push(note);
+        continue;
+      }
       avatar
         .applyPatch(tags[seen])
         .then(({ applied, rejected }) => {
@@ -671,6 +710,37 @@ const slashCommands: Record<
         "/rewind is not available in the companion: it relies on Claude Code's own interactive checkpoints. " +
           `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
       ),
+  },
+  frames: {
+    help: "show her with your own pictures instead of the drawn avatar: /frames lists the packs in data/frames, /frames <name> uses one, /frames off goes back",
+    run: async ({ args, say }) => {
+      const wanted = args.trim();
+      if (!wanted) {
+        const packs = await listPacks(framesDir);
+        const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
+        return say(
+          `${using} ` +
+            (packs.length ? `Packs in data/frames: ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
+        );
+      }
+      if (wanted.toLowerCase() === "off") {
+        settings.framePack = null;
+        await saveSettings(settingsPath, settings);
+        await refreshPack();
+        notesForModel.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
+        broadcast(packMessage());
+        return say("Back to the drawn avatar.");
+      }
+      if (!isPackName(wanted)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
+      const result = await readPack(framesDir, wanted, Object.keys(emotions));
+      if (!result.ok) return say(result.reason);
+      settings.framePack = wanted;
+      await saveSettings(settingsPath, settings);
+      activePack = result.pack;
+      notesForModel.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
+      broadcast(packMessage());
+      say([`Showing the pack "${wanted}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`, ...result.pack.notes].join("\n"));
+    },
   },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
@@ -993,6 +1063,7 @@ wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
+  void refreshPack().then(() => ws.readyState === ws.OPEN && ws.send(JSON.stringify(packMessage())));
   ws.send(JSON.stringify(modeInfo()));
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));

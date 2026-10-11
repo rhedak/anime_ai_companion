@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, parse } from "node:path";
 import { isEffort, type Effort } from "./claude-settings.ts";
+import { isPackName } from "./frame-pack.ts";
 
 export type ProviderName = "claude" | "ollama" | "cursor" | "opencode";
 
@@ -20,6 +21,8 @@ export interface Settings {
   workModel: string;
   /** What the companion is called. */
   name: string;
+  /** A folder in data/frames shown instead of the drawn avatar (see src/frame-pack.ts); null is the drawn one. */
+  framePack: string | null;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
   effort: Effort | "default";
   /** Tools pre-approved in work mode. Reads in the folder are cheap; everything else asks. */
@@ -35,6 +38,7 @@ const defaults = (): Settings => ({
   chatModel: "haiku",
   workModel: "sonnet",
   name: "Mio",
+  framePack: null,
   effort: "default",
   allowedTools: ["Read", "Grep", "Glob"],
 });
@@ -49,6 +53,7 @@ export async function loadSettings(path: string): Promise<Settings> {
   }
   const settings = { ...defaults(), ...saved };
   settings.name = cleanName(String(settings.name)) ?? "Mio";
+  if (typeof settings.framePack !== "string" || !isPackName(settings.framePack)) settings.framePack = null;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
   if (
@@ -77,9 +82,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack }, null, 2));
 }
 
 /**

@@ -1,0 +1,24 @@
+export function sanitize<T extends Element>(root: T): T;
+
+export interface PackEmotionInfo {
+  idle: string;
+  blink?: string;
+  talk: string[];
+}
+
+export function createAvatar(
+  host: HTMLElement,
+  requestFrames: (emotion: string) => void,
+  requestGesture: (emotion: string, gesture: string) => void,
+): {
+  /** Show a user's picture pack, or the drawn avatar again for null. */
+  usePack(info: { name: string; emotions: Record<string, PackEmotionInfo> } | null): void;
+  readonly packed: boolean;
+  setVersion(version: number): void;
+  setEmotion(name: string): void;
+  setTalking(on: boolean): void;
+  setFull(on: boolean): void;
+  gesture(name: string, ms?: number): void;
+  receiveGesture(msg: unknown): void;
+  receiveFrames(msg: unknown): void;
+};
