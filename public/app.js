@@ -1438,3 +1438,29 @@ connect();
     e.preventDefault();
   });
 })();
+
+// --- her beside the chat, or behind it --------------------------------------------------
+// The button in the chat header. Behind, the chat covers the whole page and she shows through it (style.css).
+(() => {
+  const main = document.querySelector("main");
+  const button = $("view");
+  let view = "split";
+  try { if (localStorage.getItem("stageView") === "behind") view = "behind"; } catch {}
+  const apply = () => {
+    main.dataset.view = view;
+    const behind = view === "behind";
+    const label = behind ? "Show her beside the chat" : "Put her behind the chat";
+    button.setAttribute("aria-pressed", String(behind));
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  };
+  button.addEventListener("click", () => {
+    view = view === "behind" ? "split" : "behind";
+    try { localStorage.setItem("stageView", view); } catch {}
+    apply();
+  });
+  apply();
+  // A pack's credit line runs across the top while she is behind the chat; the chat starts below it.
+  const credit = $("pack-credit");
+  new ResizeObserver(() => main.style.setProperty("--credit-h", `${credit.offsetHeight}px`)).observe(credit);
+})();
