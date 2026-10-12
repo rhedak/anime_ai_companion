@@ -83,16 +83,27 @@ function createDrawnAvatar(host, requestFrames, requestGesture) {
     return mouth;
   }
 
-  function tick(now) {
-    if (!active) return requestAnimationFrame(tick);
+  function frame(now) {
     const poses = now < gestureUntil ? gestureCache.get(`${emotion}:${gestureName}`) : null;
     if (poses) {
-      // pose frames carry their own (resting) mouth; keys 100+ mark them apart from normal frames
-      const key = 100 + (Math.floor((now - gestureStart) / 280) % poses.length);
+      // pose frames carry their own (resting) mouth; keys 100+ mark them apart from normal frames.
+      // A frame's timestamp is when it began, which can be a moment before a gesture that started
+      // since: never a negative time, or the index goes negative and no pose is found.
+      const key = 100 + (Math.floor(Math.max(0, now - gestureStart) / 280) % poses.length);
       if (key !== shown) showSvg(poses[key - 100], key);
     } else {
       const index = pickFrame(now);
       if (index !== shown || host.firstElementChild === null) show(index);
+    }
+  }
+
+  function tick(now) {
+    // One bad frame must never end the loop: an uncaught error here would leave her frozen on
+    // whatever she showed last, for good. The next frame tries again.
+    try {
+      if (active) frame(now);
+    } catch (err) {
+      console.error("avatar frame failed:", err);
     }
     requestAnimationFrame(tick);
   }
@@ -232,10 +243,14 @@ function createPackAvatar(host) {
   }
 
   function tick(now) {
-    const e = active && entry();
-    if (e) {
-      for (const url of [e.idle, e.blink, ...e.talk]) if (url) imageFor(url); // load the rest while the idle one shows
-      show(pick(now, e));
+    try {
+      const e = active && entry();
+      if (e) {
+        for (const url of [e.idle, e.blink, ...e.talk]) if (url) imageFor(url); // load the rest while the idle one shows
+        show(pick(now, e));
+      }
+    } catch (err) {
+      console.error("avatar frame failed:", err); // and carry on: see the drawn avatar's loop
     }
     requestAnimationFrame(tick);
   }
