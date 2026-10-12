@@ -10,6 +10,8 @@ export function createAvatar(
   host: HTMLElement,
   requestFrames: (emotion: string) => void,
   requestGesture: (emotion: string, gesture: string) => void,
+  /** Told about a frame that failed to draw (the loop carries on). Defaults to the console. */
+  onError?: (error: unknown) => void,
 ): {
   /** Show a user's picture pack, or the drawn avatar again for null. */
   usePack(info: { name: string; emotions: Record<string, PackEmotionInfo> } | null): void;

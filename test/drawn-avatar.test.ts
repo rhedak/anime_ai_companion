@@ -100,3 +100,19 @@ test("a frame that fails does not end the loop", () => {
     page.restore();
   }
 });
+
+test("a frame that fails is handed to the page's error reporter when there is one", () => {
+  const page = fakePage();
+  try {
+    const told: unknown[] = [];
+    const avatar = createAvatar(page.host, () => {}, () => {}, (err: unknown) => void told.push(err));
+    avatar.setVersion(1);
+    avatar.receiveFrames({ version: 1, emotion: "neutral", svgs: frames("neutral", 4) });
+    page.frame(1000);
+    page.frame(10_000_000); // the blink frame is missing
+    assert.equal(told.length, 1);
+    assert.deepEqual(page.errors, [], "and it did not also go to the console");
+  } finally {
+    page.restore();
+  }
+});

@@ -25,6 +25,7 @@ import { checkShownImage } from "./shown-images.ts";
 import { frameMime, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
+import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -442,6 +443,9 @@ function makeTagApplier(): (reply: string) => void {
 
 /** `[demo]` in a reply: she was asked to show all her emotions and gestures (see `src/demo.ts`). */
 const DEMO_TAG = /\[demo\]/;
+
+/** How many problems the page may report to the log per minute. */
+const pageErrorLimit = perMinute();
 
 const MAX_SHOWN_PER_REPLY = 8;
 
@@ -1265,6 +1269,10 @@ wss.on("connection", (ws) => {
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
       }
       broadcast(looksInfo());
+    } else if (msg.type === "client-error") {
+      // The page reporting a problem of its own: into the log, so it can be read here (rate limited).
+      const line = pageErrorLimit() ? formatClientError(msg, remote ? "a phone" : "this computer") : null;
+      if (line) console.error(line);
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "preset-thumbs") {

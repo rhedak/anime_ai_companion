@@ -2,9 +2,38 @@ import { createAvatar } from "./avatar.js";
 import { createVoice, takeSentences } from "./speech.js";
 import { renderMarkdown } from "./markdown.js";
 import { createDemo } from "./demo.js";
+import { createErrorReporter, installErrorReporting } from "./errors.js";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
+
+// A problem in the page shows up in the chat (tap the line for details) and in the server's log, instead of
+// only in a browser console nobody has open; see errors.js.
+const errors = createErrorReporter({
+  show(info, el) {
+    try {
+      if (!el) {
+        el = addMsg("sys", "");
+        el.classList.add("problem");
+        el.addEventListener("click", () => el.classList.toggle("open"));
+      }
+      const head = document.createElement("div");
+      head.textContent = `⚠ ${info.line}${info.where ? ` · ${info.where}` : ""}${info.count > 1 ? ` (×${info.count})` : ""}`;
+      const details = document.createElement("pre");
+      details.textContent = info.details || "(no details)";
+      el.replaceChildren(head, details);
+      log.scrollTop = log.scrollHeight;
+    } catch {
+      // the chat itself is not ready yet; the console still has it
+    }
+    return el;
+  },
+  send(report) {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "client-error", ...report }));
+  },
+});
+installErrorReporting(window, errors);
+
 const avatar = createAvatar(
   $("avatar"),
   (emotion) => {
@@ -13,6 +42,7 @@ const avatar = createAvatar(
   (emotion, gesture) => {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "gesture-frames", emotion, gesture }));
   },
+  (err) => errors.report("avatar", err),
 );
 const log = $("log"), input = $("input"), send = $("send"), bubble = $("bubble");
 

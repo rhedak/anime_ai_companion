@@ -26,7 +26,7 @@ const CLOSE_UP = "55 0 290 330";
 const FULL_BODY = "0 0 400 500";
 const BLINK = 4; // frame index; 0-3 are mouth openings from shut to wide
 
-function createDrawnAvatar(host, requestFrames, requestGesture) {
+function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
   let active = true;
   let version = -1;
   let emotion = "neutral";
@@ -103,7 +103,7 @@ function createDrawnAvatar(host, requestFrames, requestGesture) {
     try {
       if (active) frame(now);
     } catch (err) {
-      console.error("avatar frame failed:", err);
+      onError(err);
     }
     requestAnimationFrame(tick);
   }
@@ -190,7 +190,7 @@ function createDrawnAvatar(host, requestFrames, requestGesture) {
  * A set of the user's own pictures (see src/frame-pack.ts) instead of the drawn body. Every picture of the
  * emotion in use is in the page at once and only one is visible, so a swap never waits for a decode.
  */
-function createPackAvatar(host) {
+function createPackAvatar(host, onError) {
   let active = false;
   let pack = null;
   let emotion = "neutral";
@@ -250,7 +250,7 @@ function createPackAvatar(host) {
         show(pick(now, e));
       }
     } catch (err) {
-      console.error("avatar frame failed:", err); // and carry on: see the drawn avatar's loop
+      onError(err); // and carry on: see the drawn avatar's loop
     }
     requestAnimationFrame(tick);
   }
@@ -307,9 +307,9 @@ function createPackAvatar(host) {
  * Each call goes to whichever is showing, and the state they share (emotion, talking, framing) is replayed
  * on a switch so she does not come back mid-sentence in the wrong face.
  */
-export function createAvatar(host, requestFrames, requestGesture) {
-  const drawn = createDrawnAvatar(host, requestFrames, requestGesture);
-  const packed = createPackAvatar(host);
+export function createAvatar(host, requestFrames, requestGesture, onError = (err) => console.error("avatar frame failed:", err)) {
+  const drawn = createDrawnAvatar(host, requestFrames, requestGesture, onError);
+  const packed = createPackAvatar(host, onError);
   let current = drawn;
   const state = { emotion: "neutral", talking: false, full: false, version: -1 };
 

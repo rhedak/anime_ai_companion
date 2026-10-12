@@ -108,6 +108,10 @@ button.icon.small { width: 26px; height: 26px; flex: none; font-size: 16px; line
 .msg.bot a { color: var(--accent); }
 .msg.look { align-self: center; color: var(--accent); font-size: var(--font-size-small); }
 .msg.sys { align-self: center; color: var(--muted); font-size: var(--font-size-small); }
+/* A problem in the page itself (errors.js): tap for the details. */
+.msg.sys.problem { align-self: stretch; max-width: 100%; text-align: left; cursor: pointer; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-line); padding: 6px 10px; border-radius: var(--radius-md); overflow-wrap: anywhere; }
+.msg.sys.problem pre { display: none; margin: 6px 0 0; font: 11px/1.4 var(--font-mono); white-space: pre-wrap; color: var(--text); }
+.msg.sys.problem.open pre { display: block; }
 .msg.tool { align-self: flex-start; max-width: 100%; font: 12px var(--font-mono); color: var(--muted); background: var(--fill-1); padding: 5px 9px; border-radius: var(--radius-sm); }
 .msg.tool .st { margin-right: 6px; }
 .msg.tool.error { color: var(--error-text); }
