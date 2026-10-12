@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RATES, cleanRate, createVoice, describeVoices, speechText, takeSentences } from "../public/speech.js";
+import { RATES, cleanRate, createVoice, describeVoices, sampleText, speechText, takeSentences } from "../public/speech.js";
 
 test("takeSentences waits for whitespace after the punctuation", () => {
   assert.deepEqual(takeSentences("Hello there! How are"), { ready: "Hello there! ", rest: "How are" });
@@ -80,6 +80,58 @@ test("the chosen voice and speed reach the utterance and survive a reload", () =
     again.setEnabled(true);
     again.speak("Still works.");
     assert.equal(spoken[1].voice, undefined);
+  } finally {
+    delete g.localStorage;
+    delete g.speechSynthesis;
+    delete g.SpeechSynthesisUtterance;
+  }
+});
+
+test("the sample sentence is in the voice's language", () => {
+  assert.match(sampleText("ja-JP"), /こんにちは/);
+  assert.match(sampleText("de_DE"), /Hallo/);
+  assert.equal(sampleText("xx-YY"), "Hi! This is how I sound.");
+});
+
+test("a saved voice the browser no longer has is reported once, and a failing engine is reported", () => {
+  const g = globalThis as Record<string, unknown>;
+  const spoken: { onerror?: (e: { error: string }) => void }[] = [];
+  g.localStorage = { getItem: (k: string) => (k === "voice-uri" ? "gone" : k === "voice" ? "on" : null), setItem() {} };
+  g.speechSynthesis = { speaking: true, pending: false, getVoices: () => [], speak: (u: (typeof spoken)[number]) => spoken.push(u), cancel() {} };
+  g.SpeechSynthesisUtterance = class {};
+  try {
+    const problems: string[] = [];
+    const voice = createVoice(() => {}, (m) => problems.push(m));
+    voice.speak("One.");
+    voice.speak("Two.");
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /"gone" is not available/);
+    spoken[0].onerror?.({ error: "canceled" }); // being stopped is not a problem
+    spoken[0].onerror?.({ error: "synthesis-failed" });
+    spoken[1].onerror?.({ error: "synthesis-failed" }); // reported once
+    assert.equal(problems.length, 2);
+    assert.match(problems[1], /synthesis-failed/);
+  } finally {
+    delete g.localStorage;
+    delete g.speechSynthesis;
+    delete g.SpeechSynthesisUtterance;
+  }
+});
+
+test("watchVoices reports the list now and again once voices arrive without any event", async () => {
+  const g = globalThis as Record<string, unknown>;
+  let voices: unknown[] = [];
+  g.localStorage = { getItem: () => null, setItem() {} };
+  g.speechSynthesis = { speaking: false, pending: false, getVoices: () => voices, speak() {}, cancel() {} };
+  g.SpeechSynthesisUtterance = class {};
+  try {
+    const voice = createVoice(() => {});
+    let calls = 0;
+    voice.watchVoices(() => calls++);
+    assert.equal(calls, 1);
+    voices = [{ name: "Kyoko", lang: "ja-JP", voiceURI: "k", localService: true }];
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(calls, 2);
   } finally {
     delete g.localStorage;
     delete g.speechSynthesis;

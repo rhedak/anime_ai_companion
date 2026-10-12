@@ -45,12 +45,28 @@ export function describeVoices(voices, language = "en") {
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
     .map((v) => ({
       uri: v.voiceURI,
+      lang: v.lang,
       local: v.localService !== false,
       label: `${v.name} (${v.lang})${v.localService === false ? " · online" : ""}`,
     }));
 }
 
-export function createVoice(onSpeaking) {
+const SAMPLES = {
+  en: "Hi! This is how I sound.",
+  ja: "こんにちは! 私の声はこんな感じです。",
+  de: "Hallo! So klinge ich.",
+  fr: "Salut ! Voilà comment je parle.",
+  es: "¡Hola! Así es como sueno.",
+  zh: "你好!我的声音是这样的。",
+  ko: "안녕하세요! 제 목소리는 이래요.",
+};
+
+/** A short sentence in the voice's own language, so a Japanese voice is tried on Japanese, not on English. */
+export function sampleText(lang) {
+  return SAMPLES[String(lang).toLowerCase().split(/[-_]/)[0]] ?? SAMPLES.en;
+}
+
+export function createVoice(onSpeaking, onProblem = () => {}) {
   const synth = globalThis.speechSynthesis;
   const supported = Boolean(synth) && typeof SpeechSynthesisUtterance !== "undefined";
   let enabled = false;
@@ -76,6 +92,12 @@ export function createVoice(onSpeaking) {
   let voiceURI = stored("voice-uri") || "";
   let rate = cleanRate(stored("voice-rate"));
   let queued = 0;
+  const reported = new Set();
+  const problem = (key, message) => {
+    if (reported.has(key)) return;
+    reported.add(key);
+    onProblem(message);
+  };
 
   const done = () => {
     queued = Math.max(0, queued - 1);
@@ -124,8 +146,26 @@ export function createVoice(onSpeaking) {
     voices(language) {
       return supported ? describeVoices(synth.getVoices(), language) : [];
     },
-    onVoicesChanged(callback) {
-      if (supported) synth.addEventListener?.("voiceschanged", callback);
+    /**
+     * Calls `callback` now and whenever the list of voices changes. Browsers load voices late, and some (Chrome
+     * on Android) never say so, so the list is also looked at for a few seconds after the page opens.
+     */
+    watchVoices(callback) {
+      if (!supported) return;
+      synth.addEventListener?.("voiceschanged", callback);
+      let last = -1;
+      let tries = 0;
+      const check = () => {
+        const n = synth.getVoices().length;
+        if (n !== last) {
+          last = n;
+          callback();
+        }
+        if (++tries >= 40) clearInterval(timer);
+      };
+      const timer = setInterval(check, 250);
+      timer.unref?.();
+      check();
     },
     speak(text) {
       const spoken = speechText(text);
@@ -137,8 +177,17 @@ export function createVoice(onSpeaking) {
         if (chosen) {
           utterance.voice = chosen;
           utterance.lang = chosen.lang;
+        } else if (voiceURI) {
+          problem(`missing:${voiceURI}`, `The voice "${voiceURI}" is not available in this browser, so she uses the default voice.`);
         }
-        utterance.onend = utterance.onerror = done;
+        utterance.onend = done;
+        utterance.onerror = (e) => {
+          // "canceled" and "interrupted" are just her being stopped; anything else is worth knowing.
+          if (e?.error && !["canceled", "interrupted"].includes(e.error)) {
+            problem(`error:${e.error}`, `The speech engine could not speak (${e.error}). Try another voice in the Voice menu.`);
+          }
+          done();
+        };
         queued++;
         onSpeaking(true);
         synth.speak(utterance);

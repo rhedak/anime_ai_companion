@@ -15,8 +15,8 @@ model. Asking her "show me all your animations" does the same.
 
 The **Voice** button makes her read her replies aloud with your browser's own speech synthesis. She speaks sentence
 by sentence while the reply streams, and her mouth moves with the speech. Once Voice is on, two menus appear next to
-it: **which voice** and **how fast** (0.8× to 1.4×). Picking one plays a short sample. Both choices are remembered in
-this browser, and a voice that is no longer installed falls back to the browser's default.
+it: **which voice** and **how fast** (0.8× to 1.4×). Picking a voice plays a short sample in that voice's own language, and says in the chat which voice you chose. Both choices are remembered in
+this browser. A voice that is no longer installed falls back to the browser's default, and she says so in the chat. A voice speaks the language it was made for, so a Japanese voice only sounds right when she replies in Japanese.
 
 The voices come from your device. System voices (macOS, iOS, Windows, Android) are made on the device, so nothing is
 uploaded. A voice marked **online** in the menu, such as the "Google …" voices in desktop Chrome, is made by a

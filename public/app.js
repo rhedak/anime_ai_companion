@@ -1,5 +1,5 @@
 import { createAvatar } from "./avatar.js";
-import { RATES, createVoice, takeSentences } from "./speech.js";
+import { RATES, createVoice, sampleText, takeSentences } from "./speech.js";
 import { renderMarkdown } from "./markdown.js";
 import { createDemo } from "./demo.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
@@ -47,9 +47,12 @@ const avatar = createAvatar(
 const log = $("log"), input = $("input"), send = $("send"), bubble = $("bubble");
 
 // With voice on, her mouth follows the speech; otherwise it follows the arriving text.
-const voice = createVoice((speaking) => {
-  if (voice.enabled) avatar.setTalking(speaking);
-});
+const voice = createVoice(
+  (speaking) => {
+    if (voice.enabled) avatar.setTalking(speaking);
+  },
+  (message) => addMsg("sys", message),
+);
 let spoken = 0; // characters of the current reply already handed to the voice
 
 let busy = false;
@@ -1474,29 +1477,38 @@ if (voice.supported) {
   };
   const fillVoices = () => {
     const voices = voice.voices(navigator.language || document.documentElement.lang);
+    const key = voices.map((v) => v.uri).join("\n");
+    if (pick.dataset.key === key) return; // nothing new: do not rebuild a menu that may be open
+    pick.dataset.key = key;
     pick.replaceChildren(
       new Option("Default voice", ""),
-      ...voices.map((v) => new Option(v.label, v.uri)),
+      ...voices.map((v) => {
+        const option = new Option(v.label, v.uri);
+        option.dataset.lang = v.lang;
+        return option;
+      }),
     );
     pick.value = voices.some((v) => v.uri === voice.voiceURI) ? voice.voiceURI : "";
   };
-  fillVoices();
-  voice.onVoicesChanged(fillVoices);
+  voice.watchVoices(fillVoices);
+  pick.addEventListener("pointerdown", fillVoices); // the list may have grown since the page opened
   rate.replaceChildren(...RATES.map((r) => new Option(r === 1 ? "Speed 1×" : `Speed ${r}×`, String(r))));
   rate.value = String(voice.rate);
   if (rate.value !== String(voice.rate)) rate.value = "1.05";
   // Changing either one plays a sample, so you can hear the difference at once.
-  const sample = () => {
+  const sample = (lang) => {
     voice.cancel();
-    voice.speak("Hi! This is how I sound.");
+    voice.speak(sampleText(lang));
   };
   pick.addEventListener("change", () => {
     voice.setVoice(pick.value);
-    sample();
+    const chosen = pick.selectedOptions[0];
+    addMsg("sys", pick.value ? `Voice: ${chosen.textContent}` : "Voice: the browser's default");
+    sample(chosen.dataset.lang ?? navigator.language);
   });
   rate.addEventListener("change", () => {
     voice.setRate(Number(rate.value));
-    sample();
+    sample(pick.selectedOptions[0]?.dataset.lang ?? navigator.language);
   });
   render();
   button.addEventListener("click", () => {
