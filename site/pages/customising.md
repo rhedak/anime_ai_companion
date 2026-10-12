@@ -46,4 +46,4 @@ only be a second source of truth. This repo pins a creator release in `package.j
 
 Node runs the TypeScript directly, so `npm start` is all there is. `npm run typecheck` and `npm test` are the checks,
 and neither needs a Claude, Cursor or opencode login. The notes for anyone changing the code, including the safety
-rules a change must keep, are in [AGENTS.md](../AGENTS.md) and [CONTRIBUTING.md](../CONTRIBUTING.md).
+rules a change must keep, are in [AGENTS.md](../../AGENTS.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md).

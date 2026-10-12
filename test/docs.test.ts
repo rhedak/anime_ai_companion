@@ -36,6 +36,23 @@ test("the site builds, every page exists, and no link or picture points at nothi
   }
 });
 
+test("every link from the site to a file on GitHub points at a file that exists in the repository", () => {
+  execFileSync(process.execPath, [join(root, "site/build.mjs")], { stdio: "pipe" });
+  const dist = join(root, "site/dist");
+  const base = "https://github.com/rhedak/anime_ai_companion/";
+  const checked = new Set<string>();
+  for (const file of readdirSync(dist).filter((f) => f.endsWith(".html"))) {
+    for (const m of readFileSync(join(dist, file), "utf8").matchAll(/href="([^"]+)"/g)) {
+      const href = m[1].replace(/&amp;/g, "&");
+      const rest = href.startsWith(base) ? /^(?:blob|tree|edit)\/main\/([^#?]+)/.exec(href.slice(base.length))?.[1] : undefined;
+      if (!rest) continue;
+      checked.add(rest);
+      assert.ok(existsSync(join(root, rest)), `${file} links to ${rest} on GitHub, but it is not in the repository`);
+    }
+  }
+  assert.ok(checked.has("packs/miku/NOTICE.md") && checked.has("CONTRIBUTING.md"), "the repository links were not found");
+});
+
 test("the documentation does not carry anything personal", () => {
   const dist = join(root, "site/dist");
   execFileSync(process.execPath, [join(root, "site/build.mjs")], { stdio: "pipe" });

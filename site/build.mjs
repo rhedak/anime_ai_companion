@@ -41,6 +41,9 @@ const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/
 function resolveLink(href, source) {
   if (/^([a-z]+:|#|mailto:)/i.test(href)) return href;
   const [path, hash] = href.split("#");
+  // a link to another page of the site, written as page.html
+  const named = pages.find((p) => p.slug + ".html" === path);
+  if (named) return `${named.slug}.html${hash ? "#" + hash : ""}`;
   const target = posix.normalize(posix.join(posix.dirname(source), path));
   const page = bySource.get(target);
   if (page) return `${page.slug}.html${hash ? "#" + hash : ""}`;
