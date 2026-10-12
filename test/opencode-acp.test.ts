@@ -26,9 +26,11 @@ test("opencode args: plain ACP without plugins, never a skip-permissions flag", 
   assert.deepEqual(opencodeArgs(), ["acp", "--pure"]);
 });
 
-test("chat denies every tool; work asks with reads pre-approved, or lets everything through", () => {
+test("chat asks about every tool (and is refused each time); work asks with reads pre-approved, or lets everything through", () => {
+  // Not "deny": with no tools in the request, opencode's free models answer "free tier can only be used from within OpenCode".
   const chat = JSON.parse(opencodeConfig("chat", "manual", ["Read", "Grep", "Glob"]));
-  assert.equal(chat.permission["*"], "deny");
+  assert.equal(chat.permission["*"], "ask");
+  assert.equal(chat.permission.read, undefined);
   assert.equal(chat.autoupdate, false);
   const work = JSON.parse(opencodeConfig("work", "manual", ["Read", "Grep", "Glob"]));
   assert.equal(work.permission["*"], "ask");
@@ -157,7 +159,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     send({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "[emotion:happy] hello" } } } });
     return reply(msg.id, { stopReason: "end_turn" });
   }
-  if (msg.id === 99) reply(promptId, { stopReason: "end_turn" });
+  if (msg.id === 99) {
+    send({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answered:" + (msg.result?.outcome?.optionId ?? msg.result?.outcome?.outcome) } } } });
+    reply(promptId, { stopReason: "end_turn" });
+  }
 });
 `;
 
@@ -235,6 +240,39 @@ test("a permission request reaches the card and the allow answer lets the turn f
     });
     const card = events.find((event) => event.type === "permission");
     assert.equal(card?.type === "permission" && card.request.input.command, "echo hi");
+  } finally {
+    provider.close();
+    await rm(dir, { recursive: true });
+  }
+});
+
+test("in chat mode a tool request is refused without a card, and the turn goes on", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  const envs: NodeJS.ProcessEnv[] = [];
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir, mode: "chat" }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    spawnAgent: (_args, cwd, env) => {
+      envs.push(env);
+      return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  });
+  try {
+    const events: ProviderEvent[] = [];
+    await new Promise<void>((resolve, reject) => {
+      provider.send("PLEASE-ASK", (event) => {
+        events.push(event);
+        if (event.type === "done") resolve();
+        if (event.type === "error") reject(new Error(event.message));
+      });
+    });
+    assert.equal(events.some((event) => event.type === "permission"), false, "no card in chat mode");
+    const said = events.flatMap((event) => (event.type === "delta" ? [event.text] : [])).join("");
+    assert.match(said, /answered:reject-once/);
+    assert.equal(JSON.parse(String(envs[0].OPENCODE_CONFIG_CONTENT)).permission["*"], "ask");
   } finally {
     provider.close();
     await rm(dir, { recursive: true });

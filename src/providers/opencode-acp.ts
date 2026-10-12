@@ -41,7 +41,10 @@ export function opencodeArgs(): string[] {
 
 /**
  * The config handed to opencode on every start, through OPENCODE_CONFIG_CONTENT (highest
- * priority). Three shapes: chat denies every tool so she cannot touch the disk; work with
+ * priority). Three shapes: chat asks about every tool, and the provider answers every such
+ * request with a refusal itself, so she cannot touch the disk (denying them in the config
+ * instead sends the model a request with no tools in it, which opencode's free models turn away
+ * with "free tier can only be used from within OpenCode"); work with
  * Everything allowed (an opt-in that resets to Ask each server start, the analogue of Cursor's
  * Run Everything) lets every tool run; work otherwise forces Ask everywhere except the
  * pre-approved reads the user already trusts. This matters because opencode's own defaults are
@@ -52,7 +55,7 @@ export function opencodeArgs(): string[] {
  * permissive defaults apply, which is why the provider is not the default brain.
  */
 export function opencodeConfig(mode: Mode, permissionMode: PermissionMode, allowedTools: string[]): string {
-  if (mode === "chat") return JSON.stringify({ autoupdate: false, permission: { "*": "deny" } });
+  if (mode === "chat") return JSON.stringify({ autoupdate: false, permission: { "*": "ask" } });
   if (permissionMode === "everything") return JSON.stringify({ autoupdate: false, permission: { "*": "allow" } });
   const permission: Record<string, unknown> = { "*": "ask" };
   const trusted = new Set(allowedTools.map((name) => name.toLowerCase()));

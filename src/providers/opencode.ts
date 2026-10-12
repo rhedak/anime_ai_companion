@@ -379,8 +379,8 @@ export class OpenCodeProvider implements Provider {
       else this.reply(reply.id, reply.result);
     }
     if (effect.permission) {
-      // Chat mode denies every tool in opencode's config, so a card should not appear here; deny
-      // anything that slips through rather than quietly running it.
+      // Chat mode has no tools: opencode is told to ask about every one (a config that denies them all
+      // makes its free models refuse the request), and every question is refused here, without a card.
       if (!this.listener || this.config.mode === "chat") {
         this.reply(effect.permission.rpcId, permissionResult("deny", effect.permission.options));
       } else {
