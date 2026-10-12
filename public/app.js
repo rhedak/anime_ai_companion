@@ -1389,6 +1389,7 @@ connect();
     tall: { key: "stageHeight", prop: "--stage-h", min: 25, max: 75, fallback: 46, vertical: false, keys: ["ArrowUp", "ArrowDown"] },
   };
   const mode = () => (phone.matches ? modes.tall : modes.wide);
+  const PAST_LIMIT = 4; // percentage points beyond the limit before that counts as meaning it
   const clamp = (m, v) => Math.min(m.max, Math.max(m.min, v));
   const set = (m, percent, save = true) => {
     const value = clamp(m, percent);
@@ -1421,7 +1422,15 @@ connect();
     if (!divider.hasPointerCapture(e.pointerId)) return;
     const m = mode();
     const box = main.getBoundingClientRect();
-    set(m, m.vertical ? ((e.clientX - box.left) / box.width) * 100 : ((e.clientY - box.top) / box.height) * 100);
+    const percent = m.vertical ? ((e.clientX - box.left) / box.width) * 100 : ((e.clientY - box.top) / box.height) * 100;
+    // Dragged on past the smallest she gets: the chat takes the whole page and she goes behind it.
+    if (percent < m.min - PAST_LIMIT) {
+      divider.releasePointerCapture(e.pointerId);
+      document.body.classList.remove("resizing");
+      divider.dispatchEvent(new CustomEvent("past-limit"));
+      return;
+    }
+    set(m, percent);
   });
   const stop = () => document.body.classList.remove("resizing");
   divider.addEventListener("pointerup", stop);
@@ -1440,7 +1449,8 @@ connect();
 })();
 
 // --- her beside the chat, or behind it --------------------------------------------------
-// The button in the chat header. Behind, the chat covers the whole page and she shows through it (style.css).
+// The button in the chat header (or dragging the divider past its limit). Behind, the chat covers the whole page
+// and she shows through it (style.css).
 (() => {
   const main = document.querySelector("main");
   const button = $("view");
@@ -1454,11 +1464,13 @@ connect();
     button.title = label;
     button.setAttribute("aria-label", label);
   };
-  button.addEventListener("click", () => {
-    view = view === "behind" ? "split" : "behind";
+  const show = (next) => {
+    view = next;
     try { localStorage.setItem("stageView", view); } catch {}
     apply();
-  });
+  };
+  button.addEventListener("click", () => show(view === "behind" ? "split" : "behind"));
+  $("divider").addEventListener("past-limit", () => show("behind"));
   apply();
   // A pack's credit line runs across the top while she is behind the chat; the chat starts below it.
   const credit = $("pack-credit");

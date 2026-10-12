@@ -173,7 +173,8 @@ Those are done on the computer itself.
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The
 button in the chat's header puts her behind the chat instead: the chat takes the whole screen and she shows
-faintly through it. That works on a wide screen too, and the choice is remembered in that browser.
+faintly through it; dragging the bar on past the smallest she gets does the same. That works on a wide screen too,
+and the choice is remembered in that browser.
 
 The token is a password, and the connection is plain `http`, so use it only on a network you trust (not
 café Wi-Fi), and not through a tunnel you do not control. For use away from home, put the computer and the phone
