@@ -9,7 +9,8 @@
  *
  * An emotion without pictures falls back to neutral, a missing blink means no blink, and missing talk
  * frames mean the page only bobs her. Two optional text files describe where the pictures come from:
- * `credit.txt` (one line, shown on the page the whole time the pack is on) and `NOTICE.md` (terms of use,
+ * `credit.txt` (its first line is shown on the page the whole time the pack is on; any lines after it are the terms,
+ * said in the chat when the pack is chosen or the page opens with it) and `NOTICE.md` (terms of use,
  * which `/frames` points to). A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
  * server hands out must never be able to run script.
  */
@@ -31,8 +32,10 @@ export interface FramePack {
   files: Map<string, { path: string; mtimeMs: number }>;
   /** Things the user should know: odd sizes, files that were not understood, emotions that fall back. */
   notes: string[];
-  /** The one-line credit from credit.txt, shown wherever the pack is. */
+  /** The first line of credit.txt, shown wherever the pack is. */
   credit?: string;
+  /** The rest of credit.txt: a short statement of the terms, said in the chat when the pack comes on. */
+  terms?: string;
 }
 
 export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: string };
@@ -41,11 +44,13 @@ export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: st
 export interface PackInfo {
   name: string;
   credit?: string;
+  terms?: string;
   emotions: Record<string, { idle: string; blink?: string; talk: string[] }>;
 }
 
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_CREDIT = 300;
+const MAX_TERMS = 600;
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 const FRAME_FILE = /^([a-z][a-z0-9_]*)(?:-(blink)|-talk(\d{1,2}))?\.(png|webp|jpe?g)$/i;
@@ -141,12 +146,27 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   const known = new Set(["credit.txt", "NOTICE.md"]);
   const unused = ignored.filter((f) => !known.has(f));
   if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN].png/.webp/.jpg): ${unused.join(", ")}.`);
-  const credit = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .trim();
+  const lines = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[\u0000-\u001f\u007f]+/g, " ").trim())
+    .filter(Boolean);
+  const credit = lines[0] ?? "";
+  const terms = lines.slice(1).join(" ");
   if (credit.length > MAX_CREDIT) notes.push(`credit.txt is longer than ${MAX_CREDIT} characters and was not used.`);
+  if (terms.length > MAX_TERMS) notes.push(`The terms in credit.txt (after its first line) are longer than ${MAX_TERMS} characters and were not used.`);
   if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read NOTICE.md in ${folder} before you use or share it.`);
-  return { ok: true, pack: { name, emotions: result, files, notes, credit: credit && credit.length <= MAX_CREDIT ? credit : undefined } };
+  const usable = credit && credit.length <= MAX_CREDIT;
+  return {
+    ok: true,
+    pack: {
+      name,
+      emotions: result,
+      files,
+      notes,
+      credit: usable ? credit : undefined,
+      terms: usable && terms && terms.length <= MAX_TERMS ? terms : undefined,
+    },
+  };
 }
 
 export function packInfo(pack: FramePack): PackInfo {
@@ -155,7 +175,7 @@ export function packInfo(pack: FramePack): PackInfo {
   for (const [emotion, e] of Object.entries(pack.emotions)) {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };
   }
-  return { name: pack.name, credit: pack.credit, emotions };
+  return { name: pack.name, credit: pack.credit, terms: pack.terms, emotions };
 }
 
 /** Width and height from the first bytes of a PNG, WebP or JPEG; null for anything else. */

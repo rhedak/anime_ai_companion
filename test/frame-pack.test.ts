@@ -154,8 +154,9 @@ test("a pack can carry its credit and its terms, and packs are found in the user
 
     const fan = await readPack([mine, shipped], "fan", emotions);
     assert.ok(fan.ok);
-    assert.equal(fan.pack.credit, "my own  line two"); // control characters never reach the page
-    assert.equal(packInfo(fan.pack).credit, "my own  line two");
+    assert.equal(fan.pack.credit, "my own"); // the first line is the credit
+    assert.equal(fan.pack.terms, "line two"); // the rest are the terms; control characters never reach the page
+    assert.deepEqual([packInfo(fan.pack).credit, packInfo(fan.pack).terms], ["my own", "line two"]);
     assert.doesNotMatch(fan.pack.notes.join("\n"), /credit\.txt|NOTICE/);
 
     // a half-made folder of the user's own does not hide the finished pack that ships with the app
@@ -203,7 +204,10 @@ test("the Miku pack that ships with the app is complete, and carries its credit 
   }
   assert.equal(r.pack.files.size, names.length * 5);
   assert.match(r.pack.credit ?? "", /Crypton Future Media, INC\. www\.piapro\.net/);
-  assert.match(r.pack.credit ?? "", /non-commercial/i);
+  assert.ok((r.pack.credit ?? "").length <= 70, "short enough for one line on a phone");
+  assert.match(r.pack.terms ?? "", /unofficial/i);
+  assert.match(r.pack.terms ?? "", /non-commercial/i);
+  assert.match(r.pack.terms ?? "", /Piapro Character License/);
   const notes = r.pack.notes.join("\n");
   assert.match(notes, /NOTICE\.md/);
   assert.doesNotMatch(notes, /different size|Not used|No pictures for/); // nothing odd about the set itself

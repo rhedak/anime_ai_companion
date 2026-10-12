@@ -75,8 +75,8 @@ picking one of your saved looks or a preset.
 and how to get a consistent set out of an image tool.
 
 A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/frames miku`). She is Crypton's character, so that pack is
-unofficial fan art for **non-commercial** use under the Piapro Character License, with a credit line shown on
-screen. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
+unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
+screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
 yourself: this project cannot grant you the right to use the character.
 
 ## Local models with Ollama

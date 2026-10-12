@@ -28,8 +28,10 @@ The names say what each picture is. There is no manifest.
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
 `thinking`. Two optional text files describe where the pictures come from:
 
-- `credit.txt`: one line (up to 300 characters) shown on the page the whole time the pack is on. Use it when
-  the character belongs to someone who asks for credit.
+- `credit.txt`: its first line (up to 300 characters, and the shorter the better: it is on screen the whole time the
+  pack is on) is the credit. Use it when the character belongs to someone who asks for credit. Any lines after the
+  first are the terms (up to 600 characters): a short statement said once in the chat when the pack is chosen or
+  the page opens with it.
 - `NOTICE.md`: terms of use. `/frames <name>` points to it. A pack of someone else's character needs one, and
   anyone who shares such a pack should read the licence of that character first.
 

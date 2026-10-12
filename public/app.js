@@ -74,6 +74,7 @@ function parseReply(text) {
 }
 
 let gesturesDone = 0; // gestures of the current reply already played
+let announcedPack = null; // the picture pack whose terms the chat has already said
 
 /** Her replies are shown as Markdown; the source stays in data-raw for /copy and /export. */
 function setMsgText(el, text) {
@@ -917,6 +918,9 @@ function handle(msg) {
       $("zoom").hidden = avatar.packed; // a set of pictures has one framing
       $("pack-credit").textContent = msg.pack?.credit ?? "";
       $("pack-credit").hidden = !msg.pack?.credit;
+      // Its terms are said once when it comes on (chosen, or the page opened with it), not on every reconnect.
+      if (msg.pack?.terms && msg.pack.name !== announcedPack) addMsg("sys", msg.pack.terms);
+      announcedPack = msg.pack?.name ?? null;
       break;
     case "frames":
       avatar.receiveFrames(msg);
