@@ -109,6 +109,7 @@ export async function watchApp(url) {
   });
   return {
     state,
+    subscribe: (fn) => handlers.add(fn),
     send: (msg) => ws.send(JSON.stringify(msg)),
     /** Resolves with the first event the test accepts, or null after `ms`. */
     /** The first event the test accepts, among those from index `since` on (default: from now), or null after `ms`. */
@@ -130,7 +131,10 @@ export function recorder(browser) {
   let dir = "";
   let name = "";
   let paused = true;
+  let pausedAt = 0;
+  let pausedTotal = 0;
   let started = 0;
+  let cues = [];
   browser.on("Page.screencastFrame", (p) => {
     void browser.call("Page.screencastFrameAck", { sessionId: p.sessionId });
     if (paused) return;
@@ -145,6 +149,8 @@ export function recorder(browser) {
       rmSync(dir, { recursive: true, force: true });
       mkdirSync(dir, { recursive: true });
       frames = [];
+      cues = [];
+      pausedTotal = 0;
       paused = false;
       started = performance.now();
       await browser.call("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: browser.width * browser.scale, maxHeight: browser.height * browser.scale, everyNthFrame: 1 });
@@ -153,11 +159,20 @@ export function recorder(browser) {
     pause() {
       if (paused) return;
       paused = true;
+      pausedAt = performance.now();
       const last = frames.at(-1);
-      if (last) last.end = performance.now();
+      if (last) last.end = pausedAt;
     },
     resume() {
+      if (!paused) return;
+      pausedTotal += performance.now() - pausedAt;
       paused = false;
+    },
+    /** Note that something happened now, in the clip's own time (what was left out does not count): for the sound. */
+    cue(kind, extra = {}) {
+      if (!name) return;
+      const now = paused ? pausedAt : performance.now();
+      cues.push({ t: Math.max(0, (now - started - pausedTotal) / 1000), kind, ...extra });
     },
     /** Stop, and make the clip. `speed` > 1 plays it faster. */
     async stop({ speed = 1 } = {}) {
@@ -174,6 +189,7 @@ export function recorder(browser) {
       lines.push(`file '${frames.at(-1).file}'`);
       const list = join(dir, "list.ffconcat");
       writeFileSync(list, lines.join("\n"));
+      writeFileSync(join(outDir, `${name}.cues.json`), JSON.stringify(cues));
       const clip = join(outDir, `${name}.mp4`);
       execFileSync(FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-vf", `setpts=PTS/${speed},fps=30,format=yuv420p`, "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-movflags", "+faststart", clip]);
       const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clip]).toString());
@@ -199,6 +215,7 @@ export function person(browser, app, watch, rec) {
     },
     /** A caption at the bottom of the screen for `seconds` (0 = until the next one). */
     async caption(text, seconds = 0) {
+      rec.cue("caption");
       await evaluate(`window.__caption(${JSON.stringify(text)}, ${seconds * 1000})`);
     },
     async tag(text) {
@@ -213,6 +230,7 @@ export function person(browser, app, watch, rec) {
     async tap(selector) {
       const { x, y } = await api.center(selector);
       await evaluate(`window.__ripple(${x}, ${y})`);
+      rec.cue("tap");
       await sleep(180);
       await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
       await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
@@ -234,12 +252,14 @@ export function person(browser, app, watch, rec) {
     async type(text, cps = 17) {
       await evaluate(`document.getElementById('input').focus()`);
       for (const ch of text) {
+        rec.cue("key");
         await call("Input.insertText", { text: ch });
         await sleep(1000 / cps + Math.random() * 25);
       }
       await sleep(350);
     },
     async send() {
+      rec.cue("send");
       await api.tap("#send");
     },
     /**
@@ -256,6 +276,7 @@ export function person(browser, app, watch, rec) {
       if (leaveOutWait) rec.pause();
       const started = await first;
       rec.resume();
+      rec.cue("reply");
       if (!started) {
         watch.send({ type: "stop" });
         throw new Error("no answer began within 60 s");

@@ -31,6 +31,13 @@ const watch = await watchApp(app.url);
 const rec = recorder(browser);
 const me = person(browser, app, watch, rec);
 const clips = [];
+// what happens on screen, noted for the sound (see compose.mjs and audio.py)
+watch.subscribe((m) => {
+  if (m.type === "permission") rec.cue("card");
+  else if (m.type === "permission-resolved") rec.cue("approve");
+  else if (m.type === "avatar" && !m.applied.some((a) => /original look/.test(a))) rec.cue("sparkle");
+  else if (m.type === "done") rec.cue("done");
+});
 const log = [];
 const emotionsSeen = () => [...watch.state.raw.matchAll(/\[emotion:(\w+)\]/g)].map((m) => m[1]);
 
@@ -119,9 +126,15 @@ try {
       await me.type("/show", 16);
       await me.send();
       // the sequence plays itself; its last line says it is over
+      let lastStep = "";
       for (let i = 0; i < 160; i++) {
         await sleep(250);
-        if (await browser.evaluate(`[...document.querySelectorAll('#log .msg.sys')].some((e) => /all of them/.test(e.textContent))`)) break;
+        const line = await browser.evaluate(`[...document.querySelectorAll('#log .msg.sys')].map((e) => e.textContent).filter((t) => /^(Emotion|Gesture|Blinking|Talking|That is all)/.test(t)).at(-1) ?? ''`);
+        if (line && line !== lastStep) {
+          lastStep = line;
+          rec.cue("step");
+        }
+        if (/all of them/.test(line)) break;
       }
       await sleep(600);
     },
@@ -236,6 +249,7 @@ try {
 
   // 8. the end card
   await scene("08-end", async () => {
+    rec.cue("end");
     await browser.evaluate(`window.__end(${JSON.stringify(endCard)})`);
     await sleep(4200);
   });
