@@ -56,10 +56,15 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 
 ## Voice
 
-The **Voice** button makes her read her replies aloud with your browser's own speech synthesis:
-local voices, nothing is uploaded. She speaks sentence by sentence while the reply streams, and her
-mouth moves while she speaks. Speech *recognition* is deliberately not included: Chrome's version sends
-your audio to Google, which would break the "stays on your machine" promise.
+The **Voice** button makes her read her replies aloud with your browser's own speech synthesis. She speaks
+sentence by sentence while the reply streams, and her mouth moves while she speaks. With Voice on, two menus
+choose the **voice** and the **speed**; both are remembered in the browser. System voices are made on your device and
+nothing is uploaded; a voice marked **online** (desktop Chrome's "Google …" voices) is made by a server, which
+receives the text. Speech *recognition* is deliberately not included: the browser's version sends your audio to its
+vendor, and microphones need `localhost` or HTTPS, so it would not work from a phone anyway. On a phone, use the
+keyboard's microphone key. To change the voice itself (pitch, a voice per character, a local TTS engine, a mic
+button), edit `public/speech.js` in your own checkout; the
+[customising page](https://rhedak.github.io/anime_ai_companion/customising.html#her-voice) has ideas.
 
 ## Looks: undo, save, load
 

@@ -27,6 +27,12 @@ What it cannot do, because these run without a card or reach into the computer: 
 modes (Auto, Accept edits, Run everything), `/setup on`, and picking another project folder. Those are done on the
 computer itself.
 
+## Talking to her from a phone
+
+Use the microphone key on your phone's keyboard to dictate into the message box. A built-in mic button is not
+included (see [Voice](chatting.html#voice) for why), but her voice works on the phone: turn **Voice** on and pick one
+of the phone's own voices.
+
 ## The layout on a phone
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The

@@ -1,5 +1,5 @@
 import { createAvatar } from "./avatar.js";
-import { createVoice, takeSentences } from "./speech.js";
+import { RATES, createVoice, takeSentences } from "./speech.js";
 import { renderMarkdown } from "./markdown.js";
 import { createDemo } from "./demo.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
@@ -1466,12 +1466,45 @@ $("save-look-form").addEventListener("submit", (e) => {
 if (voice.supported) {
   const button = $("voice");
   button.hidden = false;
-  const render = () => (button.textContent = voice.enabled ? "Voice: on" : "Voice: off");
+  const pick = $("voice-pick");
+  const rate = $("voice-rate");
+  const render = () => {
+    button.textContent = voice.enabled ? "Voice: on" : "Voice: off";
+    pick.hidden = rate.hidden = !voice.enabled;
+  };
+  const fillVoices = () => {
+    const voices = voice.voices(navigator.language || document.documentElement.lang);
+    pick.replaceChildren(
+      new Option("Default voice", ""),
+      ...voices.map((v) => new Option(v.label, v.uri)),
+    );
+    pick.value = voices.some((v) => v.uri === voice.voiceURI) ? voice.voiceURI : "";
+  };
+  fillVoices();
+  voice.onVoicesChanged(fillVoices);
+  rate.replaceChildren(...RATES.map((r) => new Option(r === 1 ? "Speed 1×" : `Speed ${r}×`, String(r))));
+  rate.value = String(voice.rate);
+  if (rate.value !== String(voice.rate)) rate.value = "1.05";
+  // Changing either one plays a sample, so you can hear the difference at once.
+  const sample = () => {
+    voice.cancel();
+    voice.speak("Hi! This is how I sound.");
+  };
+  pick.addEventListener("change", () => {
+    voice.setVoice(pick.value);
+    sample();
+  });
+  rate.addEventListener("change", () => {
+    voice.setRate(Number(rate.value));
+    sample();
+  });
   render();
   button.addEventListener("click", () => {
     voice.setEnabled(!voice.enabled);
     avatar.setTalking(false);
     render();
+    // On a phone the tool row scrolls sideways; show the two menus that just appeared.
+    if (voice.enabled) rate.scrollIntoView({ inline: "nearest", block: "nearest" });
   });
 }
 

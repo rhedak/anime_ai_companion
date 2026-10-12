@@ -13,10 +13,20 @@ model. Asking her "show me all your animations" does the same.
 
 ## Voice
 
-The **Voice** button makes her read her replies aloud with your browser's own speech synthesis: local voices,
-nothing uploaded. She speaks sentence by sentence while the reply streams, and her mouth moves with the speech.
-Speech *recognition* is deliberately left out: Chrome's version sends your audio to Google, which would break the
-"stays on your machine" promise.
+The **Voice** button makes her read her replies aloud with your browser's own speech synthesis. She speaks sentence
+by sentence while the reply streams, and her mouth moves with the speech. Once Voice is on, two menus appear next to
+it: **which voice** and **how fast** (0.8× to 1.4×). Picking one plays a short sample. Both choices are remembered in
+this browser, and a voice that is no longer installed falls back to the browser's default.
+
+The voices come from your device. System voices (macOS, iOS, Windows, Android) are made on the device, so nothing is
+uploaded. A voice marked **online** in the menu, such as the "Google …" voices in desktop Chrome, is made by a
+server, which receives the text she speaks. Choose a voice without that mark if that matters to you.
+
+**Speaking to her** is not built in, deliberately: browsers' speech recognition (Chrome's, for one) sends your audio
+to the browser's vendor, which would break the "stays on your machine" promise, and a microphone only works on
+`localhost` or an HTTPS address, so it would not work from a phone on your network anyway. On a phone, use the
+**microphone key on the keyboard** to dictate into the message box. If you want a mic button in the page,
+[customise your checkout](customising.html#her-voice): it is a small change in `public/`.
 
 ## Pictures
 
