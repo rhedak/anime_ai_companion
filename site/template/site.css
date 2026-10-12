@@ -74,6 +74,8 @@ li { margin: .25em 0; }
 .pager .next { text-align: right; grid-column: 2; }
 .edit { margin-top: 1.4em; font-size: 14px; color: var(--muted); }
 .edit a { color: var(--muted); }
+.ai-note { margin-top: .4em; font-size: 13px; color: var(--muted); }
+.ai-note a { color: var(--muted); }
 .toc { display: none; }
 
 @media (min-width: 900px) {

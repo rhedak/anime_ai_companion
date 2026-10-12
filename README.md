@@ -11,6 +11,7 @@ browser ──ws── Node server ──┬─ `claude -p` (stream-json)   the 
 ```
 
 **Documentation: <https://rhedak.github.io/anime_ai_companion/>** (the same material as below, with pictures and a menu).
+**Made with AI coding agents, mostly Claude Code; the documentation was written by Claude Code:** see [How this was made](#how-this-was-made).
 
 It is free to use, change and share (MIT). Everything runs on your machine; the only thing that
 leaves it is the conversation your own `claude` sends to Anthropic.
@@ -392,11 +393,31 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 
 Found something? Please open an issue, or report it privately if it is serious.
 
+## How this was made
+
+**This project was built with AI, and you should know that.** The code of this repository and the code of the
+[character creator](https://github.com/rhedak/anime-character-creator) behind it were written with AI coding agents,
+directed by their owner: mostly **Claude Code** (Anthropic), with some work done with **Cursor** (using Grok models)
+and **opencode** (using the free "Big Pickle" model). AI-written code can be wrong. There is an automated test suite
+and safety rules written into the code (see the Security model section above), but treat this as you would any
+software you have not read line by line.
+
+- **The documentation** (the README and the documentation site) was written by Claude Code,
+  from the code.
+- **The drawing** is ordinary code: when a character is drawn, no image generator runs. But the characters' designs
+  began from AI-generated reference images (some made with Grok, kept in the creator's `ref/` folder), which set the
+  style and the first roster, and several characters, Katherina and Risa among them, were traced from such
+  references.
+- **The Hatsune Miku pictures** were made with Grok Imagine (see [Credits](#credits)).
+- **The commits** made by Claude Code in this repository carry a `Co-Authored-By` trailer. The creator's commits do
+  not, so its history does not show which were AI-written: assume most of its code was.
+
 ## Credits
 
 - Characters are drawn by **[anime-character-creator](https://github.com/rhedak/anime-character-creator)**
-  (MIT), a program that draws them from parametric shapes, not by hand and not by image generation.
-  Please keep saying so if you share what it makes.
+  (MIT), a program that draws them from parametric shapes in code, not by hand and not by image generation
+  (the code is AI-written and the designs began from AI-generated references: see
+  [How this was made](#how-this-was-made)). Please keep saying so if you share what it makes.
 - [`ws`](https://github.com/websockets/ws) for WebSockets.
 - `packs/miku`: Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.

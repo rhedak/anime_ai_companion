@@ -130,6 +130,7 @@ ${html}
         ${next ? `<a class="next" href="${next.slug}.html"><small>Next</small>${escape(next.title)}</a>` : "<span></span>"}
       </footer>
       <p class="edit"><a href="${REPO}/edit/main/${page.file}">Improve this page on GitHub</a></p>
+      <p class="ai-note">Made with AI coding agents, mostly Claude Code. This documentation was written by Claude Code. <a href="about.html#how-this-was-made">Details</a></p>
     </article>
     ${toc}
   </main>

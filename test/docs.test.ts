@@ -46,3 +46,18 @@ test("the documentation does not carry anything personal", () => {
     assert.doesNotMatch(html, /\?t=[A-Za-z0-9_-]{16,}/, `${file} has an access token`);
   }
 });
+
+test("the AI disclosure is in the README, on the About page, and at the foot of every page", () => {
+  const readme = read("README.md");
+  assert.match(readme, /## How this was made/);
+  assert.match(readme, /documentation was written by Claude Code/i);
+  const about = read("site/pages/about.md");
+  assert.match(about, /## How this was made/);
+  for (const agent of ["Claude Code", "Cursor", "opencode", "Big Pickle", "Grok"]) assert.ok(about.includes(agent), `the About page does not name ${agent}`);
+  assert.match(about, /documentation[^.]*written by Claude Code/i);
+  execFileSync(process.execPath, [join(root, "site/build.mjs")], { stdio: "pipe" });
+  const dist = join(root, "site/dist");
+  for (const file of readdirSync(dist).filter((f) => f.endsWith(".html") && f !== "404.html")) {
+    assert.match(readFileSync(join(dist, file), "utf8"), /This documentation was written by Claude Code/, `${file} has no AI note`);
+  }
+});

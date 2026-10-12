@@ -23,12 +23,31 @@ cannot grant you the right to use the character. The repository's owner has aske
 and about distributing it in an open-source repository, and had no answer when this was written; the NOTICE says
 so openly.
 
+## How this was made
+
+**This project was built with AI, and you should know that.** The code of this repository and the code of the
+[character creator](https://github.com/rhedak/anime-character-creator) behind it were written with AI coding agents,
+directed by their owner: mostly **Claude Code** (Anthropic), with some work done with **Cursor** (using Grok models)
+and **opencode** (using the free "Big Pickle" model). AI-written code can be wrong. There is an automated test suite
+and safety rules written into the code (see [Safety and privacy](safety.html)), but treat this as you would any
+software you have not read line by line.
+
+- **The documentation** (this site, the README and the other documents in the repository) was written by Claude Code,
+  from the code.
+- **The drawing** is ordinary code: when a character is drawn, no image generator runs. But the characters' designs
+  began from AI-generated reference images (some made with Grok, kept in the creator's `ref/` folder), which set the
+  style and the first roster, and several characters, Katherina and Risa among them, were traced from such
+  references.
+- **The Hatsune Miku pictures** were made with Grok Imagine (see above).
+- **The commits** made by Claude Code in this repository carry a `Co-Authored-By` trailer. The creator's commits do
+  not, so its history does not show which were AI-written: assume most of its code was.
+
 ## Credits
 
 - Characters are drawn by **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (MIT),
-  which draws them from parametric shapes in code, not by hand and not by image generation. Please keep saying so if
-  you share what it makes. The picture packs you load can come from anywhere, including image generators; the Miku
-  pack did.
+  which draws them from parametric shapes in code, not by hand and not by image generation (but see
+  [how this was made](#how-this-was-made): the designs began from AI-generated references, and the code is
+  AI-written). The picture packs you load can come from anywhere, including image generators; the Miku pack did.
 - [`ws`](https://github.com/websockets/ws) for WebSockets and [`qrcode-generator`](https://github.com/kazuhikoarase/qrcode-generator)
   for the phone QR code.
 - This documentation is built with [`marked`](https://github.com/markedjs/marked).

@@ -54,5 +54,8 @@ It is MIT licensed: use it, change it, share it. If you improve it, a pull reque
 required. The character is drawn by [anime-character-creator](https://github.com/rhedak/anime-character-creator), a
 separate open-source project that draws characters from parametric shapes, in code.
 
+**Made with AI, openly.** The code, the character creator and these pages were written with AI coding agents, mostly
+Claude Code. [How this was made](about.html#how-this-was-made) says exactly what that means.
+
 This is an independent project, not affiliated with or endorsed by Anthropic, Cursor, or any other provider named
 in these pages.
