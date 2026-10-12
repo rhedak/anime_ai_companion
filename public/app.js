@@ -74,7 +74,23 @@ function parseReply(text) {
 }
 
 let gesturesDone = 0; // gestures of the current reply already played
-let announcedPack = null; // the picture pack whose terms the chat has already said
+// What the chat says about how she is shown, once at the start of a chat: the drawn character's credit, or a
+// picture pack's terms. Said when the page opens, when the look changes, and after "New chat" empties the log.
+let announcedLook; // undefined until said once; then the pack's name, or null for the drawn character
+let currentLook = null; // the pack info, or null for the drawn character
+function sayLook() {
+  if (currentLook?.terms) addMsg("sys", currentLook.terms);
+  else if (!currentLook) {
+    const el = addMsg("sys", "");
+    const link = (text, href) => Object.assign(document.createElement("a"), { textContent: text, href, target: "_blank", rel: "noopener" });
+    el.append(
+      "Drawn by ",
+      link("anime-character-creator", "https://github.com/rhedak/anime-character-creator"),
+      " · ",
+      link("source", "https://github.com/rhedak/anime_ai_companion"),
+    );
+  }
+}
 
 /** Her replies are shown as Markdown; the source stays in data-raw for /copy and /export. */
 function setMsgText(el, text) {
@@ -918,9 +934,9 @@ function handle(msg) {
       $("zoom").hidden = avatar.packed; // a set of pictures has one framing
       $("pack-credit").textContent = msg.pack?.credit ?? "";
       $("pack-credit").hidden = !msg.pack?.credit;
-      // Its terms are said once when it comes on (chosen, or the page opened with it), not on every reconnect.
-      if (msg.pack?.terms && msg.pack.name !== announcedPack) addMsg("sys", msg.pack.terms);
-      announcedPack = msg.pack?.name ?? null;
+      currentLook = msg.pack ?? null;
+      if ((msg.pack?.name ?? null) !== announcedLook) sayLook(); // not again on every reconnect
+      announcedLook = msg.pack?.name ?? null;
       break;
     case "frames":
       avatar.receiveFrames(msg);
@@ -943,6 +959,7 @@ function handle(msg) {
       demo.cancel();
       voice.cancel();
       log.replaceChildren();
+      sayLook();
       coldEl = null;
       showBubble("");
       avatar.setEmotion("neutral");
