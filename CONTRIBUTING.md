@@ -8,7 +8,8 @@ change it and keep your changes to yourself. This page is only a friendly reques
 If you make something better, in this repo or in your checkout of
 [anime-character-creator](https://github.com/rhedak/anime-character-creator), please consider
 opening a pull request. Other people get the improvement, and you get review, fixes from others
-and no private fork to keep in sync. Small, focused pull requests are the easiest to say yes to.
+and no private fork to keep in sync. Small, focused pull requests are the easiest to say yes to. Please open them against the
+**`dev` branch**: `main` is only updated by a release, which gets a new version number.
 
 ## Running the checks
 

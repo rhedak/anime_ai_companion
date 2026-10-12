@@ -132,7 +132,9 @@ command named `agent` is not necessarily that binary.
 
 - opencode's own permission defaults are permissive, so every start is given an isolated config
   (`opencodeConfig()` in `src/providers/opencode-acp.ts`, sent as `OPENCODE_CONFIG_CONTENT`): Ask
-  everywhere, the pre-approved reads allowed, and chat mode denies every tool. Keep the isolation
+  everywhere, the pre-approved reads allowed, and chat mode asks for every tool and is told to refuse
+  (a blanket deny made opencode's free "Big Pickle" model answer that its free tier works only inside
+  opencode, so chat mode is `ask` with the refusal on the provider side). Keep the isolation
   env (`OPENCODE_DISABLE_PROJECT_CONFIG=1`) that leaves the project's config, plugins and MCP
   servers unloaded.
 - Approvals are the same `session/request_permission` card as Cursor; the permission parser is
@@ -152,6 +154,26 @@ command named `agent` is not necessarily that binary.
 **Ollama** is chat only (`canUseTools` is false). Work mode stays unavailable.
 
 Switching brains starts a new conversation. The brains do not share memory.
+
+### Branches and releases
+
+- **`main` is released code and `dev` is where work happens.** Commit to `dev`. Merge `dev` into `main` only
+  when the owner says to release and the checks below pass on it. Never push `main` or a tag unasked.
+- **Every push to `main` is a release with a new version.** The last commit on `dev` before the merge raises
+  `version` in `package.json` (a minor number for a feature, a patch number for a fix or a docs-only change;
+  the project is 0.x). After the merge, tag that commit on `main` with an annotated `vX.Y.Z` and push `main`
+  and the tag together. Release notes are optional.
+- **`main` pins only a creator tag that exists** on the creator's remote (`package.json`), because a fresh
+  clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
+  unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new
+  tag in the release commit.
+- **The documentation site and the README describe released behaviour.** The site (`site/`) is built from
+  `main` by `.github/workflows/pages.yml`, so write a change's documentation on `dev` and let the release
+  publish it.
+- **When the owner's own app runs from a checkout, leave that checkout on `main`.** The server serves `public/`
+  from disk, so switching branches under a running app changes the page it serves. Work on `dev` in a second
+  worktree (`git worktree add ../anime_ai_companion-dev dev`, then link `node_modules` and `.venv` into it).
+- **Pull requests from other people go to `dev`.**
 
 ### Checks
 
