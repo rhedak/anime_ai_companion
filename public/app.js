@@ -2,6 +2,7 @@ import { createAvatar } from "./avatar.js";
 import { RATES, createVoice, sampleText, takeSentences } from "./speech.js";
 import { renderMarkdown } from "./markdown.js";
 import { createDemo } from "./demo.js";
+import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 
 const $ = (id) => document.getElementById(id);
@@ -51,7 +52,7 @@ const voice = createVoice(
   (speaking) => {
     if (voice.enabled) avatar.setTalking(speaking);
   },
-  (message) => addMsg("sys", message),
+  (message) => errors.report("voice", message),
 );
 let spoken = 0; // characters of the current reply already handed to the voice
 
@@ -627,7 +628,7 @@ function startRename() {
   };
   input.addEventListener("input", () => (input.size = Math.max(4, input.value.length + 1)));
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") finish(true);
+    if (e.key === "Enter" && !composing(e)) finish(true);
     else if (e.key === "Escape") finish(false);
   });
   input.addEventListener("blur", () => finish(true));
@@ -1158,7 +1159,7 @@ panel.addEventListener("drop", (e) => {
 });
 $("form").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
 input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  if (e.key === "Enter" && !e.shiftKey && !composing(e)) { e.preventDefault(); submit(); }
 });
 input.addEventListener("input", () => {
   input.style.height = "auto";
@@ -1250,7 +1251,7 @@ $("folder-set").addEventListener("click", () => {
   else applyTypedFolder();
 });
 $("folder").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") applyTypedFolder(); // Enter always means "use what I typed"
+  if (e.key === "Enter" && !composing(e)) applyTypedFolder(); // Enter always means "use what I typed"
 });
 renderMode();
 
@@ -1498,7 +1499,7 @@ if (voice.supported) {
   // Changing either one plays a sample, so you can hear the difference at once.
   const sample = (lang) => {
     voice.cancel();
-    voice.speak(sampleText(lang));
+    voice.speak(sampleText(lang)); // waits a moment after the cancel, see speech.js
   };
   pick.addEventListener("change", () => {
     voice.setVoice(pick.value);

@@ -11,6 +11,12 @@ test("takeSentences waits for whitespace after the punctuation", () => {
   assert.deepEqual(takeSentences(""), { ready: "", rest: "" });
 });
 
+test("takeSentences splits Japanese at 。！？ without needing a space", () => {
+  assert.deepEqual(takeSentences("こんにちは。元気？"), { ready: "こんにちは。元気？", rest: "" });
+  assert.deepEqual(takeSentences("こんにちは。げん"), { ready: "こんにちは。", rest: "げん" });
+  assert.deepEqual(takeSentences("「やった！」と言った。つぎ"), { ready: "「やった！」と言った。", rest: "つぎ" });
+});
+
 test("speechText drops markdown, code and links", () => {
   assert.equal(speechText("Use `npm test` now"), "Use npm test now");
   assert.equal(speechText("**Bold** and _it_"), "Bold and it");
@@ -132,6 +138,46 @@ test("watchVoices reports the list now and again once voices arrive without any 
     voices = [{ name: "Kyoko", lang: "ja-JP", voiceURI: "k", localService: true }];
     await new Promise((r) => setTimeout(r, 400));
     assert.equal(calls, 2);
+  } finally {
+    delete g.localStorage;
+    delete g.speechSynthesis;
+    delete g.SpeechSynthesisUtterance;
+  }
+});
+
+test("speak waits a moment after cancel, and a later cancel drops what was waiting", async () => {
+  const g = globalThis as Record<string, unknown>;
+  const spoken: string[] = [];
+  let speaking = false;
+  g.localStorage = { getItem: () => null, setItem() {} };
+  g.speechSynthesis = {
+    get speaking() {
+      return speaking;
+    },
+    pending: false,
+    getVoices: () => [],
+    speak: (u: { text: string }) => spoken.push(u.text),
+    cancel() {},
+  };
+  g.SpeechSynthesisUtterance = class {
+    text: string;
+    constructor(t: string) {
+      this.text = t;
+    }
+  };
+  try {
+    const voice = createVoice(() => {});
+    voice.setEnabled(true);
+    voice.cancel();
+    voice.speak("First.");
+    assert.deepEqual(spoken, [], "not at once: Chrome drops a speak() right after cancel()");
+    await new Promise((r) => setTimeout(r, 250));
+    assert.deepEqual(spoken, ["First."]);
+    voice.cancel();
+    voice.speak("Second.");
+    voice.cancel(); // overtakes the one that is waiting
+    await new Promise((r) => setTimeout(r, 250));
+    assert.deepEqual(spoken, ["First."]);
   } finally {
     delete g.localStorage;
     delete g.speechSynthesis;

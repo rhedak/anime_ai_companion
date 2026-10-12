@@ -18,7 +18,8 @@ export function speechText(text) {
  * "Hello wor" are left in `rest`.
  */
 export function takeSentences(text) {
-  const boundary = /[.!?…]+["')\]]*\s+/g;
+  // "。" and the full-width "！" "？" end a sentence without any space after them
+  const boundary = /(?:[.!?…]+["')\]]*\s+|[。！？]+[」』）)"']*)/g;
   let end = 0;
   for (let m; (m = boundary.exec(text)); ) end = m.index + m[0].length;
   return { ready: text.slice(0, end), rest: text.slice(end) };
@@ -92,6 +93,8 @@ export function createVoice(onSpeaking, onProblem = () => {}) {
   let voiceURI = stored("voice-uri") || "";
   let rate = cleanRate(stored("voice-rate"));
   let queued = 0;
+  let generation = 0; // bumped by cancel(): what was waiting to be spoken is dropped
+  let cancelledAt = -Infinity;
   const reported = new Set();
   const problem = (key, message) => {
     if (reported.has(key)) return;
@@ -180,6 +183,8 @@ export function createVoice(onSpeaking, onProblem = () => {}) {
         } else if (voiceURI) {
           problem(`missing:${voiceURI}`, `The voice "${voiceURI}" is not available in this browser, so she uses the default voice.`);
         }
+        let started = false;
+        utterance.onstart = () => (started = true);
         utterance.onend = done;
         utterance.onerror = (e) => {
           // "canceled" and "interrupted" are just her being stopped; anything else is worth knowing.
@@ -190,7 +195,30 @@ export function createVoice(onSpeaking, onProblem = () => {}) {
         };
         queued++;
         onSpeaking(true);
-        synth.speak(utterance);
+        const mine = generation;
+        const go = () => {
+          if (mine !== generation) return; // cancelled while waiting
+          try {
+            synth.speak(utterance);
+          } catch {
+            done();
+            return;
+          }
+          // Accepted but never started: typically a voice that is listed but not installed. Say so.
+          const check = setTimeout(() => {
+            if (!started && mine === generation && !synth.speaking) {
+              problem(
+                `silent:${voiceURI}`,
+                `The browser did not start speaking${chosen ? ` with "${chosen.name}"` : ""}. The voice may not be fully installed on this device (the system's speech settings can download it); try another voice.`,
+              );
+            }
+          }, 4000);
+          check.unref?.();
+        };
+        // Chrome drops a speak() that follows cancel() at once, so give the cancel a moment.
+        const wait = 150 - (Date.now() - cancelledAt);
+        if (wait > 0) setTimeout(go, wait);
+        else go();
       } catch {
         done(); // a failing speech engine must never break the chat
       }
@@ -198,6 +226,8 @@ export function createVoice(onSpeaking, onProblem = () => {}) {
     cancel() {
       if (!supported) return;
       synth.cancel();
+      generation++;
+      cancelledAt = Date.now();
       queued = 0;
       onSpeaking(false);
     },
