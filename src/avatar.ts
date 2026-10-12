@@ -141,8 +141,11 @@ export class AvatarService {
     }
   }
 
+  /** The creator's presets, with the starting character (Risa, unless `COMPANION_PRESET` says otherwise) first. */
   get presetNames(): string[] {
-    return this.schema?.presets ?? [];
+    const all = this.schema?.presets ?? [];
+    const first = this.opts.defaultPreset;
+    return all.includes(first) ? [first, ...all.filter((name) => name !== first)] : all;
   }
 
   private thumbnails: Promise<Record<string, string>> | null = null;

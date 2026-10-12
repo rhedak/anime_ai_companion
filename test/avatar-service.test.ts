@@ -26,6 +26,34 @@ async function service() {
 
 const skip = !existsSync(creatorSrc) && `creator not found at ${creatorSrc}`;
 
+test("the starting character comes first in the list of presets, and nothing is lost", { skip }, async () => {
+  const s = await service(); // starts as linnea
+  try {
+    const names = s.presetNames;
+    assert.equal(names[0], "linnea");
+    assert.equal(new Set(names).size, names.length);
+    assert.ok(names.includes("risa") && names.length > 5);
+  } finally {
+    s.close();
+  }
+  const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
+  const r = new AvatarService({
+    creatorSrc,
+    python: pythonCommand(),
+    workerPath: resolve(import.meta.dirname, "../python/render_worker.py"),
+    statePath: join(dir, "avatar.json"),
+    looksDir: join(dir, "looks"),
+    emotions: { neutral: {} },
+    defaultPreset: "risa",
+  });
+  await r.start();
+  try {
+    assert.equal(r.presetNames[0], "risa");
+  } finally {
+    r.close();
+  }
+});
+
 test("changes can be undone, one step at a time", { skip }, async () => {
   const s = await service();
   try {
