@@ -1218,7 +1218,10 @@ function renderWorkSummary() {
 $("workbar-collapse").addEventListener("click", () => setWorkbarCollapsed(true));
 $("workbar-expand").addEventListener("click", () => setWorkbarCollapsed(false));
 try {
-  if (localStorage.getItem("workbarCollapsed") === "1") setWorkbarCollapsed(true, false);
+  // On a phone the folder bar starts folded away (it is tall, and pushes the message box off a short screen);
+  // anyone who has opened or folded it themselves keeps their choice.
+  const kept = localStorage.getItem("workbarCollapsed");
+  if (kept === "1" || (kept === null && matchMedia("(max-width: 800px)").matches)) setWorkbarCollapsed(true, false);
 } catch {}
 $("worksummary-text").addEventListener("click", () => setWorkbarCollapsed(false));
 

@@ -8,3 +8,7 @@ workspace/*
 !workspace/.gitkeep
 .env
 .DS_Store
+
+# trailer recordings and the throwaway app copy
+trailer/out/
+trailer/.stage/

@@ -211,7 +211,8 @@ form.composer:focus-within { border-color: var(--focus); }
   .bubble { display: none; }
   .divider { position: relative; cursor: row-resize; }
   .divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 48px; height: 4px; margin: -2px 0 0 -24px; border-radius: 2px; background: var(--muted); opacity: .8; }
-  .panel { border-left: 0; }
+  .panel { border-left: 0; overflow-y: auto; }
+  .log { min-height: 96px; } /* never squeezed to nothing; if the rest does not fit, the panel scrolls */
   .status { top: 10px; left: 12px; }
   .tools { top: 38px; left: 10px; right: 10px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
   .tools > * { flex: none; }
