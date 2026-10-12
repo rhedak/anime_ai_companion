@@ -193,7 +193,21 @@ form.composer:focus-within { border-color: var(--focus); }
 .preset[aria-current="true"] { outline: 2px solid var(--focus); }
 .preset-name { text-transform: capitalize; }
 
+/* A phone: the companion above, the chat below, and a bar between them to drag up or down (`#divider`,
+   the same control as the vertical line on a wide screen). The column is `minmax(0, 1fr)`, not `1fr`:
+   a plain `1fr` will not shrink under its widest content, so the page came out wider than the screen
+   and she stood off to one side. */
 @media (max-width: 800px) {
-  main { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; }
-  .divider, .bubble { display: none; }
+  main { --stage-h: 46%; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--stage-h) 20px minmax(0, 1fr); height: 100dvh; }
+  body.resizing { cursor: row-resize; }
+  .bubble { display: none; }
+  .divider { position: relative; cursor: row-resize; }
+  .divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 48px; height: 4px; margin: -2px 0 0 -24px; border-radius: 2px; background: var(--muted); opacity: .8; }
+  .panel { border-left: 0; }
+  .status { top: 10px; left: 12px; }
+  .tools { top: 38px; left: 10px; right: 10px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .tools > * { flex: none; }
+  .avatar { height: max(calc(100% - 84px), 120px); }
+  .save-form { top: 82px; left: 10px; right: 10px; }
+  .save-form input { flex: 1; min-width: 0; }
 }

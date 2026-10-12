@@ -1377,41 +1377,63 @@ $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: 
 connect();
 
 // --- resizable divider ----------------------------------------------------------------
-// The left column's share of the width, kept between 30% and 70% and remembered across visits.
+// On a wide screen it is the line between the companion (left) and the chat: the left column's share of
+// the width. On a phone the two are stacked and it is the bar between them: the top part's share of the
+// height. Each is kept between its limits and remembered across visits.
 (() => {
   const main = document.querySelector("main");
   const divider = $("divider");
-  const MIN = 30, MAX = 70, DEFAULT = 62;
-  const clamp = (v) => Math.min(MAX, Math.max(MIN, v));
-  const set = (percent, save = true) => {
-    const value = clamp(percent);
-    main.style.setProperty("--stage", `${value}%`);
-    divider.setAttribute("aria-valuenow", String(Math.round(value)));
-    if (save) try { localStorage.setItem("stageWidth", String(value)); } catch {}
+  const phone = matchMedia("(max-width: 800px)");
+  const modes = {
+    wide: { key: "stageWidth", prop: "--stage", min: 30, max: 70, fallback: 62, vertical: true, keys: ["ArrowLeft", "ArrowRight"] },
+    tall: { key: "stageHeight", prop: "--stage-h", min: 25, max: 75, fallback: 46, vertical: false, keys: ["ArrowUp", "ArrowDown"] },
   };
-  let saved = DEFAULT;
-  try { saved = Number(localStorage.getItem("stageWidth")) || DEFAULT; } catch {}
-  set(saved, false);
-  const current = () => Number(divider.getAttribute("aria-valuenow"));
+  const mode = () => (phone.matches ? modes.tall : modes.wide);
+  const clamp = (m, v) => Math.min(m.max, Math.max(m.min, v));
+  const set = (m, percent, save = true) => {
+    const value = clamp(m, percent);
+    main.style.setProperty(m.prop, `${value}%`);
+    m.value = value;
+    if (m === mode()) divider.setAttribute("aria-valuenow", String(Math.round(value)));
+    if (save) try { localStorage.setItem(m.key, String(value)); } catch {}
+  };
+  for (const m of Object.values(modes)) {
+    let saved = m.fallback;
+    try { saved = Number(localStorage.getItem(m.key)) || m.fallback; } catch {}
+    set(m, saved, false);
+  }
+  // The same element serves both layouts, so what it tells assistive technology follows the layout.
+  const describe = () => {
+    const m = mode();
+    divider.setAttribute("aria-orientation", m.vertical ? "vertical" : "horizontal");
+    divider.setAttribute("aria-valuemin", String(m.min));
+    divider.setAttribute("aria-valuemax", String(m.max));
+    divider.setAttribute("aria-valuenow", String(Math.round(m.value)));
+    divider.title = m.vertical ? "Drag to resize (double-click to reset)" : "Drag up or down to resize (double-tap to reset)";
+  };
+  describe();
+  phone.addEventListener("change", describe);
   divider.addEventListener("pointerdown", (e) => {
     divider.setPointerCapture(e.pointerId);
     document.body.classList.add("resizing");
   });
   divider.addEventListener("pointermove", (e) => {
     if (!divider.hasPointerCapture(e.pointerId)) return;
+    const m = mode();
     const box = main.getBoundingClientRect();
-    set(((e.clientX - box.left) / box.width) * 100);
+    set(m, m.vertical ? ((e.clientX - box.left) / box.width) * 100 : ((e.clientY - box.top) / box.height) * 100);
   });
   const stop = () => document.body.classList.remove("resizing");
   divider.addEventListener("pointerup", stop);
   divider.addEventListener("pointercancel", stop);
-  divider.addEventListener("dblclick", () => set(DEFAULT));
+  divider.addEventListener("dblclick", () => set(mode(), mode().fallback));
   divider.addEventListener("keydown", (e) => {
+    const m = mode();
     const step = e.shiftKey ? 5 : 1;
-    if (e.key === "ArrowLeft") set(current() - step);
-    else if (e.key === "ArrowRight") set(current() + step);
-    else if (e.key === "Home") set(MIN);
-    else if (e.key === "End") set(MAX);
+    if (e.key === m.keys[0]) set(m, m.value - step);
+    else if (e.key === m.keys[1]) set(m, m.value + step);
+    else if (e.key === "Home") set(m, m.min);
+    else if (e.key === "End") set(m, m.max);
     else return;
     e.preventDefault();
   });
