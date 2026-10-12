@@ -83,6 +83,10 @@ button.icon.small { width: 26px; height: 26px; flex: none; font-size: 16px; line
 .workinfo button { all: unset; cursor: pointer; text-decoration: underline; margin-left: 6px; }
 .meter { padding: 6px 14px 0; font: 12px var(--font-mono); color: var(--muted); text-align: center; overflow-wrap: anywhere; }
 .meter span { white-space: nowrap; }
+.meter-toggle { all: unset; cursor: pointer; padding: 0 4px; border-radius: var(--radius-sm); }
+.meter-toggle:hover, .meter-toggle:focus-visible { color: var(--text); }
+.meter-toggle.warn { color: var(--warn-text); }
+.meter-toggle.bad { color: var(--error-text); }
 .meter.stale { opacity: .65; }
 .meter .warn { color: var(--warn-text); }
 .meter .bad { color: var(--error-text); }

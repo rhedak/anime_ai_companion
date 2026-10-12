@@ -444,6 +444,10 @@ menuDescriptions.effort = {
   xhigh: "Even more thorough",
   max: "The most thinking she can do",
 };
+// One word on the button, so it fits a phone's row; the list it opens keeps the full names and descriptions.
+const shortLabels = {
+  "permission-mode": { manual: "Ask", plan: "Plan", acceptEdits: "Accept", auto: "Auto", everything: "Everything" },
+};
 const menuRefreshers = [];
 const closeMenus = () => document.querySelectorAll(".menu-pop, .menu-backdrop").forEach((p) => p.remove());
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
@@ -518,12 +522,12 @@ function makeMenu(select, title) {
     button.getAttribute("aria-expanded") === "true" ? close(false) : open();
   });
   const refresh = () => {
-    text.textContent = select.selectedOptions[0]?.text ?? "";
+    text.textContent = shortLabels[select.id]?.[select.value] ?? select.selectedOptions[0]?.text ?? "";
     if (select.id === "effort" && select.value === "default" && state.effortNow) {
       text.textContent = `${state.effortNow[0].toUpperCase()}${state.effortNow.slice(1)} (default)`;
     }
     button.disabled = select.disabled;
-    button.title = select.title;
+    button.title = shortLabels[select.id] ? `${select.title}: ${select.selectedOptions[0]?.text ?? ""}` : select.title;
   };
   refresh();
   menuRefreshers.push(refresh);
@@ -1260,17 +1264,23 @@ function resetText(resetsAt) {
   return sameDay ? time : `${when.toLocaleDateString([], { month: "numeric", day: "numeric" })} ${time}`;
 }
 
+// The footer can be folded away to one small word; the choice is remembered in this browser.
+let meterCollapsed = false;
+try { meterCollapsed = localStorage.getItem("meterCollapsed") === "1"; } catch {}
+
 function renderMeter() {
   const box = $("meter");
   if (!meter) return void (box.hidden = true);
   const stale = meter.limitsAt === null || Date.now() - meter.limitsAt > STALE_MS;
   const parts = [];
+  let worst = 0;
   const add = (text, fraction, title) => {
     const span = document.createElement("span");
     span.textContent = text;
     span.title = title;
     if (fraction >= 0.95) span.className = "bad";
     else if (fraction >= 0.8) span.className = "warn";
+    worst = Math.max(worst, fraction);
     parts.push(span);
   };
   if (meter.model) add(meter.effort ? `${meter.model} (${meter.effort})` : meter.model, 0, "The model answering you" + (meter.effort ? " and how hard she thinks" : ""));
@@ -1281,7 +1291,20 @@ function renderMeter() {
     add(`week: ${percent(meter.week.used)}${meter.week.resetsAt ? ` (resets ${resetText(meter.week.resetsAt)})` : ""}`, meter.week.used, "Your seven-day usage window with Claude" + (stale ? " (as of her last reply)" : ""));
   }
   if (meter.ctx !== null) add(`ctx: ${percent(meter.ctx)}`, meter.ctx, "How full her memory of this conversation is. /compact frees it up.");
-  box.replaceChildren(...parts.flatMap((p, i) => (i ? [document.createTextNode(" | "), p] : [p])));
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "meter-toggle";
+  toggle.setAttribute("aria-expanded", String(!meterCollapsed));
+  toggle.title = meterCollapsed ? "Show the usage details" : "Hide the usage details";
+  toggle.textContent = meterCollapsed ? `▸ Usage${worst >= 0.8 ? " ⚠" : ""}` : "▾";
+  if (meterCollapsed && worst >= 0.8) toggle.classList.add(worst >= 0.95 ? "bad" : "warn");
+  toggle.addEventListener("click", () => {
+    meterCollapsed = !meterCollapsed;
+    try { localStorage.setItem("meterCollapsed", meterCollapsed ? "1" : "0"); } catch {}
+    renderMeter();
+  });
+  const details = parts.flatMap((p, i) => (i ? [document.createTextNode(" | "), p] : [p]));
+  box.replaceChildren(toggle, ...(meterCollapsed ? [] : [document.createTextNode(" "), ...details]));
   box.classList.toggle("stale", stale && Boolean(meter.session || meter.week));
   box.hidden = parts.length === 0;
 }
