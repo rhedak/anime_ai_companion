@@ -1,0 +1,38 @@
+---
+description: What the server can do, how it is locked down, and what leaves your computer.
+---
+
+# Safety and privacy
+
+The server can run an agent that edits files and runs commands, so it is built to be reachable only by you.
+
+## What leaves your computer
+
+Only the conversation your own brain sends to its provider: for Claude Code, to Anthropic; for Cursor, to Cursor;
+for opencode, to whatever model it uses. With Ollama nothing leaves at all. Files stay on this machine. The app has
+no analytics and makes no network call of its own, except fetching the creator once if it is missing, and talking to
+your Ollama host if you use one (by default on your own machine).
+
+## How the server is locked down
+
+- **Local only.** It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. Because
+  `!command` runs without approval, this is the line that matters: nothing but your own page may talk to the server.
+- **Phone access is the one exception**, opt-in at every start (`--lan`). Then every page, file and WebSocket from
+  another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local address or
+  `.local` name (against DNS rebinding), and, for the WebSocket, a matching `Origin`. Such a device still cannot run
+  `!commands`, loosen the permission mode, load your Claude Code setup, or choose another folder.
+- **The page** ships a strict Content-Security-Policy: no inline or foreign scripts and no framing, so nobody can
+  click the approval buttons for you.
+- **Everything the model chooses is validated.** Avatar values are coerced field by field (hex colours, numbers,
+  plain text only for free text), and the SVG is sanitised in the browser before it is shown. Nothing she writes is
+  inserted as HTML.
+- **Work mode never skips permissions.** Even *Auto* leaves risky actions to Claude Code's own safety checks. Cards
+  show the exact command or content you approve. A folder's own hooks, settings and MCP servers stay unloaded unless
+  you opt in. The home folder and `/` are refused as project folders.
+- **Loose modes are off at every start.** The permission mode, `/setup` and `--lan` all come back to the safe
+  setting each time the server starts.
+
+## Reporting a problem
+
+Found something? Please open an [issue](https://github.com/rhedak/anime_ai_companion/issues), or report it
+privately if it is serious.

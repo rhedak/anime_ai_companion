@@ -14,7 +14,7 @@ const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
 
 // ---- the throwaway copy of the app ------------------------------------------------------------------------------
 /** A fresh copy of the app with its own data, a demo project, and a server on `port`. Returns a handle to stop it. */
-export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/src") } = {}) {
+export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/src"), before = async () => {} } = {}) {
   const app = join(stageDir, "app");
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(join(app, "data"), { recursive: true });
@@ -29,6 +29,7 @@ export async function startApp({ port = 3801, settings = {}, creatorSrc = resolv
   mkdirSync(demo, { recursive: true });
   writeFileSync(join(demo, "index.html"), readFileSync(join(import.meta.dirname, "demo-site.html")));
   writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ projectDir: demo, ...settings }, null, 2));
+  await before(app);
   const log = join(stageDir, "server.log");
   const proc = spawn(process.execPath, ["src/server.ts", "--lan"], {
     cwd: app,
@@ -54,7 +55,7 @@ export async function startApp({ port = 3801, settings = {}, creatorSrc = resolv
 
 // ---- Chrome ------------------------------------------------------------------------------------------------------
 /** A headless Chrome with one phone-sized tab (360 x 640 css px at 3x: 1080 x 1920). */
-export async function openBrowser({ cdpPort = 9444, width = 360, height = 640, scale = 3 } = {}) {
+export async function openBrowser({ cdpPort = 9444, width = 360, height = 640, scale = 3, mobile = true } = {}) {
   const profile = join(stageDir, "chrome");
   rmSync(profile, { recursive: true, force: true });
   const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", `--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`, `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
@@ -88,8 +89,8 @@ export async function openBrowser({ cdpPort = 9444, width = 360, height = 640, s
   await call("Page.enable");
   await call("Runtime.enable");
   // The scale comes from the launch flag: only then does the screencast deliver full-resolution frames.
-  await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 0, mobile: true });
-  await call("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 0, mobile });
+  if (mobile) await call("Emulation.setTouchEmulationEnabled", { enabled: true });
   await call("Page.addScriptToEvaluateOnNewDocument", { source: readFileSync(join(import.meta.dirname, "overlay.js"), "utf8") });
   return { call, on, evaluate, close() { ws.close(); proc.kill(); }, width, height, scale };
 }
@@ -319,8 +320,8 @@ export function join_(clips, out, { fade = 0.18, speeds = [] } = {}) {
 
 /** A screenshot of a page (a file:// page, or the app on a wide screen), from a second Chrome; returns a data: url. */
 export async function snapshot(url, { width = 1100, height = 700, wait = 4000, cdpPort = 9445 } = {}) {
-  const profile = join(stageDir, "chrome-snap");
-  rmSync(profile, { recursive: true, force: true });
+  const profile = join(stageDir, `chrome-snap-${process.pid}-${Date.now()}`);
+  mkdirSync(stageDir, { recursive: true });
   const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", `--window-size=${width},${height}`, `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
   try {
     let target;
@@ -343,5 +344,7 @@ export async function snapshot(url, { width = 1100, height = 700, wait = 4000, c
     return "data:image/png;base64," + shot.data;
   } finally {
     proc.kill();
+    await sleep(300);
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }

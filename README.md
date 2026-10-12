@@ -10,6 +10,8 @@ browser ──ws── Node server ──┬─ `claude -p` (stream-json)   the 
                              └─ python render_worker.py      draws her, via anime-character-creator
 ```
 
+**Documentation: <https://rhedak.github.io/anime_ai_companion/>** (the same material as below, with pictures and a menu).
+
 It is free to use, change and share (MIT). Everything runs on your machine; the only thing that
 leaves it is the conversation your own `claude` sends to Anthropic.
 

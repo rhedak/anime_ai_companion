@@ -35,7 +35,8 @@
     "open": "node src/server.ts --open",
     "dev": "node --watch src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --test \"test/**/*.test.ts\"",
+    "site": "node site/build.mjs"
   },
   "dependencies": {
     "qrcode-generator": "^2.0.4",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
+    "marked": "^18.1.0",
     "typescript": "^5.6.0"
   }
 }

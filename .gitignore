@@ -12,3 +12,7 @@ workspace/*
 # trailer recordings and the throwaway app copy
 trailer/out/
 trailer/.stage/
+
+# the built documentation site
+site/dist/
+trailer/.sample-pack/

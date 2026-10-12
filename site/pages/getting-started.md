@@ -1,0 +1,72 @@
+---
+description: Requirements, installation, the anaico command, configuration, and what to check when it does not start.
+---
+
+# Getting started
+
+## What you need
+
+- **Node.js 22.18 or newer.** It runs the TypeScript directly: there is no build step.
+- **Python 3.11 or newer.** The character renderer is pure standard-library Python. If your `python3` is older,
+  `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically.
+- **One brain.** Claude Code (`claude` installed and signed in), Cursor (`cursor-agent`), opencode, or Ollama.
+  See [Brains](brains.html) for what each one can do.
+- **A checkout of [anime-character-creator](https://github.com/rhedak/anime-character-creator)** next to this repo
+  (or set `CREATOR_SRC` to its `src` folder). If it is missing, the app clones a pinned copy into
+  `~/.anaico/creator/` by itself.
+
+## Install and run
+
+```bash
+git clone https://github.com/rhedak/anime-character-creator.git
+git clone https://github.com/rhedak/anime_ai_companion.git
+cd anime_ai_companion
+npm install
+uv sync            # only if your python3 is older than 3.11
+npm start          # http://127.0.0.1:3737
+```
+
+Open the address in a browser and say hello. Her first look is Risa; the **Looks** menu has the rest.
+
+## The `anaico` command
+
+`npm link` puts an `anaico` command on your PATH. It starts the server, opens the browser, and starts in
+[work mode](work-mode.html) for the folder you ran it from.
+
+| Command | What it does |
+| --- | --- |
+| `anaico` | start in work mode for the current folder (a home folder or `/` falls back to chat) |
+| `anaico --chat` | start in chat mode; the folder is still filled in, so Work is one click away |
+| `anaico --no-open` | do not open the browser |
+| `anaico --lan` | also let your phone in, see [From your phone](phone.html) (off again at every start) |
+| `anaico --daemon` | run in the background; output goes to `data/server.log` |
+| `anaico --status`, `--stop`, `--restart` | look at, stop or restart that background server |
+
+## Configuration
+
+Everything has a default. Set these as environment variables when you start the server.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `COMPANION_PROVIDER` | `claude` | `claude`, `cursor`, `opencode` or `ollama` (also switchable in the page) |
+| `COMPANION_MODEL` | `haiku` | model for chat (Claude Code) |
+| `COMPANION_WORK_MODEL` | `sonnet` | model for work mode (Claude Code) |
+| `COMPANION_OPENCODE_MODEL` | opencode's default | model for opencode, as `provider/model` |
+| `COMPANION_PRESET` | `risa` | the starting character (any preset of the creator) |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://127.0.0.1:11434`, first installed | where Ollama listens and which model to use |
+| `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
+| `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
+| `PORT` | `3737` | the port |
+| `COMPANION_NO_NUDGE` | unset | `1` silences the weekly "you have local changes" reminder |
+
+Your own data lives in `data/` (settings, chat log, current look, saved looks, `custom.css`) and `workspace/`.
+Both are git-ignored and belong to you.
+
+## When it does not start
+
+1. **Check the versions.** `node --version` should say 22.18 or newer, and `python3 --version` 3.11 or newer. If
+   not, run `uv sync`, or set `PYTHON`.
+2. **Check the brain.** `claude` (or `cursor-agent`, or `opencode`) must be on your PATH and signed in.
+3. **Check the port.** Something else may be using 3737: set `PORT`.
+4. **Read the log.** In the background mode it is `data/server.log`. Problems in the page itself also show as an
+   orange line in the chat.

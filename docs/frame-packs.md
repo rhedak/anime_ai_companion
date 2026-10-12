@@ -1,6 +1,6 @@
-# Frame packs: your own pictures instead of the drawn avatar
+# Picture packs: your own pictures instead of the drawn avatar
 
-A frame pack is a folder of pictures she is shown with, in place of the body the character creator draws.
+A picture pack (a "frame pack" in the code and in file names) is a folder of pictures she is shown with, in place of the body the character creator draws.
 Make the pictures with any image tool (or draw them), put them in `data/frames/<name>/`, and type
 `/frames <name>`, or pick it from **Looks → Packs…**, a gallery that shows each pack's neutral picture next to
 the drawn avatar. `/frames off` (or choosing the drawn avatar there) brings it back, and so does choosing a

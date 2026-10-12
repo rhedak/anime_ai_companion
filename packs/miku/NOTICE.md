@@ -54,7 +54,8 @@ rest of the repository is MIT-licensed and works without it.
 A base picture of the character was drawn by the repository's owner; the expression, blink and mouth pictures
 were then edited from it with an AI image model (xAI's Grok Imagine), and put together by a script that keeps
 everything but the face identical between pictures. The licence and Crypton's guidelines say nothing about
-AI-generated fan works, and **Crypton has not been asked about this pack.** If you want certainty, ask Crypton
-through the contact form on piapro.net. If Crypton or a rights holder asks for the pack to be removed, it will be.
+AI-generated fan works. **The repository's owner has asked Crypton about this pack** (a message through Crypton's
+contact form, in October 2026) **and had no answer when this was written.** If you want certainty for your own use,
+ask Crypton yourself through their contact form. If Crypton or a rights holder asks for the pack to be removed, it will be.
 
 Checked against Crypton's pages on 2026-10-11.
