@@ -122,6 +122,24 @@ function createDrawnAvatar(host, requestFrames, requestGesture) {
       if (performance.now() < gestureUntil && !gestureCache.has(`${name}:${gestureName}`)) requestGesture(name, gestureName);
       shown = -1; // redraw right away if this emotion's frames are already here
     },
+    /** Shut the eyes now, for `ms` milliseconds (a blink is about 130). */
+    blink(ms = 130) {
+      blinkUntil = performance.now() + ms;
+    },
+    /** Ask for these emotions' frames and gesture poses (in the happy face) ahead of time; resolves once they are here. */
+    warm(emotions, gestures = []) {
+      for (const name of emotions) ensure(name);
+      for (const name of gestures) if (!gestureCache.has(`happy:${name}`)) requestGesture("happy", name);
+      const started = performance.now();
+      return new Promise((resolve) => {
+        const check = () => {
+          const ready = emotions.every((n) => cache.has(n)) && gestures.every((n) => gestureCache.has(`happy:${n}`));
+          if (ready || performance.now() - started > 5000) resolve();
+          else setTimeout(check, 100);
+        };
+        check();
+      });
+    },
     /** Raise an arm for a moment: "wave" or "cheer". */
     gesture(name, ms = 2400) {
       const now = performance.now();
@@ -243,6 +261,23 @@ function createPackAvatar(host) {
       talking = on;
       host.classList.toggle("talking", on);
     },
+    blink(ms = 130) {
+      blinkUntil = performance.now() + ms;
+    },
+    /** Load these emotions' pictures ahead of time so none is blank the first time it shows. */
+    warm(emotions) {
+      const loading = [];
+      for (const name of emotions) {
+        const e = pack?.emotions[name];
+        if (!e) continue;
+        for (const url of [e.idle, e.blink, ...e.talk]) {
+          if (!url) continue;
+          const img = imageFor(url);
+          if (!img.complete) loading.push(new Promise((done) => (img.addEventListener("load", done, { once: true }), img.addEventListener("error", done, { once: true }))));
+        }
+      }
+      return Promise.race([Promise.all(loading).then(() => {}), new Promise((done) => setTimeout(done, 5000))]);
+    },
     // A picture set has one fixed framing and cannot raise an arm or be redrawn.
     setVersion() {},
     setFull() {},
@@ -298,6 +333,8 @@ export function createAvatar(host, requestFrames, requestGesture) {
       current.setFull(on);
     },
     gesture: (...args) => current.gesture(...args),
+    blink: (...args) => current.blink(...args),
+    warm: (...args) => current.warm(...args),
     receiveGesture: (msg) => drawn.receiveGesture(msg),
     receiveFrames: (msg) => drawn.receiveFrames(msg),
   };

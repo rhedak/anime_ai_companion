@@ -1,6 +1,7 @@
 import { createAvatar } from "./avatar.js";
 import { createVoice, takeSentences } from "./speech.js";
 import { renderMarkdown } from "./markdown.js";
+import { createDemo } from "./demo.js";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -35,6 +36,7 @@ function parseReply(text) {
     .replace(/\[emotion:(\w+)\]/g, (_, e) => ((emotion = e.toLowerCase()), ""))
     .replace(/\[gesture:(\w+)\]/g, (_, g) => (gestures.push(g.toLowerCase()), ""))
     .replace(/\[avatar\b[^\]]*\]/g, "")
+    .replace(/\[demo\]/g, "")
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
@@ -88,6 +90,22 @@ function addMsg(kind, text) {
   log.scrollTop = log.scrollHeight;
   return div;
 }
+
+// --- showing off: every emotion and gesture in turn, each named (`/show`, or she asks for it with [demo]) ---
+let demoEl = null;
+const demo = createDemo(avatar, {
+  set(text) {
+    demoEl ??= addMsg("sys", "");
+    demoEl.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  },
+  done(text) {
+    demoEl ??= addMsg("sys", "");
+    demoEl.textContent = text;
+    demoEl = null;
+    log.scrollTop = log.scrollHeight;
+  },
+});
 
 // --- pictures in the chat: thumbnails that open in a viewer ----------------------------------
 
@@ -824,7 +842,15 @@ function handle(msg) {
       avatar.setVersion(msg.version);
       setBusy(busy);
       break;
+    case "demo":
+      if (busy) addMsg("sys", "She is still answering: ask again when she is done.");
+      else {
+        clearTimeout(calmTimer);
+        demo.start(msg);
+      }
+      break;
     case "user":
+      demo.cancel();
       voice.cancel();
       addUserMsg(msg.text, msg.images ?? []);
       showBubble("");
@@ -875,6 +901,7 @@ function handle(msg) {
       endTurn();
       break;
     case "reset":
+      demo.cancel();
       voice.cancel();
       log.replaceChildren();
       coldEl = null;

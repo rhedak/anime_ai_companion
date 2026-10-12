@@ -19,6 +19,8 @@ export function createAvatar(
   setTalking(on: boolean): void;
   setFull(on: boolean): void;
   gesture(name: string, ms?: number): void;
+  blink(ms?: number): void;
+  warm(emotions: string[], gestures?: string[]): Promise<void>;
   receiveGesture(msg: unknown): void;
   receiveFrames(msg: unknown): void;
 };

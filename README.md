@@ -311,6 +311,7 @@ Type these in the chat box (`/help` lists them):
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
 | `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |
+| `/show` | she shows all her emotions, a blink, talking and her gestures, a second each, naming every one (no model call); asking her "show me all your animations" does the same |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |
@@ -329,6 +330,8 @@ so plainly when another brain, such as Ollama, is active, instead of pretending 
 ## How it works
 
 - **Gestures:** `[gesture:wave]` and `[gesture:cheer]` raise an arm for a moment (two pose frames).
+- **Showing off:** `[demo]` at the end of a reply starts the same sequence as `/show`. The page plays it, because tags in a
+  streaming reply would all fire at once; any new message ends it. A picture pack shows what its pictures have.
 - **Emotions:** she starts replies with tags like `[emotion:happy]`; `emotions.json` maps each to
   face settings. The server renders a few mouth openings and a blink per emotion and the browser
   flips between them while text streams.

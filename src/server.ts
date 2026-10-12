@@ -5,7 +5,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
-import { AvatarService } from "./avatar.ts";
+import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
 import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists, type ShownRecord } from "./transcript.ts";
@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
 import { frameMime, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
+import { demoMessage } from "./demo.ts";
 import { runShell } from "./shell.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -439,6 +440,9 @@ function makeTagApplier(): (reply: string) => void {
   };
 }
 
+/** `[demo]` in a reply: she was asked to show all her emotions and gestures (see `src/demo.ts`). */
+const DEMO_TAG = /\[demo\]/;
+
 const MAX_SHOWN_PER_REPLY = 8;
 
 /** The pictures named by `[image path]` tags in a finished reply, checked and registered. */
@@ -778,6 +782,10 @@ const slashCommands: Record<
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
   },
+  show: {
+    help: "she shows all her emotions, a blink, talking and her gestures, one at a time, naming each (no model call)",
+    run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
+  },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
     run: async ({ args, say, reply, remote }) => {
@@ -1089,6 +1097,8 @@ function runTurn(
         persistTranscript();
         broadcast(event);
         broadcast(meterInfo()); // the context grew
+        // She was asked to show off: the page plays the sequence once her reply is done.
+        if (event.type === "done" && DEMO_TAG.test(reply)) broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack));
         opts.onFinish?.(event);
       });
     }
