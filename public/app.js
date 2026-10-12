@@ -428,7 +428,7 @@ menuDescriptions.effort = {
   max: "The most thinking she can do",
 };
 const menuRefreshers = [];
-const closeMenus = () => document.querySelectorAll(".menu-pop").forEach((p) => p.remove());
+const closeMenus = () => document.querySelectorAll(".menu-pop, .menu-backdrop").forEach((p) => p.remove());
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
 
 function makeMenu(select, title) {
@@ -447,6 +447,7 @@ function makeMenu(select, title) {
   wrap.append(button);
   const close = (focus) => {
     wrap.querySelector(".menu-pop")?.remove();
+    wrap.querySelector(".menu-backdrop")?.remove();
     button.setAttribute("aria-expanded", "false");
     if (focus) button.focus();
   };
@@ -487,7 +488,11 @@ function makeMenu(select, title) {
       else return;
       e.preventDefault();
     });
-    wrap.append(pop);
+    // On a phone the list is a sheet over the bottom of the screen (style.css); the dimmed rest of the page
+    // closes it when tapped, which is what a menu hanging off a small button cannot offer.
+    const backdrop = Object.assign(document.createElement("div"), { className: "menu-backdrop" });
+    backdrop.addEventListener("click", () => close(false));
+    wrap.append(backdrop, pop);
     button.setAttribute("aria-expanded", "true");
     (pop.querySelector('[aria-checked="true"]') ?? pop.querySelector("button")).focus();
   };
