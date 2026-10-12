@@ -54,7 +54,7 @@ const avatar = new AvatarService({
   statePath: join(root, "data/avatar.json"),
   looksDir: join(root, "data/looks"),
   emotions,
-  defaultPreset: process.env.COMPANION_PRESET ?? "linnea",
+  defaultPreset: process.env.COMPANION_PRESET ?? "risa",
 });
 await avatar.start();
 

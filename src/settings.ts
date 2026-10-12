@@ -37,7 +37,7 @@ const defaults = (): Settings => ({
   projectDir: null,
   chatModel: "haiku",
   workModel: "sonnet",
-  name: "Mio",
+  name: "Risa",
   framePack: null,
   effort: "default",
   allowedTools: ["Read", "Grep", "Glob"],
@@ -52,7 +52,7 @@ export async function loadSettings(path: string): Promise<Settings> {
     // first run
   }
   const settings = { ...defaults(), ...saved };
-  settings.name = cleanName(String(settings.name)) ?? "Mio";
+  settings.name = cleanName(String(settings.name)) ?? "Risa";
   if (typeof settings.framePack !== "string" || !isPackName(settings.framePack)) settings.framePack = null;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;

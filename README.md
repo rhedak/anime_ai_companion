@@ -46,7 +46,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama |
-| `COMPANION_PRESET` | `linnea` | starting character (any preset of the creator) |
+| `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
 | `PORT` | `3737` | |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
@@ -201,7 +201,7 @@ with a blue accent and rounded corners; the variables are documented in `public/
 :root { --accent: #4f9d69; --surface: #22302a; --panel: #17201c; --radius-lg: 6px; --font-heading: "Courier New", monospace; }
 ```
 
-Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Mio's own
+Anything the variables do not cover can be restyled with ordinary CSS rules in the same file. Risa's own
 appearance (hair, clothes, face) is separate: ask her to change it in chat.
 
 ## How her replies are shown
