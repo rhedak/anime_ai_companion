@@ -53,7 +53,9 @@ const voice = createVoice(
     if (voice.enabled) avatar.setTalking(speaking);
   },
   (message) => errors.report("voice", message),
+  () => refreshVoices(),
 );
+let refreshVoices = () => {}; // set once the voice menus exist
 let spoken = 0; // characters of the current reply already handed to the voice
 
 let busy = false;
@@ -1478,7 +1480,7 @@ if (voice.supported) {
   };
   const fillVoices = () => {
     const voices = voice.voices(navigator.language || document.documentElement.lang);
-    const key = voices.map((v) => v.uri).join("\n");
+    const key = voices.map((v) => v.label).join("\n");
     if (pick.dataset.key === key) return; // nothing new: do not rebuild a menu that may be open
     pick.dataset.key = key;
     pick.replaceChildren(
@@ -1491,6 +1493,7 @@ if (voice.supported) {
     );
     pick.value = voices.some((v) => v.uri === voice.voiceURI) ? voice.voiceURI : "";
   };
+  refreshVoices = fillVoices;
   voice.watchVoices(fillVoices);
   pick.addEventListener("pointerdown", fillVoices); // the list may have grown since the page opened
   rate.replaceChildren(...RATES.map((r) => new Option(r === 1 ? "Speed 1×" : `Speed ${r}×`, String(r))));
