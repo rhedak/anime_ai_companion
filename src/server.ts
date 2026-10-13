@@ -30,6 +30,7 @@ import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
 import { createMemoryService } from "./memory-service.ts";
+import { createNotes } from "./notes.ts";
 import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
@@ -177,7 +178,7 @@ const skills = createSkillsService({
   folder: () => settings.projectDir ?? workspace,
   cannotChange: () => cannotChange(),
   reconfigure: () => provider.configure(sessionConfig()),
-  pushNote: (text) => notesForModel.push(text),
+  pushNote: (text) => notes.push(text),
   broadcast: (msg) => broadcast(msg),
   modeInfo: () => modeInfo(),
   name: () => settings.name,
@@ -350,7 +351,7 @@ function persistTranscript(): void {
 }
 
 // Problems with the model's avatar tags, passed back to it with the next user message.
-let notesForModel: string[] = [];
+const notes = createNotes();
 
 /** Applies each complete [avatar ...] tag in a growing reply exactly once, in order. */
 function makeTagApplier(): (reply: string) => void {
@@ -360,7 +361,7 @@ function makeTagApplier(): (reply: string) => void {
     for (; seen < tags.length; seen++) {
       if (activePack) {
         const note = "Your look is a fixed set of pictures now: [avatar ...] tags and gestures change nothing. Do not use them.";
-        if (!notesForModel.includes(note)) notesForModel.push(note);
+        notes.pushOnce(note);
         continue;
       }
       avatar
@@ -372,7 +373,7 @@ function makeTagApplier(): (reply: string) => void {
             broadcast(looksInfo());
           }
           if (rejected.length) {
-            notesForModel.push(
+            notes.push(
               "Your avatar tag had problems: " +
                 rejected.map((r) => `${r.key}: ${r.reason}`).join("; ") + ".",
             );
@@ -404,16 +405,15 @@ async function collectShownImages(reply: string): Promise<ShownRecord[]> {
     if ("error" in checked) problems.push(checked.error);
     else records.push({ id: randomUUID(), name: checked.name, path: checked.path, root: checked.root, mime: checked.mime });
   }
-  if (problems.length) notesForModel.push(`Your image tag had problems: ${problems.join("; ")}.`);
+  if (problems.length) notes.push(`Your image tag had problems: ${problems.join("; ")}.`);
   return records;
 }
 
 /** Prepends any pending notes about the model's own mistakes to the user's message. */
 function withNotes(userText: string): string {
   const background = [memory.note(), cards.loreNote(userText)].filter((n): n is string => Boolean(n));
-  const notes = [...background, ...notesForModel];
-  notesForModel = [];
-  return notes.length ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}` : userText;
+  const waiting = [...background, ...notes.take()];
+  return waiting.length ? `(system note, not from the user: ${waiting.join(" ")})\n\n${userText}` : userText;
 }
 
 /** Why a settings change cannot happen right now, or null. */
@@ -448,7 +448,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   // intact across restarts but means the work-mode rules in the new persona never reach her. Tell her instead.
   const now = sessionConfig();
   if (settings.provider === "claude" && transcript.items.length > 0 && (before.mode !== mode || (mode === "work" && before.cwd !== now.cwd))) {
-    notesForModel.push(
+    notes.push(
       mode === "work"
         ? `the user switched you to work mode. ${personaWork.replace(/\s+/g, " ").trim()} Project folder: ${now.cwd}.`
         : "the user switched you back to chat mode: you have no tools now, and the work-mode rules no longer apply.",
@@ -499,7 +499,7 @@ const cards = createCardService({
   personaBase,
   settings,
   saveSettings: () => saveSettings(settingsPath, settings),
-  pushNote: (text) => notesForModel.push(text),
+  pushNote: (text) => notes.push(text),
   busy: () => provider.busy,
   transcript,
   persist: () => persistTranscript(),
@@ -516,7 +516,7 @@ async function rename(input: string, say: Say): Promise<void> {
   settings.name = name;
   await saveSettings(settingsPath, settings);
   // Her running session keeps the old prompt until it restarts, so tell her directly.
-  notesForModel.push(`the user renamed you: your name is now ${name}.`);
+  notes.push(`the user renamed you: your name is now ${name}.`);
   broadcast(modeInfo());
 }
 
@@ -579,7 +579,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
-    notesForModel.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
+    notes.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
@@ -590,7 +590,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
-  notesForModel.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
+  notes.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
   broadcast(packMessage());
   broadcast(await packsMessage());
   say(
@@ -856,7 +856,7 @@ async function runBang(command: string, say: Say): Promise<void> {
     transcript.shell({ command, output, code: result.code });
     persistTranscript();
     // The model did not see this; tell it with her next message.
-    notesForModel.push(
+    notes.push(
       `the user ran a shell command themselves in ${settings.projectDir ?? workspace}: $ ${command} (exit ${result.code ?? "none"}). It printed: ${output.trim().slice(0, 4000).replace(/\n{2,}/g, "\n") || "(nothing)"}`,
     );
     broadcast({ type: "shell-done", id, output, code: result.code });
@@ -916,7 +916,7 @@ async function resumeAcp(args: string, say: Say): Promise<void> {
   if (chosen.id === acp.sessionId) return say("That is the current conversation.");
   acp.resume(chosen.id);
   transcript.clear();
-  notesForModel = [];
+  notes.clear();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -956,7 +956,7 @@ async function resumeCommand(args: string, say: Say): Promise<void> {
   convo.lastReplyAt = size ? size.modified.getTime() : null;
   transcript.clear();
   transcript.items = items;
-  notesForModel = [];
+  notes.clear();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -984,7 +984,7 @@ function resetConversation(): void {
   forgetConversationSize();
   transcript.clear();
   persistTranscript();
-  notesForModel = [];
+  notes.clear();
   pendingPermissions.clear();
   broadcast({ type: "reset" });
   broadcast(modeInfo());
@@ -1281,7 +1281,7 @@ wss.on("connection", (ws) => {
         forgetConversationSize();
         transcript.clear();
         persistTranscript();
-        notesForModel = [];
+        notes.clear();
         pendingPermissions.clear();
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());
@@ -1307,7 +1307,7 @@ wss.on("connection", (ws) => {
       resetConversation();
     } else if (msg.type === "look-undo") {
       if (await avatar.undo()) {
-        notesForModel.push("The user undid your last look change from the menu.");
+        notes.push("The user undid your last look change from the menu.");
         transcript.look(["undid the last change"]);
         broadcast({ type: "avatar", version: avatar.version, applied: ["undid the last change"] });
       }
@@ -1320,7 +1320,7 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "look-load" && typeof msg.name === "string") {
       if (await avatar.loadLook(msg.name)) {
         if (settings.framePack) await choosePack(null, () => {}); // a drawn look was picked: show it
-        notesForModel.push(`The user switched your look to their saved look '${msg.name}' from the menu.`);
+        notes.push(`The user switched your look to their saved look '${msg.name}' from the menu.`);
         transcript.look([`load=${msg.name}`]);
         broadcast({ type: "avatar", version: avatar.version, applied: [`load=${msg.name}`] });
       }
@@ -1341,7 +1341,7 @@ wss.on("connection", (ws) => {
       if (await avatar.loadPreset(msg.name)) {
         if (settings.framePack) await choosePack(null, () => {}); // a drawn look was picked: show it
         transcript.look([`base=${msg.name}`]);
-        notesForModel.push(`The user switched your look to the '${msg.name}' preset from the menu.`);
+        notes.push(`The user switched your look to the '${msg.name}' preset from the menu.`);
         broadcast({ type: "avatar", version: avatar.version, applied: [`base=${msg.name}`] });
       }
       broadcast(looksInfo());
