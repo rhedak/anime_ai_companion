@@ -16,7 +16,7 @@ cache-friendly way of talking to Claude is not broken.
 | --- | --- | --- | --- |
 | 1 | Character cards (import and export) | small | Isolated, fully testable, and a large catalogue of ready personas |
 | 2 | A memory file she can read and write | medium | Memory is the biggest gap against the lists |
-| 3 | Check the MCP bridge, then decide | small | Part of it may exist already |
+| 3 | ~~Check the MCP bridge, then decide~~ | done | Was removed on purpose; dropped (see 3) |
 | 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
 | 5 | Proactive greetings | small, but costly to use | Only without a model call |
 | 6 | Tools for Ollama models that support them | medium to large, spike first | Local code never leaves the machine; quality depends on the model |
@@ -72,19 +72,17 @@ inspectable memory (Markdown, verbatim, forgettable) over vectors, and so do we.
 Done when: she remembers a fact across `/clear` and a restart, the user can see and
 remove every line, and the cold-cache card still guards the first message after a gap.
 
-## 3. The MCP bridge
+## 3. The MCP bridge (dropped)
 
-`data/attach-mcp.json` and `data/attach-token` exist on the live install, but nothing in
-`src/`, `public/` or the docs mentions them. Find out what writes them (probably a Claude
-Code or Cursor feature, not this app) before designing anything.
+Resolved 2026-10-13. `data/attach-mcp.json` and `data/attach-token` are leftovers from "pro mode", a stdio channel that let a
+terminal Claude Code session be her brain (added in `8e6167a`, removed again in `5bf06d2` the same day). That removal took
+out the channel shim, the local token socket and the MCP SDK and zod dependencies (about 1,200 lines of lockfile), because
+the default mode already covers what pro mode was a workaround for. Nothing in the app reads or writes the two files now, so
+they can be deleted by hand: the token belongs to a socket that no longer exists.
 
-If there is no bridge, the idea is a small local MCP server with tools such as
-`set_emotion`, `play_gesture` and `redesign_avatar`, so an agent in another terminal can use
-her as a face. It would be loopback only, token-protected, and could not start commands or
-change permissions. It follows `--lan` rules for anything that is not loopback.
-
-Done when: the question "what are those files" is answered in a line here, and either
-removed from the plan or turned into a design.
+A new MCP server that lets another agent drive her face (`set_emotion`, `play_gesture`, `redesign_avatar`) would bring back
+the same dependency and the same kind of local socket and token, for a use nobody has asked for. Not planned. If it comes
+back, start from `git show 8e6167a` and keep it loopback only, token protected, and unable to start commands.
 
 ## 4. Speech input (opt-in)
 
