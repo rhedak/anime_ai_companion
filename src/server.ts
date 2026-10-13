@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { readFile, mkdir } from "node:fs/promises";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
@@ -22,12 +22,13 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
 import { checkShownImage } from "./shown-images.ts";
-import { frameMime, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
-import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
+import { isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
+import { createRequestHandler } from "./http-routes.ts";
 import { createMemoryService } from "./memory-service.ts";
 import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
@@ -290,118 +291,20 @@ async function refreshOllamaModels(): Promise<void> {
 /** Approvals waiting for an answer, so a reloaded tab can show them again. */
 const pendingPermissions = new Map<string, PermissionRequest>();
 
-const mime: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml",
-};
-
-// Defence in depth for a page that talks to a server able to run commands: no inline or
-// foreign scripts at all, no framing (clickjacking the approval buttons), nothing leaves the origin.
-const securityHeaders = {
-  "content-security-policy": [
-    "default-src 'none'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    `connect-src 'self' ws://${host}:${port} ws://localhost:${port}`, // 'self' covers the phone's own address
-    "base-uri 'none'",
-    "form-action 'none'",
-    "frame-ancestors 'none'",
-  ].join("; "),
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "DENY",
-  "referrer-policy": "no-referrer",
-};
-
-/** Pages and files go to this machine freely; over the network only with the token (see src/lan.ts). */
-function letThrough(req: IncomingMessage, res: ServerResponse): boolean {
-  if (isLoopbackAddress(req.socket.remoteAddress)) return true;
-  const gate = lan ? gateRequest(req, lanToken) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
-  if (gate.action === "allow") return true;
-  if (gate.action === "sign-in") {
-    res.writeHead(302, { "set-cookie": sessionCookie(lanToken), location: gate.location, "cache-control": "no-store", ...securityHeaders }).end();
-  } else {
-    res.writeHead(gate.status, { "content-type": "text/plain; charset=utf-8", ...securityHeaders }).end(gate.text);
-  }
-  return false;
-}
-
-const server = createServer(async (req, res) => {
-  if (!letThrough(req, res)) return;
-  const path = new URL(req.url ?? "/", "http://localhost").pathname;
-  const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
-  if (shown) {
-    // A picture she showed in the chat. The id is unguessable and the file is re-checked on every request.
-    const record = transcript.findShown(shown[1]);
-    const ok = record && !("error" in (await checkShownImage(record.path, record.root)));
-    if (!record || !ok) {
-      res.writeHead(404).end("Not found");
-      return;
-    }
-    res.writeHead(200, { "content-type": record.mime, "cache-control": "private, max-age=3600", ...securityHeaders });
-    res.end(await readFile(record.path));
-    return;
-  }
-  const thumb = /^\/pack-thumb\/([^/]+)$/.exec(path);
-  if (thumb) {
-    // The gallery's picture of a pack: its neutral picture, for any pack in the folders, not only the one in use.
-    let name = "";
-    try {
-      name = decodeURIComponent(thumb[1]);
-    } catch {}
-    const found = isPackName(name) ? await readPack(packDirs, name, Object.keys(emotions)) : null;
-    const file = found?.ok ? found.pack.emotions.neutral.idle : "";
-    const body = found?.ok && (await readFile(found.pack.files.get(file)!.path).catch(() => null));
-    if (!body) {
-      res.writeHead(404).end("Not found");
-      return;
-    }
-    res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...securityHeaders });
-    res.end(body);
-    return;
-  }
-  const frame = /^\/frames\/([^/]+)\/([^/]+)$/.exec(path);
-  if (frame) {
-    // Only files the scan of the chosen pack found are sent, never a path taken from the url.
-    let name = "", file = "";
-    try {
-      [name, file] = [decodeURIComponent(frame[1]), decodeURIComponent(frame[2])];
-    } catch {}
-    const known = activePack?.name === name ? activePack.files.get(file) : undefined;
-    const body = known && (await readFile(known.path).catch(() => null));
-    if (!known || !body) {
-      res.writeHead(404).end("Not found");
-      return;
-    }
-    res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...securityHeaders });
-    res.end(body);
-    return;
-  }
-  if (path === "/custom.css") {
-    // The user's own styling (see public/theme.css). Missing file: an empty sheet, not a 404.
-    const css = await readFile(customCssPath).catch(() => "");
-    res.writeHead(200, { "content-type": mime[".css"], "cache-control": "no-cache", ...securityHeaders });
-    res.end(css);
-    return;
-  }
-  const file = normalize(join(publicDir, path === "/" ? "index.html" : path));
-  if (file !== publicDir && !file.startsWith(publicDir + sep)) {
-    res.writeHead(403).end();
-    return;
-  }
-  try {
-    const body = await readFile(file);
-    res.writeHead(200, {
-      "content-type": mime[extname(file)] ?? "application/octet-stream",
-      ...securityHeaders,
-    });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end("Not found");
-  }
-});
+const server = createServer(
+  createRequestHandler({
+    host,
+    port,
+    publicDir,
+    customCssPath,
+    lan,
+    lanToken: () => lanToken,
+    transcript,
+    packDirs,
+    emotionNames: () => Object.keys(emotions),
+    activePack: () => activePack,
+  }),
+);
 
 const allowedOrigins = new Set([`http://${host}:${port}`, `http://localhost:${port}`]);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });

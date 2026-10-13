@@ -77,6 +77,48 @@ describe("chatting", { skip }, () => {
     assert.match(items.at(-1).text, /The review is back/);
   });
 
+  test("the page is served with a strict content-security-policy and no framing", async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type")!, /text\/html/);
+    const csp = res.headers.get("content-security-policy")!;
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /script-src 'self'/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.match(csp, new RegExp(`connect-src 'self' ws://127\\.0\\.0\\.1:${server.port}`));
+    assert.equal(res.headers.get("x-frame-options"), "DENY");
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+    const script = await fetch(`http://127.0.0.1:${server.port}/app.js`);
+    assert.match(script.headers.get("content-type")!, /text\/javascript/);
+    assert.ok(script.headers.get("content-security-policy"), "every file carries it, not only the page");
+  });
+
+  test("only the page's own files are served: nothing above public/, nothing unknown, and her pictures only by id", async () => {
+    const base = `http://127.0.0.1:${server.port}`;
+    assert.equal((await fetch(`${base}/package.json`)).status, 404, "the repository's files are not the page's files");
+    assert.equal((await fetch(`${base}/src/server.ts`)).status, 404);
+    assert.equal((await fetch(`${base}/nope.js`)).status, 404);
+    for (const path of ["/../package.json", "/..%2f..%2fpackage.json", "/%2e%2e/package.json", "/public/../../package.json"]) {
+      const res = await fetch(`${base}${path}`);
+      assert.notEqual(res.status, 200, path);
+      assert.doesNotMatch(await res.text(), /anime-ai-companion/, `${path} must not leak package.json`);
+    }
+    assert.equal((await fetch(`${base}/frames/nothing/neutral.png`)).status, 404);
+    assert.equal((await fetch(`${base}/shown/00000000-0000-4000-8000-000000000000`)).status, 404);
+    assert.equal((await fetch(`${base}/shown/not-an-id`)).status, 404);
+    assert.equal((await fetch(`${base}/pack-thumb/nothing`)).status, 404);
+  });
+
+  test("the user's own stylesheet is an empty sheet when there is none, and their file when there is", async () => {
+    const url = `http://127.0.0.1:${server.port}/custom.css`;
+    const none = await fetch(url);
+    assert.equal(none.status, 200);
+    assert.match(none.headers.get("content-type")!, /text\/css/);
+    assert.equal(await none.text(), "");
+    writeFileSync(join(server.dir, "data", "custom.css"), ":root { --accent: #123456; }");
+    assert.match(await (await fetch(url)).text(), /#123456/);
+  });
+
   test("a message to a slash command that does not exist says so, and the model is not asked", async () => {
     const c = await server.client();
     await c.next("history");
