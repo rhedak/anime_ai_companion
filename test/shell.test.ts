@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { runShell } from "../src/shell.ts";
+import { runShell, shellDisabled } from "../src/shell.ts";
 
 test("runs in the given folder and reports output and exit code", async () => {
   const dir = await mkdtemp(join(tmpdir(), "shell-"));
@@ -35,4 +35,11 @@ test("a command that runs too long is killed with everything it started", async 
   assert.equal(slow.timedOut, true);
   assert.equal(slow.code, null);
   assert.ok(Date.now() - started < 5000);
+});
+
+test("COMPANION_NO_SHELL turns the !command box off, for the usual spellings of yes", () => {
+  assert.equal(shellDisabled({}), false);
+  assert.equal(shellDisabled({ COMPANION_NO_SHELL: "" }), false);
+  assert.equal(shellDisabled({ COMPANION_NO_SHELL: "0" }), false);
+  for (const on of ["1", "true", "TRUE", " yes ", "on"]) assert.equal(shellDisabled({ COMPANION_NO_SHELL: on }), true, on);
 });

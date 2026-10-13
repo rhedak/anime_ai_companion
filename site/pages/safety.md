@@ -19,8 +19,12 @@ microphone button is lit, and this app's own server never receives audio.
 
 ## How the server is locked down
 
-- **Local only.** It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. Because
-  `!command` runs without approval, this is the line that matters: nothing but your own page may talk to the server.
+- **Local only.** It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. That stops any
+  website you visit in your browser from talking to it. It does **not** stop other software on the same computer: a local
+  program can send any `Origin` header, and on a shared computer another user could reach the port. So run it on a
+  computer only you use. If you cannot, set `COMPANION_NO_SHELL=1` to turn off `!command` (the one way to run a command
+  without a card), and remember that anyone who can reach the port can also answer approval cards, so do not use work
+  mode there.
 - **Phone access is the one exception**, opt-in at every start (`--lan`). Then every page, file and WebSocket from
   another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local address or
   `.local` name (against DNS rebinding), and, for the WebSocket, a matching `Origin`. Such a device still cannot run

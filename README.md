@@ -54,6 +54,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
 | `PORT` | `3737` | |
+| `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box (see Security model) |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
 
 ## Voice
@@ -462,8 +463,11 @@ this once a week at startup (local check only, no network); `COMPANION_NO_NUDGE=
 
 Because the server can run Claude Code, it is built to be reachable only by you:
 
-- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. Because `!command`
-  runs without approval, this is the line that matters: nothing but your own page may talk to the server.
+- It listens on `127.0.0.1` and accepts WebSocket connections only from its own origin. That stops any website you visit
+  from talking to it. It does not stop other software on the same computer: a local program can send any `Origin`
+  header, and on a shared computer another user could reach the port. Run it on a computer only you use. If you cannot,
+  set `COMPANION_NO_SHELL=1` (turns off `!command`, the one way to run a command without a card) and do not use work
+  mode: anyone who can reach the port can also answer the approval cards.
 - `--lan` is the one way past that, and it is opt-in at every start. Then every page, file and WebSocket
   from another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local
   address or `.local` name (against DNS rebinding), and, for the WebSocket, an `Origin` equal to that address.

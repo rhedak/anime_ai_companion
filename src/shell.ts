@@ -16,6 +16,14 @@ export interface ShellOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * `COMPANION_NO_SHELL=1` turns the `!command` box off: it is the one way to run a command without a card, and the server cannot
+ * tell a command typed by you from one sent by another program on this computer (see "Local only" in the safety notes).
+ */
+export function shellDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return ["1", "true", "yes", "on"].includes(String(env.COMPANION_NO_SHELL ?? "").trim().toLowerCase());
+}
+
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
 /**

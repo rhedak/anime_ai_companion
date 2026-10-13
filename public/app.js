@@ -315,6 +315,7 @@ function addUserMsg(text, pics = [], count = pics.length) {
 }
 
 const IDLE_PLACEHOLDER = input.placeholder;
+const SHELL_HINT = $("shell-hint").textContent;
 
 function setBusy(on) {
   busy = on;
@@ -1317,6 +1318,7 @@ function submit() {
 input.addEventListener("input", () => {
   const shell = /^!\s*\S/.test(input.value);
   $("shell-hint").hidden = !shell;
+  $("shell-hint").textContent = state.shellOff ? "Shell commands are turned off on this server (COMPANION_NO_SHELL)" : SHELL_HINT;
   $("form").classList.toggle("shell", shell);
 });
 // Stop: the button while she works, or Ctrl+C (without a text selection, so copying still works).

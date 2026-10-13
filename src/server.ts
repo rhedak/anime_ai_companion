@@ -27,7 +27,7 @@ import { frameMime, isPackName, listPacks, packInfo, readPack, type FramePack } 
 import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, sessionCookie, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
-import { runShell } from "./shell.ts";
+import { runShell, shellDisabled } from "./shell.ts";
 import { cardFromPersona, cardFromSaved, characterFromCard, loreFor, MAX_CARD_BYTES, NO_USE, parseCardFile, previewCard, splitPersona, type Card, type CardUse } from "./card.ts";
 import { addFact, findRememberTags, formatMemory, memoryChange, memoryIntro, nearlyFull, parseMemory } from "./memory.ts";
 import { countSkills, reachedForUnloadedSkill, skillsNotice, userSkillsDir } from "./skills.ts";
@@ -283,6 +283,7 @@ const modeInfo = () => ({
   claudeSkills,
   effort: settings.effort,
   effortNow: effectiveEffort(),
+  shellOff: shellDisabled(),
 });
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
@@ -1182,6 +1183,7 @@ let shellAbort: AbortController | null = null;
 
 /** `!command` in the chat box: run it in the project folder and tell the model afterwards, like Claude Code's bash mode. */
 async function runBang(command: string, say: Say): Promise<void> {
+  if (shellDisabled()) return say("!commands are turned off on this server (COMPANION_NO_SHELL is set).");
   if (mode !== "work") return say("!commands run in work mode, in your project folder. Switch to Work first.");
   if (shellRunning) return say("A command is still running; wait for it to finish.");
   shellRunning = true;
