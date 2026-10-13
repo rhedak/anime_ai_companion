@@ -13,13 +13,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: anime_ai_companion
+      # The pinned creator release (package.json), not whatever its default branch holds today.
+      - id: creator
+        run: echo "ref=$(node -p "require('./anime_ai_companion/package.json').creator.ref")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: rhedak/anime-character-creator
+          ref: ${{ steps.creator.outputs.ref }}
           path: anime-character-creator
+      # The oldest Node the project claims to support (engines in package.json).
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.18"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

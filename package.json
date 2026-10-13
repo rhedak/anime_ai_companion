@@ -8,7 +8,7 @@
   "author": "Henrik Hanssen",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/rhedak/anime_ai_companion.git"
+    "url": "git+https://github.com/rhedak/anime_ai_companion.git"
   },
   "homepage": "https://github.com/rhedak/anime_ai_companion",
   "bugs": "https://github.com/rhedak/anime_ai_companion/issues",
@@ -24,16 +24,16 @@
     "node": ">=22.18"
   },
   "bin": {
-    "anaico": "src/cli.ts"
+    "anaico": "bin/anaico.js"
   },
   "creator": {
     "url": "https://github.com/rhedak/anime-character-creator.git",
     "ref": "v0.2.2"
   },
   "scripts": {
-    "start": "node src/server.ts",
-    "open": "node src/server.ts --open",
-    "dev": "node --watch src/server.ts",
+    "start": "node bin/check-node.js && node src/server.ts",
+    "open": "node bin/check-node.js && node src/server.ts --open",
+    "dev": "node bin/check-node.js && node --watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
     "site": "node site/build.mjs"
