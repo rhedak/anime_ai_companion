@@ -15,6 +15,7 @@ workspace/*
 trailer/out/
 trailer/.stage/
 
-# the built documentation site
+# the built documentation site and the staged browser demo
 site/dist/
+out/
 trailer/.sample-pack/

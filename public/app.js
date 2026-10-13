@@ -1183,7 +1183,8 @@ function handle(msg) {
 }
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`);
+  // The browser demo hands the page a socket that lives in the page (see demo/); everywhere else it is the server.
+  ws = /** @type {any} */ (window).anaicoSocket?.() ?? new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = (e) => handle(JSON.parse(e.data));
   ws.onclose = () => {
     $("status").textContent = "disconnected · retrying…";
