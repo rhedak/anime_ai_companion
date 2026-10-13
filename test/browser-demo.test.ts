@@ -6,10 +6,12 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
+import { drawnDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type Renderer } from "../demo/local-socket.js";
 import { GREETING, reply } from "../demo/script.js";
 import { stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
+import { demoMessage } from "../src/demo.ts";
 
 const repo = resolve(fileURLToPath(import.meta.url), "../..");
 const emotions = JSON.parse(readFileSync(join(repo, "emotions.json"), "utf8"));
@@ -178,6 +180,47 @@ test("a new chat empties the log and she greets again; odd input is ignored with
   assert.ok(!events.some((e) => e.type === "notice" || e.type === "user"));
 });
 
+test("/show plays the same show as the real app, with nothing said and no message of the visitor's in the log", async () => {
+  const { events, next, send } = connect({ greeting: "Hello!" });
+  await next((e) => e.type === "done");
+  const from = events.length;
+  send({ type: "user", text: "/show" });
+  const show = await next((e) => e.type === "demo", from);
+  assert.deepEqual(show, drawnDemoMessage(Object.keys(emotions), Object.keys(GESTURES)));
+  assert.deepEqual(show.steps.slice(0, Object.keys(emotions).length).map((s: any) => s.name), Object.keys(emotions), "every emotion first");
+  assert.deepEqual(show.steps.slice(-2).map((s: any) => s.name), Object.keys(GESTURES), "then the gestures");
+  assert.deepEqual(events.slice(from).map((e) => e.type), ["demo"], "no user line, no reply, nothing asked of a model");
+  assert.deepEqual(show, demoMessage(Object.keys(emotions), Object.keys(GESTURES), null), "the server builds the same list for a drawn character");
+});
+
+test("the other slash commands: /clear starts afresh, /help lists what there is, and the real app's commands are named as such", async () => {
+  const { events, next, send } = connect({ greeting: "Hello!" });
+  await next((e) => e.type === "done");
+  let from = events.length;
+  send({ type: "user", text: "/help" });
+  const help = await next((e) => e.type === "notice", from);
+  assert.match(help.text, /\/show[^]*\/clear[^]*\/help/);
+  from = events.length;
+  send({ type: "user", text: "/compact" });
+  assert.match((await next((e) => e.type === "notice", from)).text, /\/compact is a command of the real app/);
+  from = events.length;
+  send({ type: "user", text: "/clear" });
+  await next((e) => e.type === "reset", from);
+  await next((e) => e.type === "done", from);
+  assert.ok(!events.slice(from).some((e) => e.type === "user"));
+});
+
+test("asked in words to show off, she says so and ends with [demo], and the show follows her reply like the server's", async () => {
+  const { events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "show me all your emotions" });
+  await next((e) => e.type === "demo", from);
+  const types = events.slice(from).map((e) => e.type);
+  assert.ok(types.indexOf("done") < types.indexOf("demo"), "the show starts after her reply is done");
+  assert.match(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), /Sure, watch this! \[demo\]/);
+});
+
 test("work mode, pretended: she asks with a real approval card, nothing ends until it is answered, and the face keeps moving meanwhile", async () => {
   const { events, next, send, say } = connect();
   await next((e) => e.type === "queue");
@@ -293,6 +336,9 @@ test("presets, moods, gestures, and the things she is honest about", () => {
   assert.match(say("put on a coat").text, /I need a colour for the coat/);
   assert.match(say("how is the weather").text, /only knows a few things/);
   assert.match(say("what can you do?").text, /20 characters/);
+  assert.match(say("what can you do?").text, /\/show/);
+  assert.match(say("show me all your expressions").text, /\[demo\]$/);
+  assert.match(say("run through everything").text, /\[demo\]/);
   assert.match(say("undo").text, /Undo button/);
   assert.equal(say("show me work mode").scene, "work");
   assert.equal(say("what is my project command").scene, "work");

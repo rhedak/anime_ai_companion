@@ -1,7 +1,10 @@
-export interface DemoStep {
-  kind: "emotion" | "blink" | "talk" | "gesture";
-  name?: string;
-}
+export type DemoStep = { kind: "emotion"; name: string } | { kind: "blink" } | { kind: "talk" } | { kind: "gesture"; name: string };
+
+export const DEMO_HOLD_MS: number;
+export function drawnDemoMessage(
+  emotions: string[],
+  gestures: string[],
+): { type: "demo"; hold: number; steps: DemoStep[] };
 
 export function createDemo(
   avatar: {

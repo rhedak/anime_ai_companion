@@ -3,7 +3,8 @@
 // with no tools: it draws her with the renderer, turns a message into a streamed reply, applies her [avatar …] tags, and keeps the
 // page's look buttons (undo, presets, reset) working. One scripted scene plays out a pretend work-mode session with a real approval card.
 
-import { framesRequest, gestureRequest } from "../public/frames.js";
+import { drawnDemoMessage } from "../public/demo.js";
+import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 
 const OPEN = 1;
@@ -175,7 +176,9 @@ export function createLocalSocket({
 
   /** The rest of what the page sends. */
   async function handle(msg) {
-    if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) return answer(msg.text.slice(0, 2000));
+    if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
+      return msg.text.trimStart().startsWith("/") ? command(msg.text.trim()) : answer(msg.text.slice(0, 2000));
+    }
     if (msg.type === "reset") return newChat();
     if (msg.type === "look-undo") {
       if (looks.length) {
@@ -200,6 +203,27 @@ export function createLocalSocket({
       return;
     }
     // Anything else (rename, saved looks, brains, permissions, …) is for the real app: the demo does nothing.
+  }
+
+  /**
+   * The few slash commands the demo has, answered like the server does: no message of the user's in the log, and no model asked.
+   * Anything else belongs to the real app, and the demo says so.
+   */
+  async function command(text) {
+    const name = /^\/(\w*)/.exec(text)?.[1].toLowerCase() ?? "";
+    if (name === "show") return out(drawnDemoMessage(Object.keys(await emotions), Object.keys(GESTURES)));
+    if (name === "clear" || name === "new") return newChat();
+    if (name === "help") {
+      return out({
+        type: "notice",
+        text:
+          "/show: she shows all her emotions, a blink, talking and her gestures, one at a time, naming each\n" +
+          "/clear (or /new): a fresh conversation\n" +
+          "/help: this list\n" +
+          "The real app has many more commands (the documentation lists them).",
+      });
+    }
+    out({ type: "notice", text: `/${name} is a command of the real app. This demo knows /show, /clear and /help.` });
   }
 
   /** A fresh conversation: an empty log, and her greeting again. */
@@ -240,6 +264,8 @@ export function createLocalSocket({
     await applyTags(text);
     history.push({ type: "bot", text });
     out({ type: "done" });
+    // Asked to show off, a model ends with [demo] and the server then lists the steps; so does she.
+    if (/\[demo\]/.test(text)) out(drawnDemoMessage(Object.keys(await emotions), Object.keys(GESTURES)));
   }
 
   async function answer(text) {

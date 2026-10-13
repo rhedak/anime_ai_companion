@@ -98,6 +98,7 @@ const MOODS = [
   [/\b(neutral|calm|serious)\b/, "neutral", "Okay."],
 ];
 
+const SHOW_WORDS = /\b(show off|show me everything|show (me )?all|all (of )?(your|her|the) (emotions|expressions|animations|moods|faces)|every (emotion|expression)|run through)\b/;
 const WORK_WORDS = /\b(work mode|work-mode|coding|code|approve|approval|permission|command|edit a file|project|developer|terminal)\b/;
 const HELP_WORDS = /\b(what can you do|what can i|help|options|tricks|how does this work|what do you do)\b/;
 
@@ -111,7 +112,8 @@ export const GREETING =
 const HELP =
   "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the 20 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
-  'Say "show me work mode" for a pretend coding session. The Undo button above my picture takes back the last change.';
+  'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
+  "The Undo button above my picture takes back the last change.";
 
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
@@ -123,6 +125,7 @@ export function reply(input, context = {}) {
   const t = ` ${String(input).toLowerCase().replace(/\s+/g, " ")} `;
   const presets = context.presets ?? [];
 
+  if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
   if (HELP_WORDS.test(t)) return { text: HELP };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
@@ -206,7 +209,7 @@ export function reply(input, context = {}) {
     return {
       text:
         '[emotion:thinking] This demo only knows a few things. Try "make my hair mint green", "put on glasses and a witch hat", "become Linnea", ' +
-        '"be shy", "wave", or "show me work mode". Or ask "what can you do?"',
+        '"be shy", "wave", "/show", or "show me work mode". Or ask "what can you do?"',
     };
   }
 

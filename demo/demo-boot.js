@@ -26,6 +26,7 @@ const CHIPS = [
   "Become Linnea",
   "Be shy",
   "Wave at me",
+  { label: "Show all her expressions", text: "/show" },
   "Show me work mode",
   "What can you do?",
 ];
@@ -37,10 +38,11 @@ function addChips() {
   const bar = document.createElement("div");
   bar.id = "demo-chips";
   bar.setAttribute("aria-label", "Things to try");
-  for (const text of CHIPS) {
+  for (const chip of CHIPS) {
+    const { label, text } = typeof chip === "string" ? { label: chip, text: chip } : chip;
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = text;
+    button.textContent = label;
     button.addEventListener("click", () => {
       // While she is still answering, the send button is the stop button: leave her alone until she is done.
       if (document.getElementById("send")?.classList.contains("stop")) return;

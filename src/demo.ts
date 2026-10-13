@@ -4,6 +4,7 @@
  * reply play as the text streams in, so the server only lists the steps and the page plays them one
  * by one, naming each (`public/demo.js`).
  */
+import { DEMO_HOLD_MS, drawnDemoMessage } from "../public/demo.js";
 import type { FramePack } from "./frame-pack.ts";
 
 export type DemoStep =
@@ -21,22 +22,11 @@ export interface DemoMessage {
   note?: string;
 }
 
-export const DEMO_HOLD_MS = 1000;
+export { DEMO_HOLD_MS };
 
 /** The steps for the drawn avatar, or for a picture pack (only what its pictures can show). */
 export function demoMessage(emotions: string[], gestures: string[], pack: FramePack | null): DemoMessage {
-  if (!pack) {
-    return {
-      type: "demo",
-      hold: DEMO_HOLD_MS,
-      steps: [
-        ...emotions.map((name): DemoStep => ({ kind: "emotion", name })),
-        { kind: "blink" },
-        { kind: "talk" },
-        ...gestures.map((name): DemoStep => ({ kind: "gesture", name })),
-      ],
-    };
-  }
+  if (!pack) return drawnDemoMessage(emotions, gestures); // the same list the browser demo uses
   const have = emotions.filter((name) => pack.emotions[name]);
   const missing = emotions.filter((name) => !pack.emotions[name]);
   const pictures = Object.values(pack.emotions);

@@ -4,6 +4,28 @@
  */
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long each emotion is held, in milliseconds. */
+export const DEMO_HOLD_MS = 1000;
+
+/**
+ * The message that starts the show for the drawn character: each emotion in turn, a blink, talking, then the gestures. One list for
+ * the server (src/demo.ts) and the browser demo (demo/local-socket.js), so both show the same thing.
+ * @param {string[]} emotions
+ * @param {string[]} gestures
+ */
+export function drawnDemoMessage(emotions, gestures) {
+  return {
+    type: "demo",
+    hold: DEMO_HOLD_MS,
+    steps: [
+      ...emotions.map((name) => ({ kind: "emotion", name })),
+      { kind: "blink" },
+      { kind: "talk" },
+      ...gestures.map((name) => ({ kind: "gesture", name })),
+    ],
+  };
+}
+
 /**
  * @param avatar     what `createAvatar` returns
  * @param caption    `set(text)` shows the current line, `done(text)` the last one
