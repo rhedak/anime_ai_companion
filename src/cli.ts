@@ -6,6 +6,7 @@
  *   anaico --chat             start in chat mode instead (the folder is still pre-filled)
  *   anaico --daemon           run the server in the background; it keeps running after the terminal closes
  *   anaico --status | --stop | --restart    look at, stop or restart that background server
+ *   anaico --doctor           check what the companion needs (Node, Python, a brain, the creator, the port) and say what is missing
  *
  * If a server is already running on the port, it is reused and left running.
  */
@@ -22,6 +23,7 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`Usage: anaico [--chat] [--no-open] [--lan]
        anaico --daemon [--chat] [--no-open] [--lan]
        anaico --status | --stop | --restart [--chat] [--no-open] [--lan]
+       anaico --doctor
 
   (no flags)   start the companion in work mode for the current folder and open the browser
   --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
@@ -33,7 +35,9 @@ if (args.includes("--help") || args.includes("-h")) {
                Log: data/server.log
   --status     say whether the background server is running
   --stop       stop the background server
-  --restart    stop it and start it again (in the current folder; takes --chat and --no-open)`);
+  --restart    stop it and start it again (in the current folder; takes --chat and --no-open)
+  --doctor     check what it needs (Node, Python, a brain, the character creator, the port) and say what is missing;
+               it only looks, it changes nothing`);
   process.exit(0);
 }
 
@@ -44,11 +48,15 @@ const restart = args.includes("--restart");
 const chat = args.includes("--chat");
 const open = !args.includes("--no-open");
 const lan = args.includes("--lan");
-const known = new Set(["--no-open", "--lan", "--chat", "--daemon", "--status", "--stop", "--restart", "--help", "-h"]);
+const known = new Set(["--no-open", "--lan", "--chat", "--daemon", "--status", "--stop", "--restart", "--doctor", "--help", "-h"]);
 const unknown = args.filter((a) => !known.has(a));
 if (unknown.length) {
   console.error(`Unknown option: ${unknown.join(" ")}${unknown.includes("--pro") ? " (the --pro terminal mode was removed; use the Work mode in the browser, and /setup on to load your own Claude Code setup)" : ""}\nTry: anaico --help`);
   process.exit(2);
+}
+if (args.includes("--doctor")) {
+  const { doctor } = await import("./doctor.ts");
+  process.exit(await doctor(root, port));
 }
 const url = `http://127.0.0.1:${port}`;
 

@@ -41,6 +41,7 @@ Open the address in a browser and say hello. Her first look is Risa; the **Looks
 | `anaico --lan` | also let your phone in, see [From your phone](phone.html) (off again at every start) |
 | `anaico --daemon` | run in the background; output goes to `data/server.log` |
 | `anaico --status`, `--stop`, `--restart` | look at, stop or restart that background server |
+| `anaico --doctor` | check what it needs (Node, Python, a brain, the creator, the port) and say what is missing; it changes nothing |
 
 ## Configuration
 
@@ -63,6 +64,10 @@ Your own data lives in `data/` (settings, chat log, current look, saved looks, `
 Both are git-ignored and belong to you.
 
 ## When it does not start
+
+First, run `anaico --doctor` (or `node bin/anaico.js --doctor` before you have linked the command). It checks everything below and
+prints what is missing and how to fix it. Nothing is installed or changed, and it exits with 1 when something must be fixed. By hand:
+
 
 1. **Check the versions.** `node --version` should say 22.18 or newer, and `python3 --version` 3.11 or newer. If
    not, run `uv sync`, or set `PYTHON`.

@@ -181,7 +181,8 @@ terminal (its output goes to `data/server.log`). Take the same `--chat` and `--n
 
 A problem in the page itself (a script error, an animation frame that failed) shows as an orange ⚠ line in the chat; tap it
 for the details. It is also written to the server's log as `[page ...]`, so a problem on your phone can be read on the computer.
-`anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
+`anaico --doctor` checks what the companion needs (Node, Python, a brain, the character creator, the port) and says what is
+missing and how to fix it; it only looks and changes nothing. `anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
 starts it again in the folder you run it from (use it after an update, or to change folder or mode).
 Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
 that is running in another terminal. Unless you start it with `--lan` (next section), the server only

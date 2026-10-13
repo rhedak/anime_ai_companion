@@ -25,7 +25,7 @@ npm start        # http://127.0.0.1:3737
 ```
 
 - `npm link` puts the `anaico` command on the PATH. `anaico` starts in work mode for the folder it is run
-  from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart` are in the README.
+  from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart`, `--doctor` are in the README.
 - The server listens on `127.0.0.1` only. `PORT` changes the port; `COMPANION_PROVIDER` is
   `claude`, `cursor` or `ollama` (also switchable in the page). The README has the full table.
 - Everything personal is in `data/` (settings, chat log, her current look, `custom.css`) and `workspace/`.
@@ -33,7 +33,7 @@ npm start        # http://127.0.0.1:3737
 - If the creator is not found next to this repo, the app clones a pinned copy into `~/.anaico/creator/`.
   Point `CREATOR_SRC` at the creator's `src` folder to use another one.
 
-When it does not start: check `python3 --version` (the creator needs 3.11+; run `uv sync`, or set `PYTHON`),
+When it does not start: run `anaico --doctor` (or `node bin/anaico.js --doctor`; it only looks and says what is missing), or check `python3 --version` (the creator needs 3.11+; run `uv sync`, or set `PYTHON`),
 that `claude` (or `cursor-agent`) is on the PATH and signed in, and that the port is free. In daemon mode the
 log is `data/server.log`.
 
