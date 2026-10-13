@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 
 type Character = Record<string, any>;
 
@@ -22,11 +23,6 @@ export interface AvatarOptions {
   defaultPreset: string;
 }
 
-/** Arm poses to alternate between, in degrees from the body (about 115 to 155 reads as a raised arm). */
-const GESTURES: Record<string, Record<string, number>[]> = {
-  wave: [{ right_arm_out: 128 }, { right_arm_out: 152 }],
-  cheer: [{ right_arm_out: 125, left_arm_out: 125 }, { right_arm_out: 150, left_arm_out: 150 }],
-};
 export const GESTURE_NAMES = Object.keys(GESTURES);
 
 interface Schema {
@@ -235,10 +231,8 @@ export class AvatarService {
     const key = `${this.version}:${name}`;
     const hit = this.frameCache.get(key);
     if (hit) return hit;
-    const face = this.opts.emotions[name];
-    const rest = face.mouth_open ?? this.character.face?.mouth_open ?? 0;
-    const mouth = [rest, Math.max(rest, 0.3), Math.max(rest, 0.55), Math.max(rest, 0.85)];
-    const { svgs } = await this.call("frames", { character: this.character, face, mouth });
+    const { character, face, mouth } = framesRequest(this.opts.emotions, this.character, name);
+    const { svgs } = await this.call("frames", { character, face, mouth });
     this.frameCache.set(key, svgs);
     return svgs;
   }
@@ -248,15 +242,14 @@ export class AvatarService {
    * Returns null for an unknown gesture.
    */
   async gestureFrames(emotion: string, gesture: string): Promise<string[] | null> {
-    const poses = GESTURES[gesture];
-    if (!poses) return null;
+    const request = gestureRequest(this.opts.emotions, this.character, emotion, gesture);
+    if (!request) return null;
     const name = emotion in this.opts.emotions ? emotion : "neutral";
     const key = `${this.version}:${name}:gesture:${gesture}`;
     const hit = this.frameCache.get(key);
     if (hit) return hit;
-    const face = this.opts.emotions[name];
-    const rest = face.mouth_open ?? this.character.face?.mouth_open ?? 0;
-    const { svgs } = await this.call("frames", { character: this.character, face, mouth: [rest], poses });
+    const { character, face, mouth, poses } = request;
+    const { svgs } = await this.call("frames", { character, face, mouth, poses });
     this.frameCache.set(key, svgs);
     return svgs;
   }
