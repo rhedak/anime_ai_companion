@@ -12,6 +12,8 @@ ask her to change her hair or put on glasses she **redraws herself**. In chat mo
 
 ![Work mode: she asks before an edit, and the card shows the diff](assets/work.png)
 
+[Watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about half a minute).
+
 ![The chat and the character side by side](assets/chat.png)
 
 ## What you can do

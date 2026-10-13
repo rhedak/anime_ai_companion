@@ -8,6 +8,8 @@ glasses, please") and she redraws.
 
 ![Work mode: before an edit she asks, and the card shows the diff](site/assets/work.png)
 
+[Watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about half a minute).
+
 - **Approvals you can read.** Every command and file change waits for you, with the exact text. Looser modes are opt-in
   and come back to "ask" at every start.
 - **Your brain, your login.** It runs on your own computer with the agent you already use. Nothing is hosted, and
