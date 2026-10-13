@@ -666,6 +666,9 @@ function renderMode() {
   $("mode-work").disabled = state.canUseTools === false;
   $("setuprow").hidden = state.mode !== "work" || state.provider !== "claude";
   $("use-setup").checked = Boolean(state.claudeSetup);
+  // The whole setup already includes the skills, so the narrower switch only matters without it.
+  $("skillsrow").hidden = $("setuprow").hidden || Boolean(state.claudeSetup);
+  $("use-skills").checked = Boolean(state.claudeSkills);
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
   permissionMenu.hidden = !work;
@@ -786,6 +789,46 @@ function addColdCache(msg) {
   coldEl = { card, actions, text: msg.text };
 }
 
+let skillsEl = null;
+
+/** She reached for a skill that is not loaded: ask before turning anything on. */
+function addSkillsOffer(msg) {
+  skillsEl?.card.remove();
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = `${msg.name || "She"} wants to use one of your skills`;
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    "Your skills (~/.claude/skills) are not loaded, so she cannot call them by name. Loading them applies your user " +
+    "Claude Code settings; their hooks stay off, and a folder's own skills stay off too. It lasts until the server restarts.";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const button = (label, cls, choice) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = () => ws.send(JSON.stringify({ type: "skills-reply", choice }));
+    return b;
+  };
+  actions.append(button("Load my skills", "allow", "load"), button("Not now", "deny", "no"));
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  skillsEl = { card, actions };
+}
+
+function resolveSkillsOffer(choice) {
+  if (!skillsEl) return;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  done.textContent = choice === "load" ? "Loading her skills" : "Skills stay off";
+  skillsEl.actions.replaceWith(done);
+  skillsEl = null;
+}
+
 function resolveColdCache(choice) {
   if (!coldEl) return;
   const done = document.createElement("div");
@@ -904,6 +947,12 @@ function handle(msg) {
     case "cold-cache":
       addColdCache(msg);
       break;
+    case "skills-offer":
+      addSkillsOffer(msg);
+      break;
+    case "skills-resolved":
+      resolveSkillsOffer(msg.choice);
+      break;
     case "cold-resolved":
       resolveColdCache(msg.choice);
       break;
@@ -990,6 +1039,7 @@ function handle(msg) {
       log.replaceChildren();
       sayLook();
       coldEl = null;
+      skillsEl = null;
       showBubble("");
       avatar.setEmotion("neutral");
       endTurn();
@@ -1194,6 +1244,9 @@ $("provider").addEventListener("change", () => {
 });
 $("use-setup").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "claude-setup", value: $("use-setup").checked }));
+});
+$("use-skills").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "claude-skills", value: $("use-skills").checked }));
 });
 $("effort").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "effort", value: $("effort").value }));

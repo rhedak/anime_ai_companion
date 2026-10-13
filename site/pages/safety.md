@@ -29,7 +29,7 @@ your Ollama host if you use one (by default on your own machine).
 - **Work mode never skips permissions.** Even *Auto* leaves risky actions to Claude Code's own safety checks. Cards
   show the exact command or content you approve. A folder's own hooks, settings and MCP servers stay unloaded unless
   you opt in. The home folder and `/` are refused as project folders.
-- **Loose modes are off at every start.** The permission mode, `/setup` and `--lan` all come back to the safe
+- **Loose modes are off at every start.** The permission mode, `/setup`, `/skills` and `--lan` all come back to the safe
   setting each time the server starts.
 
 ## Reporting a problem

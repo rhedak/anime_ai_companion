@@ -141,6 +141,7 @@ there, like a regular Claude Code session. She asks first:
   runs nothing of its own. The **Use my Claude Code setup** checkbox (or `/setup on`) loads them, as
   in a terminal; hooks run commands, so it is off at every start. The home directory or `/` cannot be
   chosen as a folder.
+- **Skills.** Skills are not loaded by default either, so she cannot call one by name and would have to read its file by hand. The **Use my skills** checkbox, or `/skills on`, lets her use your own skills (`~/.claude/skills`) by name. It loads your user settings but keeps hooks off, and a folder's own skills stay off: those only load with the whole setup above. It is off at every start. When she reaches for one of your skills while they are off, she asks first, and a folder with its own skills says so once.
 - Work mode uses a stronger model (`COMPANION_WORK_MODEL`, default `sonnet`) and counts against your
   plan limits faster than chatting.
 - The bar under the header shows `claude --resume <session id>`: you can continue the same
@@ -321,6 +322,7 @@ Type these in the chat box (`/help` lists them):
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |
 | `/show` | she shows all her emotions, a blink, talking and her gestures, a second each, naming every one (no model call); asking her "show me all your animations" does the same |
 | `/status` | brain, model, mode, folder and session id |

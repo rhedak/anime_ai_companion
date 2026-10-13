@@ -65,6 +65,11 @@ export interface SessionConfig {
    * MCP servers) instead of running isolated. Off by default, because hooks run commands.
    */
   claudeSetup: boolean;
+  /**
+   * Work mode only: let her use the user's own skills (~/.claude/skills) by name. Loads the user's
+   * settings but not their hooks; a folder's own skills stay off. Ignored when claudeSetup is on.
+   */
+  claudeSkills: boolean;
   /** How hard Claude thinks (`--effort`); null leaves it to Claude Code's default. */
   effort: Effort | null;
 }

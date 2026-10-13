@@ -174,6 +174,7 @@ function config(over: Partial<SessionConfig> = {}): SessionConfig {
     allowedTools: ["Read", "Grep", "Glob"],
     permissionMode: "manual",
     claudeSetup: false,
+    claudeSkills: false,
     effort: null,
     ...over,
   };

@@ -213,7 +213,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools, permissionMode, effort, claudeSetup } = this.config;
+    const { mode, model, allowedTools, permissionMode, effort, claudeSetup, claudeSkills } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -233,7 +233,13 @@ export class ClaudeCodeProvider implements Provider {
     // By default skip claude.ai connectors and user/project settings: smaller turns, and a
     // folder's own hooks or allow rules never run in someone else's session. Work mode can
     // opt in to the user's own setup (settings, hooks, MCP servers).
-    if (!(mode === "work" && claudeSetup)) args.push("--strict-mcp-config", "--setting-sources", "");
+    if (!(mode === "work" && claudeSetup)) {
+      // Her own skills are the one thing worth loading from the user's settings: skills need that source,
+      // and the user's hooks are switched off again, so nothing runs a command behind the approval cards.
+      const skills = mode === "work" && claudeSkills;
+      args.push("--strict-mcp-config", "--setting-sources", skills ? "user" : "");
+      if (skills) args.push("--settings", JSON.stringify({ disableAllHooks: true }));
+    }
     if (mode === "chat") {
       args.push("--tools", "");
     } else {

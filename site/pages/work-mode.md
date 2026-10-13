@@ -46,6 +46,16 @@ your user settings and your MCP servers do not apply, so opening an unfamiliar f
 **Use my Claude Code setup** checkbox, or `/setup on`, loads them as in a terminal. Hooks run commands, so it is off
 at every start.
 
+### Skills
+
+Skills are not loaded by default either, so she cannot call one by name and would have to read its file by hand. The
+**Use my skills** checkbox, or `/skills on`, lets her use your own skills (`~/.claude/skills`) by name. It loads your
+user settings, including any permission rules in them, but keeps hooks off. A folder's own skills stay off: those only
+load with the whole setup above. It is off at every start.
+
+When she reaches for one of your skills while they are off, she asks before anything is turned on. A folder that has its
+own skills says so once.
+
 ## Shell commands
 
 A message starting with `!` runs in the project folder at once, without a card, because you typed it yourself. See

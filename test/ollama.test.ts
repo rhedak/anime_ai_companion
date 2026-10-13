@@ -78,7 +78,7 @@ test("reset forgets the conversation; configure switches the model", async () =>
   const p = new OllamaProvider({ host: fake.host, model: "a", persona: () => "P" });
   await ask(p, "one");
   p.reset();
-  p.configure({ mode: "chat", cwd: "", model: "b", allowedTools: [], permissionMode: "manual", claudeSetup: false, effort: null });
+  p.configure({ mode: "chat", cwd: "", model: "b", allowedTools: [], permissionMode: "manual", claudeSetup: false, claudeSkills: false, effort: null });
   await ask(p, "two");
   assert.deepEqual(fake.requests[1].messages.map((m: any) => m.role), ["system", "user"]);
   assert.equal(fake.requests[1].model, "b");

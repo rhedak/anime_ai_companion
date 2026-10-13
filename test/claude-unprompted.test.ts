@@ -45,7 +45,7 @@ require("readline").createInterface({ input: process.stdin }).on("line", () => {
 
 function provider(): ClaudeCodeProvider {
   return new ClaudeCodeProvider({
-    config: { mode: "chat", cwd: tmpdir(), model: "haiku", allowedTools: [], permissionMode: "manual", claudeSetup: false, effort: null },
+    config: { mode: "chat", cwd: tmpdir(), model: "haiku", allowedTools: [], permissionMode: "manual", claudeSetup: false, claudeSkills: false, effort: null },
     chatCwd: tmpdir(),
     persona: () => "persona",
   });
