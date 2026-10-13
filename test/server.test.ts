@@ -25,6 +25,15 @@ async function ask(c: Client, text: string): Promise<string> {
   return c.since(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
 }
 
+/** Waits for something the stand-in writes to its log (it is a separate process, so the log trails the page by a moment). */
+async function waitFor(condition: () => boolean, ms = 5000): Promise<void> {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started > ms) throw new Error("timed out waiting for the stand-in's log");
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 const inputs = (server: RunningServer) => server.claudeLog().filter((e) => e.kind === "in").map((e) => e.text!);
 
 describe("chatting", { skip }, () => {
@@ -128,6 +137,90 @@ describe("chatting", { skip }, () => {
     const notice = await c.next((e) => e.type === "notice" && /Unknown command/.test(e.text), 5000, from);
     assert.match(notice.text, /\/nosuchcommand/);
     assert.equal(inputs(server).length, before);
+  });
+});
+
+describe("a long conversation that went cold", { skip }, () => {
+  async function startCold(): Promise<RunningServer> {
+    return startServer({ delay: 50, coldConversation: true });
+  }
+
+  test("the message is held back and the question asked (to every page); a second message waits for the answer; 'send' sends it", async () => {
+    const server = await startCold();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("my question after the break");
+      const card = await c.next("cold-cache", 5000, from);
+      assert.equal(card.tokens, "150k");
+      assert.match(card.idle, /2 h|120 min/);
+      assert.equal(card.text, "my question after the break");
+      assert.equal(inputs(server).length, 0, "nothing was sent to the model yet");
+
+      const other = await server.client();
+      const again = await other.next("cold-cache");
+      assert.equal(again.text, "my question after the break", "a page that opens now sees the question too");
+
+      const blocked = c.mark;
+      c.say("another thing");
+      await c.next((e) => e.type === "notice" && /Decide what to do with your earlier message/.test(e.text), 5000, blocked);
+      assert.equal(inputs(server).length, 0);
+
+      const answered = c.mark;
+      c.send({ type: "cold-reply", choice: "send" });
+      await c.next((e) => e.type === "cold-resolved" && e.choice === "send", 5000, answered);
+      await c.done(answered);
+      assert.match(inputs(server).at(-1)!, /my question after the break/);
+      assert.equal(c.since(answered).filter((e) => e.type === "user").length, 1);
+
+      // The conversation is warm again: the next message goes straight out.
+      const next = c.mark;
+      c.say("and now");
+      await c.done(next);
+      assert.ok(!c.since(next).some((e) => e.type === "cold-cache"));
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("'summarise' runs /compact first and sends the message after it; the summary is shown in the log", async () => {
+    const server = await startCold();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("question after summary");
+      await c.next("cold-cache", 5000, from);
+      c.send({ type: "cold-reply", choice: "summarise" });
+      await c.next((e) => e.type === "user" && e.text === "question after summary", 15000, from);
+      await waitFor(() => inputs(server).length >= 2);
+      const sent = inputs(server);
+      assert.equal(sent[0], "/compact", "the summary goes first, without a note in front of it");
+      assert.match(sent[1], /question after summary/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("'don't send' drops the message and keeps nothing waiting", async () => {
+    const server = await startCold();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("never mind this");
+      await c.next("cold-cache", 5000, from);
+      c.send({ type: "cold-reply", choice: "cancel" });
+      await c.next((e) => e.type === "cold-resolved" && e.choice === "cancel", 5000, from);
+      assert.equal(inputs(server).length, 0);
+      const late = await server.client();
+      await late.next("history");
+      await new Promise((r) => setTimeout(r, 300));
+      assert.ok(!late.events.some((e) => e.type === "cold-cache"), "no question is left open");
+    } finally {
+      await server.stop();
+    }
   });
 });
 

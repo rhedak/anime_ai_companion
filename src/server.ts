@@ -8,12 +8,11 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
 import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
-import { Transcript, claudeSessionExists, type ShownRecord } from "./transcript.ts";
-import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
+import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
-import { MAX_MESSAGE_BYTES, parseImages, type ImageInput } from "./images.ts";
+import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
-import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
+import type { ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
@@ -21,7 +20,6 @@ import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
-import { checkShownImage } from "./shown-images.ts";
 import { isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
@@ -29,6 +27,7 @@ import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
+import { createTurnService } from "./turn-service.ts";
 import { createMemoryService } from "./memory-service.ts";
 import { createNotes } from "./notes.ts";
 import { createQueueService } from "./queue-service.ts";
@@ -36,7 +35,7 @@ import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
-import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type ProviderEvent, type SessionConfig } from "./providers/types.ts";
+import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
@@ -163,8 +162,6 @@ const convo: ConversationState = {
   contextTokens: claudeResumable ? savedLog?.contextTokens ?? null : null,
   lastReplyAt: claudeResumable ? savedLog?.lastReplyAt ?? null : null,
 };
-/** A message waiting for the user to decide how to pay for a cold cache (see coldCacheOffer). */
-let heldMessage: { text: string; images: ImageInput[] } | null = null;
 const cursorResumable = savedLog?.provider === "cursor" ? savedLog.sessionId ?? undefined : undefined;
 const opencodeResumable = savedLog?.provider === "opencode" ? savedLog.sessionId ?? undefined : undefined;
 
@@ -353,68 +350,8 @@ function persistTranscript(): void {
 // Problems with the model's avatar tags, passed back to it with the next user message.
 const notes = createNotes();
 
-/** Applies each complete [avatar ...] tag in a growing reply exactly once, in order. */
-function makeTagApplier(): (reply: string) => void {
-  let seen = 0;
-  return (reply) => {
-    const tags = findAvatarTags(reply);
-    for (; seen < tags.length; seen++) {
-      if (activePack) {
-        const note = "Your look is a fixed set of pictures now: [avatar ...] tags and gestures change nothing. Do not use them.";
-        notes.pushOnce(note);
-        continue;
-      }
-      avatar
-        .applyPatch(tags[seen])
-        .then(({ applied, rejected }) => {
-          if (applied.length) {
-            transcript.look(applied);
-            broadcast({ type: "avatar", version: avatar.version, applied });
-            broadcast(looksInfo());
-          }
-          if (rejected.length) {
-            notes.push(
-              "Your avatar tag had problems: " +
-                rejected.map((r) => `${r.key}: ${r.reason}`).join("; ") + ".",
-            );
-          }
-        })
-        .catch((err) => console.error("avatar patch failed:", err));
-    }
-  };
-}
-
-/** `[demo]` in a reply: she was asked to show all her emotions and gestures (see `src/demo.ts`). */
-const DEMO_TAG = /\[demo\]/;
-
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();
-
-const MAX_SHOWN_PER_REPLY = 8;
-
-/** The pictures named by `[image path]` tags in a finished reply, checked and registered. */
-async function collectShownImages(reply: string): Promise<ShownRecord[]> {
-  const records: ShownRecord[] = [];
-  const problems: string[] = [];
-  const wanted = [...new Set(findImageTags(reply))];
-  if (wanted.length > MAX_SHOWN_PER_REPLY) {
-    problems.push(`only ${MAX_SHOWN_PER_REPLY} pictures can be shown per reply, so the last ${wanted.length - MAX_SHOWN_PER_REPLY} were left out; show them in a follow-up message`);
-  }
-  for (const requested of wanted.slice(0, MAX_SHOWN_PER_REPLY)) {
-    const checked = await checkShownImage(requested, sessionConfig().cwd);
-    if ("error" in checked) problems.push(checked.error);
-    else records.push({ id: randomUUID(), name: checked.name, path: checked.path, root: checked.root, mime: checked.mime });
-  }
-  if (problems.length) notes.push(`Your image tag had problems: ${problems.join("; ")}.`);
-  return records;
-}
-
-/** Prepends any pending notes about the model's own mistakes to the user's message. */
-function withNotes(userText: string): string {
-  const background = [memory.note(), cards.loreNote(userText)].filter((n): n is string => Boolean(n));
-  const waiting = [...background, ...notes.take()];
-  return waiting.length ? `(system note, not from the user: ${waiting.join(" ")})\n\n${userText}` : userText;
-}
 
 /** Why a settings change cannot happen right now, or null. */
 function cannotChange(): string | null {
@@ -636,7 +573,7 @@ const slashCommands: Record<
       if (provider.busy) return say("Wait for her to finish the current reply first.");
       transcript.user(text);
       broadcast({ type: "user", text });
-      runTurn(text, { raw: true });
+      turns.run(text, { raw: true });
     },
   },
   resume: {
@@ -950,7 +887,7 @@ async function resumeCommand(args: string, say: Say): Promise<void> {
     return say(String(err instanceof Error ? err.message : err));
   }
   provider.resume(chosen.id);
-  dropHeldMessage();
+  turns.dropHeld();
   const size = await sessionContext(path).catch(() => null);
   convo.contextTokens = size?.contextTokens ?? null;
   convo.lastReplyAt = size ? size.modified.getTime() : null;
@@ -975,7 +912,7 @@ function forgetConversationSize(): void {
   skills.forgetOffer();
   cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
-  dropHeldMessage();
+  turns.dropHeld();
 }
 
 function resetConversation(): void {
@@ -994,142 +931,33 @@ function resetConversation(): void {
 // --- messages typed while she is still answering: see queue-service.ts ---
 const queue = createQueueService({
   busy: () => provider.busy,
-  held: () => heldMessage !== null,
-  send: (text, images) => sendUser(text, images),
+  held: () => turns.holding(),
+  send: (text, images) => turns.send(text, images),
   broadcast: (msg) => broadcast(msg),
 });
 
-/** Shows the user's message in the log and sends it to the brain. */
-function sendUser(text: string, images: ImageInput[], onFinish?: (event: ProviderEvent) => void): void {
-  transcript.user(text, images.length);
-  broadcast({ type: "user", text, images: images.map((i) => `data:${i.mediaType};base64,${i.data}`) });
-  runTurn(text, { images, onFinish });
-}
-
-/**
- * Her memory of a long conversation sits in Claude's prompt cache, which expires after about an hour. A message
- * sent after that has to send the whole conversation again at full price, which for a long one is a big part
- * of the usage limit. So the message waits while the user chooses: send it as it is, summarise first (Claude
- * Code's /compact, like "resume from summary" in the terminal), or hold it back.
- */
-function offerColdCache(text: string, images: ImageInput[], cold: { tokens: number; idleMinutes: number }): void {
-  heldMessage = { text, images };
-  broadcast(coldCacheCard(cold));
-}
-
-const coldCacheCard = (cold: { tokens: number; idleMinutes: number }) => ({
-  type: "cold-cache",
-  tokens: formatTokens(cold.tokens),
-  idle: formatIdle(cold.idleMinutes),
-  text: heldMessage?.text ?? "",
+// --- a turn, from the message to the saved reply: see turn-service.ts ---
+const turns = createTurnService({
+  provider: () => provider,
+  brain: () => settings.provider,
+  avatar,
+  transcript,
+  activePack: () => activePack,
+  emotionNames: () => Object.keys(emotions),
+  folder: () => sessionConfig().cwd,
+  broadcast: (msg) => broadcast(msg),
+  persist: () => persistTranscript(),
+  convo,
+  account,
+  pendingPermissions,
+  meterInfo: () => meterInfo(),
+  looksInfo: () => looksInfo(),
+  notes,
+  memory,
+  cards,
+  skills,
+  queue,
 });
-
-function dropHeldMessage(): void {
-  if (!heldMessage) return;
-  heldMessage = null;
-  broadcast({ type: "cold-resolved", choice: "dropped" });
-}
-
-function answerColdCache(choice: string, say: Say): void {
-  const held = heldMessage;
-  if (!held) return;
-  if (choice !== "send" && choice !== "summarise" && choice !== "cancel") return;
-  if (provider.busy) return say("Wait for her to finish the current reply first.");
-  heldMessage = null;
-  broadcast({ type: "cold-resolved", choice });
-  if (choice === "send") return sendUser(held.text, held.images);
-  if (choice === "cancel") return;
-  transcript.user("/compact");
-  broadcast({ type: "user", text: "/compact" });
-  runTurn("/compact", {
-    raw: true,
-    onFinish: (event) => {
-      if (event.type === "done") return sendUser(held.text, held.images);
-      // The summary did not happen: do not spend a cold read on the message behind the user's back.
-      broadcast({ type: "notice", text: `The summary failed, so this was not sent: ${held.text}` });
-    },
-  });
-}
-
-/** Runs one user turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function runTurn(
-  userText: string,
-  opts: { raw?: boolean; images?: ImageInput[]; onFinish?: (event: ProviderEvent) => void } = {},
-): void {
-  // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
-  const toModel = opts.raw ? userText : withNotes(userText);
-  provider.send(toModel, turnHandler(userText, opts), opts.images);
-}
-
-/** The event handler for one turn: streams the reply, applies any [avatar ...] tags as they complete. */
-function turnHandler(
-  userText: string,
-  opts: { raw?: boolean; onFinish?: (event: ProviderEvent) => void },
-): (event: ProviderEvent) => void {
-  let reply = "";
-  const applyNewTags = makeTagApplier();
-  const applyMemory = memory.makeApplier();
-
-  return (event) => {
-    if (event.type === "delta") {
-      reply += event.text;
-      transcript.delta(event.text);
-      applyNewTags(reply);
-      applyMemory(reply);
-      broadcast(event);
-    } else if (event.type === "tool") {
-      skills.noticeToolUse(event);
-      transcript.tool({ type: "tool", id: event.id, name: event.name, summary: event.summary, status: event.status });
-      broadcast(event);
-    } else if (event.type === "permission") {
-      pendingPermissions.set(event.request.id, event.request);
-      broadcast(event);
-    } else if (event.type === "permission-cancelled") {
-      pendingPermissions.delete(event.id);
-      broadcast(event);
-    } else if (event.type === "status" || event.type === "notice") {
-      broadcast(event);
-    } else if (event.type === "limits") {
-      account.session = event.session;
-      account.week = event.week;
-      account.limitsAt = Date.now();
-      broadcast(meterInfo());
-    } else if (event.type === "model") {
-      account.model = event.name;
-      broadcast(meterInfo());
-    } else {
-      pendingPermissions.clear();
-      applyNewTags(reply);
-      applyMemory(reply);
-      // Let queued avatar changes land before the turn is reported finished.
-      avatar.settled().finally(async () => {
-        transcript.flush();
-        // Pictures she named are shown under her message, once the files exist (she may just have made them).
-        const images = event.type === "done" ? await collectShownImages(reply).catch(() => []) : [];
-        if (images.length) {
-          transcript.images(images);
-          broadcast({ type: "images", images: images.map(({ id, name }) => ({ id, name })) });
-        }
-        if (event.type === "done") {
-          // After a /compact, the size the CLI reports still describes the conversation before it.
-          const compacted = opts.raw && /^\/compact\b/.test(userText);
-          convo.contextTokens = compacted ? null : provider.usage?.contextTokens ?? null;
-          convo.lastReplyAt = Date.now();
-        }
-        persistTranscript();
-        broadcast(event);
-        broadcast(meterInfo()); // the context grew
-        // She was asked to show off: the page plays the sequence once her reply is done.
-        if (event.type === "done" && DEMO_TAG.test(reply)) broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack));
-        opts.onFinish?.(event);
-        skills.applyPending();
-        // A failed reply does not send what was queued behind it; a good one lets the next message go.
-        if (event.type === "done") queue.drain();
-        else queue.drop();
-      });
-    }
-  };
-}
 
 // Background subagents outlive the reply that started them, so the page needs to hear when they end.
 const backgroundMessage = () => ({ type: "background", tasks: provider.backgroundTasks ?? [] });
@@ -1143,7 +971,7 @@ for (const p of Object.values(providers)) {
 for (const p of Object.values(providers)) {
   p.onUnprompted?.(() => {
     broadcast({ type: "auto-turn" });
-    return turnHandler("", { raw: true });
+    return turns.turnHandler("", { raw: true });
   });
 }
 
@@ -1173,8 +1001,8 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: "notice", text: `Could not resume that ${settings.provider} session, so this is a new conversation.` }));
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
-  const cold = heldMessage ? coldCache(convo) ?? { tokens: convo.contextTokens ?? 0, idleMinutes: 0 } : null;
-  if (cold) ws.send(JSON.stringify(coldCacheCard(cold)));
+  const question = turns.heldQuestion();
+  if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
   ws.on("close", () => clients.delete(ws));
   ws.on("message", async (raw) => {
@@ -1200,11 +1028,7 @@ wss.on("connection", (ws) => {
         } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
         return;
       }
-      if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");
-      if (provider.busy) return queue.enqueue(msg.text, images, say);
-      const cold = settings.provider === "claude" && !provider.busy ? coldCache(convo) : null;
-      if (cold) return offerColdCache(msg.text, images, cold);
-      sendUser(msg.text, images);
+      turns.submit(msg.text, images, say);
     } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
@@ -1215,7 +1039,7 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "skills-reply") {
       skills.answer(msg.choice, remote, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "cold-reply" && typeof msg.choice === "string") {
-      answerColdCache(msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      turns.answerCold(msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
       const decision = msg.decision as Decision;
       const request = pendingPermissions.get(msg.id);

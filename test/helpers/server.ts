@@ -165,6 +165,8 @@ export interface ServerOptions {
   delay?: number;
   /** Files to put in the user's skills folder (CLAUDE_CONFIG_DIR/skills). */
   userSkills?: string[];
+  /** Start with a big conversation that has been idle for two hours, so Claude's prompt cache is cold. */
+  coldConversation?: boolean;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -189,6 +191,21 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   }
   mkdirSync(config, { recursive: true });
   mkdirSync(join(dir, "home"));
+  if (options.coldConversation) {
+    const sessionId = "11111111-2222-4333-8444-555555555555";
+    mkdirSync(join(config, "projects", "earlier"), { recursive: true });
+    writeFileSync(join(config, "projects", "earlier", `${sessionId}.jsonl`), "");
+    writeFileSync(
+      join(app, "data", "transcript.json"),
+      JSON.stringify({
+        provider: "claude",
+        sessionId,
+        contextTokens: 150_000,
+        lastReplyAt: Date.now() - 2 * 3600_000,
+        items: [{ type: "user", text: "earlier question" }, { type: "bot", text: "earlier answer" }],
+      }),
+    );
+  }
   const project = join(dir, "project");
   mkdirSync(project);
   const log = join(dir, "claude.log");
