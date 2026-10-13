@@ -16,8 +16,12 @@ changes expression as she writes. Ask her to change her hair or put on glasses a
   talks. `/show` runs through all of them.
 - **Work with her.** Point her at a project folder and she can read files, edit them and run commands. She asks
   first, with a card that shows the exact command or change. [Work mode](work-mode.html)
-- **Use the brain you already have.** Claude Code, Cursor, opencode, or a local model through Ollama.
-  [Brains](brains.html)
+- **Use the brain you already have.** Claude Code, Cursor, opencode, or a local model through Ollama (chat, and an
+  experimental work mode for models that support tools). [Brains](brains.html)
+- **Give her a character.** Import a character card from SillyTavern or Chub, with her greeting and lorebook if you like,
+  and she keeps a plain file of notes about you. [Customising](customising.html)
+- **Talk to her.** Type while she answers and your messages queue; the microphone button (opt-in) dictates instead of typing.
+  [Chatting](chatting.html)
 - **Let her redraw herself.** "Blue hair and glasses, please." Her look is reversible, and you can save looks and
   switch to any of 19 built-in characters. [Her looks](looks.html)
 - **Carry on from your phone.** One flag lets your phone join the same session over your own network, with a QR

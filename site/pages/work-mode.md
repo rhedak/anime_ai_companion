@@ -56,6 +56,17 @@ load with the whole setup above. It is off at every start.
 When she reaches for one of your skills while they are off, she asks before anything is turned on. A folder that has its
 own skills says so once.
 
+## Helpers running in the background
+
+Claude Code can start helpers (subagents) that keep working after her reply ends. While any are running, a line above the
+message box says **Waiting for N background agents to finish…** (hover it to see what each is doing), so a quiet chat is not
+mistaken for a finished one. When a helper finishes and she answers on her own, that reply appears in the chat like any other.
+
+## Local models
+
+Work mode also works with an Ollama model that reports tool support. It is experimental and the quality is your
+responsibility: read [the warning on the brains page](brains.html#ollama).
+
 ## Shell commands
 
 A message starting with `!` runs in the project folder at once, without a card, because you typed it yourself. See

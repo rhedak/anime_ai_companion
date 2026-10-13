@@ -34,7 +34,8 @@ deleting it restores the default look. You can simply ask an AI assistant to wri
 
 `persona.md` holds her personality and the tag protocol that drives her face (`[emotion:…]`, `[gesture:…]`,
 `[avatar …]`, `[image …]`, `[demo]`). Keep that protocol if you rewrite her personality, and keep the emotion list
-in step with `emotions.json`. It has a `{{name}}` placeholder for her name.
+in step with `emotions.json`. It has a `{{name}}` placeholder for her name. The `[remember …]` tag (how she saves a note about
+you) is explained to her with her first message of a conversation, not in `persona.md`, so you do not need to add it.
 
 ### Her notes about you
 

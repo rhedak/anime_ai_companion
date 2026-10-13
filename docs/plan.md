@@ -108,7 +108,7 @@ voice. If it comes back, the line has to come from the character (a field of the
 
 ## 6. Tools for Ollama models
 
-Ollama is chat only today (`canUseTools` is false, work mode unavailable). A model that supports tool calls, such as the
+Ollama was chat only until 2026-10-13 (`canUseTools` was false, work mode unavailable). A model that supports tool calls, such as the
 coding-focused Qwen models, could do work mode too. Ollama only calls the model, so the tools and the loop are ours to
 write; Claude, Cursor and opencode ship their own.
 

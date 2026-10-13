@@ -160,6 +160,9 @@ there, like a regular Claude Code session. She asks first:
   in a terminal; hooks run commands, so it is off at every start. The home directory or `/` cannot be
   chosen as a folder.
 - **Skills.** Skills are not loaded by default either, so she cannot call one by name and would have to read its file by hand. The **Use my skills** checkbox, or `/skills on`, lets her use your own skills (`~/.claude/skills`) by name. It loads your user settings but keeps hooks off, and a folder's own skills stay off: those only load with the whole setup above. It is off at every start. When she reaches for one of your skills while they are off, she asks first, and a folder with its own skills says so once.
+- With Claude Code, helpers (subagents) can keep running after her reply ends: a line above the message box says
+  **Waiting for N background agents to finish…** (hover for what each is doing), and a reply she gives when one finishes
+  appears in the chat like any other.
 - Work mode uses a stronger model (`COMPANION_WORK_MODEL`, default `sonnet`) and counts against your
   plan limits faster than chatting.
 - The bar under the header shows `claude --resume <session id>`: you can continue the same
@@ -198,8 +201,8 @@ each time, like a looser permission mode.
 
 What a phone can do: chat, answer the approval cards, stop her, switch between chat and work in the saved
 folder, change the look. What it cannot, because these run without a card or reach into the computer: `!commands`,
-the loose permission modes (Auto, Accept edits, Run everything), `/setup on`, picking another project folder.
-Those are done on the computer itself.
+the loose permission modes (Auto, Accept edits, Run everything), `/setup on`, `/skills on`, importing or resetting a
+character card, opening her notes file, picking another project folder. Those are done on the computer itself.
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The
 button in the chat's header puts her behind the chat instead: the chat takes the whole screen and she shows
@@ -464,7 +467,7 @@ Because the server can run Claude Code, it is built to be reachable only by you:
 - `--lan` is the one way past that, and it is opt-in at every start. Then every page, file and WebSocket
   from another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local
   address or `.local` name (against DNS rebinding), and, for the WebSocket, an `Origin` equal to that address.
-  Such a device can still not run `!commands`, loosen the permission mode or load your Claude Code setup.
+  Such a device can still not run `!commands`, loosen the permission mode, load your Claude Code setup or your skills, or change her character.
   Connections from the computer itself are unchanged, so a tunnel or reverse proxy on it is not given a way in.
 - The page ships a strict Content-Security-Policy (no inline or foreign scripts, no framing, so nobody can
   click the approval buttons for you).
@@ -472,7 +475,13 @@ Because the server can run Claude Code, it is built to be reachable only by you:
   plain-text only for free text), even though the character renderer now escapes text itself (older
   checkouts of it did not). The SVG is also sanitised in the browser before it is shown.
 - Work mode never skips permissions (even *Auto* leaves risky actions to Claude Code's safety checks), shows the exact command or content you approve, and does not load a
-  folder's own hooks or settings.
+  folder's own hooks or settings. With Ollama (experimental) every command, file write and edit asks first, there is no looser mode,
+  and how well a local model behaves is up to the model and to you.
+- Character cards are text from a stranger: cleaned, previewed and confirmed before they apply, with her greeting, the lorebook and the
+  card author's own instructions as separate choices (the instructions off by default, with one strong warning at import). The
+  expression protocol is never replaced by a card.
+- Her notes about you (`data/memory.md`) are saved by her in chat only, never in work mode, and reach her as information, not instructions.
+- The one place audio leaves the machine is the opt-in microphone button (the browser's speech recognition); it asks first and the app's own server never receives audio.
 
 Found something? Please open an issue, or report it privately if it is serious.
 

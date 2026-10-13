@@ -24,8 +24,10 @@ looser permission mode.
 Chat, answer the approval cards, stop her, switch between chat and work in the saved folder, and change her look.
 
 What it cannot do, because these run without a card or reach into the computer: `!commands`, the loose permission
-modes (Auto, Accept edits, Run everything), `/setup on`, and picking another project folder. Those are done on the
-computer itself.
+modes (Auto, Accept edits, Run everything), `/setup on`, `/skills on`, importing or resetting a character card, opening
+her notes file, and picking another project folder. Those are done on the computer itself. Typing while she answers
+(the queue) works from a phone; the microphone button does not, because browsers only allow a microphone on `localhost`
+or HTTPS.
 
 ## Talking to her from a phone
 
