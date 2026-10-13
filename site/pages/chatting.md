@@ -47,6 +47,13 @@ message. There is no approval card, because you typed the command yourself, so t
 starts with `!`. Commands stop after two minutes and their output is cut at 100 KB. Chat mode refuses them, and so
 does a phone.
 
+## Typing while she answers
+
+You can keep typing while she is still answering: **Enter** queues the message, like in Claude Code. Queued messages
+are listed above the box (the **×** takes one back out) and go out one by one as each reply ends, up to ten. Stop, an
+error, `/clear` or switching brain does not send them: the text comes back into the box instead (attached pictures do
+not, so attach them again). Slash commands and `!commands` are not queued. The queue is not saved over a restart.
+
 ## Stopping her
 
 **Ctrl+C**, or the round stop button that replaces Send while she works, stops her reply or a running `!command`.

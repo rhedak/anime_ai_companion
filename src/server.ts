@@ -958,6 +958,7 @@ function stopWork(say: Say): void {
   if (shellAbort) {
     shellAbort.abort();
   } else if (provider.interrupt()) {
+    dropQueue();
     for (const id of pendingPermissions.keys()) broadcast({ type: "permission-cancelled", id });
     pendingPermissions.clear();
     broadcast({ type: "notice", text: "Stopped." });
@@ -1063,6 +1064,7 @@ function forgetConversationSize(): void {
 }
 
 function resetConversation(): void {
+  dropQueue();
   provider.reset();
   forgetConversationSize();
   transcript.clear();
@@ -1071,6 +1073,47 @@ function resetConversation(): void {
   pendingPermissions.clear();
   broadcast({ type: "reset" });
   broadcast(modeInfo());
+}
+
+// --- messages typed while she is still answering ---
+// Like Claude Code: they wait in order and go out one by one as each reply ends. Memory only.
+interface QueuedMessage {
+  id: string;
+  text: string;
+  images: ImageInput[];
+}
+const MAX_QUEUED = 10;
+let queue: QueuedMessage[] = [];
+
+const queueMessage = (returned: string[] = []) => ({
+  type: "queue",
+  items: queue.map((q) => ({ id: q.id, text: q.text, images: q.images.length })),
+  returned,
+});
+
+function enqueueUser(text: string, images: ImageInput[], say: Say): void {
+  if (queue.length >= MAX_QUEUED) return say(`${MAX_QUEUED} messages are already waiting: let her catch up first.`);
+  queue.push({ id: randomUUID(), text, images });
+  broadcast(queueMessage());
+}
+
+/** The next waiting message goes out once nothing is running. */
+function drainQueue(): void {
+  if (provider.busy || heldMessage) return;
+  const next = queue.shift();
+  if (!next) return;
+  broadcast(queueMessage());
+  sendUser(next.text, next.images);
+}
+
+/** Stop, an error, /clear or a new brain: the waiting words go back to the box instead of being lost or sent later. */
+function dropQueue(): void {
+  if (queue.length === 0) return;
+  const returned = queue.map((q) => q.text).filter(Boolean);
+  const pictures = queue.reduce((n, q) => n + q.images.length, 0);
+  queue = [];
+  broadcast(queueMessage(returned));
+  if (pictures) broadcast({ type: "notice", text: `${pictures} attached picture${pictures > 1 ? "s were" : " was"} not kept; attach again to send.` });
 }
 
 /** Shows the user's message in the log and sends it to the brain. */
@@ -1197,6 +1240,9 @@ function turnHandler(
           skillsPending = false;
           changeClaudeSkills(true, (text) => broadcast({ type: "notice", text }));
         }
+        // A failed reply does not send what was queued behind it; a good one lets the next message go.
+        if (event.type === "done") drainQueue();
+        else dropQueue();
       });
     }
   };
@@ -1233,6 +1279,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify(backgroundMessage()));
+  ws.send(JSON.stringify(queueMessage()));
   void maybeSkillsNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   const acp = acpBrain();
@@ -1270,9 +1317,14 @@ wss.on("connection", (ws) => {
         return;
       }
       if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");
+      if (provider.busy) return enqueueUser(msg.text, images, say);
       const cold = settings.provider === "claude" && !provider.busy ? coldCache(convo) : null;
       if (cold) return offerColdCache(msg.text, images, cold);
       sendUser(msg.text, images);
+    } else if (msg.type === "unqueue" && typeof msg.id === "string") {
+      const before = queue.length;
+      queue = queue.filter((q) => q.id !== msg.id);
+      if (queue.length !== before) broadcast(queueMessage());
     } else if (msg.type === "claude-skills" && typeof msg.value === "boolean") {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changeClaudeSkills(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
@@ -1338,6 +1390,7 @@ wss.on("connection", (ws) => {
       settings.provider = msg.provider;
       await saveSettings(settingsPath, settings);
       if (switching) {
+        dropQueue();
         provider.close();
         provider = providers[settings.provider];
         provider.reset(); // a new brain does not share the other one's memory

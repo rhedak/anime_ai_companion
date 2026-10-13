@@ -312,8 +312,12 @@ function addUserMsg(text, pics = [], count = pics.length) {
   return div;
 }
 
+const IDLE_PLACEHOLDER = input.placeholder;
+
 function setBusy(on) {
   busy = on;
+  // Typing while she answers queues the message, as in Claude Code.
+  input.placeholder = on ? "Type to queue a message… (Ctrl+C stops her)" : IDLE_PLACEHOLDER;
   // While she works the send button becomes a stop button.
   send.disabled = !ws || ws.readyState !== WebSocket.OPEN;
   send.classList.toggle("stop", on);
@@ -791,6 +795,35 @@ function addColdCache(msg) {
 
 let skillsEl = null;
 
+/** Messages waiting for her to finish: listed above the box, each can be taken back out. */
+function renderQueue(msg) {
+  const el = $("queue");
+  el.replaceChildren(
+    ...msg.items.map((item) => {
+      const row = document.createElement("div");
+      row.className = "queue-item";
+      const text = document.createElement("span");
+      text.className = "queue-text";
+      text.textContent = (item.images ? `🖼 ${item.images} ` : "") + item.text;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "icon small";
+      remove.textContent = "×";
+      remove.title = remove.ariaLabel = "Take this message out of the queue";
+      remove.onclick = () => ws?.send(JSON.stringify({ type: "unqueue", id: item.id }));
+      row.append(text, remove);
+      return row;
+    }),
+  );
+  el.hidden = msg.items.length === 0;
+  // Stopped or failed: the words come back, ahead of anything typed since.
+  if (msg.returned?.length) {
+    const back = msg.returned.join("\n\n");
+    input.value = input.value ? `${back}\n\n${input.value}` : back;
+    input.dispatchEvent(new Event("input"));
+  }
+}
+
 /** She reached for a skill that is not loaded: ask before turning anything on. */
 function addSkillsOffer(msg) {
   skillsEl?.card.remove();
@@ -982,6 +1015,9 @@ function handle(msg) {
       backgroundTasks = msg.tasks ?? [];
       renderWorking();
       break;
+    case "queue":
+      renderQueue(msg);
+      break;
     case "auto-turn": // she started talking on her own (a background task finished)
       demo.cancel();
       avatar.setEmotion("thinking");
@@ -1164,7 +1200,7 @@ const browserCommands = {
 
 function submit() {
   const text = input.value.trim();
-  if ((!text && attachments.length === 0) || busy || ws?.readyState !== WebSocket.OPEN) return;
+  if ((!text && attachments.length === 0) || ws?.readyState !== WebSocket.OPEN) return;
   if (attachments.length === 0 && Object.hasOwn(browserCommands, text)) {
     // These need this page (clipboard, downloads, the voice button), so they never reach the server.
     browserCommands[text]();

@@ -298,6 +298,14 @@ Your own attached pictures open in the same viewer. Only real PNG, JPEG, GIF and
 a path did not work. The chat log keeps only the file's location, not a copy, so a picture that has been
 deleted or moved later no longer loads after a reload.
 
+## Typing while she answers
+
+You can keep typing while she is still answering: **Enter** queues the message, like in Claude Code. Queued
+messages are listed above the box (the **×** takes one back out) and go out one by one as each reply ends, up to ten.
+Stop, an error, `/clear` or switching brain does not send them: the text comes back into the box instead (attached
+pictures do not, so attach them again). Slash commands and `!commands` are not queued; they run or say to wait. The
+queue is not saved over a server restart.
+
 ## Stopping her
 
 **Ctrl+C** (or the round stop button that replaces Send while she works) stops her reply, or a running
