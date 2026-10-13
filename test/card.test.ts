@@ -189,7 +189,7 @@ test("the import preview offers what the card has: greeting and lorebook ticked,
   assert.deepEqual(preview.options.map((o) => [o.id, o.on]), [["greeting", true], ["lore", true], ["orders", false]]);
   assert.match(preview.options[0].label, /2 greetings/);
   assert.match(preview.options[1].label, /2 entries/);
-  assert.match(preview.options[2].detail, /Warning[^]*at your own risk/);
+  assert.match(preview.options[2].detail, /STRONG WARNING[^]*work mode[^]*at your own risk/);
   assert.equal(preview.notes, "Best with short replies.");
   const plain = parseCardJson(JSON.stringify({ name: "P", description: "Just a description." }));
   assert.ok(plain.ok);

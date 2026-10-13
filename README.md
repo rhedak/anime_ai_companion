@@ -256,10 +256,11 @@ with the card inside) can give her a ready-made personality.
     per conversation, at most three entries and 1,500 characters per message (it adds to what a message costs). Only plain
     keywords are supported, not regular-expression keys. Ticked by default.
   - **The card author's own instructions** (`system_prompt` and `post_history_instructions`): off by default. These are
-    orders written by the card's author, for chat only (they are left out in work mode). They sit before her style notes and the
-    expression protocol, and the protocol still applies, but a card can still tell her to behave in ways you do not
-    expect, such as dropping her face tags. The preview says so once and that is the only warning: using them is your own
-    risk. Nothing else is warned about each time.
+    orders written by the card's author, and they apply in chat **and in work mode**, where she can read files and run
+    commands. They sit before her style notes and the expression protocol, and the protocol still applies, but a card can
+    tell her to behave in ways you do not expect, ignore your project's rules, or (if it is malicious) steer her toward harmful
+    commands. Every command still waits for your approval, but you are trusting the card's author. The preview warns strongly
+    once and that is the only warning: using them is entirely your own risk.
   - Not supported: a card's `extensions` (front-end scripts and the like).
 - Her name becomes the card's name if it fits the name rules. Her look is not part of a card.
 - The card is saved in `data/character.json` and replaces only the first part of `persona.md`. The style notes and the

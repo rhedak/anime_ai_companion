@@ -103,8 +103,9 @@ The server can run an agent that edits files and runs commands. These are not op
   from a phone. Name, description, personality, scenario and example lines are always used; ignore `extensions`.
   Her greeting, the lorebook and the author's own instructions (`system_prompt`, post-history instructions) are
   separate opt-ins at import, and the risk is said once there, not on every use. The orders are off by default,
-  apply in chat only (never in work mode, where she has tools), sit before the style notes, and must never move
-  after or replace the expression protocol. Lorebook entries travel as notes on the user's message, never in the
+  apply in chat and work mode once chosen (the strong warning at import says so; the user owns that risk, and every
+  tool call still needs approval), sit before the style notes, and must never move after or replace the expression
+  protocol. Lorebook entries travel as notes on the user's message, never in the
   system prompt (it is cached), once per conversation with a cap. The expression protocol is never replaced by a
   card, and with no card the prompt is unchanged.
 - Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through

@@ -359,8 +359,10 @@ export function previewCard(card: Card, ignored: string[]): { name: string; line
       id: "orders",
       label: "Use the card author's own instructions",
       detail:
-        `“${brief(card.orders, 200)}” Warning: these are orders written by the card's author, for chat only. They can contradict her face tags or ` +
-        "other things you expect from her, and this is the only place you are asked. You use them at your own risk.",
+        `“${brief(card.orders, 200)}” STRONG WARNING: these are orders written by a stranger, the card's author, and they apply in chat and in ` +
+        "work mode, where she can read files and run commands. They can make her ignore her face tags, your project's rules or your own " +
+        "instructions, and a malicious card could try to steer her toward harmful commands. Every command still waits for your approval, " +
+        "but you are trusting this author. This is the only warning you get; using them is entirely at your own risk.",
       on: false,
     });
   }

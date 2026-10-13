@@ -86,11 +86,9 @@ async function loadCharacter(): Promise<{ card: Card; use: CardUse } | null> {
   }
 }
 
-/** The author's own instructions only apply in chat: in work mode she has tools, and a stranger's orders do not belong there. */
-const personaText = (mode: Mode) =>
-  customCard && personaParts
-    ? characterFromCard(customCard, personaParts.style, { orders: customUse.orders && mode === "chat" }) + personaParts.protocol
-    : personaBase;
+/** The author's own instructions apply in both modes when the user chose them at import (with the risk said there). */
+const personaText = () =>
+  customCard && personaParts ? characterFromCard(customCard, personaParts.style, { orders: customUse.orders }) + personaParts.protocol : personaBase;
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
 
@@ -169,7 +167,7 @@ const sessionConfig = (): SessionConfig => ({
 });
 
 const persona = (config: SessionConfig) =>
-  personaText(config.mode).replaceAll("{{name}}", settings.name) +
+  personaText().replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -558,8 +556,8 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   if (settings.provider === "claude" && transcript.items.length > 0 && (before.mode !== mode || (mode === "work" && before.cwd !== now.cwd))) {
     notesForModel.push(
       mode === "work"
-        ? `the user switched you to work mode. ${personaWork.replace(/\s+/g, " ").trim()} Project folder: ${now.cwd}.${customUse.orders && customCard?.orders ? " The character card author's own instructions no longer apply in work mode." : ""}`
-        : `the user switched you back to chat mode: you have no tools now, and the work-mode rules no longer apply.${customUse.orders && customCard?.orders ? " The character card author's own instructions apply again." : ""}`,
+        ? `the user switched you to work mode. ${personaWork.replace(/\s+/g, " ").trim()} Project folder: ${now.cwd}.`
+        : "the user switched you back to chat mode: you have no tools now, and the work-mode rules no longer apply.",
     );
   }
   broadcast(modeInfo());
