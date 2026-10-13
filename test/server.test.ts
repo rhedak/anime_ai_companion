@@ -1,0 +1,470 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
+import { join } from "node:path";
+import { after, before, describe, test } from "node:test";
+import { Client, cannotRunServer, startServer, type RunningServer } from "./helpers/server.ts";
+
+// These start a throwaway copy of the whole app (its own data/, a random port) with a stand-in `claude`: no login, no real brain.
+// They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
+const skip = cannotRunServer() ?? false;
+
+/** A new conversation, so a test does not depend on the one before it. */
+async function fresh(c: Client): Promise<void> {
+  const from = c.mark;
+  c.say("/clear");
+  await c.next("reset", 5000, from);
+}
+
+/** Says something and waits for the whole reply; returns what she said. */
+async function ask(c: Client, text: string): Promise<string> {
+  const from = c.mark;
+  c.say(text);
+  await c.done(from);
+  return c.since(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
+}
+
+const inputs = (server: RunningServer) => server.claudeLog().filter((e) => e.kind === "in").map((e) => e.text!);
+
+describe("chatting", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 100 });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("a new page gets the hello, the mode and an empty history", async () => {
+    const c = await server.client();
+    await c.next("hello");
+    assert.deepEqual((await c.next("history")).items, []);
+    const mode = await c.next("mode");
+    assert.equal(mode.mode, "chat");
+    assert.equal(mode.provider, "claude");
+    assert.equal(mode.permissionMode, "manual");
+  });
+
+  test("a message gets a reply with its tags, which is saved and shown to a page that connects later", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const said = await ask(c, "hello there");
+    assert.match(said, /\[emotion:happy\] echo: hello there/);
+    const late = await server.client();
+    assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
+  });
+
+  test("only the app's own origin may connect: a website, or no origin at all, is refused", async () => {
+    await assert.rejects(server.client("http://evil.example"), /socket hang up|refused/);
+    await assert.rejects(server.client(null), /socket hang up|refused/);
+    await assert.rejects(server.client("http://127.0.0.1:1"), /socket hang up|refused/);
+  });
+
+  test("a reply that starts without being asked (a finished helper) is shown, and the helper line follows it", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("SUBAGENT please");
+    await c.next((e) => e.type === "auto-turn", 8000, from);
+    await c.next((e) => e.type === "delta" && /The review is back/.test(e.text), 8000, from);
+    await c.next((e) => e.type === "done", 8000, c.events.findIndex((e, i) => i >= from && e.type === "auto-turn"));
+    const helpers = c.since(from).filter((e) => e.type === "background").map((e) => e.tasks.map((t: any) => t.description));
+    assert.deepEqual(helpers, [["Review the draft"], []], "one running, then none");
+    // It is saved like any reply.
+    const items = (await (await server.client()).next("history")).items;
+    assert.match(items.at(-1).text, /The review is back/);
+  });
+
+  test("a message to a slash command that does not exist says so, and the model is not asked", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const before = inputs(server).length;
+    const from = c.mark;
+    c.say("/nosuchcommand");
+    const notice = await c.next((e) => e.type === "notice" && /Unknown command/.test(e.text), 5000, from);
+    assert.match(notice.text, /\/nosuchcommand/);
+    assert.equal(inputs(server).length, before);
+  });
+});
+
+describe("typing while she answers", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 700 });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("messages queue, go out in order one reply at a time, and one can be taken back out", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("A");
+    await c.next((e) => e.type === "user" && e.text === "A", 5000, from);
+    c.say("B");
+    c.say("C");
+    c.say("D");
+    const queued = await c.next((e) => e.type === "queue" && e.items.length === 3, 5000, from);
+    assert.deepEqual(queued.items.map((i: any) => i.text), ["B", "C", "D"]);
+    c.send({ type: "unqueue", id: queued.items[1].id });
+    await c.next((e) => e.type === "user" && e.text === "D", 15000, from);
+    await c.done(c.events.findIndex((e, i) => i >= from && e.type === "user" && e.text === "D"), 8000);
+    assert.deepEqual(c.since(from).filter((e) => e.type === "user").map((e) => e.text), ["A", "B", "D"]);
+    assert.deepEqual(inputs(server).slice(-3).map((t) => t.replace(/^[^]*\n\n/, "")), ["A", "B", "D"]);
+  });
+
+  test("stopping her puts the waiting messages back in the box instead of sending them", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("first");
+    await c.next((e) => e.type === "user", 5000, from);
+    c.say("second, waiting");
+    await c.next((e) => e.type === "queue" && e.items.length === 1, 5000, from);
+    c.send({ type: "stop" });
+    const back = await c.next((e) => e.type === "queue" && e.returned?.length > 0, 5000, from);
+    assert.deepEqual(back.returned, ["second, waiting"]);
+    assert.deepEqual(back.items, []);
+    await c.done(from);
+    assert.ok(!inputs(server).some((t) => t.includes("second, waiting")), "it was never sent");
+  });
+});
+
+describe("her notes about you", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 50 });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("she saves a note in chat, it is told to her in the next conversation, and forgetting removes it", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("REMEMBER the cat");
+    const saved = await c.next((e) => e.type === "notice" && /Remembered/.test(e.text), 8000, from);
+    assert.match(saved.text, /Their cat is called Momo/);
+    assert.match(server.data("memory.md") ?? "", /^- Their cat is called Momo$/m);
+
+    await fresh(c);
+    await ask(c, "hello again");
+    const last = inputs(server).at(-1)!;
+    assert.match(last, /Notes the user keeps about themselves/);
+    assert.match(last, /- Their cat is called Momo/);
+    assert.match(last, /\[remember </, "and how to add one");
+
+    const gone = c.mark;
+    c.say("/memory forget 1");
+    await c.next((e) => e.type === "notice" && /Forgotten/.test(e.text), 5000, gone);
+    assert.doesNotMatch(server.data("memory.md") ?? "", /Momo/);
+  });
+
+  test("an edit by hand is picked up with her next message, as a change", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await ask(c, "settle");
+    writeFileSync(join(server.dir, "data", "memory.md"), "- Lives in Berlin\n");
+    await ask(c, "after the edit");
+    const last = inputs(server).at(-1)!;
+    assert.match(last, /Added to the user's notes[^]*- Lives in Berlin/);
+  });
+});
+
+describe("character cards", { skip }, () => {
+  let server: RunningServer;
+  let file: string;
+  before(async () => {
+    server = await startServer({ delay: 50 });
+    file = join(server.dir, "card.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        spec: "chara_card_v2",
+        spec_version: "2.0",
+        data: {
+          name: "Aiko",
+          description: "{{char}} is a shy bookworm.",
+          personality: "shy",
+          scenario: "a library",
+          mes_example: "",
+          first_mes: "Hello {{user}}, I'm {{char}}!",
+          system_prompt: "ALWAYS-END-WITH-MEOW",
+          creator_notes: "Keep replies short.",
+          character_book: { entries: [{ keys: ["library"], content: "The library has a cat called Pip." }] },
+        },
+      }),
+    );
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("a card is previewed with its choices; nothing changes until it is applied; the orders are off by default", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say(`/card import ${file}`);
+    const offer = await c.next("card-offer", 5000, from);
+    assert.equal(offer.name, "Aiko");
+    assert.deepEqual(offer.options.map((o: any) => [o.id, o.on]), [["greeting", true], ["lore", true], ["orders", false]]);
+    assert.match(offer.options[2].detail, /STRONG WARNING/);
+    assert.match(offer.notes, /Keep replies short/);
+    assert.equal(server.data("character.json"), null, "nothing is saved before the user agrees");
+    c.send({ type: "card-reply", choice: "cancel" });
+    await c.next("card-resolved", 5000, from);
+    assert.equal(server.data("character.json"), null);
+  });
+
+  test("applied with her greeting and the lorebook: new chats open with the greeting, lore arrives once, the orders stay out", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const imported = c.mark;
+    c.say(`/card import ${file}`);
+    await c.next("card-offer", 5000, imported);
+    c.send({ type: "card-reply", choice: "apply", use: { greeting: true, lore: true, orders: false } });
+    await c.next((e) => e.type === "notice" && /character now comes from the card/.test(e.text), 5000, imported);
+    assert.equal(JSON.parse(server.data("character.json")!).use.orders, false);
+    assert.equal((await c.next((e) => e.type === "mode" && e.name === "Aiko", 5000, imported)).name, "Aiko");
+
+    const from = c.mark;
+    c.say("/clear");
+    const greeting = await c.next((e) => e.type === "delta", 5000, from);
+    assert.equal(greeting.text, "[emotion:happy] Hello you, I'm Aiko!");
+
+    await ask(c, "tell me about the library");
+    assert.match(inputs(server).at(-1)!, /cat called Pip/);
+    assert.match(inputs(server).at(-1)!, /you opened this conversation by saying/);
+    await ask(c, "the library again");
+    assert.doesNotMatch(inputs(server).at(-1)!, /Pip/, "each entry goes out once per conversation");
+
+    assert.match(server.systemPrompt(), /shy bookworm/);
+    assert.doesNotMatch(server.systemPrompt(), /ALWAYS-END-WITH-MEOW/);
+    assert.match(server.systemPrompt(), /Expression protocol \(important\):/);
+  });
+
+  test("with the author's own instructions chosen they are in her prompt, before the protocol; resetting brings persona.md back", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say(`/card import ${file}`);
+    await c.next("card-offer", 5000, from);
+    c.send({ type: "card-reply", choice: "apply", use: { greeting: false, lore: false, orders: true } });
+    await c.next((e) => e.type === "card-resolved" && e.choice === "apply", 5000, from);
+    await fresh(c);
+    await ask(c, "hi");
+    const prompt = server.systemPrompt();
+    assert.match(prompt, /ALWAYS-END-WITH-MEOW/);
+    assert.ok(prompt.indexOf("ALWAYS-END-WITH-MEOW") < prompt.indexOf("Expression protocol (important):"), "the protocol still comes last");
+
+    const reset = c.mark;
+    c.say("/card reset");
+    await c.next((e) => e.type === "notice" && /back to the character in persona\.md/.test(e.text), 5000, reset);
+    assert.equal(server.data("character.json"), null);
+    await fresh(c);
+    await ask(c, "hi again");
+    assert.doesNotMatch(server.systemPrompt(), /shy bookworm|ALWAYS-END/);
+  });
+
+  test("a file that is not a card is refused with a reason", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say(`/card import ${join(server.dir, "persona.md")}`); // text, not JSON
+    const notice = await c.next((e) => e.type === "notice" && /not a character card/.test(e.text), 5000, from);
+    assert.ok(notice);
+    assert.equal(server.data("character.json"), null);
+  });
+});
+
+describe("work mode", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 50, userSkills: ["pinecone"] });
+    mkdirSync(join(server.project, ".claude", "skills", "local"), { recursive: true });
+    writeFileSync(join(server.project, ".claude", "skills", "local", "SKILL.md"), "---\nname: local\n---\n");
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  async function enterWork(c: Client): Promise<number> {
+    const from = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    await c.next((e) => e.type === "mode" && e.mode === "work", 8000, from);
+    return from;
+  }
+
+  test("a folder with its own skills says they stay off, and offers the user's own", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = await enterWork(c);
+    const notice = await c.next((e) => e.type === "notice" && /This folder has 1 skill/.test(e.text), 5000, from);
+    assert.match(notice.text, /\/setup on/);
+    assert.match(notice.text, /You have 1 skill in ~\/\.claude\/skills[^]*\/skills on/);
+  });
+
+  test("when she reaches for a skill that is not loaded the user is asked once, and 'load' restarts her with their skills and no hooks", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    await fresh(c);
+    const from = c.mark;
+    c.say("TOOLFAIL please");
+    const offer = await c.next("skills-offer", 8000, from);
+    assert.ok(offer);
+    await c.done(from);
+    c.send({ type: "skills-reply", choice: "load" });
+    await c.next("skills-resolved", 5000, from);
+    await c.next((e) => e.type === "mode" && e.claudeSkills === true, 5000, from);
+    await ask(c, "again");
+    const args = server.claudeLog().filter((e) => e.kind === "argv").at(-1)!.args!;
+    assert.equal(args[args.indexOf("--setting-sources") + 1], "user");
+    assert.equal(args[args.indexOf("--settings") + 1], '{"disableAllHooks":true}');
+    const asked = c.since(from).filter((e) => e.type === "skills-offer").length;
+    assert.equal(asked, 1, "asked once, not on every failure");
+  });
+
+  test("she cannot save a note in work mode, and the user can add one by hand", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    await fresh(c);
+    const from = c.mark;
+    c.say("REMEMBER the cat");
+    const notice = await c.next((e) => e.type === "notice" && /not saved in work mode/.test(e.text), 8000, from);
+    assert.match(notice.text, /\/memory add/);
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"));
+    c.say("/memory add Likes green tea");
+    await c.next((e) => e.type === "notice" && /Noted/.test(e.text), 5000, from);
+    assert.match(server.data("memory.md") ?? "", /Likes green tea/);
+  });
+
+  test("!command runs in the project folder, without a card, and shows its output", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    const from = c.mark;
+    c.say("!echo from-the-shell");
+    const started = await c.next("shell", 5000, from);
+    assert.equal(started.command, "echo from-the-shell");
+    const done = await c.next("shell-done", 8000, from);
+    assert.match(done.output, /from-the-shell/);
+    assert.equal(done.code, 0);
+  });
+
+  test("the loose permission modes are refused for a brain that does not have them, and Ask stays the default", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    const from = c.mark;
+    c.send({ type: "permission-mode", value: "everything" });
+    const notice = await c.next((e) => e.type === "notice" && /Run everything is a Cursor or opencode mode/.test(e.text), 5000, from);
+    assert.ok(notice);
+    const mode = [...c.events].reverse().find((e) => e.type === "mode")!;
+    assert.equal(mode.permissionMode, "manual");
+  });
+});
+
+describe("the shell opt-out", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 50, env: { COMPANION_NO_SHELL: "1" } });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("COMPANION_NO_SHELL refuses !command and tells the page", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    const mode = await c.next((e) => e.type === "mode" && e.mode === "work", 8000, from);
+    assert.equal(mode.shellOff, true);
+    c.say("!echo should-not-run");
+    const notice = await c.next((e) => e.type === "notice" && /turned off on this server/.test(e.text), 5000, from);
+    assert.ok(notice);
+    assert.ok(!c.since(from).some((e) => e.type === "shell"), "nothing ran");
+  });
+});
+
+describe("a local model with tools (Ollama)", { skip }, () => {
+  let server: RunningServer;
+  let fake: ReturnType<typeof createServer>;
+  const chats: any[] = [];
+  before(async () => {
+    fake = createServer(async (req: IncomingMessage, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-coder:30b" }, { name: "llama2:7b" }] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools"] : ["completion"] }));
+      chats.push(body);
+      const last = body.messages.at(-1);
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      const line = (m: object) => res.write(JSON.stringify({ message: { role: "assistant", content: "", ...m }, done: false }) + "\n");
+      if (last.role === "user" && body.tools && /read/.test(last.content)) line({ tool_calls: [{ function: { name: "read_file", arguments: { path: "notes.txt" } } }] });
+      else if (last.role === "user" && body.tools && /run/.test(last.content)) line({ tool_calls: [{ function: { name: "bash", arguments: { command: "echo made > made.txt" } } }] });
+      else if (last.role === "tool") line({ content: "[emotion:happy] Done: " + String(last.content).trim().slice(0, 30) });
+      else line({ content: "[emotion:happy] hello" });
+      res.end(JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    server = await startServer({ delay: 50, env: { OLLAMA_HOST: `http://127.0.0.1:${(fake.address() as AddressInfo).port}` } });
+    writeFileSync(join(server.project, "notes.txt"), "the answer is 42\n");
+  });
+  after(async () => {
+    await server?.stop();
+    fake?.close();
+  });
+
+  test("work mode is offered only for a model that reports tools; reads run, a command waits for the card", async () => {
+    const c = await server.client();
+    await c.next("history");
+
+    // A model without tools: no work mode.
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "llama2:7b" });
+    await c.next((e) => e.type === "mode" && e.provider === "ollama", 8000, from);
+    from = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    const refused = await c.next((e) => e.type === "notice" && /does not report that llama2:7b can use tools/.test(e.text), 8000, from);
+    assert.match(refused.text, /COMPANION_OLLAMA_TOOLS/);
+
+    // One with tools: work mode, with the warning, and a menu of Ask and Plan only.
+    from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.canUseTools === true, 8000, from);
+    from = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    const warning = await c.next((e) => e.type === "notice" && /Work mode with a local model is experimental/.test(e.text), 8000, from);
+    assert.match(warning.text, /you are responsible for the result/);
+    c.send({ type: "permission-mode", value: "auto" });
+    await c.next((e) => e.type === "notice" && /A local model here has Ask and Plan/.test(e.text), 5000, from);
+
+    // A read needs no card.
+    from = c.mark;
+    c.say("please read the notes");
+    await c.done(from);
+    assert.ok(c.since(from).some((e) => e.type === "tool" && e.name === "Read" && e.status === "done"));
+    assert.ok(!c.since(from).some((e) => e.type === "permission"));
+
+    // A command waits for the user, and does not run until they allow it.
+    from = c.mark;
+    c.say("please run it");
+    const card = await c.next("permission", 8000, from);
+    assert.equal(card.request.tool, "Bash");
+    assert.deepEqual(card.request.input, { command: "echo made > made.txt" });
+    assert.equal(existsSync(join(server.project, "made.txt")), false, "not before the user says yes");
+    c.send({ type: "permission-reply", id: card.request.id, decision: "allow" });
+    await c.done(from);
+    assert.equal(readFileSync(join(server.project, "made.txt"), "utf8").trim(), "made");
+  });
+});

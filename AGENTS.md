@@ -226,8 +226,11 @@ npm test
 Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is that repo's `src`
 folder) and skip if it is missing. The creator needs Python 3.11 or newer. `uv sync` creates `.venv`
 (`pyproject.toml`, `.python-version`), and `src/python.ts` uses it when it exists, unless `PYTHON` is set;
-on an older `python3` the four avatar and render tests fail even though the code is fine. Keep new tests
-passing without a Claude, Cursor or opencode login.
+on an older `python3` the four avatar and render tests fail even though the code is fine. `test/server.test.ts` runs a throwaway copy of the whole app (its own `data/`, a random port) against a stand-in
+`claude` and a fake Ollama (`test/helpers/server.ts`) and drives it over the websocket: queueing, cards, notes, skills,
+work mode, the shell opt-out, local tools and the origin check. It is the net for changing `src/server.ts`, and it needs the
+creator and Python 3.11+ like the renderer tests (it skips without them). Add a test there when you change what the page is
+told. Keep new tests passing without a Claude, Cursor or opencode login.
 
 To watch a change work without touching anyone's real `data/`, run a copy of the repo with its own
 `data/`, a spare `PORT`, and (for the Claude brain) a stand-in `claude` first on the `PATH`.
