@@ -1,166 +1,46 @@
-# Plan: portable personas, memory, and a few smaller steps
+# Plan: what comes next
 
-Written 2026-10-13. Replaces the 2026-10-11 plan for Cursor as a brain, which is
-implemented (Cursor, opencode and Ollama are brains; the history of that plan is in
-git). This file is only what comes next.
-
-The ideas come from reading two community lists of companion projects
-(awesome-agentic-ai-waifus and awesome-ai-companion) and asking what they do that this
-app does not yet. Everything here keeps the rules in `AGENTS.md`: loopback only,
-nothing from a model is injected as HTML, permission modes stay in memory, and the
-cache-friendly way of talking to Claude is not broken.
+Updated 2026-10-13. Everything that was planned before this and is done (Cursor, opencode and Ollama as brains; character cards; her
+notes about you; speech input; queued messages; skills; `--doctor`; the server tests) is in the README and in git, and is not repeated here.
+This file is only what is still open. Everything here keeps the rules in `AGENTS.md`: loopback only, nothing from a model is injected as
+HTML, permission modes stay in memory, and the cache-friendly way of talking to Claude is not broken.
 
 ## Order
 
-| # | Step | Cost | Why this place |
+| # | Step | State | Why this place |
 | --- | --- | --- | --- |
-| 1 | Character cards (import and export) | small | Isolated, fully testable, and a large catalogue of ready personas |
-| 2 | A memory file she can read and write | medium | Memory is the biggest gap against the lists |
-| 3 | ~~Check the MCP bridge, then decide~~ | done | Was removed on purpose; dropped (see 3) |
-| 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
-| 5 | ~~Proactive greetings~~ | dropped | A canned line cannot fit every character (see 5) |
-| 6 | Tools for Ollama models that support them | spike built; needs a check with real models | Local code never leaves the machine; quality depends on the model |
-| 7 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
+| 1 | Check Ollama work mode with real models | waiting for a machine that can run one | Local code never leaves the machine; quality depends on the model |
+| 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
+| 3 | A demo that runs in the browser | not started; spike first | A try-before-you-install page, with no server and no cost |
 
 Smaller ideas are at the end.
 
-## 1. Character cards (V2 and V3)
+## Decided against
 
-A character card is the community's portable persona format (a PNG with embedded JSON, or
-plain JSON), used by SillyTavern, Chub and similar sites.
+- **An MCP server that lets another agent drive her face** (`set_emotion`, `play_gesture`, `redesign_avatar`). "Pro mode" (a stdio channel
+  into a terminal Claude Code session) was added in `8e6167a` and removed on purpose in `5bf06d2`, with the MCP SDK and a local token
+  socket, because the default mode already covers what it did. A new one would bring the same dependency back for a use nobody has
+  asked for. If it returns, start from `git show 8e6167a`: loopback only, token protected, unable to start commands. (`data/attach-mcp.json`
+  and `data/attach-token` on an old install are leftovers and can be deleted by hand.)
+- **A greeting when you come back after a break.** Every message after a long gap pays for the whole conversation again, which is why
+  `src/cache-guard.ts` stops it, so a greeting that calls the model is the opposite of what the app protects. A canned line does not fit
+  either, because with character cards she can be anyone and a fixed English line would be in the wrong voice. If it returns, the line has to
+  come from the character (a field of the card, or `persona.md`), not from the app. (Her card's opening greeting for a new conversation is built.)
 
-- `/card import <file>` reads a V2 or V3 card and fills the character part of her persona:
-  name, description, personality, scenario, first message.
-- `/card export` writes her current persona as a V2 card.
-- The tag protocol (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`) is not part of a
-  card and must not be replaceable by one. Keep the persona in two pieces: the character
-  (from a card, or `persona.md`) and the protocol (ours, fixed). Today `persona.md` holds
-  both in one file, so the first job is splitting it without changing what the model reads.
-- Her look is not in the card spec, so only the persona travels. A card may carry a name; it
-  uses the same path as `/rename`.
-- Greetings, the lorebook and the author's own instructions are opt-ins at import (built 2026-10-13), with one warning there.
-- A card is untrusted text that ends up in her system prompt. Show what will be used and
-  ask before it applies. Strip markup, cap the length, ignore fields we do not map, and never
-  run anything from a card (no regex scripts, no embedded extensions).
-- Taking effect: the persona is part of the prompt a Claude conversation began with, so an
-  import needs `/clear`, and the command says so. Ollama, Cursor and opencode read it on
-  the next conversation.
-- Tests: fixture cards (V2 JSON, V3 JSON, PNG with a text chunk, a hostile one). No network
-  and no login.
+## 1. Ollama work mode: check it with real models
 
-Done when: a card from a public site becomes her persona after one confirmation, and an
-export imports cleanly again.
+Built and tested against a fake Ollama only (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`): the loop, approvals,
+plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a real model. Tools: `read_file`, `grep`,
+`bash`, `write_file` and `edit_file` (exact text replaced once, or everywhere with `replace_all`); `glob` is deferred, since grep and
+bash cover it. The docs carry the warning that a local model's tool use is the user's responsibility.
 
-## 2. A memory file
+The check waits for another machine (2026-10-13): this one (Intel i5, 16 GB, CPU only) cannot run `qwen3-coder:30b`, whose weights are
+19 GB. A machine with about 32 GB of memory, ideally Apple Silicon, can; a 4 to 8 GB tool-capable model such as `qwen3:8b` would also
+work here for a first look, slowly. To do: try `qwen3-coder` and one weaker model on a small real task; note which models call tools well,
+and whether the exact-match rule of `edit_file` is too strict for them; check whether `/api/show` reports `tools` on the installed Ollama;
+decide from that whether to widen the tool set. If the answers are poor, say so in the docs rather than adding tools.
 
-She has the chat log and nothing else that survives `/clear`. The lists favour plain,
-inspectable memory (Markdown, verbatim, forgettable) over vectors, and so do we.
-
-- `data/memory.md`: one short fact per line. It belongs to the user, like the rest of
-  `data/`, and stays out of git.
-- She adds a line with a `[remember …]` tag. The server strips it like her other tags,
-  appends the line, and shows it in the chat ("remembered: …") so nothing is written
-  silently.
-- `/memory` lists the lines, `/memory forget <n>` removes one, `/memory edit` opens the file.
-- How it reaches the model: not in a launch flag or the system prompt (that would break the
-  cached prompt; see Claude Code notes in `AGENTS.md`). The file goes through
-  `notesForModel`, once at the start of a conversation and again only when it changes.
-- A size cap, with a hint when it is near ("your notes are getting long"), because every
-  extra byte rides on every cold start.
-- Only this one file is ever written, only by appending. A line that looks like an
-  instruction to change files, commands or settings is just text; it is shown, never run.
-- Not now: vectors, graphs, summaries of old chats, dream or decay systems.
-
-Done when: she remembers a fact across `/clear` and a restart, the user can see and
-remove every line, and the cold-cache card still guards the first message after a gap.
-
-## 3. The MCP bridge (dropped)
-
-Resolved 2026-10-13. `data/attach-mcp.json` and `data/attach-token` are leftovers from "pro mode", a stdio channel that let a
-terminal Claude Code session be her brain (added in `8e6167a`, removed again in `5bf06d2` the same day). That removal took
-out the channel shim, the local token socket and the MCP SDK and zod dependencies (about 1,200 lines of lockfile), because
-the default mode already covers what pro mode was a workaround for. Nothing in the app reads or writes the two files now, so
-they can be deleted by hand: the token belongs to a socket that no longer exists.
-
-A new MCP server that lets another agent drive her face (`set_emotion`, `play_gesture`, `redesign_avatar`) would bring back
-the same dependency and the same kind of local socket and token, for a use nobody has asked for. Not planned. If it comes
-back, start from `git show 8e6167a` and keep it loopback only, token protected, and unable to start commands.
-
-## 4. Speech input (opt-in)
-
-Nothing in the page uses speech recognition today; on a phone the README tells people to
-use the keyboard's microphone key.
-
-- Browser `SpeechRecognition` is the cheapest, but Chrome and Safari send the audio to
-  their vendor. That has to be said in the menu, as it is for the online voices.
-- A local Whisper is truer to "everything stays on your machine" and costs a dependency.
-- Either way: a push-to-talk button, off by default, remembered in the browser, never
-  listening in the background. Microphones need `localhost` or HTTPS, so phones over
-  `--lan` still cannot use it.
-- Decide between the two with a half-day spike, as the Cursor plan did.
-
-## 5. Proactive greetings (dropped)
-
-Resolved 2026-10-13, not built. A companion that speaks first after you have been away is common in the lists. Here every
-message after a long gap pays for the whole conversation again, which is why `src/cache-guard.ts` stops it, so a greeting that
-calls the model is the opposite of what the app protects. The remaining version, a canned line shown by the page with no model
-call, does not fit either: with character cards (step 1) she can be anyone, and a fixed English line would greet in the wrong
-voice. If it comes back, the line has to come from the character (a field of the card, or `persona.md`), not from the app.
-
-## 6. Tools for Ollama models
-
-Ollama was chat only until 2026-10-13 (`canUseTools` was false, work mode unavailable). A model that supports tool calls, such as the
-coding-focused Qwen models, could do work mode too. Ollama only calls the model, so the tools and the loop are ours to
-write; Claude, Cursor and opencode ship their own.
-
-What Ollama gives us (from its API docs; not yet tried on a real install):
-
-- `/api/chat` takes a `tools` list (`type`, `function.name`, `description`, `parameters`) and streams a call as
-  `message.tool_calls` with `function.name` and an `arguments` object, in a chunk before the final `done: true` one.
-- The result goes back as a message with `role: "tool"` and `tool_name`, after the assistant message that holds the
-  calls. There is no call id.
-- `/api/show` has a `capabilities` list. Its docs example shows only `completion` and `vision`, so whether it reports
-  `tools` has to be checked against a real Ollama. If it does not, fall back to a short list of known families, or a
-  manual "this model can use tools" setting.
-
-What to build (`src/providers/ollama.ts` is one streamed chat call today):
-
-- Tools run by us in the project folder: read, write or edit, bash, grep and glob. Each has path checks (nothing outside
-  the project folder, no home or `/`), size caps, and timeouts.
-- The loop: call, run the requested tools, send the results back, repeat until plain text. A turn cap stops a model that
-  keeps calling tools.
-- Approvals through the existing permission card (`permission` events and `respondPermission`): every call shows the exact
-  command or change and waits. Reads can be pre-approved as for the other brains. Ollama's menu is Ask and Plan only,
-  and nothing looser exists for it, as for opencode before its opt-in. The mode comes back to Ask at every start.
-- `canUseTools` per model, from the capability check, so work mode is only offered when the model supports it.
-  Switching models re-checks it.
-- Ollama's default context window is small and tool output fills it fast: set `num_ctx` and cut long tool results.
-- `persona-work.md` applies in work mode, as for the other brains.
-- Tests fake the Ollama server, as `test/ollama.test.ts` does. No model and no Ollama install needed in CI.
-
-**Status 2026-10-13:** the spike is built (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`) and tested against a
-fake Ollama only: the loop, approvals, plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a
-real model. The check is deferred to another machine (2026-10-13): this one (Intel i5, 16 GB, CPU only) cannot run `qwen3-coder:30b`, whose
-weights are 19 GB. A machine with about 32 GB of memory, ideally Apple Silicon, can; a 4 to 8 GB tool-capable model such as
-`qwen3:8b` would also work here for a first look, slowly. Still to do: try it with `qwen3-coder` (and one weaker model) on a small real task, note which models call tools well,
-and check whether `/api/show` reports `tools` on the installed Ollama. The tool set is read_file, grep, bash, write_file and edit_file
-(exact text replaced once, or everywhere with replace_all); glob is deferred, since grep and bash cover it.
-
-Spike first: one model (try `qwen3-coder`), three tools (read, grep, bash with approval), a turn cap, and a manual check of
-how it behaves on a small real task. Record which models call tools well, and decide whether to widen it from that.
-
-**Warning in the docs (required, not optional).** Local models with tools are the user's responsibility. The README, the
-site's work-mode page and the Ollama brain's menu entry say so in plain words:
-
-- How well a local model uses tools depends entirely on the model and its size. Small or older ones call tools badly:
-  wrong arguments, loops, or text that only looks like a tool call.
-- She can propose a wrong or harmful command or edit with full confidence. Every call still waits for the user's approval,
-  so reading what the card shows before approving is the user's job. No mode skips that for Ollama.
-- The app does not test, rate or vouch for any particular local model. Work done through one is at the user's own risk,
-  and the user checks the result (use git in the project folder).
-- It is labelled experimental in the page, with the model's name shown.
-
-## 7. Splitting `server.ts` and `app.js` (in progress)
+## 2. Splitting `server.ts` and `app.js` (in progress)
 
 Written 2026-10-13, paused for the day. An outside review (issue #1) found the two files too big: `src/server.ts` was 1,815 lines and
 `public/app.js` is 1,914. Nothing about behaviour changes in this work; it is only moving code, and the tests decide whether it was safe.
@@ -173,8 +53,7 @@ Written 2026-10-13, paused for the day. An outside review (issue #1) found the t
   `claude` and a fake Ollama, and drives it over the websocket. Four deliberate breakages of the old code each failed a test, and so did
   breaking the content-security policy and the cold-cache decision after they moved.
 - `npm run typecheck` also checks the page's JavaScript loosely (`tsconfig.frontend.json`). `npm test` runs 242 tests in about 20 seconds.
-- All of this is on `dev`, unreleased. Everything done so far is behaviour-neutral, so it can go into a release at any point (0.4.0 also
-  carries `anaico --doctor`, `COMPANION_NO_SHELL`, the Node-version launcher and the CI pin).
+- Everything done so far is behaviour-neutral and released (0.4.0 and 0.4.1).
 
 **The rules that kept it safe (keep using them)**
 
@@ -232,36 +111,79 @@ loaded in Chrome by hand is what we have; a headless run would need a dependency
 `git checkout dev` in `/Users/henrik/git/anime_ai_companion-dev` (the worktree; your live checkout stays on `main`), run `npm run
 typecheck && npm test` (expect 242 passing), then start with step A: write the `/resume` test, watch it pass, move the code.
 
+## 3. A demo that runs in the browser
+
+Added 2026-10-13. Idea: a page people can open and try without installing anything, like the Godot web exports in `tank_tactics_2d`:
+a static folder on GitHub Pages (where the docs site already lives), no server and no running cost. The chat never leaves the visitor's browser.
+
+**Why it looks feasible.** `anime-character-creator` already ships a static web tool (`web/`, deployed to GitHub Pages) in which the visitor's
+browser runs the real Python through Pyodide and gets an SVG back from `render_character`; its bridge is about twenty lines and it loads
+Pyodide (v0.26.4) from jsDelivr and the package's `.py` files as plain files (3 MB). Our `python/render_worker.py` (191 lines) is the
+standard library plus the creator, JSON in and JSON out, so it becomes one function that takes a request and returns a reply instead of
+reading stdin. That keeps her whole redraw (hair, glasses, hats, expression, blink, mouth) without a picture pack.
+
+**The architecture, to be confirmed by the spike.** `public/app.js` creates its WebSocket in one place and, as far as I can read, uses a
+handful of members of it (`send`, `onmessage`, `readyState`, `close`). A small stand-in object with those members, living in the page,
+could answer the messages the server answers today, so the real page (menus, bubbles, drawing, history) runs almost unmodified:
+
+- `demo/` (plain JavaScript, no build step, no TypeScript): `index.html`, `local-socket.js` (the stand-in for the server), a Pyodide worker
+  with the ported render function, `script.js` (the scripted conversation), later `model.js`.
+- `public/` is copied into the demo at build time, so the demo always shows the real UI. The only change to `public/app.js` is that
+  `connect()` may be handed a socket (`window.anaicoSocket`) instead of opening a WebSocket.
+- The creator's `.py` files are copied in at build time from the pinned tag in `package.json` (the pages workflow checks the creator out the
+  way CI does). Pyodide comes from the CDN at a pinned version.
+- Hosting: `/demo/` on the docs site; GitHub Pages already builds and serves it. Nothing else is needed (itch.io was considered and is not
+  wanted).
+
+**Phase 0, the spike (about a day).** Prove the hard part with no model: in a page, load Pyodide and the creator, run the ported worker, and
+get the existing page to show her and redraw her (hair colour, a blink, a mouth) from a canned exchange. First task: list exactly which
+messages `app.js` handles (the `handle()` switch) and which of them a chat-only demo needs, and leave the rest out. Done when a visitor can
+open the page and say "make my hair mint green" (as a button or a keyword) and she redraws.
+
+**Phase 1, the scripted demo (no model).** A handful of scripted exchanges that show the point of the project: her greeting, a redraw
+("blue hair and glasses", a witch hat), her expressions, and a pretend work-mode card (a command she asks to run, with Allow and Deny) so
+the approval idea is visible. Suggested prompts as buttons; free text is matched by keyword, and anything else gets an honest answer
+("this demo only knows a few things; download a model to chat freely", which leads to phase 2). No network except Pyodide and the files.
+Tests: the keyword matcher and the stand-in socket are plain JavaScript and run under `node --test`; the page is checked by hand in Chrome.
+
+**Phase 2, an optional model download (later).** A button, off until the visitor asks: "Chat with a small model". A dialog says plainly what
+happens: a one-time download of roughly 0.5 to 1 GB from Hugging Face (the real size shown before it starts), cached in the browser,
+removable, and that the conversation stays in the browser. Then a ~1B model through WebLLM (WebGPU) or a WebAssembly fallback; chat only, no
+work mode. Her expression comes from the `[emotion:…]` tags when the model writes them and from a simple fallback when it does not
+(models this small follow the tag protocol badly). Check each model's licence before shipping it. Detect WebGPU first and say so when it
+is missing instead of failing.
+
+**Risks and open questions**
+
+- **Model quality.** A ~1B model is weak at persona, tags and long context; the demo must set that expectation, and phase 1 must be good on
+  its own so the demo does not depend on it.
+- **Browser support.** WebGPU is solid in desktop Chrome and Edge and patchy elsewhere, and on phones. The first load is Pyodide (about
+  10 MB) plus the creator files; a model adds 0.5 to 1 GB.
+- **Staying in step with the app.** The stand-in server reimplements a small part of `server.ts`. Keep it to chat only, keep it in plain
+  JavaScript, and list the messages it answers in one place, so a change to the protocol shows up as a failing test.
+- **Privacy wording.** True for the demo: nothing leaves the browser except the downloads. Say it, and say what is downloaded from where.
+- **Not for the real app.** Nothing from `demo/` should be imported by `src/` or by the server tests.
+- **Open:** the name (the URL is `/demo/` on the docs site); whether to show the pretend work-mode card at all; whether the
+  creator's own web tool should link to it.
+
 ## Smaller ideas
 
 - Stickers: pick an image from an emotion tag, using the tags she already writes.
 - A mood-based theme, through the variables in `public/theme.css`.
-- A short page in `docs/` on bringing your own brain, since several listed projects are
-  guides, not code.
+- A short page in `docs/` on bringing your own brain, since several listed projects are guides, not code.
 - Presets as shareable packs: `packs/` is close to this already.
 
 ## Out of scope
 
-- Playing games, Twitch or YouTube chat, and bridges to Telegram, Discord or WeChat. They
-  do not fit a loopback-only, local app.
+- Playing games, Twitch or YouTube chat, and bridges to Telegram, Discord or WeChat. They do not fit a loopback-only, local app.
 - Watching the screen or webcam, and device or hardware control.
 - Fine-tuning pipelines and anything that sends the user's data off the machine on its own.
-- VRM, Live2D, Pyodide, and a UI for the pre-approved tool list stay open as before and are
-  not part of this plan.
+- VRM and Live2D, and a UI for the pre-approved tool list, stay open as before and are not part of this plan.
 
 ## Risks
 
-- **Persona split.** Moving the protocol out of `persona.md` must produce the same prompt
-  text for the model. Compare before and after, because a changed prompt loses the cache.
-- **Cards as an attack path.** They are text from strangers. Review before applying, and
-  treat every field as data.
-- **Memory growth.** The cap and the "changes only" delivery keep the cost of a cold start
-  predictable. Check it against the cache-guard thresholds.
-- **A model that writes files.** Keep it to one append-only file, shown in the chat, with
-  an undo.
-- **Local tool use is only as good as the model.** The app cannot make a weak model safe or competent. The approval card is
-  the only gate, which is why no looser Ollama mode exists and the docs warning above is part of the feature.
+- **Local tool use is only as good as the model.** The app cannot make a weak model safe or competent. The approval card is the only gate,
+  which is why no looser Ollama mode exists and the docs warn about it.
 - **Context.** Tool output can overflow a small `num_ctx`; truncate and say so.
-- **Provider differences.** A change that touches the persona or notes must say what
-  Claude Code, Cursor, opencode and Ollama each do now; they differ in system prompts
-  (Cursor and opencode prepend the persona to the user message).
+- **Provider differences.** A change that touches the persona or notes must say what Claude Code, Cursor, opencode and Ollama each do now;
+  they differ in system prompts (Cursor and opencode prepend the persona to the user message).
