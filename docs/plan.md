@@ -11,7 +11,7 @@ HTML, permission modes stay in memory, and the cache-friendly way of talking to 
 | --- | --- | --- | --- |
 | 1 | Check Ollama work mode with real models | waiting for a machine that can run one | Local code never leaves the machine; quality depends on the model |
 | 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
-| 3 | A demo that runs in the browser | phase 0 (the spike) done; phase 1 (the scripted demo) next | A try-before-you-install page, with no server and no cost |
+| 3 | A demo that runs in the browser | phases 0 and 1 done and checked locally (`npm run demo`); publishing on the docs site is next | A try-before-you-install page, with no server and no cost |
 
 Smaller ideas are at the end.
 
@@ -162,11 +162,26 @@ Found while doing it, to deal with in phase 1:
 - Not yet checked: a phone-width window, the speech and dictation buttons (they should be hidden), and what a visitor sees if the CDN is
   blocked (a notice appears, and the page stays "disconnected").
 
-**Phase 1, the scripted demo (no model).** A handful of scripted exchanges that show the point of the project: her greeting, a redraw
-("blue hair and glasses", a witch hat), her expressions, and a pretend work-mode card (a command she asks to run, with Allow and Deny) so
-the approval idea is visible. Suggested prompts as buttons; free text is matched by keyword, and anything else gets an honest answer
-("this demo only knows a few things; download a model to chat freely", which leads to phase 2). No network except Pyodide and the files.
-Tests: the keyword matcher and the stand-in socket are plain JavaScript and run under `node --test`; the page is checked by hand in Chrome.
+**Phase 1, the scripted demo (no model): done, locally.** `npm run demo` stages it and serves it on http://127.0.0.1:8765. What a visitor
+gets, all checked by hand in Chrome with no console errors:
+
+- A banner that says what it is (runs entirely in the browser, nothing sent anywhere, where the real thing is), her greeting streamed in,
+  and eight suggested prompts as buttons ("Make my hair mint green", "Become Linnea", "Show me work mode", …); typing works the same.
+- A rule-based reader (`demo/script.js`) for redraw requests: several in one message, colours with "dark" and "light", hair, ombre tips, eyes,
+  hairstyles, glasses, hats (a witch hat too), a coat, skirt, top, ribbon, scarf, mask, boots and belt, taking things off, the 20 presets,
+  "surprise me", moods and gestures. A test checks that every field it can set exists in the creator's real schema.
+- The page's own buttons work: Undo, Reset look, and the "Looks…" gallery with all 20 characters drawn in the browser.
+- A clearly labelled pretend work-mode session with the real approval card (Allow once, Allow for this session, Deny; the stop button
+  counts as a no), so the coding side is visible.
+- Server-only controls are hidden by `demo/demo.css` (brain, folder, permission and effort menus, the Chat/Work switch, attachments, saved
+  looks, the microphone). The Voice button stays: it uses the browser's own voices.
+- 18 tests (`test/browser-demo.test.ts`) drive the stand-in against a fake renderer and check the reader, the staged folder and the creator's
+  schema.
+
+Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
+creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes; check a phone-width window;
+see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether
+the demo should say where the real app's screenshots are. Then phase 2.
 
 **Phase 2, an optional model download (later).** A button, off until the visitor asks: "Chat with a small model". A dialog says plainly what
 happens: a one-time download of roughly 0.5 to 1 GB from Hugging Face (the real size shown before it starts), cached in the browser,
