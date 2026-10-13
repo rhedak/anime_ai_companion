@@ -44,11 +44,22 @@ export async function stage(target = out) {
   const appTag = '<script type="module" src="app.js"></script>';
   if (!html.includes(appTag)) throw new Error("public/index.html no longer loads app.js the way the demo expects");
   html = html.replace(appTag, `<script type="module" src="demo-boot.js"></script>\n  ${appTag}`);
+  // Demo mode: its stylesheet, a title that says so, and a banner that says what this is and where the real thing is.
+  const styleTag = '<link rel="stylesheet" href="style.css">';
+  if (!html.includes(styleTag) || !html.includes("<body>") || !/<title>[^<]*<\/title>/.test(html)) throw new Error("public/index.html has changed shape: update demo/stage.mjs");
+  html = html.replace(styleTag, `${styleTag}\n  <link rel="stylesheet" href="demo.css">`);
+  html = html.replace(/<title>[^<]*<\/title>/, "<title>Anime AI Companion (demo)</title>");
+  html = html.replace(
+    "<body>",
+    `<body class="demo">
+  <div class="demo-banner" role="note"><span>This is a demo that runs entirely in your browser: nothing you type is sent anywhere. The real thing runs on your own computer, in front of your coding agent.</span><span><a href="https://github.com/rhedak/anime_ai_companion">Get it on GitHub</a> · <a href="https://rhedak.github.io/anime_ai_companion/">Documentation</a></span></div>`,
+  );
   writeFileSync(join(target, "index.html"), html);
   writeFileSync(join(target, "custom.css"), "/* the demo has no user stylesheet */\n");
 
   // In the repository the demo's files import the shared ones as "../public/x.js"; staged, everything sits in one folder.
   for (const name of readdirSync(join(root, "demo"))) {
+    if (name.endsWith(".css")) cpSync(join(root, "demo", name), join(target, name));
     if (!name.endsWith(".js")) continue;
     writeFileSync(join(target, name), readFileSync(join(root, "demo", name), "utf8").replaceAll('"../public/', '"./'));
   }

@@ -36,7 +36,8 @@
     "dev": "node bin/check-node.js && node --watch src/server.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.frontend.json",
     "test": "node --test \"test/**/*.test.ts\"",
-    "site": "node site/build.mjs"
+    "site": "node site/build.mjs",
+    "demo": "node bin/check-node.js && node demo/stage.mjs --serve"
   },
   "dependencies": {
     "qrcode-generator": "^2.0.4",

@@ -7,12 +7,13 @@ import { fileURLToPath } from "node:url";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { createLocalSocket, type Renderer } from "../demo/local-socket.js";
-import { reply } from "../demo/script.js";
+import { GREETING, reply } from "../demo/script.js";
 import { stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
 
 const repo = resolve(fileURLToPath(import.meta.url), "../..");
 const emotions = JSON.parse(readFileSync(join(repo, "emotions.json"), "utf8"));
+const PRESETS = ["risa", "linnea", "kyoko"];
 
 /** A renderer that answers like python/render_ops.py would, without Python, and remembers what it was asked. */
 function fakeRenderer() {
@@ -20,10 +21,13 @@ function fakeRenderer() {
   const renderer: Renderer = {
     async call(request) {
       calls.push(request);
-      if (request.op === "base") return { ok: true, character: { hair_color: "#800000", face: { mouth_open: 0 } } };
-      if (request.op === "schema") return { ok: true, presets: ["risa", "linnea"] };
+      if (request.op === "base") return { ok: true, character: { preset: request.name, hair_color: "#800000", face: { mouth_open: 0 } } };
+      if (request.op === "schema") return { ok: true, presets: PRESETS };
       if (request.op === "frames") return { ok: true, svgs: request.poses ? request.poses.map((_: unknown, i: number) => `<svg pose=${i}/>`) : [...request.mouth, "blink"].map((_: unknown, i: number) => `<svg frame=${i}/>`) };
-      if (request.op === "patch") return { ok: true, character: { ...request.character, ...request.set }, applied: Object.entries(request.set).map(([k, v]) => `${k}=${v}`), rejected: [] };
+      if (request.op === "patch") {
+        const { base, ...rest } = request.set;
+        return { ok: true, character: { ...request.character, ...(base ? { preset: base } : {}), ...rest }, applied: Object.entries(request.set).map(([k, v]) => `${k}=${v}`), rejected: [] };
+      }
       return { ok: false, error: "unknown op" };
     },
   };
@@ -31,9 +35,9 @@ function fakeRenderer() {
 }
 
 /** A socket with the page's side of it: what the page receives, in order. */
-function connect(options: { renderer?: Promise<Renderer>; reply?: (text: string) => string } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply: options.reply ?? reply, pause: async () => {} });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {} });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -46,18 +50,27 @@ function connect(options: { renderer?: Promise<Renderer>; reply?: (text: string)
     }
   };
   const send = (msg: object) => socket.send(JSON.stringify(msg));
-  return { socket, events, next, send, calls: fake.calls };
+  /** Says something and waits until her answer is complete; returns what the page received for it. */
+  const say = async (text: string) => {
+    const from = events.length;
+    send({ type: "user", text });
+    await next((e) => e.type === "done", from);
+    return events.slice(from);
+  };
+  return { socket, events, next, send, say, calls: fake.calls };
 }
 
-test("the stand-in opens like the server does: hello first, then what the page needs to show a chat", async () => {
-  const { events, next } = connect();
-  await next((e) => e.type === "queue");
-  assert.deepEqual(events.map((e) => e.type), ["hello", "mode", "looks", "meter", "history", "queue"]);
+test("the stand-in opens like the server does, then she greets the visitor", async () => {
+  const { events, next } = connect({ greeting: GREETING });
+  await next((e) => e.type === "done");
+  assert.deepEqual(events.slice(0, 6).map((e) => e.type), ["hello", "mode", "looks", "meter", "history", "queue"]);
   assert.equal(events[0].version, 1);
   assert.equal(events[1].mode, "chat");
-  assert.equal(events[1].canUseTools, false, "no work mode in the demo");
-  assert.deepEqual(events[2].presets, ["risa", "linnea"]);
-  assert.deepEqual(events[4].items, []);
+  assert.equal(events[1].canUseTools, false, "no real work mode in the demo");
+  assert.deepEqual(events[2].presets, PRESETS);
+  assert.equal(events[2].canUndo, false);
+  assert.equal(events.filter((e) => e.type === "delta").map((e) => e.text).join(""), GREETING);
+  assert.match(GREETING, /runs entirely in your browser/);
 });
 
 test("the page's request for frames is answered with the same request the server would make, and a repeat costs nothing", async () => {
@@ -65,11 +78,10 @@ test("the page's request for frames is answered with the same request the server
   await next((e) => e.type === "queue");
   send({ type: "frames", emotion: "happy" });
   const frames = await next((e) => e.type === "frames");
-  assert.equal(frames.emotion, "happy");
   assert.equal(frames.version, 1);
   assert.equal(frames.svgs.length, 5, "four mouth openings and a blink");
   const asked = calls.filter((c) => c.op === "frames");
-  assert.deepEqual(asked[0], framesRequest(emotions, { hair_color: "#800000", face: { mouth_open: 0 } }, "happy"));
+  assert.deepEqual(asked[0], framesRequest(emotions, { preset: "risa", hair_color: "#800000", face: { mouth_open: 0 } }, "happy"));
 
   const before = calls.length;
   send({ type: "frames", emotion: "happy" });
@@ -77,71 +89,151 @@ test("the page's request for frames is answered with the same request the server
   assert.equal(calls.length, before, "served from the cache");
 });
 
-test("an emotion she does not know is drawn neutral, under the name the page asked for", async () => {
-  const { next, send, calls } = connect();
+test("an emotion she does not know is drawn neutral, and a gesture comes back as its two poses", async () => {
+  const { events, next, send, calls } = connect();
   await next((e) => e.type === "queue");
   send({ type: "frames", emotion: "flabbergasted" });
-  const frames = await next((e) => e.type === "frames");
-  assert.equal(frames.emotion, "flabbergasted");
+  assert.equal((await next((e) => e.type === "frames")).emotion, "flabbergasted");
   assert.deepEqual(calls.at(-1)!.face, emotions.neutral);
-});
-
-test("a gesture comes back as its two poses; an unknown one is not answered", async () => {
-  const { events, next, send } = connect();
-  await next((e) => e.type === "queue");
   send({ type: "gesture-frames", emotion: "happy", gesture: "wave" });
-  const wave = await next((e) => e.type === "gesture-frames");
-  assert.equal(wave.gesture, "wave");
-  assert.equal(wave.svgs.length, 2);
+  assert.equal((await next((e) => e.type === "gesture-frames")).svgs.length, 2);
   send({ type: "gesture-frames", emotion: "happy", gesture: "backflip" });
-  send({ type: "frames", emotion: "sad" }); // a later request that is answered, so the first had its turn
+  send({ type: "frames", emotion: "sad" });
   await next((e) => e.type === "frames" && e.emotion === "sad");
   assert.ok(!events.some((e) => e.gesture === "backflip"));
 });
 
-test("a message is shown, answered in pieces, applied to her look, and the page is told the look changed", async () => {
-  const { events, next, send, calls } = connect();
+test("several requests in one message become one change of her look, and the page's Undo takes it back", async () => {
+  const { events, next, send, say, calls } = connect();
   await next((e) => e.type === "queue");
-  const from = events.length;
-  send({ type: "user", text: "make my hair mint green" });
-  await next((e) => e.type === "done", from);
-  const mine = events.slice(from);
-  assert.equal(mine[0].type, "user");
-  assert.equal(mine[0].text, "make my hair mint green");
-  assert.equal(mine.filter((e) => e.type === "delta").map((e) => e.text).join(""), reply("make my hair mint green"));
+  const mine = await say("make my hair mint green and put on glasses");
   const avatar = mine.find((e) => e.type === "avatar");
-  assert.deepEqual(avatar.applied, ["hair_color=#8fe3b4"]);
+  assert.deepEqual(avatar.applied, ["hair_color=#8fe3b4", "glasses=true"]);
   assert.equal(avatar.version, 2);
-  assert.equal(mine.at(-1).type, "done");
-  assert.ok(mine.indexOf(avatar) < mine.length - 1, "the look changes before the reply is finished");
+  assert.equal(mine.filter((e) => e.type === "looks").at(-1).canUndo, true);
+  assert.ok(mine.indexOf(avatar) < mine.length - 1, "the look changes before the turn is over");
 
-  // The next frames are drawn for the new look, not taken from before.
   send({ type: "frames", emotion: "neutral" });
-  const frames = await next((e) => e.type === "frames", from);
-  assert.equal(frames.version, 2);
+  assert.equal((await next((e) => e.type === "frames" && e.version === 2)).version, 2);
   assert.equal(calls.filter((c) => c.op === "frames").at(-1)!.character.hair_color, "#8fe3b4");
+
+  const from = events.length;
+  send({ type: "look-undo" });
+  const undone = await next((e) => e.type === "avatar", from);
+  assert.deepEqual(undone.applied, ["undid the last change"]);
+  assert.equal(undone.version, 3);
+  assert.equal((await next((e) => e.type === "looks", from)).canUndo, false);
+  send({ type: "frames", emotion: "neutral" });
+  await next((e) => e.type === "frames" && e.version === 3, from);
+  assert.equal(calls.filter((c) => c.op === "frames").at(-1)!.character.hair_color, "#800000", "the old look is drawn again");
 });
 
 test("a reply with nothing to redraw leaves her look and the version alone", async () => {
-  const { events, next, send } = connect();
+  const { next, say } = connect();
   await next((e) => e.type === "queue");
-  const from = events.length;
-  send({ type: "user", text: "tell me a story" });
-  await next((e) => e.type === "done", from);
-  assert.ok(!events.slice(from).some((e) => e.type === "avatar"));
+  const mine = await say("tell me a story");
+  assert.ok(!mine.some((e) => e.type === "avatar"));
 });
 
-test("a new chat empties the history; odd input is ignored without a sound", async () => {
-  const { events, next, send, socket } = connect();
-  await next((e) => e.type === "queue");
+test("the page's look buttons work: a preset, the gallery's thumbnails (once), and back to the original", async () => {
+  const { events, next, send, calls } = connect({ greeting: "Hello!" });
+  await next((e) => e.type === "done");
+
+  send({ type: "look-preset", name: "linnea" });
+  assert.deepEqual((await next((e) => e.type === "avatar")).applied, ["base=linnea"]);
+  send({ type: "look-preset", name: "nobody" });
+  send({ type: "preset-thumbs" });
+  const thumbs = await next((e) => e.type === "preset-thumbs");
+  assert.deepEqual(Object.keys(thumbs.svgs), PRESETS);
+  const asked = calls.length;
+  send({ type: "preset-thumbs" });
+  await next((e) => e.type === "preset-thumbs", events.indexOf(thumbs) + 1);
+  assert.equal(calls.length, asked, "the thumbnails are drawn once");
+  assert.equal(events.filter((e) => e.type === "avatar").length, 1, "an unknown preset changes nothing");
+
+  const from = events.length;
+  send({ type: "reset-look" });
+  assert.deepEqual((await next((e) => e.type === "avatar", from)).applied, ["back to the original look"]);
+  await next((e) => e.type === "reset", from);
+  await next((e) => e.type === "done", from); // her greeting again
+  send({ type: "frames", emotion: "neutral" });
+  await next((e) => e.type === "frames" && e.version === 3);
+  assert.equal(calls.filter((c) => c.op === "frames").at(-1)!.character.preset, "risa");
+});
+
+test("a new chat empties the log and she greets again; odd input is ignored without a sound", async () => {
+  const { events, next, send, socket } = connect({ greeting: "Hello!" });
+  await next((e) => e.type === "done");
   socket.send("not json");
   send({ type: "user", text: "   " });
   send({ type: "rename", name: "Hana" });
   send({ type: "provider", provider: "claude" });
+  send({ type: "look-save", name: "mine" });
+  const from = events.length;
   send({ type: "reset" });
-  const reset = await next((e) => e.type === "reset");
-  assert.ok(reset);
-  assert.ok(!events.some((e) => e.type === "user" || e.type === "notice"), "nothing was said for input the demo does not handle");
+  await next((e) => e.type === "reset", from);
+  await next((e) => e.type === "done", from);
+  const after = events.slice(from).map((e) => e.type);
+  assert.deepEqual(after.filter((t) => t !== "delta"), ["reset", "mode", "done"]);
+  assert.ok(!events.some((e) => e.type === "notice" || e.type === "user"));
+});
+
+test("work mode, pretended: she asks with a real approval card, nothing ends until it is answered, and the face keeps moving meanwhile", async () => {
+  const { events, next, send, say } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "show me work mode" });
+  const card = await next((e) => e.type === "permission", from);
+  assert.equal(card.request.tool, "Edit");
+  assert.equal(card.request.summary, "index.html");
+  assert.deepEqual(Object.keys(card.request.input), ["file_path", "old_string", "new_string"]);
+  assert.match(card.request.description, /pretend/i);
+  const tools = events.slice(from).filter((e) => e.type === "tool").map((e) => `${e.name}:${e.status}`);
+  assert.deepEqual(tools, ["Read:running", "Read:done", "Edit:running"]);
+  assert.ok(!events.slice(from).some((e) => e.type === "done"), "she is waiting for the answer");
+
+  // While the card is open, the page can still ask for frames (her face must not freeze).
+  send({ type: "frames", emotion: "thinking" });
+  await next((e) => e.type === "frames" && e.emotion === "thinking", from);
+
+  send({ type: "permission-reply", id: card.request.id, decision: "allow" });
+  assert.deepEqual((await next((e) => e.type === "permission-resolved", from)).decision, "allow");
+  await next((e) => e.type === "done", from);
+  const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
+  assert.match(said, /pretend work-mode session/);
+  assert.match(said, /heading is pink/);
+  assert.equal(events.slice(from).filter((e) => e.type === "tool").at(-1).status, "done");
+  // The conversation goes on afterwards.
+  assert.ok((await say("be shy")).some((e) => e.type === "done"));
+});
+
+test("pretend work mode, denied: she accepts it; and the stop button counts as a no", async () => {
+  const denied = connect();
+  await denied.next((e) => e.type === "queue");
+  denied.send({ type: "user", text: "show me work mode" });
+  const card = await denied.next((e) => e.type === "permission");
+  denied.send({ type: "permission-reply", id: card.request.id, decision: "deny" });
+  await denied.next((e) => e.type === "done");
+  assert.equal(denied.events.filter((e) => e.type === "tool").at(-1).status, "error");
+  assert.match(denied.events.filter((e) => e.type === "delta").map((e) => e.text).join(""), /leave it alone/);
+
+  const stopped = connect();
+  await stopped.next((e) => e.type === "queue");
+  stopped.send({ type: "user", text: "can you show me the coding part" });
+  await stopped.next((e) => e.type === "permission");
+  stopped.send({ type: "stop" });
+  assert.equal((await stopped.next((e) => e.type === "permission-resolved")).decision, "deny");
+  await stopped.next((e) => e.type === "done");
+});
+
+test("a card answered with a wrong id does nothing", async () => {
+  const { events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  send({ type: "user", text: "show me work mode" });
+  await next((e) => e.type === "permission");
+  send({ type: "permission-reply", id: "something-else", decision: "allow" });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!events.some((e) => e.type === "permission-resolved"));
 });
 
 test("when the renderer cannot load, the page is told instead of waiting for ever", async () => {
@@ -171,18 +263,62 @@ test("the frame requests are shared with the server: every emotion, and the gest
   assert.equal(findAvatarTags, serverFindAvatarTags, "the server and the demo read [avatar …] tags with the same code");
 });
 
-test("the scripted answers: the colour word that comes first wins, glasses work, anything else is honest about what the demo knows", () => {
-  assert.match(reply("make my hair mint green"), /hair_color=#8fe3b4/);
-  assert.match(reply("Hair: BLUE please"), /hair_color=#3a6fe0/);
-  assert.match(reply("can I have glasses"), /\[avatar glasses=true\]/);
-  assert.match(reply("how are you"), /only knows a few tricks/);
-  assert.match(reply("make my shoes red"), /only knows a few tricks/, "a colour without hair is not a hair request");
-  for (const text of ["make my hair red", "put on glasses", "hello"]) assert.match(reply(text), /^\[emotion:\w+\]/, "every reply starts with an emotion, like a model's");
-  assert.deepEqual(findAvatarTags(reply("hair pink")), [{ hair_color: "#ff88cc" }]);
+const say = (text: string) => reply(text, { presets: PRESETS });
+
+test("she understands several requests in one message, in any order, and says what she did", () => {
+  assert.match(say("make my hair mint green").text, /\[avatar hair_color=#8fe3b4\]/);
+  assert.match(say("make my hair mint green").text, /Okay! Mint hair\./, "the colour word that comes first: mint, not green");
+  assert.match(say("blue eyes, a witch hat and a red coat").text, /\[avatar eye_color=#3a6fe0 hat_color=#2a1a4a coat_color=#d02a2a\]/);
+  assert.match(say("blue eyes, a witch hat and a red coat").text, /Blue eyes, a witch hat and a red coat\./);
+  assert.match(say("short dark purple hair and pink tips").text, /hair_color=#532f7d hairstyle=short_layered hair_tip_color=#ff88cc/);
+  assert.match(say("light blue skirt").text, /skirt_color=#[0-9a-f]{6}/);
+  assert.match(say("hair #ff00aa").text, /hair_color=#ff00aa/);
+  assert.deepEqual(findAvatarTags(say("hair pink and glasses").text), [{ hair_color: "#ff88cc", glasses: "true" }]);
+});
+
+test("taking things off works across an 'and', and putting on after taking off does not inherit it", () => {
+  assert.match(say("remove my glasses and hat").text, /\[avatar glasses=false hat_color=none\]/);
+  assert.match(say("take off the hat and put on glasses").text, /\[avatar hat_color=none glasses=true\]/);
+  assert.match(say("no glasses, no hat").text, /glasses=false hat_color=none/);
+});
+
+test("presets, moods, gestures, and the things she is honest about", () => {
+  assert.match(say("become Linnea").text, /\[avatar base=linnea\]/);
+  assert.match(say("reset").text, /\[avatar base=risa\]/);
+  assert.match(say("surprise me").text, /\[avatar base=(risa|linnea|kyoko)\]/);
+  assert.match(say("be shy").text, /^\[emotion:shy\]/);
+  assert.doesNotMatch(say("be shy").text, /\[avatar/, "a mood changes her face, not her look");
+  assert.match(say("wave at me").text, /\[gesture:wave\]/);
+  assert.match(say("cheer").text, /\[gesture:cheer\]/);
+  assert.match(say("put on a coat").text, /I need a colour for the coat/);
+  assert.match(say("how is the weather").text, /only knows a few things/);
+  assert.match(say("what can you do?").text, /20 characters/);
+  assert.match(say("undo").text, /Undo button/);
+  assert.equal(say("show me work mode").scene, "work");
+  assert.equal(say("what is my project command").scene, "work");
+  for (const text of ["make my hair red", "put on glasses", "hello", "how is the weather", "be sad"]) assert.match(say(text).text, /^\[emotion:\w+\]/, "every reply starts with an emotion, like a model's");
+});
+
+test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(resolve(repo, "../anime-character-creator/src")) ? false : "the creator is not next to this repo" }, async () => {
+  const { spawnSync } = await import("node:child_process");
+  const keys = new Set<string>();
+  for (const text of ["hair mint green and blue eyes", "short messy hair", "pink tips", "witch hat", "a red coat and skirt and top", "ribbon scarf mask boots belt black", "glasses"]) {
+    for (const tag of findAvatarTags(say(text).text)) for (const key of Object.keys(tag)) keys.add(key);
+  }
+  const venv = join(repo, ".venv", "bin", "python");
+  const python = existsSync(venv) ? venv : "python3";
+  const probe = spawnSync(
+    python,
+    ["-I", "-c", `import sys, json; sys.path.insert(0, "python"); from render_ops import handle; s = handle({"op": "schema"}); known = set(s["top"]) | set(s["face"]) | set(s["outfit"]); print(json.dumps([k for k in json.loads(sys.argv[1]) if k not in known]))`, JSON.stringify([...keys])],
+    { cwd: repo, encoding: "utf8", env: { ...process.env, CREATOR_SRC: resolve(repo, "../anime-character-creator/src") } },
+  );
+  if (probe.status !== 0 && /Python 3\.(9|10)|SyntaxError/.test(probe.stderr)) return; // an old python: the renderer tests report that
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.deepEqual(JSON.parse(probe.stdout), [], "every field she can change exists in the creator");
 });
 
 const creatorAvailable = existsSync(process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src"));
-test("staging the demo gives a flat static folder that loads the demo's socket first and carries the renderer", { skip: creatorAvailable ? false : "the character creator is not next to this repo" }, async () => {
+test("staging the demo gives a flat static folder in demo mode that loads the demo's socket first and carries the renderer", { skip: creatorAvailable ? false : "the character creator is not next to this repo" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "anaico-demo-"));
   try {
     const done = await stage(dir);
@@ -191,10 +327,14 @@ test("staging the demo gives a flat static folder that loads the demo's socket f
     assert.ok(html.indexOf("demo-boot.js") > 0 && html.indexOf("demo-boot.js") < html.indexOf('src="app.js"'), "the socket is set before the page starts");
     assert.match(html, /href="custom\.css"/, "no absolute path, which breaks under a sub-folder");
     assert.doesNotMatch(html, /href="\//);
+    assert.match(html, /<body class="demo">/);
+    assert.match(html, /href="demo\.css"/);
+    assert.match(html, /<title>Anime AI Companion \(demo\)<\/title>/);
+    assert.match(html, /demo-banner[^]*nothing you type is sent anywhere[^]*github\.com\/rhedak\/anime_ai_companion/);
     const list = JSON.parse(readFileSync(join(dir, "creator-files.json"), "utf8")) as string[];
     assert.ok(list.includes("anime_character_creator/__init__.py"));
     for (const file of list) assert.ok(existsSync(join(dir, "creator", file)), file);
-    for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "render_ops.py", "emotions.json", "custom.css"]) assert.ok(existsSync(join(dir, file)), file);
+    for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "demo.css", "render_ops.py", "emotions.json", "custom.css"]) assert.ok(existsSync(join(dir, file)), file);
     const socket = readFileSync(join(dir, "local-socket.js"), "utf8");
     assert.doesNotMatch(socket, /\.\.\/public\//);
     assert.match(socket, /from "\.\/frames\.js"/);

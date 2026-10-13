@@ -1,0 +1,41 @@
+/* The demo's few changes to the page: a banner, and hiding what only means something with a server behind it. */
+body.demo { display: flex; flex-direction: column; }
+body.demo main { flex: 1; min-height: 0; height: auto !important; }
+
+.demo-banner {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--muted, #b9b3c9);
+  background: var(--panel, #1f1a2b);
+  border-bottom: 1px solid var(--line, #3a3350);
+}
+.demo-banner a { color: var(--accent, #ff8f6b); }
+
+/* No brains, folders, permissions, attachments, saved looks or microphone without a server. */
+body.demo #menus,
+body.demo .seg-group,
+body.demo #save-look,
+body.demo #attach,
+body.demo #mic,
+body.demo #file { display: none !important; }
+
+#demo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 14px 8px; }
+#demo-chips button {
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text, #eee);
+  background: var(--fill-2, #2c2640);
+  border: 1px solid var(--line, #3a3350);
+  border-radius: 999px;
+  cursor: pointer;
+}
+#demo-chips button:hover { background: var(--hover, #38304f); }
