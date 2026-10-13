@@ -186,6 +186,14 @@ let heldMessage: { text: string; images: ImageInput[] } | null = null;
 const cursorResumable = savedLog?.provider === "cursor" ? savedLog.sessionId ?? undefined : undefined;
 const opencodeResumable = savedLog?.provider === "opencode" ? savedLog.sessionId ?? undefined : undefined;
 
+const ollamaBrain = new OllamaProvider({
+  host: ollamaHost,
+  model: settings.ollamaModel ?? "",
+  persona: () => persona(sessionConfig()),
+  // Models the user vouches for when their Ollama cannot report capabilities: COMPANION_OLLAMA_TOOLS=name,name or all.
+  forceTools: (process.env.COMPANION_OLLAMA_TOOLS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+});
+
 const providers: Record<ProviderName, Provider> = {
   claude: new ClaudeCodeProvider({
     config: sessionConfig(),
@@ -193,11 +201,7 @@ const providers: Record<ProviderName, Provider> = {
     persona,
     resumeSessionId: claudeResumable,
   }),
-  ollama: new OllamaProvider({
-    host: ollamaHost,
-    model: settings.ollamaModel ?? "",
-    persona: () => persona(sessionConfig()),
-  }),
+  ollama: ollamaBrain,
   cursor: new CursorProvider({
     config: sessionConfig(),
     chatCwd: workspace,
@@ -212,6 +216,15 @@ const providers: Record<ProviderName, Provider> = {
   }),
 };
 let provider: Provider = providers[settings.provider];
+// A local model can only do work mode if Ollama says it takes tool calls: ask now, and again whenever the model changes.
+ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
+if (settings.provider === "ollama") void ollamaBrain.checkTools();
+
+/** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
+const OLLAMA_WORK_WARNING =
+  "Work mode with a local model is experimental. How well it uses tools depends entirely on the model: small or older ones call them badly and can " +
+  "propose a wrong or harmful command or edit with full confidence. Every command and file write still waits for your approval, so read what the card " +
+  "shows. The app does not test or vouch for any local model; you are responsible for the result, so keep the project under git.";
 
 /** What the footer shows. Limits belong to the account, so they outlive a /clear; the context belongs to the conversation. */
 const account: { model: string | null; session: Limit | null; week: Limit | null; limitsAt: number | null } = {
@@ -515,7 +528,14 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   const blocked = cannotChange();
   if (blocked) return say(blocked);
   if (wanted === "work") {
-    if (!provider.canUseTools) return say("This model cannot use tools. Switch to Claude Code, Cursor or opencode for work mode.");
+    if (settings.provider === "ollama") await ollamaBrain.checkTools(); // ask again: the model may have changed, or Ollama just started
+    if (!provider.canUseTools) {
+      return say(
+        settings.provider === "ollama"
+          ? `Ollama does not report that ${settings.ollamaModel || "this model"} can use tools, so work mode is off for it. Pick a tool-capable model (a recent Qwen or Llama, for example), or, if you know this one works, start the server with COMPANION_OLLAMA_TOOLS=${settings.ollamaModel || "<model>"}.`
+          : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
+      );
+    }
     const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
     if (!folder) return say("Choose a project folder first.");
     const check = await checkProjectDir(folder);
@@ -538,6 +558,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   }
   broadcast(modeInfo());
   if (wanted === "work") void maybeSkillsNotice(say);
+  if (wanted === "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING);
 }
 
 /** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
@@ -778,9 +799,13 @@ async function rename(input: string, say: Say): Promise<void> {
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else if (value === "everything" && settings.provider !== "cursor" && settings.provider !== "opencode") {
-    say("Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
+    say(settings.provider === "ollama" ? "A local model here has Ask and Plan only: every command and file write asks first." : "Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
   } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
-    say(`${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`);
+    say(
+      settings.provider === "ollama"
+        ? "A local model here has Ask and Plan. Auto, Accept edits and Run everything are not available for it: every command and file write asks first."
+        : `${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
+    );
   } else {
     permissionMode = value;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
@@ -1574,7 +1599,7 @@ wss.on("connection", (ws) => {
           );
         }
         settings.ollamaModel = chosen;
-        mode = "chat"; // no tools on this backend
+        mode = "chat"; // work mode is offered again once Ollama says this model takes tool calls (checked below)
       }
       if (msg.provider === "cursor" && typeof msg.model === "string" && msg.model) settings.cursorModel = msg.model;
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
@@ -1597,6 +1622,7 @@ wss.on("connection", (ws) => {
         broadcast(backgroundMessage());
       }
       provider.configure(sessionConfig());
+      if (settings.provider === "ollama") void ollamaBrain.checkTools();
       if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) {
         const label = provider instanceof CursorProvider ? "Cursor" : "opencode";
         try {

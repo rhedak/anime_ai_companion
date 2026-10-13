@@ -691,6 +691,10 @@ function renderMode() {
     info.textContent = "Pick the folder she may work in. She asks before changing anything.";
     return;
   }
+  if (state.provider === "ollama") {
+    info.textContent = `${state.model} · experimental: a local model's tool use is your responsibility. Every command and file write still asks first.`;
+    return;
+  }
   const cursor = state.provider === "cursor";
   const acp = cursor || state.provider === "opencode";
   const resume = acp ? state.sessionId ?? "" : `claude --resume ${state.sessionId}`;

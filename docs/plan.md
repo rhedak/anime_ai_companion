@@ -19,7 +19,7 @@ cache-friendly way of talking to Claude is not broken.
 | 3 | ~~Check the MCP bridge, then decide~~ | done | Was removed on purpose; dropped (see 3) |
 | 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
 | 5 | ~~Proactive greetings~~ | dropped | A canned line cannot fit every character (see 5) |
-| 6 | Tools for Ollama models that support them | medium to large, spike first | Local code never leaves the machine; quality depends on the model |
+| 6 | Tools for Ollama models that support them | spike built; needs a check with real models | Local code never leaves the machine; quality depends on the model |
 
 Smaller ideas are at the end.
 
@@ -135,6 +135,12 @@ What to build (`src/providers/ollama.ts` is one streamed chat call today):
 - Ollama's default context window is small and tool output fills it fast: set `num_ctx` and cut long tool results.
 - `persona-work.md` applies in work mode, as for the other brains.
 - Tests fake the Ollama server, as `test/ollama.test.ts` does. No model and no Ollama install needed in CI.
+
+**Status 2026-10-13:** the spike is built (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`) and tested against a
+fake Ollama only: the loop, approvals, plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a
+real model. Still to do: try it with `qwen3-coder` (and one weaker model) on a small real task, note which models call tools well,
+and check whether `/api/show` reports `tools` on the installed Ollama. The tool set is read_file, grep, bash and write_file;
+glob and an edit-in-place tool are not built.
 
 Spike first: one model (try `qwen3-coder`), three tools (read, grep, bash with approval), a turn cap, and a manual check of
 how it behaves on a small real task. Record which models call tools well, and decide whether to widen it from that.

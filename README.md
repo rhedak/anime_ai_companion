@@ -48,6 +48,8 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `COMPANION_OPENCODE_MODEL` | opencode's own default | model for opencode, `provider/model` (e.g. `opencode/big-pickle`) |
 | `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
+| `COMPANION_OLLAMA_TOOLS` | unset | model names (comma separated) or `all` that you vouch can use tools, when your Ollama cannot report it |
+| `COMPANION_OLLAMA_CTX` | `16384` | context size asked of Ollama in work mode with tools |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama |
 | `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
@@ -94,8 +96,22 @@ yourself: this project cannot grant you the right to use the character.
 Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing
 leaves it at all. Install [Ollama](https://ollama.com), `ollama pull llama3.2` (or any chat model),
 and choose the model in the dropdown. The same persona and the same `[emotion:...]` / `[avatar ...]`
-tags drive the avatar, though small models follow the tag protocol less reliably. Ollama is chat
-only: no tools, so Work mode is unavailable with it. Switching brains starts a fresh conversation.
+tags drive the avatar, though small models follow the tag protocol less reliably. Chat never uses tools.
+Switching brains starts a fresh conversation.
+
+**Work mode with a local model is experimental, and the quality is your responsibility.** If Ollama reports that the
+model supports tool calls (a recent Qwen or Llama, for example; `ollama show <model>` lists its capabilities), the **Work** button
+works with it. She can then read files, search, run a command and write a file in your project folder. How well a local model
+uses tools depends entirely on the model and its size: small or older ones call tools badly (wrong arguments, loops, or text
+that only looks like a tool call), and any model can propose a wrong or harmful command or edit with full confidence. Every
+command and every file write waits for your approval and shows exactly what it will do, so reading the card is your job;
+there is no mode that skips it for Ollama (only **Ask** and **Plan**, and Plan offers reading and searching only). Reading and
+searching inside the project are pre-approved, like for the other brains. Nothing outside the project folder can be read or
+written through her tools, but an approved `bash` command can do anything your user can. The app does not test, rate or vouch
+for any local model: work done through one is at your own risk, so keep the project under git and check the result. She stops
+after 12 tool steps in a row. Ollama's default context window is small, so tool work asks for 16384 tokens (change it with
+`COMPANION_OLLAMA_CTX`); a big model with a big window needs the memory for it. If your Ollama is too old to report capabilities
+and the model is not a known family, vouch for it with `COMPANION_OLLAMA_TOOLS=<model name>` (or `all`).
 
 ## Cursor
 
