@@ -29,8 +29,8 @@ import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createMemoryService } from "./memory-service.ts";
+import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
-import { countSkills, reachedForUnloadedSkill, skillsNotice, userSkillsDir } from "./skills.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type ProviderEvent, type SessionConfig } from "./providers/types.ts";
@@ -111,8 +111,6 @@ let mode: Mode = "chat";
 let permissionMode: PermissionMode = "manual";
 /** Like the permission mode, never saved: hooks run commands, so each start begins isolated. */
 let claudeSetup = false;
-/** Also never saved: it loads the user's own settings (without their hooks), so each start begins without. */
-let claudeSkills = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
@@ -139,7 +137,7 @@ const sessionConfig = (): SessionConfig => ({
   allowedTools: settings.allowedTools,
   permissionMode,
   claudeSetup,
-  claudeSkills,
+  claudeSkills: skills.enabled(),
   effort: effectiveEffort(),
 });
 
@@ -166,6 +164,23 @@ const convo: ConversationState = {
 let heldMessage: { text: string; images: ImageInput[] } | null = null;
 const cursorResumable = savedLog?.provider === "cursor" ? savedLog.sessionId ?? undefined : undefined;
 const opencodeResumable = savedLog?.provider === "opencode" ? savedLog.sessionId ?? undefined : undefined;
+
+// --- letting her use the user's own skills: see skills-service.ts ---
+const skills = createSkillsService({
+  brain: () => settings.provider,
+  canUseTools: () => provider.canUseTools,
+  busy: () => provider.busy,
+  mode: () => mode,
+  setup: () => claudeSetup,
+  folder: () => settings.projectDir ?? workspace,
+  cannotChange: () => cannotChange(),
+  reconfigure: () => provider.configure(sessionConfig()),
+  pushNote: (text) => notesForModel.push(text),
+  broadcast: (msg) => broadcast(msg),
+  modeInfo: () => modeInfo(),
+  name: () => settings.name,
+  remoteRefusal: () => remoteRefusal,
+});
 
 const ollamaBrain = new OllamaProvider({
   host: ollamaHost,
@@ -257,7 +272,7 @@ const modeInfo = () => ({
   allowedTools: settings.allowedTools,
   permissionMode,
   claudeSetup,
-  claudeSkills,
+  claudeSkills: skills.enabled(),
   effort: settings.effort,
   effortNow: effectiveEffort(),
   shellOff: shellDisabled(),
@@ -536,7 +551,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
     );
   }
   broadcast(modeInfo());
-  if (wanted === "work") void maybeSkillsNotice(say);
+  if (wanted === "work") void skills.maybeNotice(say);
   if (wanted === "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING);
 }
 
@@ -565,30 +580,6 @@ function changeClaudeSetup(on: boolean, say: Say): void {
   broadcast(modeInfo());
 }
 
-function changeClaudeSkills(on: boolean, say: Say): void {
-  const blocked = cannotChange();
-  if (blocked) say(blocked);
-  else if (settings.provider !== "claude") say("Skills are a Claude Code feature.");
-  else if (!provider.canUseTools) say("This model cannot use tools, so there are no skills to load.");
-  else {
-    claudeSkills = on;
-    skillsOffered = false;
-    provider.configure(sessionConfig()); // restarts claude; the conversation carries on
-    // She only hears about it with the next message: the running conversation keeps its first prompt.
-    notesForModel.push(
-      on
-        ? "the user turned your skills on: the Skill tool now finds their own skills by name, so use it instead of reading skill files by hand."
-        : "the user turned your skills off again: the Skill tool no longer finds their own skills.",
-    );
-    say(
-      on
-        ? "Her skills are on in work mode: she can use your own skills (~/.claude/skills) by name. Your user settings apply too, but their hooks stay off."
-        : "Her skills are off again.",
-    );
-  }
-  broadcast(modeInfo());
-}
-
 // --- her notes about the user (data/memory.md): see memory-service.ts ---
 const memory = createMemoryService({
   file: join(root, "data/memory.md"),
@@ -613,45 +604,6 @@ const cards = createCardService({
   remoteRefusal: () => remoteRefusal,
 });
 await cards.load();
-
-// --- skills she cannot use yet ---
-/** Folders already told about, so the notice comes once per folder and run. */
-const skillsNoticed = new Set<string>();
-/** Asked once per conversation: a "no" is not asked again until she is cleared or the setting changes. */
-let skillsOffered = false;
-/** The user said yes while she was mid-reply: apply it when the reply ends. */
-let skillsPending = false;
-
-async function maybeSkillsNotice(say: Say): Promise<void> {
-  if (settings.provider !== "claude" || mode !== "work" || claudeSetup) return;
-  const cwd = settings.projectDir ?? workspace;
-  if (skillsNoticed.has(cwd)) return;
-  skillsNoticed.add(cwd);
-  const text = skillsNotice(
-    { project: await countSkills(join(cwd, ".claude", "skills")), user: await countSkills(userSkillsDir()) },
-    { skills: claudeSkills, setup: claudeSetup },
-  );
-  if (text) say(text);
-}
-
-async function offerSkills(): Promise<void> {
-  if (skillsOffered || claudeSkills || claudeSetup || mode !== "work" || settings.provider !== "claude") return;
-  if ((await countSkills(userSkillsDir())) === 0) return;
-  skillsOffered = true;
-  broadcast({ type: "skills-offer", name: settings.name });
-}
-
-function answerSkills(choice: unknown, remote: boolean, say: Say): void {
-  if (choice !== "load" && choice !== "no") return;
-  if (choice === "load" && remote) return say(remoteRefusal);
-  if (choice === "no") return void broadcast({ type: "skills-resolved", choice });
-  broadcast({ type: "skills-resolved", choice });
-  if (provider.busy) {
-    skillsPending = true;
-    return say("Loading her skills as soon as she has finished this reply.");
-  }
-  changeClaudeSkills(true, say);
-}
 
 async function rename(input: string, say: Say): Promise<void> {
   const name = cleanName(input);
@@ -888,12 +840,7 @@ const slashCommands: Record<
   skills: {
     help: "work mode: let her use your own skills (~/.claude/skills) by name; your hooks stay off: /skills on | off",
     claudeOnly: true,
-    run: ({ args, say, remote }) => {
-      const wanted = args.toLowerCase();
-      if (wanted === "on" && remote) return say(remoteRefusal);
-      if (wanted === "on" || wanted === "off") return changeClaudeSkills(wanted === "on", say);
-      say(`Her skills are ${claudeSkills ? "on" : "off"} in work mode. Use /skills on | off`);
-    },
+    run: ({ args, say, remote }) => skills.command(args, say, remote),
   },
   plan: { help: "same as /permissions plan", run: ({ say }) => changePermissionMode("plan", say) },
   rc: {
@@ -1121,7 +1068,7 @@ function parseSlash(text: string): { name: string; args: string } | null {
 function forgetConversationSize(): void {
   convo.contextTokens = null;
   convo.lastReplyAt = null;
-  skillsOffered = false;
+  skills.forgetOffer();
   cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
   dropHeldMessage();
@@ -1260,7 +1207,7 @@ function turnHandler(
       applyMemory(reply);
       broadcast(event);
     } else if (event.type === "tool") {
-      if (reachedForUnloadedSkill(event, userSkillsDir())) void offerSkills();
+      skills.noticeToolUse(event);
       transcript.tool({ type: "tool", id: event.id, name: event.name, summary: event.summary, status: event.status });
       broadcast(event);
     } else if (event.type === "permission") {
@@ -1304,10 +1251,7 @@ function turnHandler(
         // She was asked to show off: the page plays the sequence once her reply is done.
         if (event.type === "done" && DEMO_TAG.test(reply)) broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack));
         opts.onFinish?.(event);
-        if (skillsPending) {
-          skillsPending = false;
-          changeClaudeSkills(true, (text) => broadcast({ type: "notice", text }));
-        }
+        skills.applyPending();
         // A failed reply does not send what was queued behind it; a good one lets the next message go.
         if (event.type === "done") drainQueue();
         else dropQueue();
@@ -1348,7 +1292,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify(backgroundMessage()));
   ws.send(JSON.stringify(queueMessage()));
-  void maybeSkillsNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
+  void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
   const acp = acpBrain();
@@ -1398,9 +1342,9 @@ wss.on("connection", (ws) => {
       if (queue.length !== before) broadcast(queueMessage());
     } else if (msg.type === "claude-skills" && typeof msg.value === "boolean") {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
-      changeClaudeSkills(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      skills.change(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "skills-reply") {
-      answerSkills(msg.choice, remote, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      skills.answer(msg.choice, remote, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "cold-reply" && typeof msg.choice === "string") {
       answerColdCache(msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-reply" && typeof msg.id === "string") {
