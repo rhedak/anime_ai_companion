@@ -19,6 +19,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/permissions [ask\|plan\|accept\|auto\|everything]`, `/plan` | the permissions menu, from the keyboard |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/rename [name]` | change her name |
 | `/frames [name\|off]` | show her with a [picture pack](picture-packs.html); alone, lists the packs |

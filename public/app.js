@@ -794,6 +794,57 @@ function addColdCache(msg) {
 }
 
 let skillsEl = null;
+let cardEl = null;
+
+/** A character card was read: show what it will add and ask before it becomes her. */
+function addCardOffer(msg) {
+  cardEl?.card.remove();
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = msg.name ? `Use the character card "${msg.name}"?` : "Use this character card?";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  // textContent only: a card is text from a stranger.
+  desc.textContent =
+    msg.lines.join("\n\n") +
+    "\n\nThe card's text becomes part of her instructions; a card cannot change how her face or the page work." +
+    (msg.ignored.length ? `\nNot used: ${msg.ignored.join(", ")}.` : "") +
+    (msg.name && msg.name !== msg.current ? `\nShe will be called ${msg.name} instead of ${msg.current}.` : "");
+  desc.style.whiteSpace = "pre-wrap";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const button = (label, cls, choice) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = () => ws.send(JSON.stringify({ type: "card-reply", choice }));
+    return b;
+  };
+  actions.append(button("Use this card", "allow", "apply"), button("Cancel", "deny", "cancel"));
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  cardEl = { card, actions };
+}
+
+function resolveCardOffer(choice) {
+  if (!cardEl) return;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  done.textContent = choice === "apply" ? "Card in use" : "Card not used";
+  cardEl.actions.replaceWith(done);
+  cardEl = null;
+}
+
+function downloadCard(msg) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([msg.json], { type: "application/json" }));
+  link.download = String(msg.filename || "card.json").replace(/[^A-Za-z0-9._-]/g, "_");
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 
 /** Messages waiting for her to finish: listed above the box, each can be taken back out. */
 function renderQueue(msg) {
@@ -980,6 +1031,15 @@ function handle(msg) {
     case "cold-cache":
       addColdCache(msg);
       break;
+    case "card-offer":
+      addCardOffer(msg);
+      break;
+    case "card-resolved":
+      resolveCardOffer(msg.choice);
+      break;
+    case "card-export":
+      downloadCard(msg);
+      break;
     case "skills-offer":
       addSkillsOffer(msg);
       break;
@@ -1076,6 +1136,7 @@ function handle(msg) {
       sayLook();
       coldEl = null;
       skillsEl = null;
+      cardEl = null;
       showBubble("");
       avatar.setEmotion("neutral");
       endTurn();

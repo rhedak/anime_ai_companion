@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { readFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
@@ -27,6 +28,7 @@ import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell } from "./shell.ts";
+import { cardFromPersona, characterFromCard, cleanText, FIELD_LIMITS, MAX_CARD_BYTES, parseCardFile, previewCard, splitPersona, type Card } from "./card.ts";
 import { countSkills, reachedForUnloadedSkill, skillsNotice, userSkillsDir } from "./skills.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -62,6 +64,26 @@ const avatar = new AvatarService({
 await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
+
+// A character card, if the user imported one, replaces the character part of persona.md. The expression protocol
+// after it is ours and never comes from a card.
+const characterPath = join(root, "data/character.json");
+const personaParts = splitPersona(personaBase);
+let customCard: Card | null = await loadCharacter();
+
+async function loadCharacter(): Promise<Card | null> {
+  try {
+    const saved = JSON.parse(await readFile(characterPath, "utf8"));
+    // Cleaned again on every load: the file is the user's, but it ends up in a prompt.
+    const field = (key: keyof typeof FIELD_LIMITS) => cleanText(saved?.[key], FIELD_LIMITS[key]);
+    const card = { name: field("name"), description: field("description"), personality: field("personality"), scenario: field("scenario"), example: field("example") };
+    return card.description || card.personality || card.scenario ? card : null;
+  } catch {
+    return null;
+  }
+}
+
+const personaText = () => (customCard && personaParts ? characterFromCard(customCard, personaParts.style) + personaParts.protocol : personaBase);
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
 
@@ -140,7 +162,7 @@ const sessionConfig = (): SessionConfig => ({
 });
 
 const persona = (config: SessionConfig) =>
-  personaBase.replaceAll("{{name}}", settings.name) +
+  personaText().replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -565,6 +587,59 @@ function changeClaudeSkills(on: boolean, say: Say): void {
   broadcast(modeInfo());
 }
 
+// --- character cards ---
+let pendingCard: { card: Card; ignored: string[] } | null = null;
+
+async function cardImport(input: string, say: Say): Promise<void> {
+  if (!personaParts) return say("persona.md has been reshaped (no Style: and Expression protocol sections), so a card cannot be fitted in. Restore those headings first.");
+  const wanted = input.trim().replace(/^["']|["']$/g, "").replace(/^~(?=$|\/)/, homedir());
+  if (!wanted) return say("Use /card import <path to a card .png or .json>");
+  const info = await stat(wanted).catch(() => null);
+  if (!info?.isFile()) return say(`There is no file at ${wanted}.`);
+  if (info.size > MAX_CARD_BYTES) return say("That file is too big for a character card (over 15 MB).");
+  const result = parseCardFile(await readFile(wanted));
+  if (!result.ok) return say(result.reason);
+  pendingCard = { card: result.card, ignored: result.ignored };
+  broadcast({ type: "card-offer", current: settings.name, ...previewCard(result.card, result.ignored) });
+}
+
+async function cardApply(say: Say): Promise<void> {
+  const pending = pendingCard;
+  if (!pending) return say("There is no card waiting. Use /card import <file> first.");
+  pendingCard = null;
+  customCard = pending.card;
+  await mkdir(dirname(characterPath), { recursive: true });
+  await writeFile(characterPath, JSON.stringify({ ...pending.card, importedAt: new Date().toISOString() }, null, 2) + "\n");
+  broadcast({ type: "card-resolved", choice: "apply" });
+  const name = cleanName(pending.card.name);
+  if (name && name !== settings.name) {
+    settings.name = name;
+    await saveSettings(settingsPath, settings);
+    notesForModel.push(`the user renamed you: your name is now ${name}.`);
+    broadcast(modeInfo());
+  }
+  say(
+    `Her character now comes from the card${name ? ` (${name})` : ""}. A conversation that is already running keeps the persona it began with: use /clear to start with the new one.` +
+      (!name && pending.card.name ? ` The card's name "${pending.card.name}" is not a name this app can use (1 to 24 letters, digits, spaces and . ' - _), so she keeps hers.` : ""),
+  );
+}
+
+async function cardReset(say: Say): Promise<void> {
+  pendingCard = null;
+  if (!customCard) return say("She is using persona.md already.");
+  customCard = null;
+  await rm(characterPath, { force: true });
+  say(`She is back to the character in persona.md, and keeps the name ${settings.name} (rename her with /rename). Use /clear to start a conversation with it.`);
+}
+
+function cardExport(say: Say, reply: (msg: unknown) => void): void {
+  if (!personaParts) return say("persona.md has been reshaped, so there is no character part to export.");
+  // With a card imported, export what she actually runs on: the card's character with her name filled in.
+  const character = customCard ? characterFromCard(customCard, "").trimEnd() + "\n" : personaParts.character;
+  const slug = settings.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "companion";
+  reply({ type: "card-export", filename: `${slug}-card.json`, json: cardFromPersona(character, settings.name) });
+}
+
 // --- skills she cannot use yet ---
 /** Folders already told about, so the notice comes once per folder and run. */
 const skillsNoticed = new Set<string>();
@@ -822,6 +897,24 @@ const slashCommands: Record<
       const wanted = args.toLowerCase();
       if (wanted === "on" || wanted === "off") return changeClaudeSetup(wanted === "on", say);
       say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
+    },
+  },
+  card: {
+    help: "character cards: /card import <file.png|.json> | apply | cancel | export | reset",
+    run: async ({ args, say, reply, remote }) => {
+      const [sub = ""] = args.trim().split(/\s+/);
+      const word = sub.toLowerCase();
+      if (remote && word !== "export") return say(remoteRefusal);
+      if (word === "import") return cardImport(args.trim().slice(sub.length), say);
+      if (word === "apply") return cardApply(say);
+      if (word === "cancel") {
+        pendingCard = null;
+        broadcast({ type: "card-resolved", choice: "cancel" });
+        return;
+      }
+      if (word === "export") return cardExport(say, reply);
+      if (word === "reset") return cardReset(say);
+      say(`Her character comes from ${customCard ? `a card${customCard.name ? ` (${customCard.name})` : ""}` : "persona.md"}. Use /card import <file.png|.json>, /card export or /card reset.`);
     },
   },
   skills: {
@@ -1321,6 +1414,14 @@ wss.on("connection", (ws) => {
       const cold = settings.provider === "claude" && !provider.busy ? coldCache(convo) : null;
       if (cold) return offerColdCache(msg.text, images, cold);
       sendUser(msg.text, images);
+    } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (remote) return say(remoteRefusal);
+      if (msg.choice === "apply") await cardApply(say);
+      else {
+        pendingCard = null;
+        broadcast({ type: "card-resolved", choice: "cancel" });
+      }
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
       const before = queue.length;
       queue = queue.filter((q) => q.id !== msg.id);

@@ -205,6 +205,25 @@ saved in `data/settings.json`, shown in the page title and exports, used in her 
 (`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
 letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
 
+## Character cards
+
+Character cards (the community format used by SillyTavern, Chub and similar sites: a `.json` file, or a `.png`
+with the card inside) can give her a ready-made personality.
+
+- `/card import <file>` reads a V1, V2 or V3 card and shows what it will add. Nothing changes until you choose
+  **Use this card** (or `/card apply`); **Cancel** (or `/card cancel`) drops it.
+- Only her description, personality, scenario, example lines and name are used. A card's own system prompt,
+  post-history instructions, lorebook, greetings and extensions are ignored, so a card cannot override how her face,
+  pictures and the page work. HTML and our own tags (`[emotion:…]`, `[avatar …]`, `[image …]`) are removed from the
+  text, `{{char}}` becomes her name, and each field is capped in length.
+- Her name becomes the card's name if it fits the name rules. Her look is not part of a card.
+- The card is saved in `data/character.json` and replaces only the first part of `persona.md`. The style notes and the
+  expression protocol stay. A conversation that is already running keeps the persona it began with, so use `/clear`.
+- `/card export` downloads her current character as a V2 card. `/card reset` goes back to `persona.md` (she keeps the
+  name; rename her with `/rename`).
+- A card is text written by someone else and it becomes part of her instructions. Read the preview before you accept it.
+  Importing and resetting work from the computer itself only, not from a phone.
+
 ## Changing how it looks
 
 All colours, fonts, corner radii and sizes of the interface are CSS variables at the top of
@@ -330,6 +349,7 @@ Type these in the chat box (`/help` lists them):
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |
 | `/show` | she shows all her emotions, a blink, talking and her gestures, a second each, naming every one (no model call); asking her "show me all your animations" does the same |

@@ -36,6 +36,25 @@ deleting it restores the default look. You can simply ask an AI assistant to wri
 `[avatar …]`, `[image …]`, `[demo]`). Keep that protocol if you rewrite her personality, and keep the emotion list
 in step with `emotions.json`. It has a `{{name}}` placeholder for her name.
 
+### Character cards
+
+Character cards (the community format used by SillyTavern, Chub and similar sites: a `.json` file, or a `.png`
+with the card inside) can give her a ready-made personality.
+
+- `/card import <file>` reads a V1, V2 or V3 card and shows what it will add. Nothing changes until you choose
+  **Use this card** (or `/card apply`); **Cancel** (or `/card cancel`) drops it.
+- Only her description, personality, scenario, example lines and name are used. A card's own system prompt,
+  post-history instructions, lorebook, greetings and extensions are ignored, so a card cannot override how her face,
+  pictures and the page work. HTML and our own tags (`[emotion:…]`, `[avatar …]`, `[image …]`) are removed from the
+  text, `{{char}}` becomes her name, and each field is capped in length.
+- Her name becomes the card's name if it fits the name rules. Her look is not part of a card.
+- The card is saved in `data/character.json` and replaces only the first part of `persona.md`. The style notes and the
+  expression protocol stay. A conversation that is already running keeps the persona it began with, so use `/clear`.
+- `/card export` downloads her current character as a V2 card. `/card reset` goes back to `persona.md` (she keeps the
+  name; rename her with `/rename`).
+- A card is text written by someone else and it becomes part of her instructions. Read the preview before you accept it.
+  Importing and resetting work from the computer itself only, not from a phone.
+
 ## Her voice
 
 This is open source, so the voice is yours to change in your own checkout. All of it is in `public/speech.js`
