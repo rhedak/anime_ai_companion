@@ -10,6 +10,12 @@ export interface Limit {
   resetsAt: number | null;
 }
 
+/** A subagent or task claude is running in the background; the turn may end while it still runs. */
+export interface BackgroundTask {
+  id: string;
+  description: string;
+}
+
 export type StreamItem =
   | { kind: "init"; sessionId: string; model: string | null }
   | { kind: "limits"; session: Limit | null; week: Limit | null }
@@ -26,6 +32,7 @@ export type StreamItem =
     }
   | { kind: "permission-cancel"; requestId: string }
   | { kind: "status"; text: string | null }
+  | { kind: "background"; tasks: BackgroundTask[] }
   | { kind: "compacted"; auto: boolean; before: number | null; after: number | null }
   | { kind: "result"; isError: boolean; text: string; costUsd: number | null; contextTokens: number | null; contextWindow: number | null };
 
@@ -43,6 +50,16 @@ export function parseStreamLine(line: string): StreamItem[] {
       }
       // `/compact` reports progress as status events: "compacting", then null when done.
       if (msg.subtype === "status") return [{ kind: "status", text: msg.status === "compacting" ? "Compacting the conversation…" : null }];
+      // The full list of running background tasks, sent whenever it changes (empty when the last one ends).
+      if (msg.subtype === "background_tasks_changed") {
+        const tasks = Array.isArray(msg.tasks) ? msg.tasks : [];
+        return [
+          {
+            kind: "background",
+            tasks: tasks.map((t: any) => ({ id: String(t.task_id), description: typeof t.description === "string" ? t.description : "" })),
+          },
+        ];
+      }
       if (msg.subtype === "compact_boundary") {
         const meta = msg.compact_metadata ?? {};
         const tokens = (v: unknown) => (typeof v === "number" ? v : null);

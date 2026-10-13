@@ -1117,6 +1117,14 @@ function turnHandler(
   };
 }
 
+// Background subagents outlive the reply that started them, so the page needs to hear when they end.
+const backgroundMessage = () => ({ type: "background", tasks: provider.backgroundTasks ?? [] });
+for (const p of Object.values(providers)) {
+  p.onBackground?.(() => {
+    if (p === provider) broadcast(backgroundMessage());
+  });
+}
+
 // A turn the brain starts on its own (a background subagent finished) is shown like any reply.
 for (const p of Object.values(providers)) {
   p.onUnprompted?.(() => {
@@ -1139,6 +1147,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(modeInfo()));
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
+  ws.send(JSON.stringify(backgroundMessage()));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   const acp = acpBrain();
   if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
@@ -1247,6 +1256,7 @@ wss.on("connection", (ws) => {
         notesForModel = [];
         pendingPermissions.clear();
         broadcast({ type: "reset" });
+        broadcast(backgroundMessage());
       }
       provider.configure(sessionConfig());
       if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) {

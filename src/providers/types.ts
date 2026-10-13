@@ -1,6 +1,6 @@
 import type { Effort } from "../claude-settings.ts";
 import type { ImageInput } from "../images.ts";
-import type { Limit } from "./claude-stream.ts";
+import type { BackgroundTask, Limit } from "./claude-stream.ts";
 
 export interface PermissionRequest {
   id: string;
@@ -90,6 +90,10 @@ export interface Provider {
    * finishes). It calls `start` to get a fresh event handler for that turn, which then receives the
    * events until "done" or "error", like the handler given to `send`.
    */
+  /** Tell `listener` whenever the set of background tasks changes (backends that can run them). */
+  onBackground?(listener: (tasks: BackgroundTask[]) => void): void;
+  /** Background tasks running right now. */
+  readonly backgroundTasks?: BackgroundTask[];
   onUnprompted?(start: () => (event: ProviderEvent) => void): void;
   /** Answer a "permission" event. */
   respondPermission(id: string, decision: Decision, message?: string): void;

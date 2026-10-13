@@ -1,6 +1,8 @@
 {"type": "system", "subtype": "init", "session_id": "00000000-0000-4000-8000-000000000000", "model": "claude-haiku-5-5"}
+{"type": "system", "subtype": "background_tasks_changed", "tasks": [{"task_id": "task1", "task_type": "local_agent", "subagent_type": "general-purpose", "description": "Reply with done"}]}
 {"type": "system", "subtype": "task_started", "task_id": "task1"}
 {"type": "system", "subtype": "task_notification", "task_id": "task1"}
+{"type": "system", "subtype": "background_tasks_changed", "tasks": []}
 {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "I'"}}}
 {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "m waiting for the background sub"}}}
 {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "agent to finish its reply"}}}

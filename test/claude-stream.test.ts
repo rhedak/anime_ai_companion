@@ -128,3 +128,11 @@ test("context use is the last request of a turn, not the sum of all its requests
   };
   assert.equal((parseStreamLine(JSON.stringify(result))[0] as { contextTokens: number }).contextTokens, 110_001);
 });
+
+test("a change in background tasks carries the full list, empty when the last one ends", () => {
+  const running = parseStreamLine(
+    JSON.stringify({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "a1", task_type: "local_agent", description: "Review the draft" }] }),
+  );
+  assert.deepEqual(running, [{ kind: "background", tasks: [{ id: "a1", description: "Review the draft" }] }]);
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: "system", subtype: "background_tasks_changed", tasks: [] })), [{ kind: "background", tasks: [] }]);
+});

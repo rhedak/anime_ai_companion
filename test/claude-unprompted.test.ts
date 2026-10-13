@@ -116,6 +116,23 @@ test("without a handler the extra turn is dropped, as before, and the provider s
   }
 });
 
+test("background tasks are reported while the subagent runs and cleared when it ends", async () => {
+  const { restore } = standIn();
+  const claude = provider();
+  try {
+    const seen: string[][] = [];
+    claude.onBackground((tasks) => seen.push(tasks.map((t) => t.description)));
+    claude.onUnprompted(() => () => {});
+    claude.send("hi", () => {});
+    await until(() => seen.length >= 2);
+    assert.deepEqual(seen, [["Reply with done"], []]);
+    assert.deepEqual(claude.backgroundTasks, []);
+  } finally {
+    claude.close();
+    restore();
+  }
+});
+
 test("the fixture is what the test says it is: two turns, the second marked as a task notification", () => {
   const results = readFileSync(fixture, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.type === "result");
   assert.equal(results.length, 2);

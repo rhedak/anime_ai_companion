@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseAutocompact } from "../cache-guard.ts";
-import { parseStreamLine, permissionResponse, summarizeTool, type StreamItem } from "./claude-stream.ts";
+import { parseStreamLine, permissionResponse, summarizeTool, type BackgroundTask, type StreamItem } from "./claude-stream.ts";
 import type { ImageInput } from "../images.ts";
 import type { Decision, PermissionMode, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
@@ -38,6 +38,8 @@ export class ClaudeCodeProvider implements Provider {
   /** Makes the handler for a turn claude starts by itself, e.g. when a background subagent finishes. */
   private unprompted: (() => (event: ProviderEvent) => void) | null = null;
   private reportedStray = false;
+  private background: BackgroundTask[] = [];
+  private backgroundListener: ((tasks: BackgroundTask[]) => void) | null = null;
   private sessionIdValue: string = randomUUID();
   /** True once the session has a transcript on disk, so a restart can resume it. */
   private hasHistory = false;
@@ -70,6 +72,20 @@ export class ClaudeCodeProvider implements Provider {
 
   get busy(): boolean {
     return this.listener !== null;
+  }
+
+  get backgroundTasks(): BackgroundTask[] {
+    return this.background;
+  }
+
+  onBackground(listener: (tasks: BackgroundTask[]) => void): void {
+    this.backgroundListener = listener;
+  }
+
+  private setBackground(tasks: BackgroundTask[]): void {
+    if (tasks.length === 0 && this.background.length === 0) return;
+    this.background = tasks;
+    this.backgroundListener?.(tasks);
   }
 
   onUnprompted(start: () => (event: ProviderEvent) => void): void {
@@ -156,6 +172,7 @@ export class ClaudeCodeProvider implements Provider {
     const proc = this.proc;
     this.proc = null;
     this.dropPending();
+    this.setBackground([]); // killing the process ends its subagents
     proc?.kill();
   }
 
@@ -251,6 +268,7 @@ export class ClaudeCodeProvider implements Provider {
       if (this.proc !== proc) return; // we killed it on purpose
       this.proc = null;
       this.dropPending();
+      this.setBackground([]);
       if (this.listener) this.finish({ type: "error", message: `claude exited (code ${code}).` });
     });
     return proc;
@@ -307,6 +325,9 @@ export class ClaudeCodeProvider implements Provider {
         break;
       case "status":
         this.listener?.({ type: "status", text: item.text });
+        break;
+      case "background":
+        this.setBackground(item.tasks);
         break;
       case "compacted":
         this.listener?.({

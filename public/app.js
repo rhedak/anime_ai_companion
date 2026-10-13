@@ -332,6 +332,7 @@ let lastActivity = 0;
 let thinkingNudged = false;
 const runningTools = new Map(); // tool id -> name
 let statusText = null; // what the server says she is doing (e.g. compacting), while it lasts
+let backgroundTasks = []; // subagents still running after her reply: she waits on them
 
 function markActivity() {
   lastActivity = Date.now();
@@ -343,11 +344,20 @@ function renderWorking() {
   const quiet = Date.now() - lastActivity;
   // While an approval card waits for the user, she is not working, so don't pretend.
   const show = busy && permEls.size === 0 && (quiet > QUIET_MS || runningTools.size > 0 || statusText !== null);
-  el.hidden = !show;
+  const waiting = backgroundTasks.length;
+  // Her reply can end while subagents still run: say so, so a quiet chat is not read as finished.
+  const idleWait = !show && waiting > 0 && permEls.size === 0;
+  el.hidden = !show && !idleWait;
+  el.title = backgroundTasks.map((t) => t.description).filter(Boolean).join("\n");
+  if (idleWait) {
+    $("working-text").textContent = `Waiting for ${waiting} background agent${waiting > 1 ? "s" : ""} to finish…`;
+    return;
+  }
   if (!show) return;
   const tools = [...runningTools.values()];
   let text = statusText ?? (tools.length ? `Working: ${tools[tools.length - 1]}…` : "Thinking…");
   if (quiet > SLOW_MS) text += ` ${Math.round(quiet / 1000)}s`;
+  if (waiting) text += ` · ${waiting} in the background`;
   $("working-text").textContent = text;
   // Her face should say "busy" through the quiet stretches, whatever mood the last words had.
   if (quiet > QUIET_MS * 2 && !thinkingNudged) {
@@ -918,6 +928,10 @@ function handle(msg) {
       showBubble("");
       avatar.setEmotion("thinking");
       setBusy(true);
+      break;
+    case "background":
+      backgroundTasks = msg.tasks ?? [];
+      renderWorking();
       break;
     case "auto-turn": // she started talking on her own (a background task finished)
       demo.cancel();
