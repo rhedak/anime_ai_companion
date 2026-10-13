@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { readFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { existsSync } from "node:fs";
+import { readFile, mkdir } from "node:fs/promises";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
@@ -28,7 +27,7 @@ import { gateRequest, isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
-import { cardFromPersona, cardFromSaved, characterFromCard, loreFor, MAX_CARD_BYTES, NO_USE, parseCardFile, previewCard, splitPersona, type Card, type CardUse } from "./card.ts";
+import { createCardService } from "./card-service.ts";
 import { createMemoryService } from "./memory-service.ts";
 import type { Say } from "./server-types.ts";
 import { countSkills, reachedForUnloadedSkill, skillsNotice, userSkillsDir } from "./skills.ts";
@@ -67,29 +66,6 @@ await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
-// A character card, if the user imported one, replaces the character part of persona.md. The expression protocol
-// after it is ours and never comes from a card.
-const characterPath = join(root, "data/character.json");
-const personaParts = splitPersona(personaBase);
-let customCard: Card | null = null;
-/** What the user ticked at import: her greeting, the author's own instructions, the lorebook. */
-let customUse: CardUse = { ...NO_USE };
-{
-  const saved = await loadCharacter();
-  if (saved) ({ card: customCard, use: customUse } = saved);
-}
-
-async function loadCharacter(): Promise<{ card: Card; use: CardUse } | null> {
-  try {
-    return cardFromSaved(JSON.parse(await readFile(characterPath, "utf8")));
-  } catch {
-    return null;
-  }
-}
-
-/** The author's own instructions apply in both modes when the user chose them at import (with the risk said there). */
-const personaText = () =>
-  customCard && personaParts ? characterFromCard(customCard, personaParts.style, { orders: customUse.orders }) + personaParts.protocol : personaBase;
 const settingsPath = join(root, "data/settings.json");
 const settings = await loadSettings(settingsPath);
 
@@ -168,7 +144,7 @@ const sessionConfig = (): SessionConfig => ({
 });
 
 const persona = (config: SessionConfig) =>
-  personaText().replaceAll("{{name}}", settings.name) +
+  cards.personaText().replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -515,7 +491,7 @@ async function collectShownImages(reply: string): Promise<ShownRecord[]> {
 
 /** Prepends any pending notes about the model's own mistakes to the user's message. */
 function withNotes(userText: string): string {
-  const background = [memory.note(), loreNote(userText)].filter((n): n is string => Boolean(n));
+  const background = [memory.note(), cards.loreNote(userText)].filter((n): n is string => Boolean(n));
   const notes = [...background, ...notesForModel];
   notesForModel = [];
   return notes.length ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}` : userText;
@@ -622,96 +598,21 @@ const memory = createMemoryService({
   remoteRefusal: () => remoteRefusal,
 });
 
-// --- character cards ---
-let pendingCard: { card: Card; ignored: string[] } | null = null;
-/** Lorebook entries already handed to the model in this conversation: each goes out once. */
-const loreSent = new Set<number>();
-
-async function cardImport(input: string, say: Say): Promise<void> {
-  if (!personaParts) return say("persona.md has been reshaped (no Style: and Expression protocol sections), so a card cannot be fitted in. Restore those headings first.");
-  const wanted = input.trim().replace(/^["']|["']$/g, "").replace(/^~(?=$|\/)/, homedir());
-  if (!wanted) return say("Use /card import <path to a card .png or .json>");
-  const info = await stat(wanted).catch(() => null);
-  if (!info?.isFile()) return say(`There is no file at ${wanted}.`);
-  if (info.size > MAX_CARD_BYTES) return say("That file is too big for a character card (over 15 MB).");
-  const result = parseCardFile(await readFile(wanted));
-  if (!result.ok) return say(result.reason);
-  pendingCard = { card: result.card, ignored: result.ignored };
-  broadcast({ type: "card-offer", current: settings.name, ...previewCard(result.card, result.ignored) });
-}
-
-/** Her opening greeting, if the card has one and the user chose it. */
-function openingGreeting(): string | null {
-  if (!customCard || !customUse.greeting || !customCard.greetings.length) return null;
-  const pick = customCard.greetings[Math.floor(Math.random() * customCard.greetings.length)];
-  return pick.replaceAll("{{name}}", settings.name);
-}
-
-/** Starts an empty conversation with her greeting: shown like a reply, but nothing was asked of the model. */
-function greet(): void {
-  const text = openingGreeting();
-  if (!text || provider.busy || transcript.items.length > 0) return;
-  const said = `[emotion:happy] ${text}`;
-  transcript.delta(said);
-  transcript.flush();
-  persistTranscript();
-  broadcast({ type: "delta", text: said });
-  broadcast({ type: "done" });
-  notesForModel.push(`you opened this conversation by saying: "${text}"`); // she should know what she already said
-}
-
-/** The lorebook entries this message brings up, as a note: each entry once per conversation. */
-function loreNote(userText: string): string | null {
-  if (!customCard || !customUse.lore || !customCard.lore.length) return null;
-  const hit = loreFor(customCard.lore, userText, loreSent);
-  if (!hit) return null;
-  hit.indexes.forEach((i) => loreSent.add(i));
-  return hit.note;
-}
-
-async function cardApply(say: Say, use?: Partial<CardUse>): Promise<void> {
-  const pending = pendingCard;
-  if (!pending) return say("There is no card waiting. Use /card import <file> first.");
-  pendingCard = null;
-  customCard = pending.card;
-  // Without an explicit choice (the /card apply command): the greeting and lorebook, when the card has them. Never the author's orders.
-  customUse = {
-    greeting: (use?.greeting ?? true) && pending.card.greetings.length > 0,
-    lore: (use?.lore ?? true) && pending.card.lore.length > 0,
-    orders: use?.orders === true && Boolean(pending.card.orders),
-  };
-  await mkdir(dirname(characterPath), { recursive: true });
-  await writeFile(characterPath, JSON.stringify({ ...pending.card, use: customUse, importedAt: new Date().toISOString() }, null, 2) + "\n");
-  broadcast({ type: "card-resolved", choice: "apply" });
-  const name = cleanName(pending.card.name);
-  if (name && name !== settings.name) {
-    settings.name = name;
-    await saveSettings(settingsPath, settings);
-    notesForModel.push(`the user renamed you: your name is now ${name}.`);
-    broadcast(modeInfo());
-  }
-  say(
-    `Her character now comes from the card${name ? ` (${name})` : ""}${[customUse.greeting && "greeting", customUse.lore && "lorebook", customUse.orders && "the author's instructions"].filter(Boolean).length ? `, with ${[customUse.greeting && "her greeting", customUse.lore && "the lorebook", customUse.orders && "the author's own instructions"].filter(Boolean).join(", ")}` : ""}. A conversation that is already running keeps the persona it began with: use /clear to start with the new one.` +
-      (!name && pending.card.name ? ` The card's name "${pending.card.name}" is not a name this app can use (1 to 24 letters, digits, spaces and . ' - _), so she keeps hers.` : ""),
-  );
-}
-
-async function cardReset(say: Say): Promise<void> {
-  pendingCard = null;
-  if (!customCard) return say("She is using persona.md already.");
-  customCard = null;
-  customUse = { ...NO_USE };
-  await rm(characterPath, { force: true });
-  say(`She is back to the character in persona.md, and keeps the name ${settings.name} (rename her with /rename). Use /clear to start a conversation with it.`);
-}
-
-function cardExport(say: Say, reply: (msg: unknown) => void): void {
-  if (!personaParts) return say("persona.md has been reshaped, so there is no character part to export.");
-  // With a card imported, export what she actually runs on: the card's character with her name filled in.
-  const character = customCard ? customCard.description : personaParts.character;
-  const slug = settings.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "companion";
-  reply({ type: "card-export", filename: `${slug}-card.json`, json: cardFromPersona(character, settings.name, customCard ?? {}) });
-}
+// --- character cards: see card-service.ts ---
+const cards = createCardService({
+  file: join(root, "data/character.json"),
+  personaBase,
+  settings,
+  saveSettings: () => saveSettings(settingsPath, settings),
+  pushNote: (text) => notesForModel.push(text),
+  busy: () => provider.busy,
+  transcript,
+  persist: () => persistTranscript(),
+  broadcast: (msg) => broadcast(msg),
+  modeInfo: () => modeInfo(),
+  remoteRefusal: () => remoteRefusal,
+});
+await cards.load();
 
 // --- skills she cannot use yet ---
 /** Folders already told about, so the notice comes once per folder and run. */
@@ -982,26 +883,7 @@ const slashCommands: Record<
   },
   card: {
     help: "character cards: /card import <file.png|.json> | apply [greeting] [lore] [orders] | cancel | export | reset",
-    run: async ({ args, say, reply, remote }) => {
-      const [sub = ""] = args.trim().split(/\s+/);
-      const word = sub.toLowerCase();
-      if (remote && word !== "export") return say(remoteRefusal);
-      if (word === "import") return cardImport(args.trim().slice(sub.length), say);
-      if (word === "apply") {
-        // /card apply  uses the greeting and lorebook; /card apply greeting lore orders  uses exactly those; /card apply none  none.
-        const named = args.trim().split(/\s+/).slice(1).map((w) => w.toLowerCase());
-        const use = named.length ? { greeting: named.includes("greeting"), lore: named.includes("lore"), orders: named.includes("orders") } : undefined;
-        return cardApply(say, use);
-      }
-      if (word === "cancel") {
-        pendingCard = null;
-        broadcast({ type: "card-resolved", choice: "cancel" });
-        return;
-      }
-      if (word === "export") return cardExport(say, reply);
-      if (word === "reset") return cardReset(say);
-      say(`Her character comes from ${customCard ? `a card${customCard.name ? ` (${customCard.name})` : ""}` : "persona.md"}. Use /card import <file.png|.json>, /card export or /card reset.`);
-    },
+    run: ({ args, say, reply, remote }) => cards.command(args, say, reply, remote),
   },
   skills: {
     help: "work mode: let her use your own skills (~/.claude/skills) by name; your hooks stay off: /skills on | off",
@@ -1240,7 +1122,7 @@ function forgetConversationSize(): void {
   convo.contextTokens = null;
   convo.lastReplyAt = null;
   skillsOffered = false;
-  loreSent.clear();
+  cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
   dropHeldMessage();
 }
@@ -1255,7 +1137,7 @@ function resetConversation(): void {
   pendingPermissions.clear();
   broadcast({ type: "reset" });
   broadcast(modeInfo());
-  greet();
+  cards.greet();
 }
 
 // --- messages typed while she is still answering ---
@@ -1468,7 +1350,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(queueMessage()));
   void maybeSkillsNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
-  greet(); // an empty conversation opens with her greeting, if the card has one
+  cards.greet(); // an empty conversation opens with her greeting, if the card has one
   const acp = acpBrain();
   if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
   if (acp?.replacedSession) {
@@ -1509,13 +1391,7 @@ wss.on("connection", (ws) => {
       if (cold) return offerColdCache(msg.text, images, cold);
       sendUser(msg.text, images);
     } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
-      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
-      if (remote) return say(remoteRefusal);
-      if (msg.choice === "apply") await cardApply(say, { greeting: msg.use?.greeting === true, lore: msg.use?.lore === true, orders: msg.use?.orders === true });
-      else {
-        pendingCard = null;
-        broadcast({ type: "card-resolved", choice: "cancel" });
-      }
+      await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
       const before = queue.length;
       queue = queue.filter((q) => q.id !== msg.id);
@@ -1596,7 +1472,7 @@ wss.on("connection", (ws) => {
         pendingPermissions.clear();
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());
-        greet();
+        cards.greet();
       }
       provider.configure(sessionConfig());
       if (settings.provider === "ollama") void ollamaBrain.checkTools();
