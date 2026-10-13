@@ -1,5 +1,6 @@
 node_modules/
 .venv/
+__pycache__/
 # personal notes for Claude Code on this machine
 CLAUDE.local.md
 # the owner's own bug reports from local sessions
