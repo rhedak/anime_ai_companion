@@ -29,7 +29,8 @@ import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { cardFromPersona, cardFromSaved, characterFromCard, loreFor, MAX_CARD_BYTES, NO_USE, parseCardFile, previewCard, splitPersona, type Card, type CardUse } from "./card.ts";
-import { addFact, findRememberTags, formatMemory, memoryChange, memoryIntro, nearlyFull, parseMemory } from "./memory.ts";
+import { createMemoryService } from "./memory-service.ts";
+import type { Say } from "./server-types.ts";
 import { countSkills, reachedForUnloadedSkill, skillsNotice, userSkillsDir } from "./skills.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
@@ -514,14 +515,11 @@ async function collectShownImages(reply: string): Promise<ShownRecord[]> {
 
 /** Prepends any pending notes about the model's own mistakes to the user's message. */
 function withNotes(userText: string): string {
-  const background = [memoryNote(), loreNote(userText)].filter((n): n is string => Boolean(n));
+  const background = [memory.note(), loreNote(userText)].filter((n): n is string => Boolean(n));
   const notes = [...background, ...notesForModel];
   notesForModel = [];
   return notes.length ? `(system note, not from the user: ${notes.join(" ")})\n\n${userText}` : userText;
 }
-
-/** Tells the user something in their chat log only (not stored, not sent to other tabs). */
-type Say = (text: string) => void;
 
 /** Why a settings change cannot happen right now, or null. */
 function cannotChange(): string | null {
@@ -615,88 +613,14 @@ function changeClaudeSkills(on: boolean, say: Say): void {
   broadcast(modeInfo());
 }
 
-// --- her notes about the user (data/memory.md) ---
-const memoryPath = join(root, "data/memory.md");
-/** What the model has been told in this conversation; null until the first message of one. */
-let memoryTold: string[] | null = null;
-
-function readMemory(): string[] {
-  try {
-    return parseMemory(readFileSync(memoryPath, "utf8"));
-  } catch {
-    return [];
-  }
-}
-
-function writeMemory(facts: string[]): void {
-  mkdirSync(dirname(memoryPath), { recursive: true });
-  writeFileSync(memoryPath, formatMemory(facts));
-}
-
-/** Notes ride on a message (never in the system prompt, which would break the cache): all of them at the start, changes after. */
-function memoryNote(): string | null {
-  const now = readMemory(); // read each time, so an edit by hand is picked up
-  const first = memoryTold === null;
-  const change = first ? null : memoryChange(memoryTold!, now);
-  memoryTold = now;
-  return first ? memoryIntro(now, mode === "chat") : change;
-}
-
-/** Saves each new complete [remember …] tag of a reply, in chat mode only (see memory.ts for why). */
-function makeMemoryApplier(): (reply: string) => void {
-  let seen = 0;
-  return (reply) => {
-    const tags = findRememberTags(reply);
-    for (; seen < tags.length; seen++) {
-      if (mode !== "chat") {
-        broadcast({ type: "notice", text: `She wanted to remember: ${tags[seen]}. Notes are not saved in work mode; use /memory add <note> if you want it kept.` });
-        continue;
-      }
-      const result = addFact(readMemory(), tags[seen]);
-      if (!result.ok) {
-        if (/full|too long/.test(result.reason)) broadcast({ type: "notice", text: result.reason }); // empty and duplicate notes are not worth a message
-        continue;
-      }
-      writeMemory(result.facts);
-      if (memoryTold) memoryTold = [...memoryTold, result.fact]; // she wrote it herself: no need to tell her again
-      broadcast({ type: "notice", text: `🧠 Remembered: ${result.fact}` + (nearlyFull(result.facts) ? " (her notes are nearly full: /memory)" : "") });
-    }
-  };
-}
-
-function memoryCommand(args: string, say: Say, remote: boolean): void {
-  const [word = "", ...rest] = args.trim().split(/\s+/);
-  const text = rest.join(" ");
-  const facts = readMemory();
-  if (word.toLowerCase() === "add") {
-    const result = addFact(facts, text);
-    if (!result.ok) return say(result.reason);
-    writeMemory(result.facts);
-    return say(`🧠 Noted: ${result.fact}`);
-  }
-  if (word.toLowerCase() === "forget") {
-    const n = Number(text);
-    if (text.toLowerCase() === "all") {
-      writeMemory([]);
-      return say("Her notes are empty now.");
-    }
-    if (!Number.isInteger(n) || n < 1 || n > facts.length) return say(`Use /memory forget <number from 1 to ${facts.length}> or /memory forget all.`);
-    const [gone] = facts.splice(n - 1, 1);
-    writeMemory(facts);
-    return say(`Forgotten: ${gone}`);
-  }
-  if (word.toLowerCase() === "edit") {
-    if (remote) return say(remoteRefusal);
-    if (!existsSync(memoryPath)) writeMemory(facts);
-    openBrowser(memoryPath); // opens the file in whatever the system uses for .md files
-    return say(`Opening ${memoryPath}. Changes are picked up with her next message.`);
-  }
-  say(
-    facts.length
-      ? `Her notes about you (${facts.length}):\n${facts.map((f, i) => `${i + 1}. ${f}`).join("\n")}\n/memory add <note> | forget <number|all> | edit`
-      : "She has no notes about you yet. She saves them herself in chat when you tell her something worth keeping, or use /memory add <note>.",
-  );
-}
+// --- her notes about the user (data/memory.md): see memory-service.ts ---
+const memory = createMemoryService({
+  file: join(root, "data/memory.md"),
+  mode: () => mode,
+  broadcast: (msg) => broadcast(msg),
+  openFile: (path) => openBrowser(path),
+  remoteRefusal: () => remoteRefusal,
+});
 
 // --- character cards ---
 let pendingCard: { card: Card; ignored: string[] } | null = null;
@@ -1054,7 +978,7 @@ const slashCommands: Record<
   },
   memory: {
     help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit",
-    run: ({ args, say, remote }) => memoryCommand(args, say, remote),
+    run: ({ args, say, remote }) => memory.command(args, say, remote),
   },
   card: {
     help: "character cards: /card import <file.png|.json> | apply [greeting] [lore] [orders] | cancel | export | reset",
@@ -1317,7 +1241,7 @@ function forgetConversationSize(): void {
   convo.lastReplyAt = null;
   skillsOffered = false;
   loreSent.clear();
-  memoryTold = null; // a new conversation is told her notes again
+  memory.forgetTold(); // a new conversation is told her notes again
   dropHeldMessage();
 }
 
@@ -1444,7 +1368,7 @@ function turnHandler(
 ): (event: ProviderEvent) => void {
   let reply = "";
   const applyNewTags = makeTagApplier();
-  const applyMemory = makeMemoryApplier();
+  const applyMemory = memory.makeApplier();
 
   return (event) => {
     if (event.type === "delta") {
