@@ -19,6 +19,7 @@ cache-friendly way of talking to Claude is not broken.
 | 3 | Check the MCP bridge, then decide | small | Part of it may exist already |
 | 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
 | 5 | Proactive greetings | small, but costly to use | Only without a model call |
+| 6 | Tools for Ollama models that support them | medium to large, spike first | Local code never leaves the machine; quality depends on the model |
 
 Smaller ideas are at the end.
 
@@ -108,6 +109,51 @@ of what the app protects.
 Only worth building as a canned line shown in the page, with no model call, off at every
 start. If that is not wanted, leave it out.
 
+## 6. Tools for Ollama models
+
+Ollama is chat only today (`canUseTools` is false, work mode unavailable). A model that supports tool calls, such as the
+coding-focused Qwen models, could do work mode too. Ollama only calls the model, so the tools and the loop are ours to
+write; Claude, Cursor and opencode ship their own.
+
+What Ollama gives us (from its API docs; not yet tried on a real install):
+
+- `/api/chat` takes a `tools` list (`type`, `function.name`, `description`, `parameters`) and streams a call as
+  `message.tool_calls` with `function.name` and an `arguments` object, in a chunk before the final `done: true` one.
+- The result goes back as a message with `role: "tool"` and `tool_name`, after the assistant message that holds the
+  calls. There is no call id.
+- `/api/show` has a `capabilities` list. Its docs example shows only `completion` and `vision`, so whether it reports
+  `tools` has to be checked against a real Ollama. If it does not, fall back to a short list of known families, or a
+  manual "this model can use tools" setting.
+
+What to build (`src/providers/ollama.ts` is one streamed chat call today):
+
+- Tools run by us in the project folder: read, write or edit, bash, grep and glob. Each has path checks (nothing outside
+  the project folder, no home or `/`), size caps, and timeouts.
+- The loop: call, run the requested tools, send the results back, repeat until plain text. A turn cap stops a model that
+  keeps calling tools.
+- Approvals through the existing permission card (`permission` events and `respondPermission`): every call shows the exact
+  command or change and waits. Reads can be pre-approved as for the other brains. Ollama's menu is Ask and Plan only,
+  and nothing looser exists for it, as for opencode before its opt-in. The mode comes back to Ask at every start.
+- `canUseTools` per model, from the capability check, so work mode is only offered when the model supports it.
+  Switching models re-checks it.
+- Ollama's default context window is small and tool output fills it fast: set `num_ctx` and cut long tool results.
+- `persona-work.md` applies in work mode, as for the other brains.
+- Tests fake the Ollama server, as `test/ollama.test.ts` does. No model and no Ollama install needed in CI.
+
+Spike first: one model (try `qwen3-coder`), three tools (read, grep, bash with approval), a turn cap, and a manual check of
+how it behaves on a small real task. Record which models call tools well, and decide whether to widen it from that.
+
+**Warning in the docs (required, not optional).** Local models with tools are the user's responsibility. The README, the
+site's work-mode page and the Ollama brain's menu entry say so in plain words:
+
+- How well a local model uses tools depends entirely on the model and its size. Small or older ones call tools badly:
+  wrong arguments, loops, or text that only looks like a tool call.
+- She can propose a wrong or harmful command or edit with full confidence. Every call still waits for the user's approval,
+  so reading what the card shows before approving is the user's job. No mode skips that for Ollama.
+- The app does not test, rate or vouch for any particular local model. Work done through one is at the user's own risk,
+  and the user checks the result (use git in the project folder).
+- It is labelled experimental in the page, with the model's name shown.
+
 ## Smaller ideas
 
 - Stickers: pick an image from an emotion tag, using the tags she already writes.
@@ -135,6 +181,9 @@ start. If that is not wanted, leave it out.
   predictable. Check it against the cache-guard thresholds.
 - **A model that writes files.** Keep it to one append-only file, shown in the chat, with
   an undo.
+- **Local tool use is only as good as the model.** The app cannot make a weak model safe or competent. The approval card is
+  the only gate, which is why no looser Ollama mode exists and the docs warning above is part of the feature.
+- **Context.** Tool output can overflow a small `num_ctx`; truncate and say so.
 - **Provider differences.** A change that touches the persona or notes must say what
   Claude Code, Cursor, opencode and Ollama each do now; they differ in system prompts
   (Cursor and opencode prepend the persona to the user message).
