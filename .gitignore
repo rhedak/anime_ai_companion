@@ -2,6 +2,8 @@ node_modules/
 .venv/
 # personal notes for Claude Code on this machine
 CLAUDE.local.md
+# the owner's own bug reports from local sessions
+bug_reports/
 # your own avatar and local state
 data/
 workspace/*
