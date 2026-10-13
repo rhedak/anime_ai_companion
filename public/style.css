@@ -49,6 +49,9 @@ input[type="text"], input:not([type]), textarea {
 input:focus-visible { outline: 2px solid var(--focus); }
 button.icon { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: var(--radius-pill); background: none; color: var(--muted); }
 button.icon:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+button.icon.mic.listening { color: var(--accent-text); background: var(--accent); animation: mic-pulse 1.4s infinite ease-in-out; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px var(--hover); } }
+@media (prefers-reduced-motion: reduce) { button.icon.mic.listening { animation: none; } }
 button.icon.send { background: var(--accent); color: var(--accent-text); }
 button.icon.send:hover:not(:disabled) { background: var(--accent-hover); }
 .icon-stop { display: none; }

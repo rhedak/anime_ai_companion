@@ -60,10 +60,12 @@ The **Voice** button makes her read her replies aloud with your browser's own sp
 sentence by sentence while the reply streams, and her mouth moves while she speaks. With Voice on, two menus
 choose the **voice** and the **speed**; both are remembered in the browser. System voices are made on your device and
 nothing is uploaded; a voice marked **online** (desktop Chrome's "Google …" voices) is made by a server, which
-receives the text. Speech *recognition* is deliberately not included: the browser's version sends your audio to its
-vendor, and microphones need `localhost` or HTTPS, so it would not work from a phone anyway. On a phone, use the
-keyboard's microphone key. To change the voice itself (pitch, a voice per character, a local TTS engine, a mic
-button), edit `public/speech.js` in your own checkout; the
+receives the text. **Speaking to her** is an opt-in: a microphone button next to the attach button
+(where the browser has speech recognition) asks first, because in Chrome, Edge and Safari your recording is sent to the browser
+maker's servers to be turned into text. This app's server never receives audio. It listens for one phrase while the button
+is lit, and puts the words in the message box for you to check; nothing is sent by itself. Microphones need `localhost` or
+HTTPS, so on a phone over plain `http` use the keyboard's microphone key. To change the voice itself (pitch, a voice per
+character, a local TTS engine), edit `public/speech.js` in your own checkout; the
 [customising page](https://rhedak.github.io/anime_ai_companion/customising.html#her-voice) has ideas.
 
 ## Looks: undo, save, load

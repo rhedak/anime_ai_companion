@@ -1,5 +1,6 @@
 import { createAvatar } from "./avatar.js";
 import { RATES, createVoice, sampleText, takeSentences } from "./speech.js";
+import { createDictation, dictationVendor, joinDictation } from "./dictation.js";
 import { renderMarkdown } from "./markdown.js";
 import { createDemo } from "./demo.js";
 import { composing } from "./ime.js";
@@ -1691,6 +1692,76 @@ if (voice.supported) {
     render();
     // On a phone the tool row scrolls sideways; show the two menus that just appeared.
     if (voice.enabled) rate.scrollIntoView({ inline: "nearest", block: "nearest" });
+  });
+}
+
+// --- speaking instead of typing: off until the user agrees, and only while the microphone button is lit ---
+let dictationBase = "";
+let consentEl = null;
+const dictation = createDictation({
+  language: () => navigator.language || document.documentElement.lang || "en",
+  onText: (text) => {
+    input.value = joinDictation(dictationBase, text); // into the box, to be read before it is sent
+    input.dispatchEvent(new Event("input"));
+  },
+  onState: (on) => {
+    $("mic").classList.toggle("listening", on);
+    $("mic").setAttribute("aria-pressed", String(on));
+  },
+  onProblem: (message) => addMsg("sys", message),
+});
+function beginDictation() {
+  voice.cancel(); // she should not hear herself
+  dictationBase = input.value;
+  dictation.start();
+  input.focus();
+}
+function askDictationConsent() {
+  if (consentEl) return;
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Turn on speaking instead of typing?";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    `This uses your browser's speech recognition. In this browser the recording is sent to ${dictationVendor(navigator.userAgent)}'s servers to be turned into text. ` +
+    "Nothing is sent to this app's own server, and the words land in the message box so you can check them before you send. " +
+    "It listens only while the microphone button is lit, one phrase at a time.";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const close = (text) => {
+    const done = document.createElement("div");
+    done.className = "perm-done";
+    done.textContent = text;
+    actions.replaceWith(done);
+    consentEl = null;
+  };
+  const yes = document.createElement("button");
+  yes.textContent = "Turn on";
+  yes.className = "allow";
+  yes.onclick = () => {
+    dictation.consent();
+    close("Speaking is on: press the microphone to talk");
+    beginDictation();
+  };
+  const no = document.createElement("button");
+  no.textContent = "Not now";
+  no.className = "deny";
+  no.onclick = () => close("Speaking stays off");
+  actions.append(yes, no);
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  consentEl = card;
+}
+if (dictation.supported) {
+  $("mic").hidden = false;
+  $("mic").addEventListener("click", () => {
+    if (dictation.listening) dictation.stop();
+    else if (!dictation.consented) askDictationConsent();
+    else beginDictation();
   });
 }
 

@@ -22,11 +22,14 @@ The voices come from your device. System voices (macOS, iOS, Windows, Android) a
 uploaded. A voice marked **online** in the menu, such as the "Google …" voices in desktop Chrome, is made by a
 server, which receives the text she speaks. Choose a voice without that mark if that matters to you.
 
-**Speaking to her** is not built in, deliberately: browsers' speech recognition (Chrome's, for one) sends your audio
-to the browser's vendor, which would break the "stays on your machine" promise, and a microphone only works on
-`localhost` or an HTTPS address, so it would not work from a phone on your network anyway. On a phone, use the
-**microphone key on the keyboard** to dictate into the message box. If you want a mic button in the page,
-[customise your checkout](customising.html#her-voice): it is a small change in `public/`.
+**Speaking to her** is an opt-in. If your browser has speech recognition (Chrome, Edge and Safari do; Firefox does not), a
+microphone button appears next to the attach button. The first press asks first, and says plainly that in that browser
+your recording is sent to the browser maker's servers (Google, Microsoft or Apple) to be turned into text. This app's own
+server never receives audio, and nothing is recorded until you press the button: it listens for one phrase, lights up
+while it does, and puts the words in the message box so you can read them before you send. It does not send by itself.
+Voice output stops when you start speaking. The browser only allows a microphone on `localhost` or an HTTPS address, so the
+button does not appear on a phone over plain `http`; there, use the **microphone key on the keyboard**. A local,
+offline speech-to-text is not built in.
 
 ## Pictures
 
