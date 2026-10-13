@@ -20,6 +20,7 @@ cache-friendly way of talking to Claude is not broken.
 | 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
 | 5 | ~~Proactive greetings~~ | dropped | A canned line cannot fit every character (see 5) |
 | 6 | Tools for Ollama models that support them | spike built; needs a check with real models | Local code never leaves the machine; quality depends on the model |
+| 7 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
 
 Smaller ideas are at the end.
 
@@ -158,6 +159,78 @@ site's work-mode page and the Ollama brain's menu entry say so in plain words:
 - The app does not test, rate or vouch for any particular local model. Work done through one is at the user's own risk,
   and the user checks the result (use git in the project folder).
 - It is labelled experimental in the page, with the model's name shown.
+
+## 7. Splitting `server.ts` and `app.js` (in progress)
+
+Written 2026-10-13, paused for the day. An outside review (issue #1) found the two files too big: `src/server.ts` was 1,815 lines and
+`public/app.js` is 1,914. Nothing about behaviour changes in this work; it is only moving code, and the tests decide whether it was safe.
+
+**Where it stands**
+
+- `server.ts` is 1,252 lines. Seven pieces are out, each a module that is *given* what it needs: `memory-service.ts`, `card-service.ts`,
+  `skills-service.ts`, `queue-service.ts`, `http-routes.ts`, `notes.ts`, `turn-service.ts` (and `server-types.ts` for `Say` and `Broadcast`).
+- The net: `test/server.test.ts` (26 tests, `test/helpers/server.ts`) starts a throwaway copy of the app on a random port with a stand-in
+  `claude` and a fake Ollama, and drives it over the websocket. Four deliberate breakages of the old code each failed a test, and so did
+  breaking the content-security policy and the cold-cache decision after they moved.
+- `npm run typecheck` also checks the page's JavaScript loosely (`tsconfig.frontend.json`). `npm test` runs 242 tests in about 20 seconds.
+- All of this is on `dev`, unreleased. Everything done so far is behaviour-neutral, so it can go into a release at any point (0.4.0 also
+  carries `anaico --doctor`, `COMPANION_NO_SHELL`, the Node-version launcher and the CI pin).
+
+**The rules that kept it safe (keep using them)**
+
+1. One module per commit. After each: `npm run typecheck`, then the whole `npm test`, then commit. No other change in the same commit.
+2. The pattern is `createXService(deps)` in `src/x-service.ts`, with `deps` an interface of small functions (`mode: () => mode`), never the
+   variables themselves: the server keeps reassigning `provider`, `mode` and friends. The service holds its own state.
+3. Dependencies are read lazily. A service may be created before the things it reads exist, as long as it only calls them later. The one
+   trap: `sessionConfig()` runs while the brains are built, so anything it reads (the skills switch) must be created *before* them.
+4. Before moving code that no test touches, write the test first (against the old code), see it pass, then move. Where a test needs a
+   state the harness cannot make yet, add a harness option (`coldConversation` was added this way).
+5. After the move, break the moved code on purpose once (change one condition) and check a test fails; then restore it. The stand-in runs
+   as a separate process, so wait for its log (`waitFor`) instead of reading it the moment an event arrives.
+6. Do not undo an experiment with `git checkout <file>` when the file also holds uncommitted work (it cost a re-do once): copy the file
+   aside first, or commit first. New, uncommitted files cannot be restored by git at all.
+7. `remote` checks (a phone may not run `!commands`, loosen modes, load skills, change the character) must move verbatim. Before and after
+   each step, count them: `grep -c remote src/*.ts`, and read the diff for any line that mentions `remote`.
+
+**What is left of `server.ts`, in the order I would do it**
+
+A. **Sessions and `/resume`** → `sessions-service.ts`: `resumeCommand`, `resumeAcp`, `resumeCommandLine`, `ago`, the two listings, the
+   Cursor and opencode "remember model" part. Test first: a Claude session file on disk (the harness already writes one for the cold
+   conversation), `/resume` lists it, `/resume 1` rebuilds the chat log from it. The Cursor and opencode paths have unit tests for the
+   protocol but none at server level; leave their behaviour alone and only move it.
+B. **Mode and settings actions** → `actions.ts` (name to be decided): `cannotChange`, `switchMode`, `changeEffort`, `changeClaudeSetup`,
+   `changePermissionMode`, `rename`, `chooseFolder`, `stopWork`, `runBang`. This is the coupled one: `mode`, `permissionMode` and
+   `claudeSetup` are module variables that `sessionConfig()` and `modeInfo()` read. Give them to the service as its own state
+   (`mode()`, `permissionMode()`, `claudeSetup()` getters) and have `sessionConfig()` call those. Tests first: switching chat and work,
+   `/effort`, `/setup on` (a restart with the right flags), `/permissions plan` (`--permission-mode plan`), `/rename` (notice and note to
+   the model), the home folder refused, stopping a running `!command`.
+C. **The slash-command table** → `commands.ts`: `buildCommands(api)` where `api` lists the actions it calls; `parseSlash` and
+   `remoteBlocked` go with it. `test/docs.test.ts` already checks that every command is documented. Tests first: `/help` lists them all,
+   `/model`, `/cost`, `/phone` without `--lan`, `/export`, `/show`.
+D. **The websocket handler** → `ws-handler.ts`: the burst a new page gets (hello, mode, looks, meter, history, queue, cards), then a table
+   from message type to handler. This includes the look, preset, pack and error-report messages. Tests first: undo and save a look, switch
+   a preset, the page's error report reaching the log, a reloaded page getting the open permission card back. Before and after, list
+   every `msg.type` the handler answers (`grep -o 'msg.type === "[a-z-]*"'`); the two lists must be equal.
+E. What stays in `server.ts` is the wiring: settings, the avatar, the providers, the services created in the right order, startup and
+   shutdown. Target: about 500 lines, readable top to bottom.
+
+**`public/app.js` (1,914 lines), after the server**
+
+It has no automated tests, only checks by hand in Chrome, so it is moved last and in small steps, with `npm run typecheck` (the loose
+page check) and this checklist after every step: open the page at a desktop and a phone width; send a message and see the reply and the
+tool lines; queue two messages and remove one; open each menu with the mouse and with the arrow keys and Escape; switch Work and back;
+tick Use my skills; import a card and see the dialog and its checkboxes; ask the microphone for consent (and say no); trigger a
+permission card and the cold-cache card (the harness can start a cold server); save and load a look; drop a picture on the page; reload
+and see the history. Candidate modules, by what they own: the chat log and its messages (`addMsg`, Markdown, tool lines), the composer
+(submit, queue list, attachments, dictation, the shell hint), the menus (`makeMenu` and the brain, effort and permission menus), the
+work bar, the cards and dialogs (permission, cold cache, skills, character card, microphone consent), the voice controls, and the looks
+gallery. Shared state (`busy`, `ws`, `state`) goes in one small module that the others import. Consider a tiny browser test (a page
+loaded in Chrome by hand is what we have; a headless run would need a dependency, so only add one if the checklist proves too slow).
+
+**Where to pick up**
+
+`git checkout dev` in `/Users/henrik/git/anime_ai_companion-dev` (the worktree; your live checkout stays on `main`), run `npm run
+typecheck && npm test` (expect 242 passing), then start with step A: write the `/resume` test, watch it pass, move the code.
 
 ## Smaller ideas
 
