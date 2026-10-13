@@ -138,7 +138,9 @@ What to build (`src/providers/ollama.ts` is one streamed chat call today):
 
 **Status 2026-10-13:** the spike is built (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`) and tested against a
 fake Ollama only: the loop, approvals, plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a
-real model. Still to do: try it with `qwen3-coder` (and one weaker model) on a small real task, note which models call tools well,
+real model. The check is deferred to another machine (2026-10-13): this one (Intel i5, 16 GB, CPU only) cannot run `qwen3-coder:30b`, whose
+weights are 19 GB. A machine with about 32 GB of memory, ideally Apple Silicon, can; a 4 to 8 GB tool-capable model such as
+`qwen3:8b` would also work here for a first look, slowly. Still to do: try it with `qwen3-coder` (and one weaker model) on a small real task, note which models call tools well,
 and check whether `/api/show` reports `tools` on the installed Ollama. The tool set is read_file, grep, bash, write_file and edit_file
 (exact text replaced once, or everywhere with replace_all); glob is deferred, since grep and bash cover it.
 
