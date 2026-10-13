@@ -74,6 +74,10 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
   (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`). The server strips them. Keep that
   protocol provider-agnostic.
+- `public/frames.js` and `public/tags.js` are shared with the browser demo (`demo/`, a version of the page that runs with no server, still
+  in progress: see `demo/README.md` and step 3 of `docs/plan.md`). The server imports them too (`src/avatar.ts`, `src/avatar-tags.ts`), so
+  the demo and the server ask for the same frames. Do not copy them. `python/render_ops.py` is likewise shared; `render_worker.py` is only
+  its stdin loop. Nothing in `src/` may import from `demo/`.
 - `../anime-character-creator` is a dependency, not a fork. Drawing changes belong in that repo.
 - `data/` and `workspace/` (except `workspace/.gitkeep`) are the user's machine. Do not commit
   them, and do not put API keys, sessions, or account details in the repo.

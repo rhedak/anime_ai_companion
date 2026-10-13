@@ -11,7 +11,7 @@ HTML, permission modes stay in memory, and the cache-friendly way of talking to 
 | --- | --- | --- | --- |
 | 1 | Check Ollama work mode with real models | waiting for a machine that can run one | Local code never leaves the machine; quality depends on the model |
 | 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
-| 3 | A demo that runs in the browser | not started; spike first | A try-before-you-install page, with no server and no cost |
+| 3 | A demo that runs in the browser | phase 0 (the spike) done; phase 1 (the scripted demo) next | A try-before-you-install page, with no server and no cost |
 
 Smaller ideas are at the end.
 
@@ -135,10 +135,32 @@ could answer the messages the server answers today, so the real page (menus, bub
 - Hosting: `/demo/` on the docs site; GitHub Pages already builds and serves it. Nothing else is needed (itch.io was considered and is not
   wanted).
 
-**Phase 0, the spike (about a day).** Prove the hard part with no model: in a page, load Pyodide and the creator, run the ported worker, and
-get the existing page to show her and redraw her (hair colour, a blink, a mouth) from a canned exchange. First task: list exactly which
-messages `app.js` handles (the `handle()` switch) and which of them a chat-only demo needs, and leave the rest out. Done when a visitor can
-open the page and say "make my hair mint green" (as a button or a keyword) and she redraws.
+**Phase 0, the spike: done.** Built on `dev` (`demo/`, see `demo/README.md`; `node demo/stage.mjs --serve` stages it and serves it on
+port 8765). What it showed, in the browser, with no server:
+
+- The real page runs unmodified except one line: `connect()` takes the socket from `window.anaicoSocket` when something has set it. The
+  stand-in (`demo/local-socket.js`) answers `hello`, `mode`, `looks`, `meter`, `history`, `queue`, `frames`, `gesture-frames`, `user` and
+  `reset`, and ignores everything else; that was enough for the page to draw her, show a streamed reply, and redraw her.
+- "Make my hair mint green" produced a real redraw through Pyodide (hair colour, the page's own "new look" line, her expression and
+  blush), and the page said "connected".
+- Timing on this machine, Chrome: connected in 4.7 s with the Pyodide files cached. A cold first visit is about 5.5 MB from the CDN
+  (`pyodide.asm.wasm` 3.1 MB, the standard library 2.3 MB, both gzip) plus about 1 MB for the demo itself, roughly 6.5 MB.
+- The server and the demo now share code, so they cannot drift apart: `public/frames.js` (which frames to ask for) and `public/tags.js`
+  (how an `[avatar …]` tag is read) are imported by `src/avatar.ts` and `src/avatar-tags.ts`, and `python/render_ops.py` is the one place the
+  renderer's requests are answered (`render_worker.py` is only its stdin loop).
+- Tests: `test/browser-demo.test.ts` (12) drives the stand-in against a fake renderer and checks the staged folder; the server tests and
+  the avatar tests still pass against the shared code.
+
+Found while doing it, to deal with in phase 1:
+
+- The page still shows controls that mean nothing without a server (the brain menu says "Ollama (local)", Work is greyed out, the folder,
+  permission and effort menus, the phone link). Hide or replace them for the demo, and say plainly that it is a demo.
+- Python runs on the page's own thread, so a draw blocks the page for a moment. Fine so far; a Web Worker is the fix if it ever shows.
+- A message with two requests ("hair mint green and glasses") only gets the first: the scripted reply is one branch. Phase 1 should handle
+  several, and a small rule-based reader for redraw requests (colours, glasses, hats, a few moods) will do more for the feel of it than
+  canned buttons.
+- Not yet checked: a phone-width window, the speech and dictation buttons (they should be hidden), and what a visitor sees if the CDN is
+  blocked (a notice appears, and the page stays "disconnected").
 
 **Phase 1, the scripted demo (no model).** A handful of scripted exchanges that show the point of the project: her greeting, a redraw
 ("blue hair and glasses", a witch hat), her expressions, and a pretend work-mode card (a command she asks to run, with Allow and Deny) so
