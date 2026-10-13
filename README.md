@@ -246,14 +246,26 @@ with the card inside) can give her a ready-made personality.
 
 - `/card import <file>` reads a V1, V2 or V3 card and shows what it will add. Nothing changes until you choose
   **Use this card** (or `/card apply`); **Cancel** (or `/card cancel`) drops it.
-- Only her description, personality, scenario, example lines and name are used. A card's own system prompt,
-  post-history instructions, lorebook, greetings and extensions are ignored, so a card cannot override how her face,
-  pictures and the page work. HTML and our own tags (`[emotion:…]`, `[avatar …]`, `[image …]`) are removed from the
-  text, `{{char}}` becomes her name, and each field is capped in length.
+- Her description, personality, scenario, example lines and name are always used. HTML and our own tags
+  (`[emotion:…]`, `[avatar …]`, `[image …]`) are removed from the text, `{{char}}` becomes her name, and each field is capped
+  in length. The author's own notes are shown in the preview, nothing more.
+- A card can carry more, and the preview offers each part as a checkbox:
+  - **Her greeting** (`first_mes` and the alternate greetings): new conversations open with it, shown by the page without
+    asking the model, so it costs nothing. She is told afterwards what she said. Ticked by default.
+  - **The lorebook:** short background entries that are added to your message when it mentions their keywords, each entry once
+    per conversation, at most three entries and 1,500 characters per message (it adds to what a message costs). Only plain
+    keywords are supported, not regular-expression keys. Ticked by default.
+  - **The card author's own instructions** (`system_prompt` and `post_history_instructions`): off by default. These are
+    orders written by the card's author, for chat only (they are left out in work mode). They sit before her style notes and the
+    expression protocol, and the protocol still applies, but a card can still tell her to behave in ways you do not
+    expect, such as dropping her face tags. The preview says so once and that is the only warning: using them is your own
+    risk. Nothing else is warned about each time.
+  - Not supported: a card's `extensions` (front-end scripts and the like).
 - Her name becomes the card's name if it fits the name rules. Her look is not part of a card.
 - The card is saved in `data/character.json` and replaces only the first part of `persona.md`. The style notes and the
   expression protocol stay. A conversation that is already running keeps the persona it began with, so use `/clear`.
-- `/card export` downloads her current character as a V2 card. `/card reset` goes back to `persona.md` (she keeps the
+- `/card apply greeting lore orders` (any of the three words) applies a waiting card with exactly those parts; plain `/card apply` uses the greeting and lorebook.
+- `/card export` downloads her current character as a V2 card, with the greeting, instructions and lorebook if a card brought them. `/card reset` goes back to `persona.md` (she keeps the
   name; rename her with `/rename`).
 - A card is text written by someone else and it becomes part of her instructions. Read the preview before you accept it.
   Importing and resetting work from the computer itself only, not from a phone.

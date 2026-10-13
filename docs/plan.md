@@ -37,6 +37,7 @@ plain JSON), used by SillyTavern, Chub and similar sites.
   both in one file, so the first job is splitting it without changing what the model reads.
 - Her look is not in the card spec, so only the persona travels. A card may carry a name; it
   uses the same path as `/rename`.
+- Greetings, the lorebook and the author's own instructions are opt-ins at import (built 2026-10-13), with one warning there.
 - A card is untrusted text that ends up in her system prompt. Show what will be used and
   ask before it applies. Strip markup, cap the length, ignore fields we do not map, and never
   run anything from a card (no regex scripts, no embedded extensions).

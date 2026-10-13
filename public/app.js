@@ -802,7 +802,7 @@ function addColdCache(msg) {
 let skillsEl = null;
 let cardEl = null;
 
-/** A character card was read: show what it will add and ask before it becomes her. */
+/** A character card was read: show what it will add, offer the optional parts, and ask before it becomes her. */
 function addCardOffer(msg) {
   cardEl?.card.remove();
   const card = document.createElement("div");
@@ -815,21 +815,50 @@ function addCardOffer(msg) {
   // textContent only: a card is text from a stranger.
   desc.textContent =
     msg.lines.join("\n\n") +
-    "\n\nThe card's text becomes part of her instructions; a card cannot change how her face or the page work." +
+    (msg.notes ? `\n\nThe author's notes: ${msg.notes}` : "") +
+    "\n\nThe card's text becomes part of her instructions." +
     (msg.ignored.length ? `\nNot used: ${msg.ignored.join(", ")}.` : "") +
     (msg.name && msg.name !== msg.current ? `\nShe will be called ${msg.name} instead of ${msg.current}.` : "");
   desc.style.whiteSpace = "pre-wrap";
+  card.append(title, desc);
+  // The optional parts of a card: each is a checkbox, with what it is and, where it matters, the risk.
+  const boxes = {};
+  for (const option of msg.options ?? []) {
+    const label = document.createElement("label");
+    label.className = "perm-option";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(option.on);
+    boxes[option.id] = box;
+    const text = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = option.label;
+    const detail = document.createElement("span");
+    detail.className = "perm-option-detail";
+    detail.textContent = option.detail;
+    detail.style.whiteSpace = "pre-wrap";
+    text.append(name, document.createElement("br"), detail);
+    label.append(box, text);
+    card.append(label);
+  }
   const actions = document.createElement("div");
   actions.className = "perm-actions";
   const button = (label, cls, choice) => {
     const b = document.createElement("button");
     b.textContent = label;
     b.className = cls;
-    b.onclick = () => ws.send(JSON.stringify({ type: "card-reply", choice }));
+    b.onclick = () =>
+      ws.send(
+        JSON.stringify({
+          type: "card-reply",
+          choice,
+          use: { greeting: Boolean(boxes.greeting?.checked), lore: Boolean(boxes.lore?.checked), orders: Boolean(boxes.orders?.checked) },
+        }),
+      );
     return b;
   };
   actions.append(button("Use this card", "allow", "apply"), button("Cancel", "deny", "cancel"));
-  card.append(title, desc, actions);
+  card.append(actions);
   log.append(card);
   log.scrollTop = log.scrollHeight;
   cardEl = { card, actions };

@@ -98,11 +98,15 @@ The server can run an agent that edits files and runs commands. These are not op
   loads only the user's own settings source (`--setting-sources user`) with hooks switched off
   (`--settings {"disableAllHooks":true}`). A folder's own skills still need `/setup on`, because a skill's
   frontmatter can pre-approve tools.
-- A character card is text from a stranger that ends up in her prompt (`src/card.ts`). Read only name,
-  description, personality, scenario and example lines; ignore `system_prompt`, post-history instructions,
-  lorebooks and extensions; strip markup and our own tags; cap lengths; show a preview and ask before it
-  applies. Importing and resetting are not available from a phone. The expression protocol after the
-  character part of `persona.md` is never replaced by a card, and with no card the prompt is unchanged.
+- A character card is text from a stranger that ends up in her prompt (`src/card.ts`). Strip markup and our
+  own tags, cap lengths, show a preview and ask before it applies. Importing and resetting are not available
+  from a phone. Name, description, personality, scenario and example lines are always used; ignore `extensions`.
+  Her greeting, the lorebook and the author's own instructions (`system_prompt`, post-history instructions) are
+  separate opt-ins at import, and the risk is said once there, not on every use. The orders are off by default,
+  apply in chat only (never in work mode, where she has tools), sit before the style notes, and must never move
+  after or replace the expression protocol. Lorebook entries travel as notes on the user's message, never in the
+  system prompt (it is cached), once per conversation with a cap. The expression protocol is never replaced by a
+  card, and with no card the prompt is unchanged.
 - Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through
   `notesForModel`, never in the system prompt. She may save a note (`[remember …]`) only in chat mode: in
   work mode a file or page she reads could talk her into writing something that outlives the conversation.
