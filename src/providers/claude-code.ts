@@ -35,6 +35,9 @@ export class ClaudeCodeProvider implements Provider {
   private readonly opts: ClaudeCodeOptions;
   private proc: ChildProcessWithoutNullStreams | null = null;
   private listener: ((event: ProviderEvent) => void) | null = null;
+  /** Makes the handler for a turn claude starts by itself, e.g. when a background subagent finishes. */
+  private unprompted: (() => (event: ProviderEvent) => void) | null = null;
+  private reportedStray = false;
   private sessionIdValue: string = randomUUID();
   /** True once the session has a transcript on disk, so a restart can resume it. */
   private hasHistory = false;
@@ -67,6 +70,10 @@ export class ClaudeCodeProvider implements Provider {
 
   get busy(): boolean {
     return this.listener !== null;
+  }
+
+  onUnprompted(start: () => (event: ProviderEvent) => void): void {
+    this.unprompted = start;
   }
 
   send(text: string, onEvent: (event: ProviderEvent) => void, images: ImageInput[] = []): void {
@@ -250,6 +257,18 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private handle(item: StreamItem): void {
+    // With no reply in progress, claude can still talk: a finished background subagent or task makes it
+    // start a turn on its own. Give that turn a listener, or everything it says would be lost.
+    if (!this.listener && (item.kind === "delta" || item.kind === "tool-start" || item.kind === "permission")) {
+      if (this.unprompted) {
+        this.listener = this.unprompted();
+        this.interrupted = false;
+      } else if (!this.reportedStray) {
+        this.reportedStray = true;
+        process.stderr.write(`[claude] dropped output from a turn nobody asked for (${item.kind})\n`);
+      }
+    }
+    if (item.kind === "result") this.reportedStray = false;
     switch (item.kind) {
       case "delta":
         this.listener?.({ type: "delta", text: item.text });

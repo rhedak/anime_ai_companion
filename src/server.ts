@@ -1052,10 +1052,18 @@ function runTurn(
 ): void {
   // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
   const toModel = opts.raw ? userText : withNotes(userText);
+  provider.send(toModel, turnHandler(userText, opts), opts.images);
+}
+
+/** The event handler for one turn: streams the reply, applies any [avatar ...] tags as they complete. */
+function turnHandler(
+  userText: string,
+  opts: { raw?: boolean; onFinish?: (event: ProviderEvent) => void },
+): (event: ProviderEvent) => void {
   let reply = "";
   const applyNewTags = makeTagApplier();
 
-  provider.send(toModel, (event) => {
+  return (event) => {
     if (event.type === "delta") {
       reply += event.text;
       transcript.delta(event.text);
@@ -1106,7 +1114,15 @@ function runTurn(
         opts.onFinish?.(event);
       });
     }
-  }, opts.images);
+  };
+}
+
+// A turn the brain starts on its own (a background subagent finished) is shown like any reply.
+for (const p of Object.values(providers)) {
+  p.onUnprompted?.(() => {
+    broadcast({ type: "auto-turn" });
+    return turnHandler("", { raw: true });
+  });
 }
 
 wss.on("connection", (ws) => {

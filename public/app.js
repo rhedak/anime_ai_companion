@@ -919,6 +919,11 @@ function handle(msg) {
       avatar.setEmotion("thinking");
       setBusy(true);
       break;
+    case "auto-turn": // she started talking on her own (a background task finished)
+      demo.cancel();
+      avatar.setEmotion("thinking");
+      setBusy(true);
+      break;
     case "picking":
       picking = msg.on;
       renderFolderButton();

@@ -1,0 +1,13 @@
+{"type": "system", "subtype": "init", "session_id": "00000000-0000-4000-8000-000000000000", "model": "claude-haiku-5-5"}
+{"type": "system", "subtype": "task_started", "task_id": "task1"}
+{"type": "system", "subtype": "task_notification", "task_id": "task1"}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "I'"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "m waiting for the background sub"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "agent to finish its reply"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}}
+{"type": "result", "subtype": "success", "is_error": false, "result": "I'm waiting for the background subagent to finish its reply.", "origin": null}
+{"type": "system", "subtype": "init", "session_id": "00000000-0000-4000-8000-000000000000", "model": "claude-haiku-5-5"}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "The background subagent finished and"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": " replied \""}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "done\"."}}}
+{"type": "result", "subtype": "success", "is_error": false, "result": "The background subagent finished and replied \"done\".", "origin": {"kind": "task-notification", "producer": "session-task", "runId": "0mv6aj9dp-12ac9396"}}

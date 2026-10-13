@@ -85,6 +85,12 @@ export interface Provider {
   readonly busy: boolean;
   /** Send a user message (with any attached images); events stream back through `onEvent` until "done" or "error". */
   send(text: string, onEvent: (event: ProviderEvent) => void, images?: ImageInput[]): void;
+  /**
+   * A backend may start a turn nobody asked for (Claude Code does when a background subagent or task
+   * finishes). It calls `start` to get a fresh event handler for that turn, which then receives the
+   * events until "done" or "error", like the handler given to `send`.
+   */
+  onUnprompted?(start: () => (event: ProviderEvent) => void): void;
   /** Answer a "permission" event. */
   respondPermission(id: string, decision: Decision, message?: string): void;
   /** Change mode, folder, model or pre-approved tools. The conversation continues. */
