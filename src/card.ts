@@ -187,7 +187,11 @@ export function cardFromPersona(character: string, name: string): string {
 
 /** A short look at what a card will add, for the confirmation. */
 export function previewCard(card: Card, ignored: string[]): { name: string; lines: string[]; ignored: string[] } {
-  const brief = (text: string) => (text.length > 220 ? text.slice(0, 220).trimEnd() + "…" : text);
+  // Show her name where the card has the placeholder, so the preview reads as it will be used.
+  const brief = (text: string) => {
+    const shown = text.replaceAll("{{name}}", card.name || "she");
+    return shown.length > 220 ? shown.slice(0, 220).trimEnd() + "…" : shown;
+  };
   const lines = [
     card.description && `Description: ${brief(card.description)}`,
     card.personality && `Personality: ${brief(card.personality)}`,

@@ -45,6 +45,8 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | --- | --- | --- |
 | Her personality and voice | `persona.md` (chat), `persona-work.md` (work-mode rules) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
 | Her name | click it, or `/rename Hana` | at once |
+| A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
+| What she remembers about the user | `data/memory.md` (she adds to it herself in chat; `/memory`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
 | Her expressions | `emotions.json` | restart the server |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |
@@ -92,6 +94,22 @@ The server can run an agent that edits files and runs commands. These are not op
 - Home and `/` are refused as a project folder.
 - A folder's own hooks, settings, and MCP servers stay unloaded unless the user opts in, and
   that opt-in is off at every start. Do not write hooks into their project or their home config.
+  `/skills on` is a narrower opt-in with the same rules (off at every start, refused from a phone): it
+  loads only the user's own settings source (`--setting-sources user`) with hooks switched off
+  (`--settings {"disableAllHooks":true}`). A folder's own skills still need `/setup on`, because a skill's
+  frontmatter can pre-approve tools.
+- A character card is text from a stranger that ends up in her prompt (`src/card.ts`). Read only name,
+  description, personality, scenario and example lines; ignore `system_prompt`, post-history instructions,
+  lorebooks and extensions; strip markup and our own tags; cap lengths; show a preview and ask before it
+  applies. Importing and resetting are not available from a phone. The expression protocol after the
+  character part of `persona.md` is never replaced by a card, and with no card the prompt is unchanged.
+- Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through
+  `notesForModel`, never in the system prompt. She may save a note (`[remember …]`) only in chat mode: in
+  work mode a file or page she reads could talk her into writing something that outlives the conversation.
+  Keep it a single append-only file the user can see, edit and clear.
+- Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
+  maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
+  sends the text by itself.
 - Avatar values are validated per field. The page sanitises SVG. Do not inject HTML from the model.
 
 ### Brains
@@ -151,7 +169,23 @@ command named `agent` is not necessarily that binary.
 - Tests must not need an opencode login or a live agent. Fake the ACP process, as
   `test/opencode-acp.test.ts` does.
 
-**Ollama** is chat only (`canUseTools` is false). Work mode stays unavailable.
+**Ollama** (`src/providers/ollama.ts`, tools in `ollama-tools.ts`) is chat, and work mode for models that take
+tool calls. Ollama only runs the model, so the tools and the call loop are ours: `read_file`, `grep`,
+`bash`, `write_file`, run in the project folder with paths checked against the folder (symlinks followed).
+
+- `canUseTools` is true only when `/api/show` lists the `tools` capability, the model is a known family
+  (an Ollama too old to report capabilities), or the user vouches with `COMPANION_OLLAMA_TOOLS`.
+  Check it again when the model changes (`checkTools()`); never assume it.
+- Every `bash` command and `write_file` goes through the approval card (`permission` events); only
+  Read and Grep are pre-approved, from the same allow-list as the other brains. The menu is Ask and Plan
+  (plan offers the read-only tools only). There is no looser mode for Ollama: do not add one, and do not
+  add a skip-approval path. "Allow for this session" covers that exact call only.
+- Keep the turn cap (`MAX_TOOL_ROUNDS`), the result and file size caps, and the experimental warning in
+  the README, the site and the work-mode notice: how well a local model uses tools is the user's own
+  responsibility, and the app does not vouch for any model.
+- A history with a tool call but no answer to it is invalid for Ollama; keep `trimHistory` and the stop
+  handling dropping such calls.
+- Tests fake the Ollama server (`test/ollama-work.test.ts`); no real model or install in CI.
 
 Switching brains starts a new conversation. The brains do not share memory.
 

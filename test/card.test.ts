@@ -119,6 +119,8 @@ test("a card becomes the character part, keeps her style notes, and can never re
   const preview = previewCard(result.card, result.ignored);
   assert.equal(preview.name, "Aiko");
   assert.ok(preview.lines.length >= 3);
+  assert.ok(preview.lines.every((l) => !l.includes("{{name}}")), "the placeholder is filled in for the preview");
+  assert.match(preview.lines[0], /Aiko is a shy bookworm/);
 });
 
 test("exporting her persona gives a V2 card that imports back to the same character", () => {
