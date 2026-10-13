@@ -34,6 +34,7 @@ parser.add_argument("--cheek", default="0.5,0.427", help="x,y as fractions: a sp
 parser.add_argument("--seam", type=float, default=0.422, help="y fraction between the eyes and the mouth")
 parser.add_argument("--face-box", default="0.267,0.146,0.733,0.508", help="x0,y0,x1,y1 as fractions: where to look for the face's skin; keep neck, shoulders and arms outside it")
 parser.add_argument("--mouth-box", default="0.417,0.408,0.583,0.518", help="x0,y0,x1,y1 as fractions: a box around the mouth, wide-open included")
+parser.add_argument("--mouth-diff", action="store_true", help="for talk pictures, copy only what differs from the emotion's picture (grown a little), looked for in a wider box: for wide mouths that reach the chin")
 args = parser.parse_args()
 
 root = Path(args.dir)
@@ -120,7 +121,15 @@ def finish(name: str, mask: Image.Image) -> None:
     start = base if which == "full" or emotion == "neutral" or not own.exists() else Image.open(own).convert("RGBA")
     aligned = register(Image.open(root / f"raw-{name}.png").convert("RGB"), mask)
     out = start.copy()
-    out.paste(aligned.convert("RGBA"), (0, 0), part(mask, which).filter(ImageFilter.GaussianBlur(3)))
+    where = part(mask, which)
+    if which == "mouth" and args.mouth_diff:
+        # Where the edit really differs from the picture it was made from, inside the face and a wider box than the mouth's own.
+        wide = Image.new("L", base.size, 0)
+        ImageDraw.Draw(wide).rectangle((fx(box[0]) - 12, fy(box[1]) - 24, fx(box[2]) + 12, fy(box[3]) + 24), fill=255)
+        a, b = np.asarray(aligned.convert("RGB"), int), np.asarray(start.convert("RGB"), int)
+        changed = Image.fromarray(((np.abs(a - b).sum(axis=2) > 60) * 255).astype("uint8")).filter(ImageFilter.MaxFilter(11))
+        where = Image.fromarray((np.asarray(changed, float) * np.asarray(wide, float) * np.asarray(mask, float) / 255**2).astype("uint8"))
+    out.paste(aligned.convert("RGBA"), (0, 0), where.filter(ImageFilter.GaussianBlur(3)))
     out.putalpha(base.getchannel("A"))
     out.save(root / f"{name}.png")
     if args.white:
