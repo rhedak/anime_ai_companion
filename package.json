@@ -34,7 +34,7 @@
     "start": "node bin/check-node.js && node src/server.ts",
     "open": "node bin/check-node.js && node src/server.ts --open",
     "dev": "node bin/check-node.js && node --watch src/server.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.frontend.json",
     "test": "node --test \"test/**/*.test.ts\"",
     "site": "node site/build.mjs"
   },

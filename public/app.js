@@ -6,6 +6,7 @@ import { createDemo } from "./demo.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 
+/** An element of the page by its id. Typed loosely on purpose: the markup is index.html's, and each id is one kind of element. @type {(id: string) => any} */
 const $ = (id) => document.getElementById(id);
 let ws = null;
 
@@ -473,7 +474,7 @@ const shortLabels = {
 };
 const menuRefreshers = [];
 const closeMenus = () => document.querySelectorAll(".menu-pop, .menu-backdrop").forEach((p) => p.remove());
-document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
+document.addEventListener("click", (e) => { if (!(/** @type {Element} */ (e.target)).closest(".menu")) closeMenus(); });
 
 function makeMenu(select, title) {
   const wrap = document.createElement("div");
@@ -483,11 +484,12 @@ function makeMenu(select, title) {
   button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
   const text = document.createElement("span");
-  button.append(text, Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "svg"), {}));
-  button.lastChild.setAttribute("viewBox", "0 0 24 24");
-  button.lastChild.setAttribute("width", "12");
-  button.lastChild.setAttribute("height", "12");
-  button.lastChild.innerHTML = '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  chevron.setAttribute("viewBox", "0 0 24 24");
+  chevron.setAttribute("width", "12");
+  chevron.setAttribute("height", "12");
+  chevron.innerHTML = '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  button.append(text, chevron);
   wrap.append(button);
   const close = (focus) => {
     wrap.querySelector(".menu-pop")?.remove();
@@ -525,7 +527,7 @@ function makeMenu(select, title) {
     }
     pop.addEventListener("keydown", (e) => {
       const items = [...pop.querySelectorAll("button")];
-      const i = items.indexOf(document.activeElement);
+      const i = items.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
       if (e.key === "Escape") close(true);
       else if (e.key === "ArrowDown") items[(i + 1) % items.length].focus();
       else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length].focus();
@@ -538,7 +540,7 @@ function makeMenu(select, title) {
     backdrop.addEventListener("click", () => close(false));
     wrap.append(backdrop, pop);
     button.setAttribute("aria-expanded", "true");
-    (pop.querySelector('[aria-checked="true"]') ?? pop.querySelector("button")).focus();
+    /** @type {HTMLElement} */ (pop.querySelector('[aria-checked="true"]') ?? pop.querySelector("button")).focus();
   };
   button.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1346,7 +1348,7 @@ input.addEventListener("paste", (e) => {
   e.preventDefault();
   addFiles(pictures);
 });
-const panel = document.querySelector(".panel");
+const panel = /** @type {HTMLElement} */ (document.querySelector(".panel"));
 const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
 panel.addEventListener("dragover", (e) => {
   if (!hasFiles(e) || $("attach").disabled) return;
@@ -1354,7 +1356,7 @@ panel.addEventListener("dragover", (e) => {
   panel.classList.add("drop-target");
 });
 panel.addEventListener("dragleave", (e) => {
-  if (!panel.contains(e.relatedTarget)) panel.classList.remove("drop-target");
+  if (!panel.contains(/** @type {Node} */ (e.relatedTarget))) panel.classList.remove("drop-target");
 });
 panel.addEventListener("drop", (e) => {
   if (!hasFiles(e)) return;
@@ -1641,7 +1643,7 @@ function openGallery(kind = "presets") {
   }
   box.addEventListener("keydown", (e) => {
     const items = [...grid.querySelectorAll("button")];
-    const i = items.indexOf(document.activeElement);
+    const i = items.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
     const columns = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
     const next = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + columns, ArrowUp: i - columns }[e.key];
     if (e.key === "Escape") closeGallery();
@@ -1652,7 +1654,7 @@ function openGallery(kind = "presets") {
 }
 let gallerySlot = null;
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".gallery, #looks")) closeGallery();
+  if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
 });
 
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));

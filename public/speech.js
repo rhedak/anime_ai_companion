@@ -79,6 +79,11 @@ export function sampleText(lang) {
   return SAMPLES[String(lang).toLowerCase().split(/[-_]/)[0]] ?? SAMPLES.en;
 }
 
+/**
+ * @param {(speaking: boolean) => void} onSpeaking
+ * @param {(message: string) => void} [onProblem]
+ * @param {() => void} [onVoiceBad]
+ */
 export function createVoice(onSpeaking, onProblem = () => {}, onVoiceBad = () => {}) {
   const synth = globalThis.speechSynthesis;
   const supported = Boolean(synth) && typeof SpeechSynthesisUtterance !== "undefined";

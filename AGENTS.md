@@ -223,7 +223,9 @@ npm run typecheck
 npm test
 ```
 
-Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is that repo's `src`
+`npm run typecheck` also checks the page's JavaScript (`public/*.js`, `tsconfig.frontend.json`, loosely: no strict mode,
+and `$("id")` is typed `any`). The `.d.ts` files next to those modules are what the page and the tests import, so keep them
+in step. Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is that repo's `src`
 folder) and skip if it is missing. The creator needs Python 3.11 or newer. `uv sync` creates `.venv`
 (`pyproject.toml`, `.python-version`), and `src/python.ts` uses it when it exists, unless `PYTHON` is set;
 on an older `python3` the four avatar and render tests fail even though the code is fine. `test/server.test.ts` runs a throwaway copy of the whole app (its own `data/`, a random port) against a stand-in

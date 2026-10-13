@@ -15,7 +15,7 @@ export interface ProblemReport {
 
 export function whereFrom(stack: unknown): string;
 
-export function createErrorReporter<H = unknown>(options: {
+export function createErrorReporter<H = any>(options: {
   show: (info: ProblemInfo, handle: H | null) => H;
   send: (report: ProblemReport) => void;
   now?: () => number;
