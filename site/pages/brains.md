@@ -49,10 +49,10 @@ Small models follow the tag protocol less reliably, so her expressions may be le
 
 **Work mode with a local model is experimental, and the quality is your responsibility.** If Ollama reports that the
 model supports tool calls (a recent Qwen or Llama, for example; `ollama show <model>` lists its capabilities), the **Work** button
-works with it. She can then read files, search, run a command and write a file in your project folder. How well a local model
+works with it. She can then read files, search, run a command, create a file and edit one in your project folder. How well a local model
 uses tools depends entirely on the model and its size: small or older ones call tools badly (wrong arguments, loops, or text
 that only looks like a tool call), and any model can propose a wrong or harmful command or edit with full confidence. Every
-command and every file write waits for your approval and shows exactly what it will do, so reading the card is your job;
+command, file write and edit waits for your approval and shows exactly what it will do, so reading the card is your job;
 there is no mode that skips it for Ollama (only **Ask** and **Plan**, and Plan offers reading and searching only). Reading and
 searching inside the project are pre-approved, like for the other brains. Nothing outside the project folder can be read or
 written through her tools, but an approved `bash` command can do anything your user can. The app does not test, rate or vouch

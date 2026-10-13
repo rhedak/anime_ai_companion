@@ -171,12 +171,12 @@ command named `agent` is not necessarily that binary.
 
 **Ollama** (`src/providers/ollama.ts`, tools in `ollama-tools.ts`) is chat, and work mode for models that take
 tool calls. Ollama only runs the model, so the tools and the call loop are ours: `read_file`, `grep`,
-`bash`, `write_file`, run in the project folder with paths checked against the folder (symlinks followed).
+`bash`, `write_file` (new files) and `edit_file` (replace exact text once, or all of it with `replace_all`), run in the project folder with paths checked against the folder (symlinks followed).
 
 - `canUseTools` is true only when `/api/show` lists the `tools` capability, the model is a known family
   (an Ollama too old to report capabilities), or the user vouches with `COMPANION_OLLAMA_TOOLS`.
   Check it again when the model changes (`checkTools()`); never assume it.
-- Every `bash` command and `write_file` goes through the approval card (`permission` events); only
+- Every `bash` command, `write_file` and `edit_file` goes through the approval card (`permission` events); only
   Read and Grep are pre-approved, from the same allow-list as the other brains. The menu is Ask and Plan
   (plan offers the read-only tools only). There is no looser mode for Ollama: do not add one, and do not
   add a skip-approval path. "Allow for this session" covers that exact call only.

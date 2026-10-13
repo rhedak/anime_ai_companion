@@ -84,6 +84,62 @@ test("write_file writes inside the project, makes folders, and refuses outside, 
   }
 });
 
+test("edit_file replaces text that matches exactly once, and says how to fix it when it does not", async () => {
+  const p = project();
+  try {
+    const path = join(p.dir, "src", "a.ts");
+    const ok = await runTool("edit_file", { path: "src/a.ts", old_text: "const one = 1;", new_text: "const one = 11;" }, { cwd: p.dir });
+    assert.equal(ok.ok, true);
+    assert.match(ok.output, /Edited src\/a\.ts: 1 replacement/);
+    assert.equal(readFileSync(path, "utf8"), "const one = 11;\nconst Two = 2;\nexport { one };\n");
+
+    const missing = await runTool("edit_file", { path: "src/a.ts", old_text: "const three = 3;", new_text: "x" }, { cwd: p.dir });
+    assert.equal(missing.ok, false);
+    assert.match(missing.output, /not found[^]*read the file again/);
+
+    writeFileSync(path, "x = 1\nx = 1\nx = 1\n");
+    const twice = await runTool("edit_file", { path: "src/a.ts", old_text: "x = 1", new_text: "x = 2" }, { cwd: p.dir });
+    assert.equal(twice.ok, false);
+    assert.match(twice.output, /appears 3 times/);
+    assert.equal(readFileSync(path, "utf8"), "x = 1\nx = 1\nx = 1\n", "a refused edit changes nothing");
+    const all = await runTool("edit_file", { path: "src/a.ts", old_text: "x = 1", new_text: "x = 2", replace_all: true }, { cwd: p.dir });
+    assert.match(all.output, /3 replacements/);
+    assert.equal(readFileSync(path, "utf8"), "x = 2\nx = 2\nx = 2\n");
+    const deleted = await runTool("edit_file", { path: "src/a.ts", old_text: "x = 2\n", new_text: "", replace_all: true }, { cwd: p.dir });
+    assert.equal(deleted.ok, true);
+    assert.equal(readFileSync(path, "utf8"), "");
+  } finally {
+    p.done();
+  }
+});
+
+test("edit_file keeps Windows line endings working, and refuses empty, identical, binary, missing, outside and .git edits", async () => {
+  const p = project();
+  try {
+    writeFileSync(join(p.dir, "win.txt"), "one\r\ntwo\r\nthree\r\n");
+    const crlf = await runTool("edit_file", { path: "win.txt", old_text: "one\ntwo", new_text: "uno\ndos" }, { cwd: p.dir });
+    assert.equal(crlf.ok, true);
+    assert.equal(readFileSync(join(p.dir, "win.txt"), "utf8"), "uno\r\ndos\r\nthree\r\n");
+    const bad: [string, Record<string, unknown>][] = [
+      ["empty old_text", { path: "win.txt", old_text: "", new_text: "x" }],
+      ["same text", { path: "win.txt", old_text: "three", new_text: "three" }],
+      ["no new_text", { path: "win.txt", old_text: "three" }],
+      ["binary", { path: "bin.dat", old_text: "a", new_text: "b" }],
+      ["missing file", { path: "nope.txt", old_text: "a", new_text: "b" }],
+      ["outside via link", { path: "link/secret.txt", old_text: "top", new_text: "no" }],
+      ["outside via ..", { path: "../x.txt", old_text: "a", new_text: "b" }],
+    ];
+    for (const [label, args] of bad) assert.equal((await runTool("edit_file", args, { cwd: p.dir })).ok, false, label);
+    assert.equal(readFileSync(join(p.outside, "secret.txt"), "utf8"), "top secret", "nothing outside the project changed");
+    mkdirSync(join(p.dir, ".git"));
+    writeFileSync(join(p.dir, ".git", "config"), "[core]\n");
+    assert.equal((await runTool("edit_file", { path: ".git/config", old_text: "core", new_text: "x" }, { cwd: p.dir })).ok, false);
+    assert.equal(readFileSync(join(p.dir, ".git", "config"), "utf8"), "[core]\n");
+  } finally {
+    p.done();
+  }
+});
+
 test("bash runs in the project folder and reports failures and silence", async () => {
   const p = project();
   try {
@@ -103,7 +159,7 @@ test("bash runs in the project folder and reports failures and silence", async (
 test("unknown tools and odd arguments come back as readable text, never as an exception", async () => {
   const result = await runTool("rm_rf", {}, { cwd: tmpdir() });
   assert.equal(result.ok, false);
-  assert.match(result.output, /read_file, grep, bash, write_file/);
+  assert.match(result.output, /read_file, grep, bash, write_file, edit_file/);
   assert.deepEqual(toArgs('{"a":1}'), { a: 1 });
   assert.deepEqual(toArgs("not json"), {});
   assert.deepEqual(toArgs(null), {});
@@ -115,5 +171,6 @@ test("plan mode offers only the read-only tools, and the card names calls the wa
   assert.deepEqual(toolDefinitions(false).map((t) => t.function.name), TOOLS.map((t) => t.name));
   assert.deepEqual(describeCall("bash", { command: "npm   test\n" }), { tool: "Bash", summary: "npm test", input: { command: "npm   test\n" } });
   assert.equal(describeCall("write_file", { path: "a.txt", content: "x" }).tool, "Write");
+  assert.deepEqual(describeCall("edit_file", { path: "a.txt", old_text: "a", new_text: "b" }), { tool: "Edit", summary: "a.txt", input: { file_path: "a.txt", old_string: "a", new_string: "b" } });
   assert.equal(describeCall("grep", { pattern: "x", path: "src" }).summary, "x in src");
 });

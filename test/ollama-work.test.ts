@@ -71,7 +71,7 @@ test("a model that reports tools can read a file: the call is run, its result go
     assert.equal(events.at(-1)?.type, "done");
 
     const [first, second] = fake.chats;
-    assert.deepEqual(first.tools.map((t: any) => t.function.name), ["read_file", "grep", "bash", "write_file"]);
+    assert.deepEqual(first.tools.map((t: any) => t.function.name), ["read_file", "grep", "bash", "write_file", "edit_file"]);
     assert.equal(first.options.num_ctx, 16384);
     assert.match(first.messages[0].content, /^PERSONA[^]*Tools \(work mode, experimental\)/);
     assert.deepEqual(second.messages.map((m: any) => m.role), ["system", "user", "assistant", "tool"]);
@@ -145,6 +145,38 @@ test("plan mode offers only reading and searching, and refuses a write the model
     assert.match(fake.chats[1].messages.at(-1).content, /Plan mode/);
   } finally {
     fake.close();
+    w.done();
+  }
+});
+
+test("an edit shows the exact change on a card, applies only when allowed, and is refused in plan mode", async () => {
+  const w = setup();
+  writeFileSync(join(w.dir, "app.txt"), "colour = red\n");
+  const edit = { name: "edit_file", arguments: { path: "app.txt", old_text: "red", new_text: "blue" } };
+  const fake = await fakeOllama((n) => (n % 2 === 1 ? { calls: [edit] } : { text: "done" }));
+  const planFake = await fakeOllama((n) => (n % 2 === 1 ? { calls: [edit] } : { text: "plan" }));
+  try {
+    const p = w.make(fake.host);
+    await p.checkTools();
+    await ask(p, "make it blue", (e) => {
+      assert.equal(e.request.tool, "Edit");
+      assert.deepEqual(e.request.input, { file_path: "app.txt", old_string: "red", new_string: "blue" });
+      return "deny";
+    });
+    assert.equal(readFileSync(join(w.dir, "app.txt"), "utf8"), "colour = red\n", "denied: unchanged");
+    await ask(p, "again", () => "allow");
+    assert.equal(readFileSync(join(w.dir, "app.txt"), "utf8"), "colour = blue\n");
+
+    const planning = w.make(planFake.host);
+    planning.setPermissionMode("plan");
+    await planning.checkTools();
+    writeFileSync(join(w.dir, "app.txt"), "colour = red\n");
+    const events = await ask(planning, "make it blue");
+    assert.deepEqual(events.filter((e) => e.type === "permission"), []);
+    assert.equal(readFileSync(join(w.dir, "app.txt"), "utf8"), "colour = red\n");
+  } finally {
+    fake.close();
+    planFake.close();
     w.done();
   }
 });

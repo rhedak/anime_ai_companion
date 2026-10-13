@@ -54,7 +54,7 @@ export async function ollamaSupportsTools(host: string, model: string, forced: s
 
 function toolNote(readOnly: boolean): string {
   return (
-    "\n\nTools (work mode, experimental): you can call the functions read_file, grep, bash and write_file. Use the tool-call mechanism: " +
+    "\n\nTools (work mode, experimental): you can call the functions read_file, grep, bash, write_file and edit_file. Use edit_file to change a file that already exists and write_file to create a new one. Use the tool-call mechanism: " +
     "never describe a call in text, and never put JSON or code in your reply in place of one. Paths are relative to the project folder; " +
     "nothing outside it can be read or written. Take one step at a time and read each result before the next. The user sees every " +
     "bash command and file write and may refuse it; if they do, accept it." +

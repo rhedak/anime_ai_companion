@@ -13,7 +13,7 @@ export interface ToolSpec {
   description: string;
   parameters: Record<string, unknown>;
   /** What the approval card and the pre-approved list call it (the same names Claude Code uses). */
-  card: "Read" | "Grep" | "Bash" | "Write";
+  card: "Read" | "Grep" | "Bash" | "Write" | "Edit";
   readOnly: boolean;
 }
 
@@ -63,6 +63,23 @@ export const TOOLS: ToolSpec[] = [
       type: "object",
       properties: { path: { type: "string", description: "Path relative to the project folder." }, content: { type: "string", description: "The whole new content of the file." } },
       required: ["path", "content"],
+    },
+  },
+  {
+    name: "edit_file",
+    card: "Edit",
+    readOnly: false,
+    description:
+      "Change an existing text file by replacing one piece of text with another. old_text must match the file exactly (including spaces and line breaks) and must appear once; if it appears more than once, include more of the surrounding text, or set replace_all. Prefer this to write_file for changing a file that already exists. The user approves each edit.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Path relative to the project folder." },
+        old_text: { type: "string", description: "The exact text to replace. Not empty." },
+        new_text: { type: "string", description: "What to put there instead. May be empty to delete the old text." },
+        replace_all: { type: "boolean", description: "Replace every occurrence of old_text. Default false." },
+      },
+      required: ["path", "old_text", "new_text"],
     },
   },
 ];
@@ -189,6 +206,45 @@ async function writeTool(cwd: string, args: Record<string, unknown>): Promise<st
   return `Wrote ${rel} (${Buffer.byteLength(args.content)} bytes).`;
 }
 
+/** How many times `needle` occurs in `text`, without overlaps. */
+function countOccurrences(text: string, needle: string): number {
+  let count = 0;
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) count++;
+  return count;
+}
+
+async function editTool(cwd: string, args: Record<string, unknown>): Promise<string> {
+  if (typeof args.old_text !== "string" || args.old_text === "") throw new Error("old_text is needed and cannot be empty. To create a file, use write_file.");
+  if (typeof args.new_text !== "string") throw new Error("new_text must be text (it may be empty to delete old_text).");
+  const file = await resolveInside(cwd, args.path);
+  const root = await realpath(cwd);
+  const rel = relative(root, file);
+  if (rel.split(sep).includes(".git")) throw new Error("Files inside .git are not edited.");
+  const info = await stat(file).catch(() => null);
+  if (!info?.isFile()) throw new Error(`There is no file at ${String(args.path)}. To create one, use write_file.`);
+  if (info.size > 5_000_000) throw new Error("That file is too big to edit (over 5 MB).");
+  const bytes = await readFile(file);
+  if (bytes.subarray(0, 8000).includes(0)) throw new Error("That looks like a binary file, not text.");
+  const before = bytes.toString("utf8");
+  let oldText = args.old_text;
+  let newText = args.new_text;
+  // A model writes "\n"; a file with Windows line endings has "\r\n". Match what the file uses, so the edit does not fail on that alone.
+  if (!before.includes(oldText) && before.includes("\r\n")) {
+    oldText = oldText.replace(/\r?\n/g, "\r\n");
+    newText = newText.replace(/\r?\n/g, "\r\n");
+  }
+  if (oldText === newText) throw new Error("old_text and new_text are the same, so nothing would change.");
+  const found = countOccurrences(before, oldText);
+  if (found === 0) throw new Error("old_text was not found in the file. It must match exactly, spaces and line breaks included: read the file again and copy the text.");
+  if (found > 1 && args.replace_all !== true) {
+    throw new Error(`old_text appears ${found} times. Include more of the surrounding text so it appears once, or set replace_all to true to change every one.`);
+  }
+  const after = args.replace_all === true ? before.split(oldText).join(newText) : before.replace(oldText, () => newText);
+  if (Buffer.byteLength(after) > WRITE_BYTES) throw new Error("The edited file would be too big (over 200 KB).");
+  await writeFile(file, after);
+  return `Edited ${rel}: ${args.replace_all === true ? `${found} replacement${found === 1 ? "" : "s"}` : "1 replacement"}.`;
+}
+
 export interface ToolContext {
   cwd: string;
   signal?: AbortSignal;
@@ -204,6 +260,8 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
         return { ok: true, output: await grepTool(ctx.cwd, args, ctx.signal) };
       case "write_file":
         return { ok: true, output: await writeTool(ctx.cwd, args) };
+      case "edit_file":
+        return { ok: true, output: await editTool(ctx.cwd, args) };
       case "bash": {
         if (typeof args.command !== "string" || !args.command.trim()) throw new Error("A command is needed.");
         const result = await runShell(args.command, ctx.cwd, { timeoutMs: 60_000, maxBytes: 30_000, signal: ctx.signal });
@@ -228,6 +286,13 @@ export function describeCall(name: string, args: Record<string, unknown>): { too
       return { tool, summary: text(args.command).replace(/\s+/g, " ").trim().slice(0, 120), input: { command: text(args.command) } };
     case "write_file":
       return { tool, summary: text(args.path), input: { file_path: text(args.path), content: text(args.content) } };
+    case "edit_file":
+      return {
+        tool,
+        summary: text(args.path),
+        // The names Claude Code's own Edit card uses, so the card reads the same for every brain.
+        input: { file_path: text(args.path), old_string: text(args.old_text), new_string: text(args.new_text), ...(args.replace_all === true ? { replace_all: true } : {}) },
+      };
     case "read_file":
       return { tool, summary: text(args.path), input: { file_path: text(args.path) } };
     case "grep":

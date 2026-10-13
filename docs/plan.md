@@ -139,8 +139,8 @@ What to build (`src/providers/ollama.ts` is one streamed chat call today):
 **Status 2026-10-13:** the spike is built (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`) and tested against a
 fake Ollama only: the loop, approvals, plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a
 real model. Still to do: try it with `qwen3-coder` (and one weaker model) on a small real task, note which models call tools well,
-and check whether `/api/show` reports `tools` on the installed Ollama. The tool set is read_file, grep, bash and write_file;
-glob and an edit-in-place tool are not built.
+and check whether `/api/show` reports `tools` on the installed Ollama. The tool set is read_file, grep, bash, write_file and edit_file
+(exact text replaced once, or everywhere with replace_all); glob is deferred, since grep and bash cover it.
 
 Spike first: one model (try `qwen3-coder`), three tools (read, grep, bash with approval), a turn cap, and a manual check of
 how it behaves on a small real task. Record which models call tools well, and decide whether to widen it from that.

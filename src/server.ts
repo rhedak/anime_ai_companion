@@ -223,7 +223,7 @@ if (settings.provider === "ollama") void ollamaBrain.checkTools();
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
 const OLLAMA_WORK_WARNING =
   "Work mode with a local model is experimental. How well it uses tools depends entirely on the model: small or older ones call them badly and can " +
-  "propose a wrong or harmful command or edit with full confidence. Every command and file write still waits for your approval, so read what the card " +
+  "propose a wrong or harmful command or edit with full confidence. Every command, file write and edit still waits for your approval, so read what the card " +
   "shows. The app does not test or vouch for any local model; you are responsible for the result, so keep the project under git.";
 
 /** What the footer shows. Limits belong to the account, so they outlive a /clear; the context belongs to the conversation. */
@@ -799,11 +799,11 @@ async function rename(input: string, say: Say): Promise<void> {
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
   else if (value === "everything" && settings.provider !== "cursor" && settings.provider !== "opencode") {
-    say(settings.provider === "ollama" ? "A local model here has Ask and Plan only: every command and file write asks first." : "Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
+    say(settings.provider === "ollama" ? "A local model here has Ask and Plan only: every command, file write and edit asks first." : "Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
   } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
     say(
       settings.provider === "ollama"
-        ? "A local model here has Ask and Plan. Auto, Accept edits and Run everything are not available for it: every command and file write asks first."
+        ? "A local model here has Ask and Plan. Auto, Accept edits and Run everything are not available for it: every command, file write and edit asks first."
         : `${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
     );
   } else {
