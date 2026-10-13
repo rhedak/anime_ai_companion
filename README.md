@@ -205,6 +205,22 @@ saved in `data/settings.json`, shown in the page title and exports, used in her 
 (`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
 letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
 
+## Her notes about you
+
+She can keep a few notes about you across conversations, in `data/memory.md`: one short fact per line, plain Markdown you can
+open and edit.
+
+- In chat, when you tell her something worth keeping (your name, a preference, something you ask her to remember), she
+  adds it herself, and the chat shows each one (**🧠 Remembered: …**). Up to 50 notes, 200 characters each.
+- `/memory` lists them, `/memory add <note>` adds one, `/memory forget <number>` (or `all`) removes one, and `/memory edit`
+  opens the file. An edit by hand is picked up with her next message.
+- She is told her notes with the first message of a conversation, and only what changed after that, so the prompt that
+  Claude keeps cached is never touched. A new conversation (`/clear`) gets the full list again.
+- Notes are information about you, not instructions: they are handed over as data. **She saves nothing in work mode**, because a
+  file or web page she reads there could talk her into writing a note that outlives the conversation; use `/memory add` there.
+- The file belongs to you: it stays in `data/`, out of git, and nothing is sent anywhere except in her messages to your brain.
+  Switching brain starts a new conversation, so she is told the notes again.
+
 ## Character cards
 
 Character cards (the community format used by SillyTavern, Chub and similar sites: a `.json` file, or a `.png`
@@ -349,6 +365,7 @@ Type these in the chat box (`/help` lists them):
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/memory [add <note> \| forget <number\|all> \| edit]` | her notes about you (`data/memory.md`); she adds notes herself in chat, never in work mode |
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |

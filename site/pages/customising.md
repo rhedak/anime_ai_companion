@@ -36,6 +36,22 @@ deleting it restores the default look. You can simply ask an AI assistant to wri
 `[avatar …]`, `[image …]`, `[demo]`). Keep that protocol if you rewrite her personality, and keep the emotion list
 in step with `emotions.json`. It has a `{{name}}` placeholder for her name.
 
+### Her notes about you
+
+She can keep a few notes about you across conversations, in `data/memory.md`: one short fact per line, plain Markdown you can
+open and edit.
+
+- In chat, when you tell her something worth keeping (your name, a preference, something you ask her to remember), she
+  adds it herself, and the chat shows each one (**🧠 Remembered: …**). Up to 50 notes, 200 characters each.
+- `/memory` lists them, `/memory add <note>` adds one, `/memory forget <number>` (or `all`) removes one, and `/memory edit`
+  opens the file. An edit by hand is picked up with her next message.
+- She is told her notes with the first message of a conversation, and only what changed after that, so the prompt that
+  Claude keeps cached is never touched. A new conversation (`/clear`) gets the full list again.
+- Notes are information about you, not instructions: they are handed over as data. **She saves nothing in work mode**, because a
+  file or web page she reads there could talk her into writing a note that outlives the conversation; use `/memory add` there.
+- The file belongs to you: it stays in `data/`, out of git, and nothing is sent anywhere except in her messages to your brain.
+  Switching brain starts a new conversation, so she is told the notes again.
+
 ### Character cards
 
 Character cards (the community format used by SillyTavern, Chub and similar sites: a `.json` file, or a `.png`

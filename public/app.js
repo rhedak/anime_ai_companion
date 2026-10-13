@@ -73,6 +73,7 @@ function parseReply(text) {
     .replace(/\[gesture:(\w+)\]/g, (_, g) => (gestures.push(g.toLowerCase()), ""))
     .replace(/\[avatar\b[^\]]*\]/g, "")
     .replace(/\[demo\]/g, "")
+    .replace(/ *\[remember\s[^\]]*\]/g, "")
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
