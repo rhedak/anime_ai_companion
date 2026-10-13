@@ -16,7 +16,7 @@ that emotion's blinks and mouths.
 
 The face is found from its skin colour, sampled at --cheek (fractions of the picture; the default suits a
 head-and-shoulders crop with the head in the middle). If a picture comes out wrong, look at face-mask.png
-and adjust --cheek, --seam (where the eyes end and the mouth begins) or --mouth-box.
+and adjust --cheek, --face-box (where to look for the skin), --seam (where the eyes end and the mouth begins) or --mouth-box.
 """
 
 import argparse
@@ -32,6 +32,7 @@ parser.add_argument("names", nargs="*", help="pictures to make; default: every r
 parser.add_argument("--white", action="store_true", help="also write white-NAME.png")
 parser.add_argument("--cheek", default="0.5,0.427", help="x,y as fractions: a spot of plain skin below the eyes, beside the mouth")
 parser.add_argument("--seam", type=float, default=0.422, help="y fraction between the eyes and the mouth")
+parser.add_argument("--face-box", default="0.267,0.146,0.733,0.508", help="x0,y0,x1,y1 as fractions: where to look for the face's skin; keep neck, shoulders and arms outside it")
 parser.add_argument("--mouth-box", default="0.417,0.408,0.583,0.518", help="x0,y0,x1,y1 as fractions: a box around the mouth, wide-open included")
 args = parser.parse_args()
 
@@ -45,6 +46,7 @@ fx = lambda v: round(v * W)
 fy = lambda v: round(v * H)
 cheek = [float(v) for v in args.cheek.split(",")]
 box = [float(v) for v in args.mouth_box.split(",")]
+look = [float(v) for v in args.face_box.split(",")]
 
 
 def face_mask() -> Image.Image:
@@ -53,10 +55,10 @@ def face_mask() -> Image.Image:
     cx, cy = fx(cheek[0]), fy(cheek[1])
     ref = np.median(rgb[cy - 6 : cy + 6, cx - 16 : cx + 16].reshape(-1, 3), axis=0)
     near = np.abs(rgb - ref).sum(axis=2) < 45
-    near[: fy(0.146)] = False
-    near[fy(0.508) :] = False
-    near[:, : fx(0.267)] = False
-    near[:, fx(0.733) :] = False
+    near[: fy(look[1])] = False
+    near[fy(look[3]) :] = False
+    near[:, : fx(look[0])] = False
+    near[:, fx(look[2]) :] = False
     ys, xs = np.nonzero(near)
     if len(xs) < 500:
         raise SystemExit("could not find the face's skin: adjust --cheek (x,y as fractions of the picture)")
