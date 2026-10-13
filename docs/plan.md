@@ -18,7 +18,7 @@ cache-friendly way of talking to Claude is not broken.
 | 2 | A memory file she can read and write | medium | Memory is the biggest gap against the lists |
 | 3 | ~~Check the MCP bridge, then decide~~ | done | Was removed on purpose; dropped (see 3) |
 | 4 | Speech input, opt-in | medium | Voice out exists, voice in does not |
-| 5 | Proactive greetings | small, but costly to use | Only without a model call |
+| 5 | ~~Proactive greetings~~ | dropped | A canned line cannot fit every character (see 5) |
 | 6 | Tools for Ollama models that support them | medium to large, spike first | Local code never leaves the machine; quality depends on the model |
 
 Smaller ideas are at the end.
@@ -97,15 +97,13 @@ use the keyboard's microphone key.
   `--lan` still cannot use it.
 - Decide between the two with a half-day spike, as the Cursor plan did.
 
-## 5. Proactive greetings
+## 5. Proactive greetings (dropped)
 
-A companion that speaks first after you have been away is common in the lists. Here every
-message after a long gap pays for the whole conversation again, which is why
-`src/cache-guard.ts` stops it. So a proactive message that calls the model is the opposite
-of what the app protects.
-
-Only worth building as a canned line shown in the page, with no model call, off at every
-start. If that is not wanted, leave it out.
+Resolved 2026-10-13, not built. A companion that speaks first after you have been away is common in the lists. Here every
+message after a long gap pays for the whole conversation again, which is why `src/cache-guard.ts` stops it, so a greeting that
+calls the model is the opposite of what the app protects. The remaining version, a canned line shown by the page with no model
+call, does not fit either: with character cards (step 1) she can be anyone, and a fixed English line would greet in the wrong
+voice. If it comes back, the line has to come from the character (a field of the card, or `persona.md`), not from the app.
 
 ## 6. Tools for Ollama models
 
