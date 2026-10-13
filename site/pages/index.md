@@ -1,12 +1,16 @@
 ---
-description: A free, open-source anime companion that runs on your own computer. Chat with her, let her work in a project folder, redraw herself when you ask, and carry on from your phone.
+description: A face for your coding agent. A free, open-source anime character that fronts Claude Code, Cursor, opencode or Ollama on your own computer, asks before every command or edit, and can be answered from your phone.
 ---
 
 # Anime AI Companion
 
-A free, open-source anime companion who lives in your browser and runs on **your own computer**. You chat with
-her, and she answers in the voice and mood you gave her. Her face is a real vector drawing that blinks, talks and
-changes expression as she writes. Ask her to change her hair or put on glasses and she **redraws herself**.
+**A face for your coding agent.** A free, open-source anime character who lives in your browser and runs on **your own
+computer**, in front of Claude Code, Cursor, opencode or a local Ollama model. In work mode she reads, edits and runs
+commands in your project folder, and **asks first**, with a card that shows the exact command or diff; your phone can
+answer those cards. Her face is a real vector drawing that blinks, talks and changes expression as she writes, and when you
+ask her to change her hair or put on glasses she **redraws herself**. In chat mode she is simply a friend with a face.
+
+![Work mode: she asks before an edit, and the card shows the diff](assets/work.png)
 
 ![The chat and the character side by side](assets/chat.png)
 

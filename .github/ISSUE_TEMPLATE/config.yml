@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and show-and-tell
+    url: https://github.com/rhedak/anime_ai_companion/discussions
+    about: Ask how something works, or show what you made with it. Bugs and ideas go in issues.

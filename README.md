@@ -1,27 +1,40 @@
 # Anime AI Companion
 
-A local, browser-based anime companion who is **drawn by code and driven by Claude Code**.
-Chat with her, and ask her to redesign herself right in the conversation: new hair, a witch
-hat, glasses. Her face is a real vector character whose expression, blinking and mouth are
-redrawn as she talks.
+**A face for your coding agent.** A local, browser-based anime character, drawn by code, that sits in front of
+**Claude Code, Cursor, opencode or a local Ollama model**. She chats, her expression follows the conversation, and in
+**work mode** she reads, edits and runs commands in your project folder, asking first with a card that shows the exact
+command or diff. A phone on your network can answer those cards. Ask her to redesign herself ("blue hair and
+glasses, please") and she redraws.
+
+![Work mode: before an edit she asks, and the card shows the diff](site/assets/work.png)
+
+- **Approvals you can read.** Every command and file change waits for you, with the exact text. Looser modes are opt-in
+  and come back to "ask" at every start.
+- **Your brain, your login.** It runs on your own computer with the agent you already use. Nothing is hosted, and
+  there is no telemetry.
+- **Carry on from your phone.** One flag (`--lan`) lets your phone join the session and answer the cards.
+- **A companion too.** Chat mode is a friend with a face: character cards, her own notes about you, an optional
+  microphone, picture packs instead of the drawn character.
 
 ```
-browser ──ws── Node server ──┬─ `claude -p` (stream-json)   the brain and persona
-                             └─ python render_worker.py      draws her, via anime-character-creator
+browser ──ws── Node server ──┬─ a brain: Claude Code, Cursor, opencode or Ollama   (the persona and the tools)
+                             └─ python render_worker.py                            draws her, via anime-character-creator
 ```
 
 **Documentation: <https://rhedak.github.io/anime_ai_companion/>** (the same material as below, with pictures and a menu).
 **Made with AI coding agents, mostly Claude Code; the documentation was written by Claude Code:** see [How this was made](#how-this-was-made).
 
-It is free to use, change and share (MIT). Everything runs on your machine; the only thing that
-leaves it is the conversation your own `claude` sends to Anthropic.
+It is free to use, change and share (MIT). Everything runs on your machine; the only thing that leaves it is the
+conversation your own brain sends to its provider (nothing at all with Ollama), and, if you turn on the microphone
+button, the recording your browser's speech recognition sends to the browser maker.
 
 ## Requirements
 
 - **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step)
 - **Python 3.11 or newer** (the character renderer is pure standard-library Python). If your `python3`
   is older, `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically
-- **[Claude Code](https://code.claude.com)**, installed and signed in (`claude` on your PATH)
+- **One brain**, installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
+  or [Ollama](https://ollama.com) for a local model
 - A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)**
   next to this repo, or point `CREATOR_SRC` at its `src` folder
 
@@ -33,6 +46,7 @@ git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
 uv sync           # only if your python3 is older than 3.11: creates .venv, which the app then uses
+node bin/anaico.js --doctor   # optional: says what is missing (Node, Python, a brain, the creator, the port)
 npm start          # then open http://127.0.0.1:3737
 ```
 
