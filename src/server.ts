@@ -29,6 +29,7 @@ import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createMemoryService } from "./memory-service.ts";
+import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
@@ -967,7 +968,7 @@ function stopWork(say: Say): void {
   if (shellAbort) {
     shellAbort.abort();
   } else if (provider.interrupt()) {
-    dropQueue();
+    queue.drop();
     for (const id of pendingPermissions.keys()) broadcast({ type: "permission-cancelled", id });
     pendingPermissions.clear();
     broadcast({ type: "notice", text: "Stopped." });
@@ -1075,7 +1076,7 @@ function forgetConversationSize(): void {
 }
 
 function resetConversation(): void {
-  dropQueue();
+  queue.drop();
   provider.reset();
   forgetConversationSize();
   transcript.clear();
@@ -1087,46 +1088,13 @@ function resetConversation(): void {
   cards.greet();
 }
 
-// --- messages typed while she is still answering ---
-// Like Claude Code: they wait in order and go out one by one as each reply ends. Memory only.
-interface QueuedMessage {
-  id: string;
-  text: string;
-  images: ImageInput[];
-}
-const MAX_QUEUED = 10;
-let queue: QueuedMessage[] = [];
-
-const queueMessage = (returned: string[] = []) => ({
-  type: "queue",
-  items: queue.map((q) => ({ id: q.id, text: q.text, images: q.images.length })),
-  returned,
+// --- messages typed while she is still answering: see queue-service.ts ---
+const queue = createQueueService({
+  busy: () => provider.busy,
+  held: () => heldMessage !== null,
+  send: (text, images) => sendUser(text, images),
+  broadcast: (msg) => broadcast(msg),
 });
-
-function enqueueUser(text: string, images: ImageInput[], say: Say): void {
-  if (queue.length >= MAX_QUEUED) return say(`${MAX_QUEUED} messages are already waiting: let her catch up first.`);
-  queue.push({ id: randomUUID(), text, images });
-  broadcast(queueMessage());
-}
-
-/** The next waiting message goes out once nothing is running. */
-function drainQueue(): void {
-  if (provider.busy || heldMessage) return;
-  const next = queue.shift();
-  if (!next) return;
-  broadcast(queueMessage());
-  sendUser(next.text, next.images);
-}
-
-/** Stop, an error, /clear or a new brain: the waiting words go back to the box instead of being lost or sent later. */
-function dropQueue(): void {
-  if (queue.length === 0) return;
-  const returned = queue.map((q) => q.text).filter(Boolean);
-  const pictures = queue.reduce((n, q) => n + q.images.length, 0);
-  queue = [];
-  broadcast(queueMessage(returned));
-  if (pictures) broadcast({ type: "notice", text: `${pictures} attached picture${pictures > 1 ? "s were" : " was"} not kept; attach again to send.` });
-}
 
 /** Shows the user's message in the log and sends it to the brain. */
 function sendUser(text: string, images: ImageInput[], onFinish?: (event: ProviderEvent) => void): void {
@@ -1253,8 +1221,8 @@ function turnHandler(
         opts.onFinish?.(event);
         skills.applyPending();
         // A failed reply does not send what was queued behind it; a good one lets the next message go.
-        if (event.type === "done") drainQueue();
-        else dropQueue();
+        if (event.type === "done") queue.drain();
+        else queue.drop();
       });
     }
   };
@@ -1291,7 +1259,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify(backgroundMessage()));
-  ws.send(JSON.stringify(queueMessage()));
+  ws.send(JSON.stringify(queue.message()));
   void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
@@ -1330,16 +1298,14 @@ wss.on("connection", (ws) => {
         return;
       }
       if (heldMessage) return say("Decide what to do with your earlier message first (the question above).");
-      if (provider.busy) return enqueueUser(msg.text, images, say);
+      if (provider.busy) return queue.enqueue(msg.text, images, say);
       const cold = settings.provider === "claude" && !provider.busy ? coldCache(convo) : null;
       if (cold) return offerColdCache(msg.text, images, cold);
       sendUser(msg.text, images);
     } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
-      const before = queue.length;
-      queue = queue.filter((q) => q.id !== msg.id);
-      if (queue.length !== before) broadcast(queueMessage());
+      queue.remove(msg.id);
     } else if (msg.type === "claude-skills" && typeof msg.value === "boolean") {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       skills.change(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
@@ -1405,7 +1371,7 @@ wss.on("connection", (ws) => {
       settings.provider = msg.provider;
       await saveSettings(settingsPath, settings);
       if (switching) {
-        dropQueue();
+        queue.drop();
         provider.close();
         provider = providers[settings.provider];
         provider.reset(); // a new brain does not share the other one's memory
