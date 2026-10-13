@@ -15,12 +15,23 @@ import WebSocket from "ws";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+/**
+ * The Python the server's renderer will use: PYTHON, else the repo's own .venv, else the first python3 on the PATH (as an absolute path,
+ * because the server under test gets a PATH of its own that only holds the stand-in `claude` and Node).
+ */
+function pythonForServer(): string {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  const venv = join(repo, ".venv", "bin", "python");
+  if (existsSync(venv)) return venv;
+  const found = spawnSync("which", ["python3"], { encoding: "utf8" }).stdout.trim();
+  return found || "python3";
+}
+
 /** Why the server tests cannot run here, or null. They need the creator and a Python that is new enough, like the renderer tests. */
 export function cannotRunServer(): string | null {
   const creator = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src");
   if (!existsSync(creator)) return "the character creator is not next to this repo (set CREATOR_SRC)";
-  const venv = join(repo, ".venv", "bin", "python");
-  const python = existsSync(venv) ? venv : "python3";
+  const python = pythonForServer();
   const version = spawnSync(python, ["--version"], { encoding: "utf8" });
   const match = /Python (\d+)\.(\d+)/.exec(`${version.stdout}${version.stderr}`);
   if (!match || Number(match[1]) < 3 || (Number(match[1]) === 3 && Number(match[2]) < 11)) return "Python 3.11 or newer is needed (run `uv sync`)";
@@ -227,6 +238,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       PORT: String(port),
       CLAUDE_CONFIG_DIR: config,
       CREATOR_SRC: process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src"),
+      PYTHON: pythonForServer(),
       STANDIN_LOG: log,
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
