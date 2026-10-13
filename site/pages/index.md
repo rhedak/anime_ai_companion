@@ -18,7 +18,7 @@ changes expression as she writes. Ask her to change her hair or put on glasses a
   first, with a card that shows the exact command or change. [Work mode](work-mode.html)
 - **Use the brain you already have.** Claude Code, Cursor, opencode, or a local model through Ollama (chat, and an
   experimental work mode for models that support tools). [Brains](brains.html)
-- **Give her a character.** Import a character card from SillyTavern or Chub, with her greeting and lorebook if you like,
+- **Give her a character.** Import a character card from [SillyTavern](https://github.com/SillyTavern/SillyTavern) or [Chub](https://chub.ai), with her greeting and lorebook if you like,
   and she keeps a plain file of notes about you. [Customising](customising.html)
 - **Talk to her.** Type while she answers and your messages queue; the microphone button (opt-in) dictates instead of typing.
   [Chatting](chatting.html)

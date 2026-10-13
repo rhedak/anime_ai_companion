@@ -55,7 +55,7 @@ open and edit.
 
 ### Character cards
 
-Character cards (the community format used by SillyTavern, Chub and similar sites: a `.json` file, or a `.png`
+Character cards (the community format used by [SillyTavern](https://github.com/SillyTavern/SillyTavern), [Chub](https://chub.ai) and similar sites: a `.json` file, or a `.png`
 with the card inside) can give her a ready-made personality.
 
 - `/card import <file>` reads a V1, V2 or V3 card and shows what it will add. Nothing changes until you choose
