@@ -103,6 +103,9 @@ picking one of your saved looks or a preset.
 `docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
 and how to get a consistent set out of an image tool.
 
+A pack of **Risa in a dress** comes with the app too (Looks → Packs… → risa-dress, or `/frames risa-dress`): an original character,
+same as the drawn Risa preset, with the pictures made with Grok Imagine and MIT-licensed like the rest ([`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)).
+
 A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/frames miku`). She is Crypton's character, so that pack is
 unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
 screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
@@ -521,7 +524,7 @@ software you have not read line by line.
   began from AI-generated reference images (some made with Grok, kept in the creator's `ref/` folder), which set the
   style and the first roster, and several characters, Katherina and Risa among them, were traced from such
   references.
-- **The Hatsune Miku pictures** were made with Grok Imagine (see [Credits](#credits)).
+- **The Hatsune Miku pictures and the Risa (dress) pictures** were made with Grok Imagine (see [Credits](#credits)).
 - **The commits** made by Claude Code in this repository carry a `Co-Authored-By` trailer. The creator's commits do
   not, so its history does not show which were AI-written: assume most of its code was.
 
@@ -532,6 +535,7 @@ software you have not read line by line.
   (the code is AI-written and the designs began from AI-generated references: see
   [How this was made](#how-this-was-made)). Please keep saying so if you share what it makes.
 - [`ws`](https://github.com/websockets/ws) for WebSockets.
+- `packs/risa-dress`: an original character, pictures made with Grok Imagine (AI-made; MIT, see its `NOTICE.md`).
 - `packs/miku`: Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
 

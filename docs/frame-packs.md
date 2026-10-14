@@ -104,6 +104,15 @@ Start small. `neutral.png` alone already works; add `neutral-blink.png` and a `n
 emotions you use most (`happy`, `thinking`). Names are case-insensitive, and files she does not recognise are
 listed and ignored.
 
+## The Risa (dress) pack
+
+`packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
+not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
+background, hair to hem so that raised arms fit later), with the prompts and `python/finish_pack.py` run as
+`--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
+neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
+mouth near the chin leaving a smear. The pictures are lossless PNG at full size (15 MB for 35).
+
 ## The Miku pack
 
 `packs/miku/` was made from a base picture of the character cropped to the same framing as the Linnea sample

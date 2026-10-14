@@ -10,6 +10,14 @@ description: Credits, the licence (including the exception for the Hatsune Miku 
 character that belongs to Crypton Future Media and may only be used non-commercially under the terms in its
 [NOTICE](../../packs/miku/NOTICE.md). Delete that folder if you build something commercial from this code.
 
+## The Risa (dress) pack
+
+A second picture pack comes with the app: **Risa in a dress**, an original character (the same as the drawn Risa preset).
+Its pictures were made with Grok Imagine from a design by the repository's owner, then lined up and assembled with a
+script so that only the face changes between pictures. It is MIT-licensed like the rest of the repository, with one
+caveat said openly in its [NOTICE](../../packs/risa-dress/NOTICE.md): whether AI-made pictures can be copyrighted is not
+settled everywhere, and the image tool's own terms apply too.
+
 ## The Hatsune Miku pack
 
 A picture pack of Hatsune Miku comes with the app. It is **unofficial fan art**, used under the
@@ -38,7 +46,7 @@ software you have not read line by line.
   began from AI-generated reference images (some made with Grok, kept in the creator's `ref/` folder), which set the
   style and the first roster, and several characters, Katherina and Risa among them, were traced from such
   references.
-- **The Hatsune Miku pictures** were made with Grok Imagine (see above).
+- **The Hatsune Miku pictures and the Risa (dress) pictures** were made with Grok Imagine (see above).
 - **The commits** made by Claude Code in this repository carry a `Co-Authored-By` trailer. The creator's commits do
   not, so its history does not show which were AI-written: assume most of its code was.
 
@@ -47,7 +55,7 @@ software you have not read line by line.
 - Characters are drawn by **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (MIT),
   which draws them from parametric shapes in code, not by hand and not by image generation (but see
   [how this was made](#how-this-was-made): the designs began from AI-generated references, and the code is
-  AI-written). The picture packs you load can come from anywhere, including image generators; the Miku pack did.
+  AI-written). The picture packs you load can come from anywhere, including image generators; the Miku and Risa (dress) packs did.
 - [`ws`](https://github.com/websockets/ws) for WebSockets and [`qrcode-generator`](https://github.com/kazuhikoarase/qrcode-generator)
   for the phone QR code.
 - This documentation is built with [`marked`](https://github.com/markedjs/marked).
