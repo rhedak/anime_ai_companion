@@ -222,7 +222,7 @@ test("the Miku pack that ships with the app is complete, and carries its credit 
     const e = r.pack.emotions[emotion];
     assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
   }
-  assert.equal(r.pack.files.size, names.length * 5);
+  assert.equal(r.pack.files.size, names.length * 5 + Object.values(r.pack.gestures).flat().length);
   assert.match(r.pack.credit ?? "", /Crypton Future Media, INC\. www\.piapro\.net/);
   assert.ok((r.pack.credit ?? "").length <= 70, "short enough for one line on a phone");
   assert.match(r.pack.terms ?? "", /unofficial/i);

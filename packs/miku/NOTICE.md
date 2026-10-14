@@ -58,4 +58,6 @@ AI-generated fan works. **The repository's owner has asked Crypton about this pa
 contact form, in October 2026) **and had no answer when this was written.** If you want certainty for your own use,
 ask Crypton yourself through their contact form. If Crypton or a rights holder asks for the pack to be removed, it will be.
 
+**The wave and cheer pictures are temporary stand-ins.** They were made separately, in a different drawing of her than the rest of this pack, and cropped to fit, so they do not match the other pictures yet. They are to be redone from this pack's own pictures.
+
 Checked against Crypton's pages on 2026-10-11.
