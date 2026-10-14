@@ -236,3 +236,20 @@ test("the Miku pack that ships with the app is complete, and carries its credit 
     assert.ok(notice.includes(needed), `NOTICE.md should mention "${needed}"`);
   }
 });
+
+test("the Risa (dress) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
+  const r = await readPack(join(root, "packs"), "risa-dress", names);
+  assert.ok(r.ok);
+  for (const emotion of names) {
+    const e = r.pack.emotions[emotion];
+    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  }
+  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.png", "cheer-2.png"], wave: ["wave-1.png", "wave-2.png"] });
+  assert.equal(r.pack.files.size, names.length * 5 + 4);
+  assert.match(r.pack.credit ?? "", /original character/);
+  assert.match(r.pack.terms ?? "", /MIT/);
+  const notes = r.pack.notes.join("\n");
+  assert.doesNotMatch(notes, /different size|Not used|No pictures for/);
+});

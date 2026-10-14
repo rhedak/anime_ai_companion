@@ -6,6 +6,7 @@
  *   neutral-blink.png    eyes shut, for the blink
  *   neutral-talk1.png    mouth open a little; talk2, talk3 ... open wider. They play while she speaks.
  *   happy.png, happy-blink.png, happy-talk1.png ...   the same for any emotion in emotions.json
+ *   wave-1.png, wave-2.png, cheer-1.png ...   the pictures she alternates while she makes that gesture (optional)
  *
  * An emotion without pictures falls back to neutral, a missing blink means no blink, and missing talk
  * frames mean the page only bobs her. Two optional text files describe where the pictures come from:

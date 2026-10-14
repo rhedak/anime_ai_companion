@@ -9,7 +9,7 @@ repository, so you may use, change and share them, commercially too.
 
 **These pictures were made with AI.** The base picture was made with xAI's Grok Imagine from a design by the
 repository's owner, and cleaned up by hand. Every other picture (six emotions, each with a blink and three mouth
-openings, 35 in all) was edited from that base with Grok Imagine, one change at a time, and put together by a script
+openings, and two poses each for a wave and a cheer: 39 in all) was edited from that base with Grok Imagine, one change at a time, and put together by a script
 (`python/finish_pack.py`) that keeps everything but the face identical between pictures. The character's design itself
 began from AI-generated reference images, as the About page of the documentation says.
 
