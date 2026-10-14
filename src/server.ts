@@ -280,10 +280,25 @@ const modeInfo = () => ({
 
 const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
 
-async function refreshOllamaModels(): Promise<void> {
-  const before = JSON.stringify(ollamaModels);
+async function refreshOllamaModels(announce = true): Promise<void> {
+  const before = JSON.stringify([ollamaModels, settings.ollamaModel]);
   ollamaModels = await listOllamaModels(ollamaHost);
-  if (JSON.stringify(ollamaModels) !== before) broadcast(modeInfo());
+  // With Ollama as the brain and no model named (COMPANION_PROVIDER=ollama, OLLAMA_MODEL unset), use the first one installed, as documented.
+  // Only in memory: the pick of the user (menu, OLLAMA_MODEL) is what is saved, never this default.
+  if (settings.provider === "ollama" && !settings.ollamaModel && ollamaModels?.length) settings.ollamaModel = ollamaModels[0];
+  if (announce && JSON.stringify([ollamaModels, settings.ollamaModel]) !== before) broadcast(modeInfo());
+}
+if (settings.provider === "ollama") {
+  await refreshOllamaModels(false); // nobody is connected yet
+  ollamaBrain.configure(sessionConfig()); // takes the model chosen above, so the banner names it and the first message uses it
+  void ollamaBrain.checkTools();
+}
+
+/** Why a message cannot be sent to Ollama yet, said to the user (a turn that fails before the model is asked is not kept in the log). */
+function ollamaNotReady(): string {
+  if (ollamaModels === null) return `Could not reach Ollama at ${ollamaHost}. Start it with: ollama serve`;
+  if (ollamaModels.length === 0) return "Ollama has no models yet. Pull one, for example: ollama pull llama3.2";
+  return "No Ollama model is chosen yet. Pick one in the Brain menu, or start with OLLAMA_MODEL=<name>.";
 }
 
 /** Approvals waiting for an answer, so a reloaded tab can show them again. */
@@ -943,6 +958,7 @@ const turns = createTurnService({
   avatar,
   transcript,
   activePack: () => activePack,
+  notReady: () => (settings.provider === "ollama" && !settings.ollamaModel ? ollamaNotReady() : null),
   emotionNames: () => Object.keys(emotions),
   folder: () => sessionConfig().cwd,
   broadcast: (msg) => broadcast(msg),

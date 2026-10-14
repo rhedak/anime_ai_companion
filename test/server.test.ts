@@ -603,3 +603,72 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     assert.equal(readFileSync(join(server.project, "made.txt"), "utf8").trim(), "made");
   });
 });
+
+describe("starting with Ollama as the brain and no model named", { skip }, () => {
+  let fake: ReturnType<typeof createServer>;
+  const chats: any[] = [];
+  let installed: { name: string }[] = [{ name: "qwen2.5:0.5b" }, { name: "llama3.2:3b" }];
+  before(async () => {
+    fake = createServer(async (req: IncomingMessage, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: installed }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: ["completion"] }));
+      chats.push(body);
+      if (!body.model) {
+        res.writeHead(400);
+        return void res.end(JSON.stringify({ error: "model is required" }));
+      }
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.write(JSON.stringify({ message: { role: "assistant", content: "[emotion:happy] hello" }, done: false }) + "\n");
+      res.end(JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+  });
+  after(() => fake?.close());
+  const host = () => `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
+
+  test("the first installed model is used, as the documentation says, without being saved as the user's choice", async () => {
+    installed = [{ name: "qwen2.5:0.5b" }, { name: "llama3.2:3b" }];
+    chats.length = 0;
+    const server = await startServer({ settings: { provider: "ollama" }, env: { OLLAMA_HOST: host() } });
+    try {
+      const c = await server.client();
+      const mode = await c.next((e) => e.type === "mode" && e.provider === "ollama");
+      assert.equal(mode.ollamaModel, "qwen2.5:0.5b");
+      const from = c.mark;
+      c.say("hello there");
+      await c.done(from);
+      assert.equal(chats.length, 1);
+      assert.equal(chats[0].model, "qwen2.5:0.5b", "the model was named in the request");
+      assert.ok(!c.since(from).some((e) => e.type === "error"));
+      assert.equal(JSON.parse(readFileSync(join(server.dir, "data", "settings.json"), "utf8")).ollamaModel ?? null, null, "a default, not a choice");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("with no model installed a message is not sent and not kept, and she says what to do", async () => {
+    installed = [];
+    chats.length = 0;
+    const server = await startServer({ settings: { provider: "ollama" }, env: { OLLAMA_HOST: host() } });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      for (let i = 0; i < 2; i++) {
+        const from = c.mark;
+        c.say("hello?");
+        const notice = await c.next((e) => e.type === "notice" && /Ollama has no models yet/.test(e.text), 5000, from);
+        assert.match(notice.text, /ollama pull llama3\.2/);
+        assert.ok(!c.since(from).some((e) => e.type === "user"), "the message is not shown as sent");
+      }
+      assert.equal(chats.length, 0, "Ollama was never asked");
+      const again = await server.client();
+      const history = await again.next("history");
+      assert.equal(history.items.filter((i: any) => i.type === "user").length, 0, "nothing was saved");
+    } finally {
+      await server.stop();
+    }
+  });
+});

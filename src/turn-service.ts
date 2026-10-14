@@ -25,6 +25,8 @@ export interface TurnDeps {
   transcript: Transcript;
   /** The picture pack in use, if any. */
   activePack(): FramePack | null;
+  /** Why a message cannot be sent right now (no model chosen for Ollama, say), or null. Such a message is not kept in the log. */
+  notReady(): string | null;
   emotionNames(): string[];
   /** The folder she works in: pictures she names are looked up there. */
   folder(): string;
@@ -205,6 +207,8 @@ export function createTurnService(deps: TurnDeps) {
 
     /** A message from the user: held for a question, queued behind a reply, asked about (cold cache), or sent. */
     submit(text: string, images: ImageInput[], say: Say): void {
+      const notReady = deps.notReady();
+      if (notReady) return say(notReady);
       if (held) return say("Decide what to do with your earlier message first (the question above).");
       if (deps.provider().busy) return deps.queue.enqueue(text, images, say);
       const cold = deps.brain() === "claude" ? coldCache(deps.convo) : null;
