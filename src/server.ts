@@ -20,7 +20,7 @@ import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { randomUUID } from "node:crypto";
-import { isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -527,7 +527,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
-  notes.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags and gestures do nothing. Your emotions and talking still drive which picture is shown.");
+  notes.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing. " + gestureNote(result.pack) + " Your emotions and talking still drive which picture is shown.");
   broadcast(packMessage());
   broadcast(await packsMessage());
   say(

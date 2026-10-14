@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -44,6 +44,26 @@ test("pictures are told apart by their names, and talk frames by number", async 
       assert.ok(r.pack.notes.some((n) => /No pictures for sad, thinking: she shows neutral/.test(n)));
     },
   );
+});
+
+test("pose pictures for a gesture are found by name and number, and unknown gestures are not used", async () => {
+  const img = png(100, 120);
+  await withPack({ "neutral.png": img, "wave-2.png": img, "wave-1.png": img, "wave-10.webp": img, "cheer-1.png": img, "dance-1.png": img, "wave.png": img }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.ok(r.ok);
+    assert.deepEqual(r.pack.gestures, { wave: ["wave-1.png", "wave-2.png", "wave-10.webp"], cheer: ["cheer-1.png"] });
+    assert.ok(r.pack.files.has("wave-2.png") && !r.pack.files.has("dance-1.png"), "only recognised pictures are ever served");
+    assert.match(r.pack.notes.join("\n"), /Not used .*dance-1\.png, wave\.png/);
+    const info = packInfo(r.pack);
+    assert.match(info.gestures.wave[0], /^\/frames\/mine\/wave-1\.png\?v=\d+$/);
+    assert.equal(gestureNote(r.pack), "Of the gestures, only cheer and wave show a picture; the others change nothing.");
+  });
+  await withPack({ "neutral.png": img }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.ok(r.ok);
+    assert.deepEqual(r.pack.gestures, {});
+    assert.equal(gestureNote(r.pack), "Gestures change nothing either.");
+  });
 });
 
 test("a pack needs a neutral picture", async () => {

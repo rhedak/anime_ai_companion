@@ -33,6 +33,13 @@ export function demoMessage(emotions: string[], gestures: string[], pack: FrameP
   const steps: DemoStep[] = have.map((name) => ({ kind: "emotion", name }));
   if (pictures.some((e) => e.blink)) steps.push({ kind: "blink" });
   if (pictures.some((e) => e.talk.length)) steps.push({ kind: "talk" });
-  const left = ["gestures (a picture set cannot raise an arm)", ...(missing.length ? [`${missing.join(", ")} (no pictures)`] : [])];
+  const moves = gestures.filter((name) => pack.gestures[name]?.length);
+  for (const name of moves) steps.push({ kind: "gesture", name });
+  const noMoves = gestures.filter((name) => !moves.includes(name));
+  const left = [
+    ...(noMoves.length ? [`gestures ${noMoves.join(", ")} (no pictures)`] : []),
+    ...(missing.length ? [`${missing.join(", ")} (no pictures)`] : []),
+  ];
+  if (!left.length) return { type: "demo", hold: DEMO_HOLD_MS, steps };
   return { type: "demo", hold: DEMO_HOLD_MS, steps, note: `Left out in this pack: ${left.join("; ")}.` };
 }

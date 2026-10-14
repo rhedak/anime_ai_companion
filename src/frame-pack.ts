@@ -17,6 +17,7 @@
 import type { Dirent } from "node:fs";
 import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { GESTURES } from "../public/frames.js";
 
 export interface PackEmotion {
   idle: string;
@@ -28,6 +29,8 @@ export interface PackEmotion {
 export interface FramePack {
   name: string;
   emotions: Record<string, PackEmotion>;
+  /** Pictures that alternate while she makes a gesture (`wave-1.png`, `wave-2.png`), in order; only gestures the app knows. */
+  gestures: Record<string, string[]>;
   /** Every servable file by its name in the folder. Anything not in here is never sent. */
   files: Map<string, { path: string; mtimeMs: number }>;
   /** Things the user should know: odd sizes, files that were not understood, emotions that fall back. */
@@ -46,6 +49,7 @@ export interface PackInfo {
   credit?: string;
   terms?: string;
   emotions: Record<string, { idle: string; blink?: string; talk: string[] }>;
+  gestures: Record<string, string[]>;
 }
 
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
@@ -53,6 +57,7 @@ const MAX_CREDIT = 300;
 const MAX_TERMS = 600;
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
+const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.(png|webp|jpe?g)$/i;
 const FRAME_FILE = /^([a-z][a-z0-9_]*)(?:-(blink)|-talk(\d{1,2}))?\.(png|webp|jpe?g)$/i;
 
 export const isPackName = (name: string): boolean => PACK_NAME.test(name) && !name.includes("..");
@@ -95,12 +100,28 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   const notes: string[] = [];
   const files = new Map<string, { path: string; mtimeMs: number }>();
   const found: Record<string, { idle?: string; blink?: string; talk: [number, string][] }> = {};
+  const poses: Record<string, [number, string][]> = {};
   const sizes = new Map<string, string>();
   const ignored: string[] = [];
 
   const names = entries.filter((e) => e.isFile()).map((e) => e.name).sort();
   if (names.length > MAX_FILES) return { ok: false, reason: `Too many files in the pack (more than ${MAX_FILES}).` };
   for (const file of names) {
+    const pose = POSE_FILE.exec(file);
+    const gesture = pose?.[1].toLowerCase();
+    if (pose && gesture && gesture in GESTURES) {
+      const path = join(folder, file);
+      const info = await stat(path);
+      if (info.size > MAX_FRAME_BYTES) {
+        notes.push(`${file} is larger than ${MAX_FRAME_BYTES / 1024 / 1024} MB and was left out.`);
+        continue;
+      }
+      (poses[gesture] ??= []).push([Number(pose[2]), file]);
+      files.set(file, { path, mtimeMs: info.mtimeMs });
+      const size = await imageSize(path);
+      sizes.set(file, size ? `${size.width}×${size.height}` : "?");
+      continue;
+    }
     const m = FRAME_FILE.exec(file);
     const emotion = m?.[1].toLowerCase();
     if (!m || !emotion || !emotions.includes(emotion)) {
@@ -141,11 +162,13 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
         odd.map((f) => `${f} (${sizes.get(f)})`).join(", ") + ".",
     );
   }
+  const gestures: Record<string, string[]> = {};
+  for (const [gesture, list] of Object.entries(poses)) gestures[gesture] = list.sort((a, b) => a[0] - b[0]).map(([, f]) => f);
   const plain = emotions.filter((e) => !result[e]);
   if (plain.length) notes.push(`No pictures for ${plain.join(", ")}: she shows neutral for those.`);
   const known = new Set(["credit.txt", "NOTICE.md"]);
   const unused = ignored.filter((f) => !known.has(f));
-  if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN].png/.webp/.jpg): ${unused.join(", ")}.`);
+  if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN] or <gesture>-N, as .png/.webp/.jpg): ${unused.join(", ")}.`);
   const lines = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
     .split(/\r?\n/)
     .map((line) => line.replace(/[\u0000-\u001f\u007f]+/g, " ").trim())
@@ -161,6 +184,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
     pack: {
       name,
       emotions: result,
+      gestures,
       files,
       notes,
       credit: usable ? credit : undefined,
@@ -175,7 +199,14 @@ export function packInfo(pack: FramePack): PackInfo {
   for (const [emotion, e] of Object.entries(pack.emotions)) {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };
   }
-  return { name: pack.name, credit: pack.credit, terms: pack.terms, emotions };
+  const gestures = Object.fromEntries(Object.entries(pack.gestures).map(([name, list]) => [name, list.map(url)]));
+  return { name: pack.name, credit: pack.credit, terms: pack.terms, emotions, gestures };
+}
+
+/** What to tell the model about gestures while this pack is on: which ones show a picture, and that the rest change nothing. */
+export function gestureNote(pack: FramePack | null): string {
+  const have = Object.keys(pack?.gestures ?? {});
+  return have.length ? `Of the gestures, only ${have.join(" and ")} show a picture; the others change nothing.` : "Gestures change nothing either.";
 }
 
 /** Width and height from the first bytes of a PNG, WebP or JPEG; null for anything else. */

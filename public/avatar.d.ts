@@ -14,7 +14,7 @@ export function createAvatar(
   onError?: (error: unknown) => void,
 ): {
   /** Show a user's picture pack, or the drawn avatar again for null. */
-  usePack(info: { name: string; emotions: Record<string, PackEmotionInfo> } | null): void;
+  usePack(info: { name: string; emotions: Record<string, PackEmotionInfo>; gestures?: Record<string, string[]> } | null): void;
   readonly packed: boolean;
   setVersion(version: number): void;
   setEmotion(name: string): void;

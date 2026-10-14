@@ -200,6 +200,9 @@ function createPackAvatar(host, onError) {
   let nextMouth = 0;
   let mouth = 0;
   let shown = null;
+  let gestureName = null;
+  let gestureStart = 0;
+  let gestureUntil = 0;
   /** url -> its <img>, created the first time the emotion that uses it is on screen */
   const images = new Map();
 
@@ -229,6 +232,8 @@ function createPackAvatar(host, onError) {
   }
 
   function pick(now, e) {
+    const poses = now < gestureUntil ? pack?.gestures?.[gestureName] : null;
+    if (poses?.length) return poses[Math.floor(Math.max(0, now - gestureStart) / 280) % poses.length]; // as the drawn avatar's two arm poses
     if (e.blink && now > nextBlink) {
       blinkUntil = now + 130;
       nextBlink = now + 2500 + Math.random() * 3500;
@@ -247,6 +252,7 @@ function createPackAvatar(host, onError) {
       const e = active && entry();
       if (e) {
         for (const url of [e.idle, e.blink, ...e.talk]) if (url) imageFor(url); // load the rest while the idle one shows
+        for (const poses of Object.values(pack?.gestures ?? {})) for (const url of poses) imageFor(url);
         show(pick(now, e));
       }
     } catch (err) {
@@ -265,6 +271,7 @@ function createPackAvatar(host, onError) {
     },
     setPack(info) {
       pack = info;
+      gestureUntil = 0;
       shown = null;
       images.clear();
       host.replaceChildren();
@@ -279,24 +286,31 @@ function createPackAvatar(host, onError) {
     blink(ms = 130) {
       blinkUntil = performance.now() + ms;
     },
-    /** Load these emotions' pictures ahead of time so none is blank the first time it shows. */
-    warm(emotions) {
+    /** Load these emotions' pictures, and these gestures' poses, ahead of time so none is blank the first time it shows. */
+    warm(emotions, gestures = []) {
       const loading = [];
-      for (const name of emotions) {
-        const e = pack?.emotions[name];
-        if (!e) continue;
-        for (const url of [e.idle, e.blink, ...e.talk]) {
-          if (!url) continue;
-          const img = imageFor(url);
-          if (!img.complete) loading.push(new Promise((done) => (img.addEventListener("load", done, { once: true }), img.addEventListener("error", done, { once: true }))));
-        }
+      const groups = [
+        ...emotions.map((name) => pack?.emotions[name]).filter(Boolean).map((e) => [e.idle, e.blink, ...e.talk]),
+        ...gestures.map((name) => pack?.gestures?.[name]).filter(Boolean),
+      ];
+      for (const url of groups.flat()) {
+        if (!url) continue;
+        const img = imageFor(url);
+        if (!img.complete) loading.push(new Promise((done) => (img.addEventListener("load", done, { once: true }), img.addEventListener("error", done, { once: true }))));
       }
       return Promise.race([Promise.all(loading).then(() => {}), new Promise((done) => setTimeout(done, 5000))]);
     },
-    // A picture set has one fixed framing and cannot raise an arm or be redrawn.
+    /** Alternate this gesture's pose pictures for a moment, if the pack has any; otherwise nothing, as a picture set cannot raise an arm by itself. */
+    gesture(name, ms = 2400) {
+      if (!pack?.gestures?.[name]?.length) return;
+      const now = performance.now();
+      gestureName = name;
+      gestureStart = now;
+      gestureUntil = now + ms;
+    },
+    // A picture set has one fixed framing and cannot be redrawn.
     setVersion() {},
     setFull() {},
-    gesture() {},
     receiveGesture() {},
     receiveFrames() {},
   };

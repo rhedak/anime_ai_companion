@@ -3,7 +3,7 @@ import { GESTURE_NAMES, type AvatarService } from "./avatar.ts";
 import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { demoMessage } from "./demo.ts";
-import type { FramePack } from "./frame-pack.ts";
+import { gestureNote, type FramePack } from "./frame-pack.ts";
 import type { ImageInput } from "./images.ts";
 import type { createCardService } from "./card-service.ts";
 import type { createMemoryService } from "./memory-service.ts";
@@ -68,7 +68,7 @@ export function createTurnService(deps: TurnDeps) {
       const tags = findAvatarTags(reply);
       for (; seen < tags.length; seen++) {
         if (deps.activePack()) {
-          deps.notes.pushOnce("Your look is a fixed set of pictures now: [avatar ...] tags and gestures change nothing. Do not use them.");
+          deps.notes.pushOnce(`Your look is a fixed set of pictures now: [avatar ...] tags change nothing, so do not use them. ${gestureNote(deps.activePack())}`);
           continue;
         }
         deps.avatar

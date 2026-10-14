@@ -7,7 +7,7 @@ import { createDemo } from "../public/demo.js";
 const emotions = ["neutral", "happy", "sad", "thinking"];
 const gestures = ["wave", "cheer"];
 
-const packOf = (emotionPictures: FramePack["emotions"]): FramePack => ({ name: "p", emotions: emotionPictures, files: new Map(), notes: [] });
+const packOf = (emotionPictures: FramePack["emotions"], poses: FramePack["gestures"] = {}): FramePack => ({ name: "p", emotions: emotionPictures, gestures: poses, files: new Map(), notes: [] });
 
 test("the drawn avatar shows every emotion, a blink, talking and each gesture, in that order", () => {
   const m = demoMessage(emotions, gestures, null);
@@ -29,6 +29,16 @@ test("a picture pack shows only what its pictures have, and says what it left ou
   assert.match(m.note ?? "", /sad, thinking/);
   const noBlink = demoMessage(emotions, gestures, packOf({ neutral: { idle: "n", talk: ["t1"] } }));
   assert.deepEqual(noBlink.steps.map((s) => s.kind), ["emotion", "talk"]);
+});
+
+test("a picture pack with poses for a gesture shows that gesture, and leaves out only the others", () => {
+  const faces = { neutral: { idle: "n", talk: [] } };
+  const some = demoMessage(["neutral"], gestures, packOf(faces, { wave: ["w1", "w2"] }));
+  assert.deepEqual(some.steps, [{ kind: "emotion", name: "neutral" }, { kind: "gesture", name: "wave" }]);
+  assert.match(some.note ?? "", /cheer \(no pictures\)/);
+  assert.doesNotMatch(some.note ?? "", /wave/);
+  const all = demoMessage(["neutral"], gestures, packOf(faces, { wave: ["w1"], cheer: ["c1", "c2"] }));
+  assert.equal(all.note, undefined); // nothing left out, so nothing to say
 });
 
 /** An avatar and a clock that only record, so the whole sequence runs at once. */

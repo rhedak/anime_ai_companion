@@ -47,6 +47,7 @@ function fakePage() {
 
 const pack = {
   name: "p",
+  gestures: {},
   emotions: {
     neutral: { idle: "n.png", blink: "n-blink.png", talk: ["n-t1.png", "n-t2.png"] },
     happy: { idle: "h.png", blink: "h-blink.png", talk: [] },
@@ -122,6 +123,33 @@ test("talking cycles the rest picture and the mouth-open ones, and does nothing 
       page.frame(ms);
       assert.deepEqual(page.visible(), ["s.png"]);
     }
+  } finally {
+    page.restore();
+  }
+});
+
+test("a gesture alternates the pack's pose pictures for a moment, and does nothing for a gesture it has none for", () => {
+  const page = fakePage();
+  try {
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    avatar.usePack({ ...pack, gestures: { wave: ["w1.png", "w2.png"] } });
+    page.frame(100);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    avatar.gesture("cheer"); // no poses for it
+    page.frame(150);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    avatar.gesture("wave", 1000);
+    page.frame(200); // the first frame may start a moment before the gesture did
+    const first = page.visible();
+    assert.ok(["w1.png", "w2.png"].includes(first[0]));
+    const seen = new Set<string>();
+    for (let ms = 200; ms < 950; ms += 40) { // the gesture lasts a second from the real clock, a few milliseconds after t0
+      page.frame(ms);
+      seen.add(page.visible()[0]);
+    }
+    assert.deepEqual([...seen].sort(), ["w1.png", "w2.png"]);
+    page.frame(1500); // over: back to her face
+    assert.deepEqual(page.visible(), ["n.png"]);
   } finally {
     page.restore();
   }
