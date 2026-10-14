@@ -312,7 +312,7 @@ test("what she answers as a picture pack: no redrawing, honest help, and moods a
   assert.match(pack("what can you do?").text, /picture pack[^]*\/frames off/);
   assert.doesNotMatch(pack("what can you do?").text, /hair/, "the help does not offer redrawing");
   assert.match(pack("undo").text, /nothing to undo/);
-  assert.match(pack("how is the weather").text, /As a picture pack/);
+  assert.match(pack("how is the weather").text, /as a picture pack I only know/);
   assert.equal(pack("show me work mode").scene, "work");
   assert.match(pack("show me all your expressions").text, /\[demo\]$/);
 });
@@ -426,6 +426,24 @@ test("she understands several requests in one message, in any order, and says wh
   assert.deepEqual(findAvatarTags(say("hair pink and glasses").text), [{ hair_color: "#ff88cc", glasses: "true" }]);
 });
 
+test("asked to chat, or for what only a model could do, she says plainly that the demo has none and where to get one", () => {
+  for (const text of ["can we chat?", "let's talk", "how are you", "who are you?", "what is your name", "tell me a joke", "write me a poem", "explain quantum physics", "what do you think about cats"]) {
+    const answer = say(text).text;
+    assert.match(answer, /^\[emotion:happy\]/, text);
+    assert.match(answer, /no language model[^]*Claude Code, Cursor or opencode[^]*\[Ollama\]\(https:\/\/ollama\.com\)/, text);
+    assert.doesNotMatch(answer, /\[avatar|\[gesture/, text);
+  }
+  // things she can do are not mistaken for chatting
+  for (const text of ["wave at me", "can you wave", "show me everything", "become Linnea", "talk about my hair: make it pink", "be shy", "what can you do?"]) {
+    assert.doesNotMatch(say(text).text, /no language model/, text.includes("what can") ? "the help mentions it differently" : text);
+  }
+  assert.match(say("what can you do?").text, /can't chat freely/);
+  assert.match(reply("tell me a joke", { presets: PRESETS, pack: true }).text, /no language model/);
+  assert.match(reply("how is the weather", { presets: PRESETS, pack: true }).text, /no language model[^]*as a picture pack/);
+  const ends = say("how is the weather").text;
+  assert.match(ends, /Then you can ask me anything\.$/, "ends on words, because the bubble over her picture shows the tail as plain text");
+});
+
 test("taking things off works across an 'and', and putting on after taking off does not inherit it", () => {
   assert.match(say("remove my glasses and hat").text, /\[avatar glasses=false hat_color=none\]/);
   assert.match(say("take off the hat and put on glasses").text, /\[avatar hat_color=none glasses=true\]/);
@@ -441,7 +459,8 @@ test("presets, moods, gestures, and the things she is honest about", () => {
   assert.match(say("wave at me").text, /\[gesture:wave\]/);
   assert.match(say("cheer").text, /\[gesture:cheer\]/);
   assert.match(say("put on a coat").text, /I need a colour for the coat/);
-  assert.match(say("how is the weather").text, /only knows a few things/);
+  assert.match(say("how is the weather").text, /beyond my script[^]*no language model[^]*Ollama/);
+  assert.match(say("how is the weather").text, /\(https:\/\/rhedak\.github\.io\/anime_ai_companion\/brains\.html#ollama\)/, "the way to set a model up");
   assert.match(say("what can you do?").text, /20 characters/);
   assert.match(say("what can you do?").text, /\/show/);
   assert.match(say("show me all your expressions").text, /\[demo\]$/);

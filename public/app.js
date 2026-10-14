@@ -378,6 +378,7 @@ setInterval(renderWorking, 500);
 // The bubble is a glimpse, not the transcript: show the latest few lines only.
 const BUBBLE_MAX = 220;
 function showBubble(text) {
+  text = text.replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, "$1"); // a link is just its words here: the chat has the link
   bubble.hidden = !text;
   if (text.length > BUBBLE_MAX) {
     const tail = text.slice(-BUBBLE_MAX);

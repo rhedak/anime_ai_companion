@@ -113,13 +113,27 @@ const HELP =
   "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the 20 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
-  "The Undo button above my picture takes back the last change.";
+  "The Undo button above my picture takes back the last change. I can't chat freely here: that needs a real language model, and the real app has one.";
 
 /** What she says when the picture pack is chosen (the same for a first choice and a later one). */
 export const PACK_INTRO =
   "[emotion:happy] [gesture:wave] This is an image pack: right now I'm a set of pictures, not a character drawn by code. " +
   "I can still change my face, blink, talk, wave and cheer, but I can't redraw myself: no new hair, eyes, glasses, clothes or other characters while the pictures are on. " +
   "To get that back, choose Looks… → Packs… → Drawn avatar (or type /frames off). Type /show to see everything the pictures can do.";
+
+const DOCS = "https://rhedak.github.io/anime_ai_companion/";
+
+/**
+ * Where she points when something needs a real model. Links come in the middle, so the bubble over her picture (which shows only the tail of a
+ * reply, as plain text) ends on words.
+ */
+const NEEDS_MODEL =
+  "To really talk I need a proper language model behind me. The real app connects me to Claude Code, Cursor or opencode, or to a free model " +
+  `that runs on your own computer through [Ollama](https://ollama.com) ([how to set that up](${DOCS}brains.html#ollama)). Then you can ask me anything.`;
+
+/** She is asked to chat (or something only a model could answer). */
+const CHAT_WORDS =
+  /\b(chat|talk|converse|conversation|speak)\b.*\b(you|with|me)\b|\bcan (we|you|i) (chat|talk)\b|\b(let'?s|lets|i want to|i wanna) (chat|talk)\b|\bhow are you\b|\bwho are you\b|\byour name\b|\btell me (a|an|about|something)\b|\bjoke\b|\bwrite (me|a)\b|\bexplain\b|\bwhat do you (think|like)\b/;
 
 /** What she says when the drawn avatar comes back. */
 export const DRAWN_AGAIN =
@@ -128,7 +142,7 @@ export const DRAWN_AGAIN =
 const HELP_PACK =
   "[emotion:happy] Here is what I can do as a picture pack: show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
   "I can't change my looks while I'm pictures: for that, go back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off). " +
-  'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session.';
+  'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. I can\'t chat freely here: that needs a real language model.';
 
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
@@ -142,6 +156,9 @@ export function reply(input, context = {}) {
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
+  if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become|hair|eyes|glasses|hat|coat|skirt)\b/.test(t)) {
+    return { text: `[emotion:happy] I'd love to chat, but this demo has no language model: I only follow a small script. ${NEEDS_MODEL}` };
+  }
   if (HELP_WORDS.test(t)) return { text: context.pack ? HELP_PACK : HELP };
   if (/\bundo\b/.test(t) && context.pack) return { text: "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
@@ -232,9 +249,9 @@ export function reply(input, context = {}) {
     return {
       text:
         context.pack
-          ? '[emotion:thinking] As a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". Or ask "what can you do?"'
-          : '[emotion:thinking] This demo only knows a few things. Try "make my hair mint green", "put on glasses and a witch hat", "become Linnea", ' +
-            '"be shy", "wave", "/show", or "show me work mode". Or ask "what can you do?"',
+          ? `[emotion:thinking] That is beyond my script: this demo has no language model, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". ${NEEDS_MODEL}`
+          : '[emotion:thinking] That is beyond my script: this demo has no language model, so I only know a few things. Try "make my hair mint green", ' +
+            `"put on glasses and a witch hat", "become Linnea", "be shy", "wave", "/show" or "show me work mode". ${NEEDS_MODEL}`,
     };
   }
 

@@ -23,6 +23,9 @@ What is here, and how the pieces fit:
 - `script.js` is what she says: a small rule-based reader that turns a message into a reply with the same tags a model would write. It
   understands several requests in one message (hair, eyes, glasses, hats, a coat, a skirt, hairstyles, presets, moods, gestures, taking things
   off) and answers honestly about anything else. `GREETING` is her first message.
+- Asked to chat, or for anything only a model could do (a joke, a poem, "who are you?"), or for anything the script does not know, she says plainly
+  that the demo has no language model, and points to the real app's brains (Claude Code, Cursor, opencode) and to Ollama with a link to the
+  setup page. The reply ends on words, because the bubble over her picture shows the tail of a reply as plain text.
 - `demo.css` is the demo's few changes to the page: a banner, and hiding what only means something with a server behind it (the brain,
   folder, permission and effort menus, the Chat/Work switch, attachments, saved looks, the microphone). `demo-boot.js` adds the suggested prompts.
 - The stand-in also plays one scripted scene, a pretend work-mode session: she reads a page, wants one edit, and asks with the real approval
