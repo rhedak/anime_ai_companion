@@ -127,7 +127,13 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   if (p.env.CREATOR_SRC) {
     if (p.exists(p.env.CREATOR_SRC)) add("ok", `Character creator: ${p.env.CREATOR_SRC} (CREATOR_SRC)`);
     else add("fail", `CREATOR_SRC points at ${p.env.CREATOR_SRC}, which does not exist`, "Fix the path, or unset CREATOR_SRC to use a checkout next to this repo or the pinned release.");
-  } else if (p.exists(sibling)) add("ok", `Character creator: the checkout next to this repo (${sibling})`);
+  } else if (p.exists(sibling)) {
+    // The release this version was made for (package.json) is what a fresh install gets; a checkout of the creator's main may be ahead of it.
+    const at = pinned ? p.run("git", ["-C", resolve(sibling, ".."), "describe", "--tags", "--always"]) : null;
+    if (pinned && at && at !== pinned) {
+      add("warn", `Character creator: the checkout next to this repo is at ${at}, not the release this version pins (${pinned})`, `Fine for development, but a fresh install uses ${pinned}. To match it: git -C ${resolve(sibling, "..")} checkout ${pinned}`);
+    } else add("ok", `Character creator: the checkout next to this repo (${sibling})`);
+  }
   else if (cloned && p.exists(cloned)) add("ok", `Character creator ${pinned}: already fetched (${cloned})`);
   else if (p.run("git", ["--version"])) add("warn", `Character creator ${pinned ?? ""}: not here yet, so the first start downloads it into ${cloned || "~/.anaico/creator"}`, "That needs internet once. Or clone it next to this repo: git clone https://github.com/rhedak/anime-character-creator.git ../anime-character-creator");
   else add("fail", "Character creator: not found, and git is not installed to fetch it", "Install git, or clone https://github.com/rhedak/anime-character-creator.git next to this repo and run again.");

@@ -95,3 +95,15 @@ test("Python versions are read from `python --version` output", () => {
   assert.deepEqual(parsePython("Python 3.9.9\n"), [3, 9]);
   assert.equal(parsePython("command not found"), null);
 });
+
+test("a checkout of the creator that is not at the pinned release is a warning with the way back, and one at it is fine", async () => {
+  const git = "git -C /anime-character-creator describe --tags --always";
+  const ahead = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.12.1", "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2-1-g1bcb2f8" } }));
+  const warning = ahead.find((l) => /next to this repo is at v0\.2\.2-1-g1bcb2f8/.test(l.text));
+  assert.equal(warning?.level, "warn");
+  assert.match(warning!.text, /not the release this version pins \(v0\.2\.2\)/);
+  assert.match(warning!.hint!, /checkout v0\.2\.2/);
+  const exact = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.12.1", "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2" } }));
+  assert.ok(exact.some((l) => l.level === "ok" && /the checkout next to this repo/.test(l.text)));
+  assert.ok(!exact.some((l) => /not the release/.test(l.text)));
+});
