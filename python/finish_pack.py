@@ -38,6 +38,7 @@ parser.add_argument("--mouth-box", default="0.417,0.408,0.583,0.518", help="x0,y
 parser.add_argument("--pose-face", default="happy", help="the picture a pose (wave-1, cheer-2 ...) is made from, whose face it keeps")
 parser.add_argument("--pose-align", choices=["head", "body"], default="head", help="line a pose edit up on the top of her head (default) or on the outline of her body, which suits an edit whose head is drawn a little differently")
 parser.add_argument("--pose-keep", action="append", default=[], help="x0,y0,x1,y1 as fractions: a part of a pose picture that is always the base's own (the neck, say, which the edit redraws a little differently); can be given more than once")
+parser.add_argument("--pose-take", action="append", default=[], help="x0,y0,x1,y1 as fractions: in this box take everything that differs clearly from the base picture, not only skin (straps and hair that an arm now covers or uncovers); can be given more than once")
 parser.add_argument("--pose-scale", type=float, help="line a pose edit up at exactly this scale (1 keeps its pixels unresampled, which keeps them sharp); only its position is searched")
 parser.add_argument("--pose-sharpen", type=float, default=0.0, help="sharpen what is taken from a pose edit by this much (0.5 to 1 is gentle), to undo the softness of resizing it")
 parser.add_argument("--mouth-diff", action="store_true", help="for talk pictures, copy only what differs from the emotion's picture (grown a little), looked for in a wider box: for wide mouths that reach the chin")
@@ -235,6 +236,13 @@ def finish_pose(name: str, mask: Image.Image) -> None:
     moved = Image.fromarray(((skin_raw != skin_base) * 255).astype("uint8")).filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(5))
     colour = Image.fromarray((((np.abs(a - b).sum(axis=2) > 120) & skin_raw & base_figure) * 255).astype("uint8")).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
     changed = np.maximum(np.asarray(moved), np.asarray(colour))
+    for take in args.pose_take:
+        x0, y0, x1, y1 = (float(v) for v in take.split(","))
+        clear = np.zeros(changed.shape, bool)
+        clear[fy(y0) : fy(y1), fx(x0) : fx(x1)] = (np.abs(a - b).sum(axis=2) > 140)[fy(y0) : fy(y1), fx(x0) : fx(x1)]
+        clear &= raw_figure
+        opened = Image.fromarray((clear * 255).astype("uint8")).filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(7))
+        changed = np.maximum(changed, np.asarray(opened))
     # the tool redraws the face a little differently: never take anything from the face or the top of the head
     changed[: fy(0.30), fx(0.3) : fx(0.7)] = 0
     for keep in args.pose_keep:
