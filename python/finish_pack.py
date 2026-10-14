@@ -37,6 +37,9 @@ parser.add_argument("--face-box", default="0.267,0.146,0.733,0.508", help="x0,y0
 parser.add_argument("--mouth-box", default="0.417,0.408,0.583,0.518", help="x0,y0,x1,y1 as fractions: a box around the mouth, wide-open included")
 parser.add_argument("--pose-face", default="happy", help="the picture a pose (wave-1, cheer-2 ...) is made from, whose face it keeps")
 parser.add_argument("--pose-align", choices=["head", "body"], default="head", help="line a pose edit up on the top of her head (default) or on the outline of her body, which suits an edit whose head is drawn a little differently")
+parser.add_argument("--pose-keep", action="append", default=[], help="x0,y0,x1,y1 as fractions: a part of a pose picture that is always the base's own (the neck, say, which the edit redraws a little differently); can be given more than once")
+parser.add_argument("--pose-scale", type=float, help="line a pose edit up at exactly this scale (1 keeps its pixels unresampled, which keeps them sharp); only its position is searched")
+parser.add_argument("--pose-sharpen", type=float, default=0.0, help="sharpen what is taken from a pose edit by this much (0.5 to 1 is gentle), to undo the softness of resizing it")
 parser.add_argument("--mouth-diff", action="store_true", help="for talk pictures, copy only what differs from the emotion's picture (grown a little), looked for in a wider box: for wide mouths that reach the chin")
 args = parser.parse_args()
 
@@ -95,13 +98,16 @@ def part(mask: Image.Image, which: str) -> Image.Image:
     return Image.fromarray((np.asarray(mask, float) * band / 255).astype("uint8"))
 
 
+pose_mode = False  # set while a pose is being lined up: --pose-scale applies to it only
+
+
 def register(raw: Image.Image, mask: Image.Image) -> Image.Image:
     """Resize the edit to the base size, then nudge it (scale, shift) onto the base's outlines outside the face."""
     ref = np.asarray(base_white.convert("L"), float) < 90
     keep = np.asarray(mask.filter(ImageFilter.MaxFilter(15)), float) < 128
     ref &= keep
     best = None
-    for s in np.arange(0.985, 1.0151, 0.005):
+    for s in [args.pose_scale] if args.pose_scale and pose_mode else np.arange(0.985, 1.0151, 0.005):
         w, h = round(W * s), round(H * s)
         canvas = Image.new("RGB", base.size, "white")
         canvas.paste(raw.resize((w, h), Image.LANCZOS), ((W - w) // 2, (H - h) // 2))
@@ -201,7 +207,10 @@ def finish_pose(name: str, mask: Image.Image) -> None:
     flat = Image.new("RGBA", raw.size, "white")
     flat.alpha_composite(raw.convert("RGBA"))
     if args.pose_align == "body":
+        global pose_mode
+        pose_mode = True
         aligned, place = register(flat.convert("RGB"), mask)
+        pose_mode = False
     else:
         aligned, place = register_pose(flat.convert("RGB"), on_white.convert("RGB"))
     a, b = np.asarray(aligned, int), np.asarray(on_white.convert("RGB"), int)
@@ -228,9 +237,13 @@ def finish_pose(name: str, mask: Image.Image) -> None:
     changed = np.maximum(np.asarray(moved), np.asarray(colour))
     # the tool redraws the face a little differently: never take anything from the face or the top of the head
     changed[: fy(0.30), fx(0.3) : fx(0.7)] = 0
+    for keep in args.pose_keep:
+        x0, y0, x1, y1 = (float(v) for v in keep.split(","))
+        changed[fy(y0) : fy(y1), fx(x0) : fx(x1)] = 0
     changed[fy(0.965) :] = 0  # the legs under the hem: no arm reaches them, and the tool draws them a little differently
     changed[np.asarray(mask.filter(ImageFilter.MaxFilter(21))) > 128] = 0
     where = Image.fromarray(changed).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(1.5))
+    where.save(root / f"pose-mask-{name}.png")  # what was taken from the edit, to look at
     figure = Image.fromarray((raw_figure * 255).astype("uint8")).filter(ImageFilter.GaussianBlur(0.6))
     out = start.copy()
     # the outer pixels of the edit's figure are the outline mixed with the white of its background: a pale fringe on a dark page. Make them the outline's own colour.
@@ -239,6 +252,9 @@ def finish_pose(name: str, mask: Image.Image) -> None:
     solid = np.asarray(aligned, "uint8").copy()
     solid[rim] = np.minimum(solid[rim], (52, 28, 34))
     pasted = Image.fromarray(solid).convert("RGBA")
+    if args.pose_sharpen:
+        sharp = pasted.filter(ImageFilter.UnsharpMask(radius=1.4, percent=int(args.pose_sharpen * 100), threshold=2))
+        pasted = Image.merge("RGBA", (*sharp.split()[:3], pasted.getchannel("A")))
     out.paste(pasted, (0, 0), where)
     alpha = np.asarray(start.getchannel("A"), float)
     w = np.asarray(where, float) / 255
