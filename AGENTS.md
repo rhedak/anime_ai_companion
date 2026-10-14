@@ -13,27 +13,32 @@ description; this file is what an agent needs beyond it. Find which of these the
 You need Node 22.18+, Python 3.11+, and one brain: Claude Code (`claude` installed and signed in),
 Cursor (`cursor-agent`), opencode, or Ollama. It runs on the user's own machine with their own login.
 
-Clone both repos **side by side** (the drawing code is a separate repo):
+Clone both repos **side by side** (the drawing code is a separate repo), the creator at the release this version pins
+(`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.2.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
-uv sync          # only if `python3 --version` is older than 3.11: makes .venv, which the app then uses
 npm start        # http://127.0.0.1:3737
 ```
+
+If `python3 --version` is older than 3.11, run `uv sync` once first: it makes `.venv`, which the app then uses. Newer Python needs no
+`.venv`. `npm install` refuses an older Node (`engine-strict`); `nvm install 22 && nvm use 22` fixes that.
 
 - `npm link` puts the `anaico` command on the PATH. `anaico` starts in work mode for the folder it is run
   from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart`, `--doctor` are in the README.
 - The server listens on `127.0.0.1` only. `PORT` changes the port; `COMPANION_PROVIDER` is
-  `claude`, `cursor` or `ollama` (also switchable in the page). The README has the full table.
+  `claude`, `cursor`, `opencode` or `ollama` (also switchable in the page). The README has the full table. With `ollama` and no
+  `OLLAMA_MODEL`, the first installed model is used (in memory only, never saved as the user's choice). Use a model of about 3B or
+  bigger: a 0.5B one chats but does not write her `[emotion:…]` and `[avatar …]` tags.
 - Everything personal is in `data/` (settings, chat log, her current look, `custom.css`) and `workspace/`.
   Both are git-ignored and belong to the user: do not delete or reset them without asking.
 - If the creator is not found next to this repo, the app clones a pinned copy into `~/.anaico/creator/`.
   Point `CREATOR_SRC` at the creator's `src` folder to use another one.
 
-When it does not start: run `anaico --doctor` (or `node bin/anaico.js --doctor`; it only looks and says what is missing), or check `python3 --version` (the creator needs 3.11+; run `uv sync`, or set `PYTHON`),
+When it does not start: run `anaico --doctor` (or `node bin/anaico.js --doctor`; it only looks and says what is missing, and warns when the creator checkout is not at the pinned release), or check `python3 --version` (the creator needs 3.11+; run `uv sync`, or set `PYTHON`),
 that `claude` (or `cursor-agent`) is on the PATH and signed in, and that the port is free. In daemon mode the
 log is `data/server.log`.
 
@@ -49,6 +54,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | What she remembers about the user | `data/memory.md` (she adds to it herself in chat; `/memory`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
 | Her expressions | `emotions.json` | restart the server |
+| Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |
 | Models, pre-approved tools | `data/settings.json`, `COMPANION_MODEL`, `COMPANION_WORK_MODEL` | restart the server |
 | How the body is drawn: shapes, hairstyles, outfits, presets | the **creator repo**, not this one | restart the server (the renderer runs as long as it does) |
@@ -74,10 +80,24 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
   (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`). The server strips them. Keep that
   protocol provider-agnostic.
-- `public/frames.js` and `public/tags.js` are shared with the browser demo (`demo/`, a version of the page that runs with no server, still
-  in progress: see `demo/README.md` and step 3 of `docs/plan.md`). The server imports them too (`src/avatar.ts`, `src/avatar-tags.ts`), so
-  the demo and the server ask for the same frames. Do not copy them. `python/render_ops.py` is likewise shared; `render_worker.py` is only
-  its stdin loop. Nothing in `src/` may import from `demo/`.
+- **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
+  server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by Pyodide running
+  `python/render_ops.py` on the creator's files, and what she says comes from a small rule-based reader (`demo/script.js`) or, only if the
+  visitor opts in, a small model in the browser (`demo/model*.js`). `public/app.js` takes its socket from `window.anaicoSocket` when
+  something has set it; that one line is the only change the page needs. `node demo/stage.mjs` builds the static folder; `npm run demo`
+  serves it on 8765; `npm run site:preview` builds the docs site with the demo in it at `demo/` (what the pages workflow publishes) and
+  serves it on 8766.
+- `public/frames.js`, `public/tags.js`, `public/demo.js` and `python/render_ops.py` are shared by the server and the demo (the server imports
+  them from `src/avatar.ts`, `src/avatar-tags.ts`, `src/demo.ts`), so both ask for the same frames and read the same tags and show-off list.
+  Do not copy them; `render_worker.py` is only the stdin loop. Nothing in `src/` may import from `demo/`. The demo is plain JavaScript with
+  no build step, and its URLs are relative so it works under a sub-folder (`/demo/`): keep it so in `public/` too (`pack-thumb/<name>`).
+- **The script has first say in the demo.** A request about her look (hair, eyes, an outfit, "that colour") is answered by the reader, never
+  by the model, which only gets what the reader cannot answer. A tag for her look written by the model is applied to nothing.
+- **Picture packs** (`src/frame-pack.ts`, `public/avatar.js`, `docs/frame-packs.md`): the file names are the manifest. Besides
+  `<emotion>[-blink|-talkN]` a pack can have `<gesture>-<n>` pictures (`wave-1.webp`, `cheer-2.webp`) that alternate while she makes that
+  gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
+  changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
+  model) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen). Ship lossless WebP.
 - `../anime-character-creator` is a dependency, not a fork. Drawing changes belong in that repo.
 - `data/` and `workspace/` (except `workspace/.gitkeep`) are the user's machine. Do not commit
   them, and do not put API keys, sessions, or account details in the repo.
@@ -121,6 +141,11 @@ The server can run an agent that edits files and runs commands. These are not op
 - Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
   maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
   sends the text by itself.
+- The demo's optional small model is opt-in and says who is contacted before it does anything: nothing is fetched until the visitor
+  presses the button in its dialog, which names the hosts (Hugging Face for the model, jsDelivr for the library, GitHub for its compiled
+  code), the size, that those hosts see the IP address, and that it is small and a model on the visitor's own computer is the way to a proper
+  chat. It runs in the browser; nothing the visitor types is sent anywhere. It can be turned off and removed. Keep the library at an exact
+  version. Tests use a fake model: nothing starts a real one.
 - Avatar values are validated per field. The page sanitises SVG. Do not inject HTML from the model.
 
 ### Brains
@@ -196,7 +221,9 @@ tool calls. Ollama only runs the model, so the tools and the call loop are ours:
   responsibility, and the app does not vouch for any model.
 - A history with a tool call but no answer to it is invalid for Ollama; keep `trimHistory` and the stop
   handling dropping such calls.
-- Tests fake the Ollama server (`test/ollama-work.test.ts`); no real model or install in CI.
+- With Ollama as the brain and no model named, the first installed one is used (`refreshOllamaModels`, in memory). A message that cannot be
+  sent yet (no model, Ollama not running) is neither sent nor kept in the log (`notReady` in `src/turn-service.ts`).
+- Tests fake the Ollama server (`test/ollama-work.test.ts`, `test/server.test.ts`); no real model or install in CI.
 
 Switching brains starts a new conversation. The brains do not share memory.
 
@@ -206,15 +233,17 @@ Switching brains starts a new conversation. The brains do not share memory.
   when the owner says to release and the checks below pass on it. Never push `main` or a tag unasked.
 - **Every push to `main` is a release with a new version.** The last commit on `dev` before the merge raises
   `version` in `package.json` (a minor number for a feature, a patch number for a fix or a docs-only change;
-  the project is 0.x). After the merge, tag that commit on `main` with an annotated `vX.Y.Z` and push `main`
-  and the tag together. Release notes are optional.
+  the project is 0.x). The bump goes into `package-lock.json` too (`npm install --package-lock-only`; `test/lockfile.test.ts` and CI fail
+  otherwise: a lockfile npm would rewrite makes a fresh clone look modified). After the merge, tag that commit on `main` with an
+  annotated `vX.Y.Z` and push `main` and the tag together. Release notes are optional.
 - **`main` pins only a creator tag that exists** on the creator's remote (`package.json`), because a fresh
   clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
   unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new
   tag in the release commit.
 - **The documentation site and the README describe released behaviour.** The site (`site/`) is built from
-  `main` by `.github/workflows/pages.yml`, so write a change's documentation on `dev` and let the release
-  publish it.
+  `main` by `.github/workflows/pages.yml`, together with the demo (staged into `demo/` with the creator at its pinned release), so write a
+  change's documentation on `dev` and let the release publish it. The clone commands in the README and on the getting-started page take the
+  pinned creator release (`git clone --branch <ref>`); `test/docs.test.ts` checks them against `package.json`.
 - **When the owner's own app runs from a checkout, leave that checkout on `main`.** The server serves `public/`
   from disk, so switching branches under a running app changes the page it serves. Work on `dev` in a second
   worktree (`git worktree add ../anime_ai_companion-dev dev`, then link `node_modules` and `.venv` into it).
@@ -236,7 +265,10 @@ on an older `python3` the four avatar and render tests fail even though the code
 `claude` and a fake Ollama (`test/helpers/server.ts`) and drives it over the websocket: queueing, cards, notes, skills,
 work mode, the shell opt-out, local tools and the origin check. It is the net for changing `src/server.ts`, and it needs the
 creator and Python 3.11+ like the renderer tests (it skips without them). Add a test there when you change what the page is
-told. Keep new tests passing without a Claude, Cursor or opencode login.
+told. Keep new tests passing without a Claude, Cursor or opencode login. `test/browser-demo.test.ts` drives the demo's stand-in server
+against a fake renderer and a fake model and checks the staged folder; `test/frame-pack.test.ts` and `test/pack-avatar.test.ts` cover packs and
+the pose pictures. Before a release also run the suite against a clean checkout of the pinned creator release (`CREATOR_SRC=<its src> npm test`)
+and on the oldest Node (`npx --yes node@22.18 --test "test/**/*.test.ts"`).
 
 To watch a change work without touching anyone's real `data/`, run a copy of the repo with its own
 `data/`, a spare `PORT`, and (for the Claude brain) a stand-in `claude` first on the `PATH`.
