@@ -24,6 +24,7 @@ The names say what each picture is. There is no manifest.
 | `neutral-blink.png` | for about a tenth of a second every few seconds |
 | `neutral-talk1.png`, `neutral-talk2.png`, `neutral-talk3.png` | while she speaks, in a changing order together with the rest picture. 1 is the smallest mouth opening, a higher number opens wider |
 | `happy.png`, `happy-blink.png`, `happy-talk1.png` ... | the same for any other emotion |
+| `wave-1.png`, `wave-2.png`, `cheer-1.png`, `cheer-2.png` ... | optional: while she makes that gesture (`[gesture:wave]`, `[gesture:cheer]`) these alternate about three times a second for a couple of seconds, instead of her face. Make them from the picture she is most often in when she gestures (the happy one), keep her face as it is there and move only the arms. One picture is also fine; a gesture with no pictures does nothing |
 
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
 `thinking`. Two optional text files describe where the pictures come from:
@@ -42,7 +43,7 @@ run script.)
 
 A pack is a fixed set of pictures, so with one active:
 
-- `[avatar ...]` tags and gestures (`wave`, `cheer`) do nothing, and she is told so;
+- `[avatar ...]` tags do nothing, and gestures (`wave`, `cheer`) do something only if the pack has pose pictures for them (above). She is told which;
 - the **Full body** button is hidden (there is one framing);
 - the Looks menu still changes the drawn character in the background, and you see that again after `/frames off`.
 
@@ -108,10 +109,10 @@ listed and ignored.
 
 `packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
 not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
-background, hair to hem so that raised arms fit later), with the prompts and `python/finish_pack.py` run as
+background, hair to hem so that raised arms fit), with the prompts and `python/finish_pack.py` run as
 `--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
 neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
-mouth near the chin leaving a smear. The pictures are lossless PNG at full size (15 MB for 35).
+mouth near the chin leaving a smear. The pictures are lossless PNG at full size (about 15 MB for the 35 faces). Its wave and cheer are two pictures each, edited from the happy picture; `finish_pack.py` takes only what the arms changed from the edit (`wave-1` and the like, `--pose-face` names the picture they came from) and leaves everything else as in the happy picture.
 
 ## The Miku pack
 

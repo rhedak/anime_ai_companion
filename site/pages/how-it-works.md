@@ -30,8 +30,8 @@ any brain can use them.
 | `[image path/to/file.png]` | shows a picture from the project folder under her message |
 | `[demo]` | starts the same sequence as `/show`; the page plays it, because tags in a streaming reply would all fire at once |
 
-Her current look is saved in `data/avatar.json`. With a picture pack on, `[avatar ...]` tags and gestures are
-ignored, and she is told so.
+Her current look is saved in `data/avatar.json`. With a picture pack on, `[avatar ...]` tags are
+ignored, and so are gestures unless the pack has pose pictures for them; she is told which.
 
 ## What is saved where
 
