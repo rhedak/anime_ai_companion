@@ -102,6 +102,13 @@ const SHOW_WORDS = /\b(show off|show me everything|show (me )?all|all (of )?(you
 const WORK_WORDS = /\b(work mode|work-mode|coding|code|approve|approval|permission|command|edit a file|project|developer|terminal)\b/;
 const HELP_WORDS = /\b(what can you do|what can i|help|options|tricks|how does this work|what do you do)\b/;
 
+/** Words that mean she is being asked about her look, and the verbs of asking for a change. Such a message belongs to the script, never to a model. */
+const LOOK_WORDS = /\b(hair|hairstyle|haircut|eyes?|glasses|specs|hat|cap|coat|jacket|skirt|shirt|dress|top|ribbon|bow|scarf|mask|boots?|shoes|belt|outfit|clothes|clothing|look|style|colou?rs?|dye|ponytail|bangs|fringe)\b/;
+const CHANGE_WORDS = /\b(make|turn|change|dye|colou?r|paint|give|put|wear|try|switch|set|want|need|let|can you|could you|please|add|remove|take|get|use|with|no)\b/;
+const QUESTION_START = /^ *(what|why|how|who|where|when|which|do you|are you|is|does|did|would you)\b/;
+/** "that colour", "the same color": the colour named a moment ago. */
+const THAT_COLOUR = /\b(that|this|the same|same|the) colou?r\b|\bthat one\b/;
+
 const nice = (phrases) => (phrases.length <= 1 ? phrases.join("") : `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}`);
 
 export const GREETING =
@@ -148,16 +155,18 @@ const HELP_PACK =
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean, model?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on
+ * @param {{ presets?: string[], pack?: boolean, model?: boolean, recent?: string[] }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on; `recent`: the last lines of the conversation, newest last, for "that colour"
  * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
   const t = ` ${String(input).toLowerCase().replace(/\s+/g, " ")} `;
   const presets = context.presets ?? [];
+  /** The colour most recently named in the conversation (by either of them), for "that colour". */
+  const lastColour = [...(context.recent ?? [])].reverse().map((line) => colourIn(String(line).toLowerCase())).find(Boolean) ?? null;
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
-  if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become|hair|eyes|glasses|hat|coat|skirt)\b/.test(t)) {
+  if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become)\b/.test(t) && !LOOK_WORDS.test(t)) {
     return { needsModel: true, text: `[emotion:happy] I'd love to chat, but this demo has no language model: I only follow a small script. ${NEEDS_MODEL}` };
   }
   if (HELP_WORDS.test(t)) return { text: context.pack ? HELP_PACK : HELP };
@@ -181,7 +190,7 @@ export function reply(input, context = {}) {
   const clauses = t.split(/\b(?:and|then|also|plus|but)\b|[,;.!?]+/).map((c) => ` ${c.trim()} `);
   for (const c of clauses) {
     if (!c.trim()) continue;
-    const colour = colourIn(c);
+    const colour = colourIn(c) ?? (THAT_COLOUR.test(c) ? lastColour : null);
     const takesOff = /\b(no|without|remove|take off|lose)\b/.test(c) || (removing && !/\b(put|wear|give|make|add|want|have|get)\b/.test(c) && c.trim().split(' ').length <= 3);
     removing = /\b(no|without|remove|take off|lose)\b/.test(c);
 
@@ -244,6 +253,13 @@ export function reply(input, context = {}) {
       text:
         `[emotion:shy] I can't do that as a picture pack: I'm only pictures, so I can't change ${set.size ? nice(phrases.map((p) => p.replace(/^(an?|the) /, ""))) : "my looks"}. ` +
         "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask me again. For now I can show a mood, wave or cheer.",
+    };
+  }
+  if (!set.size && !mood && !gesture && !missing.length && LOOK_WORDS.test(t) && !QUESTION_START.test(t.trimStart()) && CHANGE_WORDS.test(t)) {
+    return {
+      text:
+        '[emotion:thinking] I can change that, but I need to know how: tell me a colour or a style. For example "make my hair mint green", "blue eyes", ' +
+        '"put on glasses and a witch hat", "short hair" or "become Linnea".',
     };
   }
   if (!set.size && !mood && !gesture && !missing.length) {

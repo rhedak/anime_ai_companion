@@ -338,7 +338,9 @@ export function createLocalSocket({
   async function answer(text) {
     history.push({ type: "user", text });
     out({ type: "user", text });
-    const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()) });
+    // The last few lines, without tags, so "that colour" can mean one she or the visitor just named.
+    const recent = history.slice(-7, -1).map((h) => String(h.text).replace(/\[[^\]\n]*\]/g, " "));
+    const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()), recent });
     if (answered.scene === "work") return workScene();
     if (answered.needsModel && model?.ready()) return modelReply();
     await speak(answered.text);

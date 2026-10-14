@@ -320,6 +320,37 @@ test("what she answers as a picture pack: no redrawing, honest help, and moods a
   assert.match(pack("show me all your expressions").text, /\[demo\]$/);
 });
 
+test("\"that colour\" is the colour named a moment ago, by either of them; a look request she cannot complete stays with the script", () => {
+  const r = (text: string, recent: string[] = []) => reply(text, { presets: PRESETS, recent });
+  const said = ["what is your favorite color", '[emotion:happy] I think my favorite color is probably "blue"! It is the color of the ocean.'];
+  assert.match(r("turn your hair that color", said).text, /\[avatar hair_color=#3a6fe0\]/);
+  assert.match(r("make my eyes the same colour", ["I love purple"]).text, /eye_color=#8a4fd0/);
+  assert.match(r("a hat in that color", ["red", "ok"]).text, /hat_color=#d02a2a/);
+  assert.equal(r("turn your hair that color", ["nothing about colours here"]).needsModel, undefined, "with none to refer to she asks, and does not hand it to a model");
+  assert.match(r("turn your hair that color").text, /I need to know how[^]*mint green/);
+  for (const text of ["make it look nicer", "change your style", "give me a new look"]) {
+    const answer = r(text);
+    assert.ok(!answer.needsModel, text);
+    assert.match(answer.text, /^\[emotion:thinking\]/);
+  }
+  // chat about her look is chat; a compliment is not a request
+  for (const text of ["what is your favorite hair color", "I like your hair", "do you like your eyes?", "how is the weather"]) assert.equal(r(text).needsModel, true, text);
+});
+
+test("with the model on, a look request never reaches it: the script changes her hair even when the words are loose", async () => {
+  const { model, asked } = fakeModel("[emotion:happy] Blue is my favourite!");
+  const { next, say } = connect({ model });
+  await next((e) => e.type === "queue");
+  await say("what is your favorite color");
+  assert.equal(asked.length, 1, "a chat question goes to the model");
+  const looked = await say("turn your hair that color");
+  assert.ok(looked.some((e) => e.type === "avatar"), "and her hair changed");
+  assert.equal(asked.length, 1, "the model was not asked about it");
+  const loose = await say("make it look nicer");
+  assert.match(loose.filter((e) => e.type === "delta").map((e) => e.text).join(""), /I need to know how/);
+  assert.equal(asked.length, 1);
+});
+
 /** A model that answers with the given text in pieces, and remembers what it was asked. */
 function fakeModel(answer: string, options: { on?: boolean; fail?: string } = {}) {
   const asked: { role: string; content: string }[][] = [];

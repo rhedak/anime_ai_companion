@@ -29,7 +29,7 @@ What is here, and how the pieces fit:
 - The optional small model (`model.js`, `model-dialog.js`, `model-prompt.js`): the prompt "Chat with a small model…" opens a dialog that says
   plainly what is downloaded (SmolLM2 360M, about 207 MB, from huggingface.co, cdn.jsdelivr.net and raw.githubusercontent.com), that it is
   small, and that a model on the visitor's own computer (Ollama) is better. Nothing is fetched before the visitor says yes. With the model on,
-  it answers only what the script cannot; redraws stay with the script. It can be turned off or removed from the browser again. WebGPU is
+  it answers only what the script cannot; the script has first say, so a request about her look (even a loose one, or "turn your hair that color", meaning the colour just named) never goes to the model. It can be turned off or removed from the browser again. WebGPU is
   needed; without it the dialog says so. Tests use a fake model: nothing starts a real one.
 - `demo.css` is the demo's few changes to the page: a banner, and hiding what only means something with a server behind it (the brain,
   folder, permission and effort menus, the Chat/Work switch, attachments, saved looks, the microphone). `demo-boot.js` adds the suggested prompts.
