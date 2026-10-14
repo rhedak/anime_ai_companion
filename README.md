@@ -32,25 +32,30 @@ button, the recording your browser's speech recognition sends to the browser mak
 
 ## Requirements
 
-- **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step)
+- **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step). Many systems ship an older one, and `npm install` itself
+  refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`
 - **Python 3.11 or newer** (the character renderer is pure standard-library Python). If your `python3`
   is older, `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically
 - **One brain**, installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
   or [Ollama](https://ollama.com) for a local model
-- A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)**
-  next to this repo, or point `CREATOR_SRC` at its `src` folder
+- A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (the drawing code) next to this repo,
+  at the release this version pins (the Quick start does that), or point `CREATOR_SRC` at its `src` folder. Without either, the app downloads
+  the pinned release itself on the first start
 
 ## Quick start
 
 ```bash
-git clone https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.2.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
-uv sync           # only if your python3 is older than 3.11: creates .venv, which the app then uses
 node bin/anaico.js --doctor   # optional: says what is missing (Node, Python, a brain, the creator, the port)
 npm start          # then open http://127.0.0.1:3737
 ```
+
+The first line takes the creator release this version was made for (`--branch`); its `main` may be ahead of it. If `python3 --version` says
+older than 3.11, run `uv sync` once before `npm start`: it makes a `.venv` with a suitable Python, which the app then uses. With 3.11 or
+newer you do not need it.
 
 Try: *"Hi! Could you change your hair to mint green and put on a black witch hat?"*
 
@@ -118,6 +123,13 @@ leaves it at all. Install [Ollama](https://ollama.com), `ollama pull llama3.2` (
 and choose the model in the dropdown. The same persona and the same `[emotion:...]` / `[avatar ...]`
 tags drive the avatar, though small models follow the tag protocol less reliably. Chat never uses tools.
 Switching brains starts a fresh conversation.
+
+You can also start with it: `COMPANION_PROVIDER=ollama npm start` uses the first model you have installed, and
+`COMPANION_PROVIDER=ollama OLLAMA_MODEL=llama3.2 npm start` names one.
+
+**Use a model of about 3B or bigger** (`llama3.2`, `qwen2.5:3b` or `qwen2.5:7b`, for example). A very small one such as `qwen2.5:0.5b`
+chats, but it does not reliably write her `[emotion:...]` and `[avatar ...]` tags: her face then stays flat, and asking her to change her
+hair or her clothes does nothing, however it is worded.
 
 **Work mode with a local model is experimental, and the quality is your responsibility.** If Ollama reports that the
 model supports tool calls (a recent Qwen or Llama, for example; `ollama show <model>` lists its capabilities), the **Work** button

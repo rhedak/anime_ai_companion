@@ -79,3 +79,12 @@ test("the AI disclosure is in the README, on the About page, and at the foot of 
     assert.match(readFileSync(join(dist, file), "utf8"), /This documentation was written by Claude Code/, `${file} has no AI note`);
   }
 });
+
+test("the clone commands in the README and on the site take the creator release that package.json pins", () => {
+  const ref = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).creator.ref;
+  for (const file of ["README.md", "site/pages/getting-started.md"]) {
+    const text = readFileSync(join(root, file), "utf8");
+    assert.ok(text.includes(`git clone --branch ${ref} https://github.com/rhedak/anime-character-creator.git`), `${file}: clone the creator with --branch ${ref} (the pin in package.json)`);
+    assert.doesNotMatch(text, /^git clone https:\/\/github\.com\/rhedak\/anime-character-creator\.git/m, `${file}: a bare clone gets whatever main holds today`);
+  }
+});

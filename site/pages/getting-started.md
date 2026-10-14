@@ -6,25 +6,29 @@ description: Requirements, installation, the anaico command, configuration, and 
 
 ## What you need
 
-- **Node.js 22.18 or newer.** It runs the TypeScript directly: there is no build step.
+- **Node.js 22.18 or newer.** It runs the TypeScript directly: there is no build step. Many systems ship an older Node, and
+  `npm install` itself refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`.
 - **Python 3.11 or newer.** The character renderer is pure standard-library Python. If your `python3` is older,
   `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically.
 - **One brain.** Claude Code (`claude` installed and signed in), Cursor (`cursor-agent`), opencode, or Ollama.
   See [Brains](brains.html) for what each one can do.
-- **A checkout of [anime-character-creator](https://github.com/rhedak/anime-character-creator)** next to this repo
-  (or set `CREATOR_SRC` to its `src` folder). If it is missing, the app clones a pinned copy into
-  `~/.anaico/creator/` by itself.
+- **A checkout of [anime-character-creator](https://github.com/rhedak/anime-character-creator)** next to this repo, at the release
+  this version pins (the commands below do that), or `CREATOR_SRC` pointing at its `src` folder. If it is missing, the app clones the
+  pinned release into `~/.anaico/creator/` by itself.
 
 ## Install and run
 
 ```bash
-git clone https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.2.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
-uv sync            # only if your python3 is older than 3.11
 npm start          # http://127.0.0.1:3737
 ```
+
+The first line takes the creator release this version was made for; its `main` may be ahead of it. If `python3 --version` says older than
+3.11, run `uv sync` once before `npm start`: it makes a `.venv` with a suitable Python, which the app then uses. With 3.11 or newer you do
+not need it.
 
 Open the address in a browser and say hello. Her first look is Risa; the **Looks** menu has the rest.
 
