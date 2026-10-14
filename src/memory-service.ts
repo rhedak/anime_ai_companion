@@ -42,8 +42,8 @@ export function createMemoryService(deps: MemoryDeps) {
   /** Proposals waiting for an answer, and the ones the user turned down in this conversation (never offered again). */
   const offers = new Map<string, Offer>();
   const declined = new Set<string>();
-  /** The user has been told once in this conversation why she cannot save a note. */
-  let explained = false;
+  /** Why the user has been told she cannot save a note, once per reason in this conversation (work mode and notes off are different reasons). */
+  const explained = new Set<"work" | "off">();
 
   function read(): string[] {
     try {
@@ -113,8 +113,9 @@ export function createMemoryService(deps: MemoryDeps) {
       const off = deps.settings.memorySaving === "off";
       const base = first ? memoryIntro(now, chat && !off, chat && off) : change;
       if ((chat && !off) || !asksToRemember(userText)) return base;
-      if (!explained) {
-        explained = true;
+      const reason = chat ? "off" : "work";
+      if (!explained.has(reason)) {
+        explained.add(reason);
         deps.broadcast({
           type: "notice",
           text: chat
@@ -130,7 +131,7 @@ export function createMemoryService(deps: MemoryDeps) {
     /** A new conversation is told her notes again, and the proposals of the old one are dropped. */
     forgetTold(): void {
       told = null;
-      explained = false;
+      explained.clear();
       declined.clear();
       for (const offer of [...offers.values()]) closeOffer(offer, "skip");
     },

@@ -598,6 +598,17 @@ describe("work mode", { skip }, () => {
     assert.equal(c.since(from).filter((e) => e.type === "notice" && /chat mode only/.test(e.text)).length, 0, "said once per conversation");
     assert.match(inputs(server).at(-1)!, /do not promise to remember/, "but she is told every time");
 
+    // The two reasons are told separately: switching notes off in the same conversation gets its own notice.
+    c.say("/chat");
+    await c.next("mode", 5000, c.mark);
+    c.say("/memory off");
+    await c.next((e) => e.type === "notice" && /not save notes/.test(e.text), 5000, c.mark);
+    from = c.mark;
+    await ask(c, "please remember my dog too");
+    assert.equal(c.since(from).filter((e) => e.type === "notice" && /Saving notes is switched off/.test(e.text)).length, 1);
+    c.say("/memory ask");
+    await c.next((e) => e.type === "notice" && /ask before/.test(e.text), 5000, c.mark);
+
     from = c.mark;
     await ask(c, "remember to run the tests");
     assert.equal(c.since(from).filter((e) => e.type === "notice" && /chat mode only/.test(e.text)).length, 0);
