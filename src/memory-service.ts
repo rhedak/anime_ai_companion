@@ -42,6 +42,10 @@ export function createMemoryService(deps: MemoryDeps) {
   /** Proposals waiting for an answer, and the ones the user turned down in this conversation (never offered again). */
   const offers = new Map<string, Offer>();
   const declined = new Set<string>();
+  /** Declined notes she has not been told about yet: without it she keeps saying she saved the note (measured: 15 of 15 runs; 2 of 15 with it). */
+  let declinedUntold: string[] = [];
+  /** Waiting proposals she has already been told are not saved yet. */
+  const waitingTold = new Set<string>();
   /** Why the user has been told she cannot save a note, once per reason in this conversation (work mode and notes off are different reasons). */
   const explained = new Set<"work" | "off">();
 
@@ -111,7 +115,17 @@ export function createMemoryService(deps: MemoryDeps) {
       told = now;
       const chat = deps.mode() === "chat";
       const off = deps.settings.memorySaving === "off";
-      const base = first ? memoryIntro(now, chat && !off, chat && off) : change;
+      const intro = first ? memoryIntro(now, chat && !off, chat && off) : change;
+      const refused = declinedUntold.length
+        ? `Notes you proposed that are NOT saved: the user declined ${declinedUntold.map((f) => `"${f}"`).join("; ")}. Only notes in the user's list, or announced as added, are saved.`
+        : null;
+      declinedUntold = [];
+      const waiting = [...offers.values()].filter((o) => !waitingTold.has(o.id));
+      for (const o of waiting) waitingTold.add(o.id);
+      const unanswered = waiting.length
+        ? `Notes you proposed that are not saved yet: ${waiting.map((o) => `"${o.fact}"`).join("; ")}. The user has not answered; until they say yes nothing is written, so do not tell them you saved it.`
+        : null;
+      const base = [intro, refused, unanswered].filter(Boolean).join(" ") || null;
       if ((chat && !off) || !asksToRemember(userText)) return base;
       const reason = chat ? "off" : "work";
       if (!explained.has(reason)) {
@@ -133,6 +147,8 @@ export function createMemoryService(deps: MemoryDeps) {
       told = null;
       explained.clear();
       declined.clear();
+      declinedUntold = [];
+      waitingTold.clear();
       for (const offer of [...offers.values()]) closeOffer(offer, "skip");
     },
 
@@ -177,6 +193,7 @@ export function createMemoryService(deps: MemoryDeps) {
       if (!offer || (choice !== "keep" && choice !== "skip")) return;
       if (choice === "skip") {
         declined.add(offer.fact);
+        declinedUntold.push(offer.fact);
         return closeOffer(offer, "skip");
       }
       const saved = save(offer.fact);

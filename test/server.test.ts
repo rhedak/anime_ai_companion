@@ -321,6 +321,9 @@ describe("her notes about you", { skip }, () => {
     from = c.mark;
     await ask(c, "REMEMBER the cat again");
     assert.equal(c.since(from).filter((e) => e.type === "memory-offer").length, 0, "she does not ask the same thing twice");
+    assert.match(inputs(server).at(-1)!, /NOT saved: the user declined "Their cat is called Momo"/, "she is told it was not kept");
+    await ask(c, "and another thing");
+    assert.doesNotMatch(inputs(server).at(-1)!, /NOT saved/, "once, not on every message");
 
     await fresh(c);
     from = c.mark;
@@ -328,6 +331,20 @@ describe("her notes about you", { skip }, () => {
     await c.next("memory-offer", 8000, from);
     c.say("/clear"); // leave nothing pending for the next test
     await c.next((e) => e.type === "memory-resolved", 5000, from);
+  });
+
+  test("a note still waiting for an answer is reported to her once as not saved, so she does not say she saved it", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("REMEMBER the cat");
+    await c.next("memory-offer", 8000, from);
+    await ask(c, "did you save that?");
+    assert.match(inputs(server).at(-1)!, /not saved yet: "Their cat is called Momo"[^]*do not tell them you saved it/);
+    await ask(c, "and now?");
+    assert.doesNotMatch(inputs(server).at(-1)!, /not saved yet/, "once, not on every message");
+    await fresh(c);
   });
 
   test("a card that waits is shown again to a page that reloads, and answering a stale one does nothing", async () => {

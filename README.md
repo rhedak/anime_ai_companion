@@ -266,8 +266,8 @@ open and edit.
 
 - In chat, when you tell her something worth keeping (your name, a preference, something you ask her to remember), she
   **asks first**: a small card under her message shows the note and you choose **Keep** or **Not now**. Nothing is saved until you
-  keep it, a note you turn down is not offered again in that conversation, and an unanswered card just stays unsaved. Up to 50
-  notes, 200 characters each.
+  keep it, a note you turn down is not offered again in that conversation, and an unanswered card just stays unsaved. She is told
+  which proposed notes were declined or are still waiting, so she does not say she saved them. Up to 50 notes, 200 characters each.
 - `/memory ask` (the default), `/memory auto` and `/memory off` choose what happens to a note she proposes. With **auto** she saves
   it herself (**🧠 Remembered: …**) with an **Undo** button next to it; **off** saves nothing, and she is told so. The choice is
   kept in `data/settings.json`, and `auto` cannot be switched on from a phone.
