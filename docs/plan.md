@@ -166,7 +166,7 @@ Found while doing it, to deal with in phase 1:
 gets, all checked by hand in Chrome with no console errors:
 
 - A banner that says what it is (runs entirely in the browser, nothing sent anywhere, where the real thing is), her greeting streamed in,
-  and eight suggested prompts as buttons ("Make my hair mint green", "Become Linnea", "Show me work mode", …); typing works the same.
+  and eight suggested prompts as buttons ("Make your hair mint green", "Become Linnea", "Show me work mode", …); typing works the same.
 - A rule-based reader (`demo/script.js`) for redraw requests: several in one message, colours with "dark" and "light", hair, ombre tips, eyes,
   hairstyles, glasses, hats (a witch hat too), a coat, skirt, top, ribbon, scarf, mask, boots and belt, taking things off, the 20 presets,
   "surprise me", moods and gestures. A test checks that every field it can set exists in the creator's real schema.

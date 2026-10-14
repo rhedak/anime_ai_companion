@@ -52,7 +52,7 @@ let packed = false;
 
 /** Things worth trying, as buttons. Each is sent exactly as if it had been typed. */
 const CHIPS = [
-  "Make my hair mint green",
+  "Make your hair mint green",
   "Blue eyes and a witch hat",
   "Put on glasses and a red coat",
   "Become Linnea",

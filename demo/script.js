@@ -258,7 +258,7 @@ export function reply(input, context = {}) {
   if (!set.size && !mood && !gesture && !missing.length && LOOK_WORDS.test(t) && !QUESTION_START.test(t.trimStart()) && CHANGE_WORDS.test(t)) {
     return {
       text:
-        '[emotion:thinking] I can change that, but I need to know how: tell me a colour or a style. For example "make my hair mint green", "blue eyes", ' +
+        '[emotion:thinking] I can change that, but I need to know how: tell me a colour or a style. For example "make your hair mint green", "blue eyes", ' +
         '"put on glasses and a witch hat", "short hair" or "become Linnea".',
     };
   }
@@ -268,7 +268,7 @@ export function reply(input, context = {}) {
       text:
         context.pack
           ? `[emotion:thinking] That is beyond my script: this demo has no language model, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". ${NEEDS_MODEL}`
-          : '[emotion:thinking] That is beyond my script: this demo has no language model, so I only know a few things. Try "make my hair mint green", ' +
+          : '[emotion:thinking] That is beyond my script: this demo has no language model, so I only know a few things. Try "make your hair mint green", ' +
             `"put on glasses and a witch hat", "become Linnea", "be shy", "wave", "/show" or "show me work mode". ${NEEDS_MODEL}`,
     };
   }
