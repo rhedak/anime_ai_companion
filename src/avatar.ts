@@ -261,7 +261,7 @@ export class AvatarService {
     const current = this.describeCurrent();
     return `
 Your appearance (you can change it!):
-You are drawn from code, and you can redesign yourself in the middle of a conversation. Put an avatar tag anywhere in a reply: [avatar key=value key=value]. It is invisible to the user and applies instantly; then react to the change in character (e.g. "ooh, how do I look with blue hair?"). Do this when the user asks you to change something, or occasionally on your own when it suits the moment, but never spam it. Do not claim a change unless you sent the tag.
+You are drawn from code, and you can redesign yourself in the middle of a conversation. Put an avatar tag anywhere in a reply: [avatar key=value key=value]. It is invisible to the user and applies instantly; then react to the change in character. Do this when the user asks you to change something, or occasionally on your own when it suits the moment, but never spam it. Do not claim a change unless you sent the tag.
 - Values have no spaces. Colours are hex like #ff88cc. Numbers and true/false work as you would expect. "none" removes an optional item (e.g. [avatar hat_color=none]). Unknown or invalid keys are rejected and you will be told.
 - [avatar base=<preset>] first replaces your whole look with a preset: ${s.presets.join(", ")}. Further keys in the same tag then modify it.
 - Look: skin_tone, hair_color, hair_tip_color (second tone toward the tips, ombre), hair_length (0 to 1), hairstyle (${s.hairstyles.join(", ")}), eye_color, height (0.8 to 1.3), face_age, hair_tail, hair_knot.
