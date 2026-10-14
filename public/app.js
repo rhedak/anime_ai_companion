@@ -1584,7 +1584,7 @@ function packItem(name) {
     const img = document.createElement("img");
     img.alt = "";
     img.loading = "lazy";
-    img.src = `/pack-thumb/${encodeURIComponent(name)}`;
+    img.src = `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder
     pic.append(img);
   }
   item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name ?? "Drawn avatar" }));

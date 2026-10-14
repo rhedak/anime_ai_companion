@@ -6,6 +6,12 @@ export function drawnDemoMessage(
   gestures: string[],
 ): { type: "demo"; hold: number; steps: DemoStep[] };
 
+export function packDemoMessage(
+  emotions: string[],
+  gestures: string[],
+  pack: { emotions: Record<string, { blink?: string; talk: string[] }>; gestures: Record<string, string[]> },
+): { type: "demo"; hold: number; steps: DemoStep[]; note?: string };
+
 export function createDemo(
   avatar: {
     setEmotion(name: string): void;

@@ -194,8 +194,12 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   };
 }
 
-export function packInfo(pack: FramePack): PackInfo {
-  const url = (file: string) => `/frames/${encodeURIComponent(pack.name)}/${encodeURIComponent(file)}?v=${Math.floor(pack.files.get(file)?.mtimeMs ?? 0)}`;
+export function packInfo(pack: FramePack, staticBase?: string): PackInfo {
+  // The app serves the pictures itself, with the change time in the url; a static copy (the browser demo) has them in a folder, by a relative path.
+  const url = (file: string) =>
+    staticBase === undefined
+      ? `/frames/${encodeURIComponent(pack.name)}/${encodeURIComponent(file)}?v=${Math.floor(pack.files.get(file)?.mtimeMs ?? 0)}`
+      : `${staticBase}${encodeURIComponent(file)}`;
   const emotions: PackInfo["emotions"] = {};
   for (const [emotion, e] of Object.entries(pack.emotions)) {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };

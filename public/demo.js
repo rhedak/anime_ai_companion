@@ -27,6 +27,29 @@ export function drawnDemoMessage(emotions, gestures) {
 }
 
 /**
+ * The same for a picture pack: only what its pictures can show, and what was left out said once at the end. `pack` has `emotions` (each with
+ * `idle`, `blink`, `talk`) and `gestures` (the pose pictures of each gesture), as the server's FramePack and the page's PackInfo both do.
+ * @param {string[]} emotions
+ * @param {string[]} gestures
+ * @param {{ emotions: Record<string, { blink?: string, talk: string[] }>, gestures: Record<string, string[]> }} pack
+ */
+export function packDemoMessage(emotions, gestures, pack) {
+  const have = emotions.filter((name) => pack.emotions[name]);
+  const missing = emotions.filter((name) => !pack.emotions[name]);
+  const pictures = Object.values(pack.emotions);
+  /** @type {({ kind: string, name?: string })[]} */
+  const steps = have.map((name) => ({ kind: "emotion", name }));
+  if (pictures.some((e) => e.blink)) steps.push({ kind: "blink" });
+  if (pictures.some((e) => e.talk.length)) steps.push({ kind: "talk" });
+  const moves = gestures.filter((name) => pack.gestures[name]?.length);
+  for (const name of moves) steps.push({ kind: "gesture", name });
+  const noMoves = gestures.filter((name) => !moves.includes(name));
+  const left = [...(noMoves.length ? [`gestures ${noMoves.join(", ")} (no pictures)`] : []), ...(missing.length ? [`${missing.join(", ")} (no pictures)`] : [])];
+  if (!left.length) return { type: "demo", hold: DEMO_HOLD_MS, steps };
+  return { type: "demo", hold: DEMO_HOLD_MS, steps, note: `Left out in this pack: ${left.join("; ")}.` };
+}
+
+/**
  * @param avatar     what `createAvatar` returns
  * @param caption    `set(text)` shows the current line, `done(text)` the last one
  * @param options    `sleep` and `gestureMs` can be replaced (the tests do)
