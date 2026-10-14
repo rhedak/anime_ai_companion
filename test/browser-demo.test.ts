@@ -546,9 +546,21 @@ test("a card answered with a wrong id does nothing", async () => {
 });
 
 test("when the renderer cannot load, the page is told instead of waiting for ever", async () => {
-  const { next } = connect({ renderer: Promise.reject(new Error("no network")) });
+  const { events, next, say, send } = connect({ renderer: Promise.reject(new Error("no network")) });
   const notice = await next((e) => e.type === "notice");
-  assert.match(notice.text, /could not start: no network/);
+  assert.match(notice.text, /could not load its drawing code[^]*cdn\.jsdelivr\.net[^]*blocker[^]*Reload the page[^]*rhedak\.github\.io\/anime_ai_companion/);
+  assert.match(notice.text, /Details: no network/);
+  // Later messages do not get a half-working answer or a stuck page: the reason again, and her turn ends.
+  const reply = await say("make your hair mint green");
+  assert.deepEqual(reply.map((e) => e.type), ["user", "notice", "done"]);
+  assert.match(reply[1].text, /could not load its drawing code/);
+  assert.ok(!events.some((e) => e.type === "delta" || e.type === "avatar"), "she said nothing and changed nothing");
+  const work = await say("show me work mode");
+  assert.deepEqual(work.map((e) => e.type), ["user", "notice", "done"]);
+  const from = events.length;
+  send({ type: "reset" });
+  await next((e) => e.type === "notice", from);
+  assert.ok(!events.slice(from).some((e) => e.type === "delta"), "a new chat does not greet");
 });
 
 test("the page's socket has the few members the page uses", () => {

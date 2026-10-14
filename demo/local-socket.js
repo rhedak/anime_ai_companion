@@ -47,8 +47,15 @@ export function createLocalSocket({
   let waiting = null;
   /** The opening messages are out and the character is loaded: drawing can start. */
   const ready = Promise.resolve().then(() => start());
+  /** Why the demo could not start (its drawing code did not load, say), or null. Nothing she says is any use without her, so every message gets this. */
+  let failure = null;
+  const startFailure = (err) =>
+    "The demo could not load its drawing code, so she cannot be drawn or answer yet. It fetches Python for the browser (Pyodide) from cdn.jsdelivr.net: " +
+    "a content blocker, a firewall or having no internet connection stops that. Reload the page to try again, or read about the real thing at " +
+    `https://rhedak.github.io/anime_ai_companion/ . (Details: ${err?.message ?? err})`;
+  ready.catch((err) => void (failure = startFailure(err)));
   /** The conversation is answered one request at a time, in order, like the server's queue; it starts with her greeting. */
-  let chain = ready.then(() => greet()).catch((err) => out({ type: "notice", text: `The demo could not start: ${err?.message ?? err}` }));
+  let chain = ready.then(() => greet()).catch(() => out({ type: "notice", text: failure ?? "The demo could not start." }));
 
   const socket = {
     readyState: OPEN,
@@ -298,6 +305,7 @@ export function createLocalSocket({
     history = [];
     out({ type: "reset" });
     out(modeInfo());
+    if (failure) return void out({ type: "notice", text: failure });
     await greet();
   }
 
@@ -338,6 +346,11 @@ export function createLocalSocket({
   async function answer(text) {
     history.push({ type: "user", text });
     out({ type: "user", text });
+    if (failure) {
+      // Say why, once per message, and end her turn: the page waits for it.
+      out({ type: "notice", text: failure });
+      return void out({ type: "done" });
+    }
     // The last few lines, without tags, so "that colour" can mean one she or the visitor just named.
     const recent = history.slice(-7, -1).map((h) => String(h.text).replace(/\[[^\]\n]*\]/g, " "));
     const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()), recent });

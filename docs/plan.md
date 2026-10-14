@@ -198,9 +198,15 @@ header puts her beside the chat again.
 The docs site's top bar keeps "Try the demo" on one line and drops the plain GitHub pill below 480 px. Not tested on a real phone (touch,
 the on-screen keyboard, WebGPU on mobile).
 
+**CDN blocked: checked and fixed.** With the Pyodide address unreachable (tried with a host that does not resolve) the page stays "connecting…"
+with no picture. It used to say only "The demo could not start: could not load <url>", and a message sent after that got a half-working
+answer, then a technical error, and left the page on "Thinking…" for good. Now there is one plain notice (what failed, that a content blocker, a
+firewall or no connection stops it, reload to try again, where to read about the real thing, the details), every later message gets it again and
+ends its turn, and a new chat does not greet. The optional model's own download failing is reported in its dialog ("It could not be loaded: …").
+
 Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
 creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes (the README and the site are linked and `npm run site:preview` shows them; the
-phone-width window is checked: see below); see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether
+phone-width window is checked: see below); proofread her lines; decide whether
 the demo should say where the real app's screenshots are.
 
 **Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
