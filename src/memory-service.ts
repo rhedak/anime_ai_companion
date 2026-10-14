@@ -70,7 +70,8 @@ export function createMemoryService(deps: MemoryDeps) {
     const result = addFact(read(), fact);
     if (!result.ok) return result;
     write(result.facts);
-    if (told) told = [...told, result.fact]; // she proposed it: no need to tell her again
+    // Not added to `told`: her next message says "added to the user's notes", so she knows it was kept (her own tag in the history
+    // is not enough: without that she answered "I have no notes about you" right after a note was saved).
     return { ok: true, fact: result.fact, full: nearlyFull(result.facts) };
   }
 

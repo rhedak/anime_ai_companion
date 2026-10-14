@@ -291,6 +291,8 @@ describe("her notes about you", { skip }, () => {
     const kept = await c.next("memory-resolved", 5000, from);
     assert.equal(kept.choice, "keep");
     assert.match(server.data("memory.md") ?? "", /^- Their cat is called Momo$/m);
+    await ask(c, "what do your notes say");
+    assert.match(inputs(server).at(-1)!, /Added to the user's notes[^]*- Their cat is called Momo/, "she is told it was kept");
 
     await fresh(c);
     await ask(c, "hello again");
@@ -364,6 +366,8 @@ describe("her notes about you", { skip }, () => {
     assert.match(server.data("memory.md") ?? "", /Momo/);
     assert.equal(c.since(from).filter((e) => e.type === "memory-offer").length, 0);
 
+    await ask(c, "and now?");
+    assert.match(inputs(server).at(-1)!, /Added to the user's notes[^]*Momo/, "she is told it was saved");
     c.send({ type: "memory-undo", fact: saved.fact });
     await c.next((e) => e.type === "notice" && /Forgotten/.test(e.text), 5000, from);
     assert.doesNotMatch(server.data("memory.md") ?? "", /Momo/);
