@@ -58,7 +58,10 @@ function toolNote(readOnly: boolean): string {
     "never describe a call in text, and never put JSON or code in your reply in place of one. Paths are relative to the project folder; " +
     "nothing outside it can be read or written. Take one step at a time and read each result before the next. The user sees every " +
     "bash command and file write and may refuse it; if they do, accept it." +
-    (readOnly ? "\nPlan mode: only read_file and grep exist. Look around, then propose a plan; change nothing." : "")
+    (readOnly
+      ? "\nPlan mode: this overrides anything said above about editing files or running commands. Only read_file and grep exist now; do not call edit_file, write_file or bash. " +
+        "Look around with the two read tools, then answer with a short numbered plan: for each step the file and the exact change. Change nothing."
+      : "")
   );
 }
 
