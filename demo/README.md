@@ -26,6 +26,11 @@ What is here, and how the pieces fit:
 - Asked to chat, or for anything only a model could do (a joke, a poem, "who are you?"), or for anything the script does not know, she says plainly
   that the demo has no language model, and points to the real app's brains (Claude Code, Cursor, opencode) and to Ollama with a link to the
   setup page. The reply ends on words, because the bubble over her picture shows the tail of a reply as plain text.
+- The optional small model (`model.js`, `model-dialog.js`, `model-prompt.js`): the prompt "Chat with a small model…" opens a dialog that says
+  plainly what is downloaded (SmolLM2 360M, about 207 MB, from huggingface.co, cdn.jsdelivr.net and raw.githubusercontent.com), that it is
+  small, and that a model on the visitor's own computer (Ollama) is better. Nothing is fetched before the visitor says yes. With the model on,
+  it answers only what the script cannot; redraws stay with the script. It can be turned off or removed from the browser again. WebGPU is
+  needed; without it the dialog says so. Tests use a fake model: nothing starts a real one.
 - `demo.css` is the demo's few changes to the page: a banner, and hiding what only means something with a server behind it (the brain,
   folder, permission and effort menus, the Chat/Work switch, attachments, saved looks, the microphone). `demo-boot.js` adds the suggested prompts.
 - The stand-in also plays one scripted scene, a pretend work-mode session: she reads a page, wants one edit, and asks with the real approval

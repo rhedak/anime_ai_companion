@@ -6,6 +6,7 @@
 import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
+import { buildMessages, emotionFix } from "./model-prompt.js";
 import { DRAWN_AGAIN, PACK_INTRO } from "./script.js";
 
 const OPEN = 1;
@@ -14,7 +15,9 @@ const OPEN = 1;
  * `renderer` is a promise of `{ call(request) }` (see render-bridge.js); `emotions` is emotions.json (or a promise of it);
  * `reply(text, { presets })` is her answer to a message, `{ text, scene? }` (see script.js); `greeting` is what she says first.
  * `pause(ms)` paces the streamed words and the scene, and can be replaced in tests. `packs` is the picture packs she can be switched to, by
- * name, each as the page's PackInfo (or a promise of them); `onPack(name | null)` is told when one is chosen or left.
+ * name, each as the page's PackInfo (or a promise of them); `onPack(name | null)` is told when one is chosen or left. `model` is the small
+ * in-browser language model, if the visitor has switched it on (`ready()`, `chat(messages, onPiece)`, `stop()`; see model.js): it answers what
+ * the script cannot, and nothing else.
  */
 export function createLocalSocket({
   renderer,
@@ -26,6 +29,7 @@ export function createLocalSocket({
   pause = (ms) => new Promise((r) => setTimeout(r, ms)),
   packs = {},
   onPack = (/** @type {string | null} */ _name) => {},
+  model = null,
 }) {
   let character = null;
   let version = 1;
@@ -60,7 +64,10 @@ export function createLocalSocket({
       }
       // An answer to the approval card must not wait behind the turn that is waiting for it.
       if (msg.type === "permission-reply") return void answerCard(msg.id, msg.decision);
-      if (msg.type === "stop") return void (waiting && answerCard(waiting.id, "deny"));
+      if (msg.type === "stop") {
+        model?.stop();
+        return void (waiting && answerCard(waiting.id, "deny"));
+      }
       // Drawing does not wait for the conversation (the face must keep changing while an approval card is open), only for the load.
       if (msg.type === "frames" || msg.type === "gesture-frames" || msg.type === "preset-thumbs") {
         ready.then(() => drawing(msg)).catch(() => {}); // a failed load has already been reported
@@ -70,6 +77,10 @@ export function createLocalSocket({
     },
     close() {
       socket.readyState = 3;
+    },
+    /** She says something unprompted, in her turn (the model is ready, the model is off). Tags in it work as in any reply. */
+    announce(text) {
+      chain = chain.then(() => speak(text)).catch(() => {});
     },
     /** Tells the page something in its chat log (loading progress, mostly). */
     notice(text) {
@@ -327,9 +338,28 @@ export function createLocalSocket({
   async function answer(text) {
     history.push({ type: "user", text });
     out({ type: "user", text });
-    const answered = reply(text, { presets, pack: pack !== null });
+    const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()) });
     if (answered.scene === "work") return workScene();
+    if (answered.needsModel && model?.ready()) return modelReply();
     await speak(answered.text);
+  }
+
+  /**
+   * The small model answers: streamed as it writes. Only her emotion and gesture tags count; a look-changing tag it might write is shown to
+   * nobody and applied to nothing, because she can only change her look through the script's reader.
+   */
+  async function modelReply() {
+    const names = Object.keys(await emotions);
+    let said = "";
+    try {
+      said = await model.chat(buildMessages(history, names, name), (piece) => out({ type: "delta", text: piece }));
+    } catch (err) {
+      out({ type: "notice", text: `The small model stopped: ${err?.message ?? err}` });
+    }
+    const fix = said ? emotionFix(said, names) : "";
+    if (fix) out({ type: "delta", text: fix });
+    history.push({ type: "bot", text: said + fix });
+    out({ type: "done" });
   }
 
   // --- the pretend work-mode session ---

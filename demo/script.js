@@ -129,7 +129,8 @@ const DOCS = "https://rhedak.github.io/anime_ai_companion/";
  */
 const NEEDS_MODEL =
   "To really talk I need a proper language model behind me. The real app connects me to Claude Code, Cursor or opencode, or to a free model " +
-  `that runs on your own computer through [Ollama](https://ollama.com) ([how to set that up](${DOCS}brains.html#ollama)). Then you can ask me anything.`;
+  `that runs on your own computer through [Ollama](https://ollama.com) ([how to set that up](${DOCS}brains.html#ollama)): that is the way to chat properly. ` +
+  'If you just want to try, the "Chat with a small model…" button below runs a tiny one right here in your browser.';
 
 /** She is asked to chat (or something only a model could answer). */
 const CHAT_WORDS =
@@ -147,8 +148,8 @@ const HELP_PACK =
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself
- * @returns {{ text: string, scene?: string }}
+ * @param {{ presets?: string[], pack?: boolean, model?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on
+ * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
   const t = ` ${String(input).toLowerCase().replace(/\s+/g, " ")} `;
@@ -157,7 +158,7 @@ export function reply(input, context = {}) {
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
   if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become|hair|eyes|glasses|hat|coat|skirt)\b/.test(t)) {
-    return { text: `[emotion:happy] I'd love to chat, but this demo has no language model: I only follow a small script. ${NEEDS_MODEL}` };
+    return { needsModel: true, text: `[emotion:happy] I'd love to chat, but this demo has no language model: I only follow a small script. ${NEEDS_MODEL}` };
   }
   if (HELP_WORDS.test(t)) return { text: context.pack ? HELP_PACK : HELP };
   if (/\bundo\b/.test(t) && context.pack) return { text: "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
@@ -247,6 +248,7 @@ export function reply(input, context = {}) {
   }
   if (!set.size && !mood && !gesture && !missing.length) {
     return {
+      needsModel: true,
       text:
         context.pack
           ? `[emotion:thinking] That is beyond my script: this demo has no language model, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". ${NEEDS_MODEL}`

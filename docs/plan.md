@@ -188,14 +188,27 @@ or on `/show`. That is fine for modern connections, so the demo uses the pack as
 Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
 creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes; check a phone-width window;
 see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether
-the demo should say where the real app's screenshots are. Then phase 2.
+the demo should say where the real app's screenshots are.
 
-**Phase 2, an optional model download (later).** A button, off until the visitor asks: "Chat with a small model". A dialog says plainly what
-happens: a one-time download of roughly 0.5 to 1 GB from Hugging Face (the real size shown before it starts), cached in the browser,
-removable, and that the conversation stays in the browser. Then a ~1B model through WebLLM (WebGPU) or a WebAssembly fallback; chat only, no
-work mode. Her expression comes from the `[emotion:…]` tags when the model writes them and from a simple fallback when it does not
-(models this small follow the tag protocol badly). Check each model's licence before shipping it. Detect WebGPU first and say so when it
-is missing instead of failing.
+**Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
+that says what is downloaded and from where, how big it is, that it is small and a model on the visitor's own computer (Ollama) is the way to a
+proper chat, and only then downloads. Chosen with the owner: the smallest usable model, **SmolLM2-360M-Instruct** (Apache-2.0; Hugging Face's
+model, the MLC build for WebLLM), about 207 MB, run with WebLLM 0.2.86 (Apache-2.0, pinned, from jsDelivr, about 2 MB). The files come from
+`huggingface.co`, the compiled GPU code from `raw.githubusercontent.com`; the dialog names all three hosts and says they see the visitor's IP
+address. The build follows the GPU: `q4f16_1` where WebGPU has `shader-f16`, else `q4f32_1` (the same download).
+
+- It answers only what the script cannot ("can we chat?", a joke, anything the reader does not know); every redraw, preset, mood and gesture
+  stays with the script, and an `[avatar …]` tag the model might write is applied to nothing. It is told her faces and the two gesture tags,
+  gets the last eight turns, and its answer gets an emotion tag at the end when it came without a valid one (`demo/model-prompt.js`).
+- A model this small loops and rambles, so answers are capped at 120 tokens with repetition penalties, and an answer is ended as soon as it
+  repeats a stretch it has already written (`repeatsItself`). Its answers are simple and often silly; the dialog and her own announcement
+  say so and point to Ollama on the visitor's computer.
+- Tried in Chrome on an Intel laptop GPU: download and load 19 s (a few seconds from the cache), the first answer 10 to 20 s (the GPU compiles
+  its programs), later answers start after about 6 s; the stop button ends an answer; "Turn it off" and "Remove it from this browser" work
+  (WebLLM's own delete leaves `tensor-cache.json` files behind, so `remove()` clears those too); without WebGPU the dialog says so and offers
+  only "Close". Nothing is fetched before the visitor says yes. No Node test starts a model: the stand-in is tested with a fake one.
+- Not done: WebAssembly fallback for browsers without WebGPU; a bigger model option; keeping the model out of the greeting's first-time
+  load (it is already lazy).
 
 **Risks and open questions**
 

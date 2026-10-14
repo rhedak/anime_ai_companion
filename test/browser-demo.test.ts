@@ -8,6 +8,8 @@ import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
+import { repeatsItself } from "../demo/model.js";
+import { MODEL, buildMessages, emotionFix, guessEmotion, modelId, systemPrompt } from "../demo/model-prompt.js";
 import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../demo/script.js";
 import { DEMO_PACKS, stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
@@ -37,9 +39,10 @@ function fakeRenderer() {
 }
 
 /** A socket with the page's side of it: what the page receives, in order. */
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void } = {}) {
+type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {}, packs: options.packs, onPack: options.onPack });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {}, packs: options.packs, onPack: options.onPack, model: options.model });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -317,6 +320,131 @@ test("what she answers as a picture pack: no redrawing, honest help, and moods a
   assert.match(pack("show me all your expressions").text, /\[demo\]$/);
 });
 
+/** A model that answers with the given text in pieces, and remembers what it was asked. */
+function fakeModel(answer: string, options: { on?: boolean; fail?: string } = {}) {
+  const asked: { role: string; content: string }[][] = [];
+  const state = { stopped: 0, on: options.on ?? true };
+  const model: FakeModel = {
+    ready: () => state.on,
+    async chat(messages, onPiece) {
+      asked.push(messages);
+      if (options.fail) throw new Error(options.fail);
+      for (const piece of answer.match(/\S+\s*/g) ?? []) onPiece(piece);
+      return answer;
+    },
+    stop: () => void state.stopped++,
+  };
+  return { model, asked, state };
+}
+
+test("the small model answers what the script cannot, with its emotion tag, and never changes her look or answers what the script can do", async () => {
+  const { model, asked } = fakeModel("[emotion:happy] Hello! I like quiet evenings. [avatar hair_color=#ff0000] [gesture:wave]");
+  const { events, next, say, calls } = connect({ model });
+  await next((e) => e.type === "queue");
+  const chat = await say("how is the weather");
+  assert.equal(chat.filter((e) => e.type === "delta").map((e) => e.text).join(""), "[emotion:happy] Hello! I like quiet evenings. [avatar hair_color=#ff0000] [gesture:wave]");
+  assert.ok(!chat.some((e) => e.type === "avatar"), "a look tag from the model is applied to nothing");
+  assert.equal(calls.filter((c) => c.op === "patch").length, 0);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0][0].role, "system");
+  assert.match(asked[0][0].content, /\[emotion:neutral\][^]*\[emotion:thinking\]/, "she is told which faces she has");
+  assert.deepEqual(asked[0].at(-1), { role: "user", content: "how is the weather" });
+  // what the script can do stays with the script
+  const redraw = await say("make my hair mint green");
+  assert.ok(redraw.some((e) => e.type === "avatar"), "a redraw is still done by the script");
+  assert.equal(asked.length, 1, "and the model was not asked");
+  const chat2 = await say("can we chat?");
+  assert.equal(asked.length, 2, "a request to chat goes to the model");
+  assert.ok(asked[1].some((m) => m.role === "assistant"), "with the earlier turns");
+  assert.ok(!asked[1].some((m) => /avatar|hair_color/.test(m.content) && m.role === "system"));
+  assert.ok(chat2.some((e) => e.type === "done"));
+  assert.equal(events.filter((e) => e.type === "notice").length, 0);
+});
+
+test("with the model off, or when it is not there, she points to the real app as before; and a model that fails says so and ends her turn", async () => {
+  const off = fakeModel("never", { on: false });
+  const a = connect({ model: off.model });
+  await a.next((e) => e.type === "queue");
+  const answer = await a.say("tell me a joke");
+  assert.match(answer.filter((e) => e.type === "delta").map((e) => e.text).join(""), /no language model[^]*Ollama/);
+  assert.equal(off.asked.length, 0);
+  const broken = fakeModel("x", { fail: "GPU lost" });
+  const b = connect({ model: broken.model });
+  await b.next((e) => e.type === "queue");
+  const failed = await b.say("tell me a joke");
+  assert.match(failed.find((e) => e.type === "notice")?.text, /The small model stopped: GPU lost/);
+  assert.ok(failed.some((e) => e.type === "done"), "her turn still ends");
+});
+
+test("an answer without a usable emotion gets one added at the end, and the stop button reaches the model", async () => {
+  const { model, state } = fakeModel("Sorry, I do not know that one?");
+  const { events, next, send, say } = connect({ model });
+  await next((e) => e.type === "queue");
+  const reply = await say("who is the president");
+  const tail = reply.filter((e) => e.type === "delta").map((e) => e.text).join("");
+  assert.match(tail, /\[emotion:(sad|thinking)\]$/);
+  send({ type: "stop" });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(state.stopped, 1);
+  assert.ok(events.length > 0);
+});
+
+test("she can be told to say something unprompted (the model is ready), and tags in it work", async () => {
+  const { socket, events, next } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  (socket as any).announce("[emotion:happy] [gesture:wave] Ready!");
+  await next((e) => e.type === "done", from);
+  assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), "[emotion:happy] [gesture:wave] Ready!");
+});
+
+test("what the small model is told: her faces, the tags it may use, and the last few turns without any tag but the emotion", () => {
+  const names = Object.keys(emotions);
+  const system = systemPrompt(names);
+  for (const name of names) assert.ok(system.includes(`[emotion:${name}]`), name);
+  assert.match(system, /\[gesture:wave\] or \[gesture:cheer\]/);
+  assert.match(system, /cannot change your own looks/);
+  const history = [
+    { type: "bot", text: "[emotion:happy] [gesture:wave] Hi! [avatar hair_color=#fff] Welcome." },
+    { type: "user", text: "make my hair mint green" },
+    { type: "bot", text: "[emotion:happy] Okay! Mint hair. [avatar hair_color=#8fe3b4] How does that look?" },
+    { type: "notice", text: "something else" },
+    { type: "user", text: "how are you [image x.png]" },
+  ];
+  const messages = buildMessages(history, names);
+  assert.deepEqual(messages.map((m) => m.role), ["system", "assistant", "user", "assistant", "user"]);
+  assert.equal(messages[1].content, "[emotion:happy] Hi! Welcome.");
+  assert.equal(messages[3].content, "[emotion:happy] Okay! Mint hair. How does that look?");
+  assert.equal(messages[4].content, "how are you");
+  const long = Array.from({ length: 30 }, (_, i) => ({ type: i % 2 ? "bot" : "user", text: `line ${i}` }));
+  assert.equal(buildMessages(long, names).length, 9, "the system prompt and the last eight turns");
+  assert.ok(buildMessages([{ type: "user", text: "x".repeat(5000) }], names)[1].content.length <= 600);
+});
+
+test("the emotion of an answer is fixed at its end only when it needs it, and the model build follows what the GPU can do", () => {
+  const names = Object.keys(emotions);
+  assert.equal(emotionFix("[emotion:happy] Hi!", names), "");
+  assert.equal(emotionFix("[emotion:sad] ok [emotion:shy] fine", names), "");
+  assert.match(emotionFix("[emotion:ecstatic] Wow!", names), /^ \[emotion:happy\]$/, "an invented face is replaced by a guess");
+  assert.match(emotionFix("Hello there!", names), /^ \[emotion:happy\]$/);
+  assert.match(emotionFix("What do you mean?", names), /^ \[emotion:thinking\]$/);
+  assert.match(emotionFix("Nothing much", names), /^ \[emotion:neutral\]$/);
+  assert.equal(guessEmotion("I am sorry about that", names), "sad");
+  assert.equal(guessEmotion("hello", ["neutral"]), "neutral", "only faces she has");
+  assert.equal(modelId(true), MODEL.idF16);
+  assert.equal(modelId(false), MODEL.idF32);
+  assert.match(MODEL.library, /@mlc-ai\/web-llm@\d+\.\d+\.\d+\/\+esm$/, "an exact version of the library");
+  assert.equal(MODEL.licence, "Apache-2.0");
+});
+
+test("a looping answer is recognised, and an ordinary one is not", () => {
+  const loop = 'A cat is on the couch. "Mouse, mouse, I want to play with you!" The cat says. "Mouse, mouse, I want to play with you!" The cat says again.';
+  assert.equal(repeatsItself(loop), false, "once is fine");
+  assert.equal(repeatsItself(loop + ' "Mouse, mouse, I want to play with you!" The cat says again.'), true);
+  assert.equal(repeatsItself("Hello! I am fine."), false);
+  assert.equal(repeatsItself("a ".repeat(80)), true);
+});
+
 test("asked in words to show off, she says so and ends with [demo], and the show follows her reply like the server's", async () => {
   const { events, next, send } = connect();
   await next((e) => e.type === "queue");
@@ -441,7 +569,7 @@ test("asked to chat, or for what only a model could do, she says plainly that th
   assert.match(reply("tell me a joke", { presets: PRESETS, pack: true }).text, /no language model/);
   assert.match(reply("how is the weather", { presets: PRESETS, pack: true }).text, /no language model[^]*as a picture pack/);
   const ends = say("how is the weather").text;
-  assert.match(ends, /Then you can ask me anything\.$/, "ends on words, because the bubble over her picture shows the tail as plain text");
+  assert.match(ends, /runs a tiny one right here in your browser\.$/, "ends on words, because the bubble over her picture shows the tail as plain text");
 });
 
 test("taking things off works across an 'and', and putting on after taking off does not inherit it", () => {

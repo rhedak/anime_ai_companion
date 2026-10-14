@@ -39,3 +39,35 @@ body.demo #file { display: none !important; }
   cursor: pointer;
 }
 #demo-chips button:hover { background: var(--hover, #38304f); }
+
+/* The dialog that offers the small in-browser model. */
+.model-dialog {
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 20px 22px;
+  color: var(--text, #eee);
+  background: var(--panel, #1f1a2b);
+  border: 1px solid var(--line, #3a3350);
+  border-radius: 14px;
+}
+.model-dialog::backdrop { background: rgba(10, 8, 20, 0.6); }
+.model-dialog h2 { margin: 0 0 10px; font-size: 18px; }
+.model-dialog p { margin: 0 0 10px; line-height: 1.5; font-size: 14px; }
+.model-dialog a { color: var(--accent, #ff8f6b); }
+.model-dialog progress { width: 100%; height: 10px; margin: 4px 0; }
+.model-dialog .model-note, .model-dialog .model-progress { color: var(--muted, #b9b3c9); font-size: 13px; }
+.model-dialog .model-warning { padding: 8px 10px; background: var(--fill-2, #2c2640); border-radius: 8px; }
+.model-dialog .model-error { color: #ff9a9a; }
+.model-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.model-buttons button {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text, #eee);
+  background: var(--fill-2, #2c2640);
+  border: 1px solid var(--line, #3a3350);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.model-buttons button.primary { background: var(--accent, #ff8f6b); color: #1c1224; border-color: transparent; font-weight: 600; }
+.model-buttons button.quiet { background: transparent; }
+.model-buttons button:disabled { opacity: 0.6; cursor: default; }
