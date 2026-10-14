@@ -41,8 +41,8 @@ microphone button is lit, and this app's own server never receives audio.
   tags removed, lengths capped) and shown before they apply. Her greeting, the lorebook and the card author's own instructions
   are separate choices at import; the instructions are off by default, apply in chat and work mode once you choose them, and the
   import warns strongly, once. The expression protocol is never replaced by a card. Importing works from the computer only.
-- **Her notes about you stay yours.** `data/memory.md` is one plain file you can read and edit. She adds to it only in chat, never
-  in work mode (a file or page she reads there could talk her into writing something that outlives the conversation), and the
+- **Her notes about you stay yours.** `data/memory.md` is one plain file you can read and edit. She proposes a note only in chat, never
+  in work mode, and by default it is saved only when you keep it (a file or page she reads there could talk her into writing something that outlives the conversation), and the
   notes reach her as information, never as instructions.
 - **Local models with tools are on you.** With Ollama, work mode (experimental) asks before every command, file write and
   edit, and has no looser mode. How well a local model behaves is up to the model and to you: the app does not vouch for any.

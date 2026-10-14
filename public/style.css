@@ -155,6 +155,9 @@ form.composer.shell textarea { font-family: var(--font-mono); }
 .perm-actions .deny { background: var(--fill-2); color: var(--text); }
 .perm-more { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
 .perm-more button { padding: 5px 10px; font-size: 12px; }
+.msg.perm.memory { background: var(--fill-1); border-color: var(--line); }
+.memory-fact { margin-bottom: 8px; overflow-wrap: anywhere; }
+.memory-undo { margin-left: 4px; padding: 2px 8px; font-size: 12px; }
 .perm-done { font-size: var(--font-size-small); color: var(--muted); }
 .perm-option { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: var(--font-size-small); cursor: pointer; }
 .perm-option input { margin-top: 3px; }

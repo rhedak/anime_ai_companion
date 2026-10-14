@@ -443,6 +443,9 @@ const memory = createMemoryService({
   broadcast: (msg) => broadcast(msg),
   openFile: (path) => openBrowser(path),
   remoteRefusal: () => remoteRefusal,
+  settings,
+  saveSettings: () => saveSettings(settingsPath, settings),
+  pushNote: (text) => notes.push(text),
 });
 
 // --- character cards: see card-service.ts ---
@@ -520,6 +523,7 @@ function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
   if (name === "work") return a !== ""; // /work alone returns to the saved folder
   if (name === "setup") return a === "on";
+  if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
   if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
   return false;
 }
@@ -686,8 +690,8 @@ const slashCommands: Record<
     },
   },
   memory: {
-    help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit",
-    run: ({ args, say, remote }) => memory.command(args, say, remote),
+    help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit | ask | auto | off",
+    run: async ({ args, say, remote }) => memory.command(args, say, remote),
   },
   card: {
     help: "character cards: /card import <file.png|.json> | apply [greeting] [lore] [orders] | cancel | export | reset",
@@ -1017,6 +1021,7 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: "notice", text: `Could not resume that ${settings.provider} session, so this is a new conversation.` }));
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
+  for (const offer of memory.pending()) ws.send(JSON.stringify({ type: "memory-offer", ...offer }));
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
@@ -1047,6 +1052,10 @@ wss.on("connection", (ws) => {
       turns.submit(msg.text, images, say);
     } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
+    } else if (msg.type === "memory-reply") {
+      memory.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "memory-undo") {
+      memory.undo(msg.fact, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
       queue.remove(msg.id);
     } else if (msg.type === "claude-skills" && typeof msg.value === "boolean") {

@@ -771,6 +771,60 @@ function addPermission(req) {
   permEls.set(req.id, { card, actions });
 }
 
+// She wants to remember something: a small card, answered with Keep or Not now. It never holds up the conversation.
+const memoryEls = new Map(); // id -> { card, actions }
+
+function addMemoryOffer(msg) {
+  if (memoryEls.has(msg.id)) return;
+  const card = document.createElement("div");
+  card.className = "msg perm memory";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Remember this about you?";
+  const fact = document.createElement("div");
+  fact.className = "memory-fact";
+  fact.textContent = msg.fact; // textContent only: the model wrote it
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const button = (label, cls, choice) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = () => ws.send(JSON.stringify({ type: "memory-reply", id: msg.id, choice }));
+    return b;
+  };
+  actions.append(button("Keep", "allow", "keep"), button("Not now", "deny", "skip"));
+  card.append(title, fact, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  memoryEls.set(msg.id, { card, actions });
+}
+
+function resolveMemoryOffer(msg) {
+  const el = memoryEls.get(msg.id);
+  if (!el) return;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  done.textContent = msg.choice === "keep" ? "✓ Kept" : "Not kept";
+  el.actions.replaceWith(done);
+  memoryEls.delete(msg.id);
+}
+
+// She saved a note by herself (the user turned asking off): say so, with an Undo.
+function addMemorySaved(msg) {
+  const div = addMsg("sys", msg.text);
+  const undo = document.createElement("button");
+  undo.className = "ghost memory-undo";
+  undo.textContent = "Undo";
+  undo.title = "Take this note out again";
+  undo.onclick = () => {
+    ws.send(JSON.stringify({ type: "memory-undo", fact: msg.fact }));
+    undo.disabled = true;
+    undo.textContent = "Undone";
+  };
+  div.append(" ", undo);
+}
+
 // A long conversation whose prompt cache has expired: the message waits until the user picks how to pay for it.
 let coldEl = null; // { card, actions, text }
 
@@ -982,6 +1036,7 @@ function handle(msg) {
       // The conversation so far, replayed to a freshly opened or reloaded tab.
       log.replaceChildren();
       coldEl = null;
+      memoryEls.clear();
       toolEls.clear();
       for (const item of msg.items) {
         if (item.type === "user") addUserMsg(item.text, [], item.images ?? 0);
@@ -1069,6 +1124,15 @@ function handle(msg) {
       break;
     case "cold-cache":
       addColdCache(msg);
+      break;
+    case "memory-offer":
+      addMemoryOffer(msg);
+      break;
+    case "memory-resolved":
+      resolveMemoryOffer(msg);
+      break;
+    case "memory-saved":
+      addMemorySaved(msg);
       break;
     case "card-offer":
       addCardOffer(msg);

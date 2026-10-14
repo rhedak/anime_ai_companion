@@ -19,7 +19,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/permissions [ask\|plan\|accept\|auto\|everything]`, `/plan` | the permissions menu, from the keyboard |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
-| `/memory [add <note> \| forget <number\|all> \| edit]` | her notes about you (`data/memory.md`); she adds notes herself in chat, never in work mode |
+| `/memory [add <note> \| forget <number\|all> \| edit \| ask \| auto \| off]` | her notes about you (`data/memory.md`); in chat she asks before saving one (`auto` saves with an Undo, `off` saves nothing), never in work mode |
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/rename [name]` | change her name |

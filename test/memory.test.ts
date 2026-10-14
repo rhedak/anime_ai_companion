@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_FACTS, addFact, cleanFact, findRememberTags, formatMemory, memoryChange, memoryIntro, nearlyFull, parseMemory } from "../src/memory.ts";
+import { MAX_FACTS, addFact, asksToRemember, cleanFact, findRememberTags, formatMemory, memoryChange, memoryIntro, nearlyFull, parseMemory } from "../src/memory.ts";
 
 test("remember tags are found when complete, in order, and not while they are still streaming", () => {
   assert.deepEqual(findRememberTags("[emotion:happy] Nice! [remember Their cat is called Momo] and [remember likes tea] ok"), ["Their cat is called Momo", "likes tea"]);
@@ -45,6 +45,9 @@ test("the intro hands the notes over as data and says how to save, but not in wo
   assert.match(work, /none yet/);
   assert.match(work, /cannot save notes in work mode/);
   assert.doesNotMatch(work, /\[remember </);
+  const off = memoryIntro([], false, true);
+  assert.match(off, /switched off saving notes/);
+  assert.doesNotMatch(off, /\[remember </);
 });
 
 test("a change is reported as what was added and what was removed, or not at all", () => {
@@ -52,4 +55,13 @@ test("a change is reported as what was added and what was removed, or not at all
   const change = memoryChange(["Likes tea", "Has a dog"], ["Likes tea", "Has a cat"])!;
   assert.match(change, /Added[^]*- Has a cat/);
   assert.match(change, /Removed[^]*- Has a dog/);
+});
+
+test("a request to remember something is recognised, a code task that says 'remember to' is not", () => {
+  for (const text of ["you might want to remember that", "can you save a memory", "Please remember my name is Sam", "make a note of that", "note that I like tea", "don't forget I'm vegan", "memorize this"]) {
+    assert.equal(asksToRemember(text), true, text);
+  }
+  for (const text of ["remember to run the tests", "don't forget to update the README", "write a function that saves a file", "say hi", "keep the notes short in the docs folder"]) {
+    assert.equal(asksToRemember(text), false, text);
+  }
 });
