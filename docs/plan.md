@@ -185,9 +185,16 @@ and cheer). `/frames` and `/frames off` work as in the app. The page's gallery t
 under a sub-folder. The pack is 11 MB as lossless WebP (pixel-identical to the PNGs it was made from): about 2.6 MB when it is chosen, the rest as emotions are shown
 or on `/show`. That is fine for modern connections, so the demo uses the pack as it is.
 
+**Phone width: checked and fixed.** In a 390, 360 and 320 px wide frame the page stacks the picture over the chat, with no sideways page scroll.
+What did not work: the chat log got 96 px (the suggested prompts wrapped into six rows), and the last button over the picture ("Reset look") sat
+past the edge. Now: the prompts are one row that scrolls sideways with a fade at its end, the buttons over the picture are tighter (all five fit
+down to 360 px), the banner is smaller (the log gets 133 to 143 px at 780 px high), and the model dialog scrolls and has full-width buttons.
+The docs site's top bar keeps "Try the demo" on one line and drops the plain GitHub pill below 480 px. Not tested on a real phone (touch,
+the on-screen keyboard, WebGPU on mobile).
+
 Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
-creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes; check a phone-width window;
-see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether
+creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes (the README and the site are linked and `npm run site:preview` shows them; the
+phone-width window is checked: see below); see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether
 the demo should say where the real app's screenshots are.
 
 **Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
