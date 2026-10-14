@@ -31,6 +31,9 @@ What is here, and how the pieces fit:
   small, and that a model on the visitor's own computer (Ollama) is better. Nothing is fetched before the visitor says yes. With the model on,
   it answers only what the script cannot; the script has first say, so a request about her look (even a loose one, or "turn your hair that color", meaning the colour just named) never goes to the model. It can be turned off or removed from the browser again. WebGPU is
   needed; without it the dialog says so. Tests use a fake model: nothing starts a real one.
+- On a phone-sized window the demo starts with her behind the chat (`stageView` in `localStorage`, which `app.js` reads), the notice at the top
+  starts folded to one line, and the suggested prompts fold behind an "Ideas" button; the visitor's choices are remembered. `demo-boot.js`
+  does this before `app.js` runs.
 - `demo.css` is the demo's few changes to the page: a banner, and hiding what only means something with a server behind it (the brain,
   folder, permission and effort menus, the Chat/Work switch, attachments, saved looks, the microphone). `demo-boot.js` adds the suggested prompts.
 - The stand-in also plays one scripted scene, a pretend work-mode session: she reads a page, wants one edit, and asks with the real approval

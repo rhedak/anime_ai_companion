@@ -662,6 +662,8 @@ test("staging the demo gives a flat static folder in demo mode that loads the de
     assert.match(html, /href="demo\.css"/);
     assert.match(html, /<title>Anime AI Companion \(demo\)<\/title>/);
     assert.match(html, /demo-banner[^]*nothing you type is sent anywhere[^]*github\.com\/rhedak\/anime_ai_companion/);
+    assert.match(html, /demo-banner-short[^>]*>[^<]*nothing is sent anywhere/, "the short line keeps the privacy statement");
+    assert.match(html, /class="demo-banner-toggle" aria-expanded="true"/, "the notice can be folded");
     const list = JSON.parse(readFileSync(join(dir, "creator-files.json"), "utf8")) as string[];
     assert.ok(list.includes("anime_character_creator/__init__.py"));
     for (const file of list) assert.ok(existsSync(join(dir, "creator", file)), file);

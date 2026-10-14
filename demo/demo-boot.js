@@ -6,6 +6,24 @@ import { GREETING, reply } from "./script.js";
 import { createModel } from "./model.js";
 import { createModelDialog } from "./model-dialog.js";
 
+/** A phone-sized window: the page stacks her over the chat there, and the chat gets little height. */
+const phone = () => matchMedia("(max-width: 800px)").matches;
+const remembered = (key) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const remember = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+};
+// On a phone she starts behind the chat, which then has the whole screen (the page's own "behind the chat" view, which app.js reads from
+// here when it starts). A choice the visitor has made with that button is kept.
+if (phone() && remembered("stageView") === null) remember("stageView", "behind");
+
 // No top-level await: app.js must find `anaicoSocket` when it starts, so the emotions are fetched in the background.
 const emotions = fetch("emotions.json").then((res) => res.json());
 // The picture packs the demo offers (written by stage.mjs); none if the list is missing, and the demo is the same without them.
@@ -50,6 +68,28 @@ let packed = false;
   return socket;
 };
 
+// The notice at the top: the whole of it, or one short line, since it takes height from the chat. On a phone it starts short.
+(() => {
+  const banner = document.querySelector(".demo-banner");
+  const toggle = banner?.querySelector(".demo-banner-toggle");
+  if (!banner || !toggle) return;
+  const saved = remembered("demoBannerCollapsed");
+  const set = (collapsed) => {
+    banner.classList.toggle("collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.textContent = collapsed ? "▾" : "▴";
+    const label = collapsed ? "Show the whole notice" : "Hide most of this notice";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
+  };
+  set(saved === null ? phone() : saved === "1");
+  toggle.addEventListener("click", () => {
+    const collapsed = !banner.classList.contains("collapsed");
+    set(collapsed);
+    remember("demoBannerCollapsed", collapsed ? "1" : "0");
+  });
+})();
+
 /** Things worth trying, as buttons. Each is sent exactly as if it had been typed. */
 const CHIPS = [
   "Make your hair mint green",
@@ -78,6 +118,9 @@ const PACK_CHIPS = [
   { label: () => (model.ready() ? "Small model: on" : "Chat with a small model…"), action: () => modelDialog.open() },
 ];
 
+/** The suggested prompts can be folded away, which gives the chat the room. */
+let chipsCollapsed = remembered("demoChipsCollapsed") === "1";
+
 /** @param {boolean} isPacked she is a set of pictures just now */
 function showChips(isPacked) {
   packed = isPacked;
@@ -88,10 +131,24 @@ function showChips(isPacked) {
   if (!bar) {
     bar = document.createElement("div");
     bar.id = "demo-chips";
-    bar.setAttribute("aria-label", "Things to try");
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "chips-toggle";
+    toggle.setAttribute("aria-controls", "demo-chips-list");
+    toggle.addEventListener("click", () => {
+      chipsCollapsed = !chipsCollapsed;
+      remember("demoChipsCollapsed", chipsCollapsed ? "1" : "0");
+      applyChipsState();
+    });
+    const list = document.createElement("div");
+    list.id = "demo-chips-list";
+    list.className = "chips-list";
+    list.setAttribute("aria-label", "Things to try");
+    bar.append(toggle, list);
     form.before(bar);
   }
-  bar.replaceChildren();
+  const list = /** @type {HTMLElement} */ (document.getElementById("demo-chips-list"));
+  list.replaceChildren();
   for (const chip of isPacked ? PACK_CHIPS : CHIPS) {
     const { label, text, action } = typeof chip === "string" ? { label: chip, text: chip, action: null } : { text: "", action: null, ...chip };
     const button = document.createElement("button");
@@ -105,7 +162,20 @@ function showChips(isPacked) {
       input.dispatchEvent(new Event("input"));
       /** @type {HTMLFormElement} */ (form).requestSubmit();
     });
-    bar.append(button);
+    list.append(button);
   }
+  applyChipsState();
+}
+
+function applyChipsState() {
+  const bar = document.getElementById("demo-chips");
+  const toggle = bar?.querySelector(".chips-toggle");
+  if (!bar || !toggle) return;
+  bar.classList.toggle("collapsed", chipsCollapsed);
+  toggle.setAttribute("aria-expanded", String(!chipsCollapsed));
+  toggle.textContent = chipsCollapsed ? "Ideas ▾" : "Ideas ▴";
+  const label = chipsCollapsed ? "Show the things to try" : "Hide the things to try";
+  toggle.setAttribute("aria-label", label);
+  toggle.setAttribute("title", label);
 }
 showChips(false);

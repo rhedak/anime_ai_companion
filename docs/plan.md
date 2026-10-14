@@ -189,6 +189,12 @@ or on `/show`. That is fine for modern connections, so the demo uses the pack as
 What did not work: the chat log got 96 px (the suggested prompts wrapped into six rows), and the last button over the picture ("Reset look") sat
 past the edge. Now: the prompts are one row that scrolls sideways with a fade at its end, the buttons over the picture are tighter (all five fit
 down to 360 px), the banner is smaller (the log gets 133 to 143 px at 780 px high), and the model dialog scrolls and has full-width buttons.
+Then, on the owner's suggestion: on a phone-sized window the demo starts with her **behind the chat** (the page's own view, remembered in
+`localStorage` as `stageView`; a choice the visitor makes with its button is kept), so the chat has the whole screen (the log is 527 px of 780);
+the notice at the top folds to one line ("A demo: it runs in your browser, nothing is sent anywhere", about 27 px; on a phone it starts folded,
+elsewhere open) and the suggested prompts fold behind an "Ideas" button; both choices are remembered. The Looks menu and her buttons are hidden
+in the behind view (the page's design), so on a phone the picture pack is reached with the "Try the picture pack" prompt, or the icon in the chat
+header puts her beside the chat again.
 The docs site's top bar keeps "Try the demo" on one line and drops the plain GitHub pill below 480 px. Not tested on a real phone (touch,
 the on-screen keyboard, WebGPU on mobile).
 

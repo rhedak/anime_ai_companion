@@ -18,6 +18,11 @@ body.demo main { flex: 1; min-height: 0; height: auto !important; }
   border-bottom: 1px solid var(--line, #3a3350);
 }
 .demo-banner a { color: var(--accent, #ff8f6b); }
+.demo-banner-toggle { flex: none; padding: 0 8px; font: inherit; line-height: 1.4; color: inherit; background: transparent; border: 1px solid var(--line, #3a3350); border-radius: 999px; cursor: pointer; }
+.demo-banner-short { display: none; }
+.demo-banner.collapsed { flex-wrap: nowrap; justify-content: center; padding-top: 3px; padding-bottom: 3px; }
+.demo-banner.collapsed .demo-banner-short { display: inline; }
+.demo-banner.collapsed .demo-banner-full, .demo-banner.collapsed .demo-banner-links { display: none; }
 
 /* No brains, folders, permissions, attachments, saved looks or microphone without a server. */
 body.demo #menus,
@@ -27,7 +32,9 @@ body.demo #attach,
 body.demo #mic,
 body.demo #file { display: none !important; }
 
-#demo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 14px 8px; }
+#demo-chips { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0 14px 8px; }
+#demo-chips .chips-list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; max-width: 100%; }
+#demo-chips.collapsed .chips-list { display: none; }
 #demo-chips button {
   padding: 5px 11px;
   font: inherit;
@@ -38,6 +45,7 @@ body.demo #file { display: none !important; }
   border-radius: 999px;
   cursor: pointer;
 }
+#demo-chips .chips-toggle { flex: none; color: var(--muted, #b9b3c9); background: transparent; }
 #demo-chips button:hover { background: var(--hover, #38304f); }
 
 /* The dialog that offers the small in-browser model. */
@@ -80,16 +88,17 @@ body.demo #file { display: none !important; }
   body.demo .demo-banner { font-size: 12px; padding: 4px 10px; line-height: 1.35; }
   body.demo .tools { gap: 5px; }
   body.demo .tools button, body.demo .tools select { padding: 5px 7px; font-size: 12px; }
-  #demo-chips {
+  #demo-chips { flex-direction: row; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+  #demo-chips .chips-list {
+    flex: 1;
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
-    margin-bottom: 6px;
     padding-right: 28px;
     -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
     mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
   }
-  #demo-chips::-webkit-scrollbar { display: none; }
+  #demo-chips .chips-list::-webkit-scrollbar { display: none; }
   #demo-chips button { flex: none; white-space: nowrap; }
   .model-dialog { padding: 16px; }
   .model-buttons button { flex: 1 1 auto; }
