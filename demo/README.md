@@ -31,7 +31,7 @@ What is here, and how the pieces fit:
 - A picture pack: Looks… → Packs… offers **Risa in a dress** (`DEMO_PACKS` in `stage.mjs`; also `/frames risa-dress`, `/frames off`,
   or the "Try the picture pack" prompt). `stage.mjs` reads the pack with the app's own `readPack` and copies it to `frames/<name>/`, a
   thumbnail to `pack-thumb/<name>` (the page asks for that path) and the list the page needs to `packs.json`. The pictures load only when the
-  pack is chosen, so the demo's first load does not grow (the pack is about 17 MB; shrinking it is a later job). While a pack is on she says
+  pack is chosen, so the demo's first load does not grow (the pack is about 11 MB as lossless WebP; about 2.6 MB of that when it is chosen, the rest as emotions are shown or on `/show`). While a pack is on she says
   once that she is a set of pictures and cannot redraw herself, the suggested prompts leave out everything that would redraw her (and offer
   the way back), and a request to redraw is declined in words. `/show` plays only what the pictures have. Picking a drawn look from the
   menu (a preset, Undo, Reset look) shows the drawn avatar again, as in the app.

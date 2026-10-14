@@ -104,8 +104,11 @@ function serve(dir, port) {
     const file = normalize(join(dir, path === "/" ? "index.html" : path));
     if (file !== dir && !file.startsWith(dir + sep)) return void res.writeHead(403).end();
     if (!existsSync(file) || !statSync(file).isFile()) return void res.writeHead(404).end("Not found");
-    res.writeHead(200, { "content-type": types[extname(file)] ?? (path.startsWith("/pack-thumb/") ? "image/png" : "application/octet-stream"), "cache-control": "no-cache" });
-    res.end(readFileSync(file));
+    const body = readFileSync(file);
+    // The gallery's thumbnails have no extension (the page asks for pack-thumb/<name>); say what they are from their first bytes.
+    const thumbnail = path.startsWith("/pack-thumb/") ? (body.toString("ascii", 0, 4) === "RIFF" ? "image/webp" : "image/png") : null;
+    res.writeHead(200, { "content-type": types[extname(file)] ?? thumbnail ?? "application/octet-stream", "cache-control": "no-cache" });
+    res.end(body);
   });
   server.listen(port, "127.0.0.1", () => console.log(`serving ${relative(process.cwd(), dir) || dir} on http://127.0.0.1:${port}/`));
 }

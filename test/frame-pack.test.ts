@@ -246,7 +246,7 @@ test("the Risa (dress) pack that ships with the app is complete, with a wave and
     const e = r.pack.emotions[emotion];
     assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
   }
-  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.png", "cheer-2.png"], wave: ["wave-1.png", "wave-2.png"] });
+  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
   assert.equal(r.pack.files.size, names.length * 5 + 4);
   assert.match(r.pack.credit ?? "", /original character/);
   assert.match(r.pack.terms ?? "", /MIT/);

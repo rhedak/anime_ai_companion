@@ -182,8 +182,8 @@ gets, all checked by hand in Chrome with no console errors:
 her say that she is a set of pictures now and cannot redraw herself; the suggested prompts swap to ones that do not redraw her (plus "Back to
 the drawn avatar"), a redraw request is declined in words, and `/show` shows only what the pictures have (every emotion, a blink, talking, wave
 and cheer). `/frames` and `/frames off` work as in the app. The page's gallery thumbnail path became relative (`pack-thumb/<name>`) so it works
-under a sub-folder. Open: the pack is 17 MB as PNG, loaded only when chosen; pick or shrink the pictures for the demo (the full pack stays
-in the repository) before it goes public.
+under a sub-folder. The pack is 11 MB as lossless WebP (pixel-identical to the PNGs it was made from): about 2.6 MB when it is chosen, the rest as emotions are shown
+or on `/show`. That is fine for modern connections, so the demo uses the pack as it is.
 
 Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
 creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes; check a phone-width window;
