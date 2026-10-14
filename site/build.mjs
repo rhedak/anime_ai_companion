@@ -41,6 +41,8 @@ const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/
 function resolveLink(href, source) {
   if (/^([a-z]+:|#|mailto:)/i.test(href)) return href;
   const [path, hash] = href.split("#");
+  // the browser demo, which is put into the site at demo/ after the build (the pages workflow, npm run site:preview)
+  if (path === "demo/") return "demo/";
   // a link to another page of the site, written as page.html
   const named = pages.find((p) => p.slug + ".html" === path);
   if (named) return `${named.slug}.html${hash ? "#" + hash : ""}`;
@@ -121,6 +123,7 @@ function layout({ page, index, html, headings, description }) {
 <header class="top">
   <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="side"><span></span></button>
   <a class="brand" href="index.html">Anime AI Companion</a>
+  <a class="gh demo" href="demo/">Try the demo</a>
   <a class="gh" href="${REPO}">GitHub</a>
 </header>
 <div class="shell">

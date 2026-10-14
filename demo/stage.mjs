@@ -98,10 +98,13 @@ export async function stage(target = out) {
 
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".py": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp" };
 
-function serve(dir, port) {
+/** A small static file server for a staged folder (or the whole built site), on 127.0.0.1 only. */
+export function serve(dir, port) {
   const server = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
-    const file = normalize(join(dir, path === "/" ? "index.html" : path));
+    // A folder is its index.html; "/demo" becomes "/demo/" so its relative links work, as a static host does.
+    if (path !== "/" && !path.endsWith("/") && existsSync(join(dir, path)) && statSync(join(dir, path)).isDirectory()) return void res.writeHead(301, { location: `${path}/` }).end();
+    const file = normalize(join(dir, path.endsWith("/") ? `${path}index.html` : path));
     if (file !== dir && !file.startsWith(dir + sep)) return void res.writeHead(403).end();
     if (!existsSync(file) || !statSync(file).isFile()) return void res.writeHead(404).end("Not found");
     const body = readFileSync(file);

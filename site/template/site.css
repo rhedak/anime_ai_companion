@@ -23,6 +23,7 @@ a:hover { text-decoration-thickness: 2px; }
 .top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: .2px; flex: 1; }
 .gh { text-decoration: none; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); font-size: 14px; }
+.gh.demo { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 .menu { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--text); display: grid; place-items: center; cursor: pointer; }
 .menu span, .menu span::before, .menu span::after { display: block; width: 18px; height: 2px; background: currentColor; border-radius: 2px; content: ""; position: relative; }
 .menu span::before { position: absolute; top: -6px; }

@@ -8,7 +8,7 @@ glasses, please") and she redraws.
 
 ![Work mode: before an edit she asks, and the card shows the diff](site/assets/work.png)
 
-[Watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about half a minute).
+**[Try the demo now](https://rhedak.github.io/anime_ai_companion/demo/)**: a live Risa in your browser, nothing to install and nothing sent anywhere. Or [watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about a minute).
 
 - **Approvals you can read.** Every command and file change waits for you, with the exact text. Looser modes are opt-in
   and come back to "ask" at every start.

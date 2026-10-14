@@ -26,6 +26,7 @@ test("the site builds, every page exists, and no link or picture points at nothi
     for (const m of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
       const target = m[1];
       if (/^(https?:|mailto:|#)/.test(target)) continue;
+      if (target === "demo/") continue; // staged into the site after the build (the pages workflow, or npm run site:preview)
       const [path, hash] = target.split("#");
       assert.ok(existsSync(join(dist, path)), `${file} links to ${target}, which does not exist`);
       if (hash && path.endsWith(".html")) {
