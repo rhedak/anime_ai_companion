@@ -115,10 +115,25 @@ const HELP =
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
   "The Undo button above my picture takes back the last change.";
 
+/** What she says when the picture pack is chosen (the same for a first choice and a later one). */
+export const PACK_INTRO =
+  "[emotion:happy] [gesture:wave] This is an image pack: right now I'm a set of pictures, not a character drawn by code. " +
+  "I can still change my face, blink, talk, wave and cheer, but I can't redraw myself: no new hair, eyes, glasses, clothes or other characters while the pictures are on. " +
+  "To get that back, choose Looks… → Packs… → Drawn avatar (or type /frames off). Type /show to see everything the pictures can do.";
+
+/** What she says when the drawn avatar comes back. */
+export const DRAWN_AGAIN =
+  "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 20 characters. Just ask.";
+
+const HELP_PACK =
+  "[emotion:happy] Here is what I can do as a picture pack: show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
+  "I can't change my looks while I'm pictures: for that, go back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off). " +
+  'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session.';
+
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[] }} [context]
+ * @param {{ presets?: string[], pack?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself
  * @returns {{ text: string, scene?: string }}
  */
 export function reply(input, context = {}) {
@@ -127,7 +142,8 @@ export function reply(input, context = {}) {
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
-  if (HELP_WORDS.test(t)) return { text: HELP };
+  if (HELP_WORDS.test(t)) return { text: context.pack ? HELP_PACK : HELP };
+  if (/\bundo\b/.test(t) && context.pack) return { text: "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
 
   /** What she will change, by key (a later request for the same thing wins), the words for it, and what she could not do. */
@@ -205,11 +221,20 @@ export function reply(input, context = {}) {
     else if (/\b(cheer|celebrate|hooray|yay|party)\b/.test(c)) gesture = "cheer";
   }
 
+  if (context.pack && (set.size || missing.length)) {
+    return {
+      text:
+        `[emotion:shy] I can't do that as a picture pack: I'm only pictures, so I can't change ${set.size ? nice(phrases.map((p) => p.replace(/^(an?|the) /, ""))) : "my looks"}. ` +
+        "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask me again. For now I can show a mood, wave or cheer.",
+    };
+  }
   if (!set.size && !mood && !gesture && !missing.length) {
     return {
       text:
-        '[emotion:thinking] This demo only knows a few things. Try "make my hair mint green", "put on glasses and a witch hat", "become Linnea", ' +
-        '"be shy", "wave", "/show", or "show me work mode". Or ask "what can you do?"',
+        context.pack
+          ? '[emotion:thinking] As a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". Or ask "what can you do?"'
+          : '[emotion:thinking] This demo only knows a few things. Try "make my hair mint green", "put on glasses and a witch hat", "become Linnea", ' +
+            '"be shy", "wave", "/show", or "show me work mode". Or ask "what can you do?"',
     };
   }
 

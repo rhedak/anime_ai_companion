@@ -6,6 +6,8 @@ import { GREETING, reply } from "./script.js";
 
 // No top-level await: app.js must find `anaicoSocket` when it starts, so the emotions are fetched in the background.
 const emotions = fetch("emotions.json").then((res) => res.json());
+// The picture packs the demo offers (written by stage.mjs); none if the list is missing, and the demo is the same without them.
+const packs = fetch("packs.json").then((res) => (res.ok ? res.json() : {})).catch(() => ({}));
 
 /** @type {any} */ (window).anaicoSocket = () => {
   // The renderer starts a moment after the socket exists, so its first progress line has somewhere to go.
@@ -14,6 +16,8 @@ const emotions = fetch("emotions.json").then((res) => res.json());
     emotions,
     reply,
     greeting: GREETING,
+    packs,
+    onPack: (name) => showChips(name !== null),
   });
   return socket;
 };
@@ -27,18 +31,37 @@ const CHIPS = [
   "Be shy",
   "Wave at me",
   { label: "Show all her expressions", text: "/show" },
+  { label: "Try the picture pack", text: "/frames risa-dress" },
   "Show me work mode",
   "What can you do?",
 ];
 
-function addChips() {
+/** The same while she is a set of pictures: nothing that would redraw her, and the way back. */
+const PACK_CHIPS = [
+  "Be shy",
+  "Be sad",
+  "Wave at me",
+  "Cheer for me",
+  { label: "Show all her expressions", text: "/show" },
+  "Show me work mode",
+  "What can you do?",
+  { label: "Back to the drawn avatar", text: "/frames off" },
+];
+
+/** @param {boolean} packed she is a set of pictures just now */
+function showChips(packed) {
   const form = document.getElementById("form");
   const input = /** @type {HTMLTextAreaElement | null} */ (document.getElementById("input"));
   if (!form || !input) return;
-  const bar = document.createElement("div");
-  bar.id = "demo-chips";
-  bar.setAttribute("aria-label", "Things to try");
-  for (const chip of CHIPS) {
+  let bar = document.getElementById("demo-chips");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "demo-chips";
+    bar.setAttribute("aria-label", "Things to try");
+    form.before(bar);
+  }
+  bar.replaceChildren();
+  for (const chip of packed ? PACK_CHIPS : CHIPS) {
     const { label, text } = typeof chip === "string" ? { label: chip, text: chip } : chip;
     const button = document.createElement("button");
     button.type = "button";
@@ -52,6 +75,5 @@ function addChips() {
     });
     bar.append(button);
   }
-  form.before(bar);
 }
-addChips();
+showChips(false);

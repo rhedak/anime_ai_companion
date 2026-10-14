@@ -3,16 +3,18 @@
 // with no tools: it draws her with the renderer, turns a message into a streamed reply, applies her [avatar …] tags, and keeps the
 // page's look buttons (undo, presets, reset) working. One scripted scene plays out a pretend work-mode session with a real approval card.
 
-import { drawnDemoMessage } from "../public/demo.js";
+import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
+import { DRAWN_AGAIN, PACK_INTRO } from "./script.js";
 
 const OPEN = 1;
 
 /**
  * `renderer` is a promise of `{ call(request) }` (see render-bridge.js); `emotions` is emotions.json (or a promise of it);
  * `reply(text, { presets })` is her answer to a message, `{ text, scene? }` (see script.js); `greeting` is what she says first.
- * `pause(ms)` paces the streamed words and the scene, and can be replaced in tests.
+ * `pause(ms)` paces the streamed words and the scene, and can be replaced in tests. `packs` is the picture packs she can be switched to, by
+ * name, each as the page's PackInfo (or a promise of them); `onPack(name | null)` is told when one is chosen or left.
  */
 export function createLocalSocket({
   renderer,
@@ -22,6 +24,8 @@ export function createLocalSocket({
   name = "Risa",
   preset = "risa",
   pause = (ms) => new Promise((r) => setTimeout(r, ms)),
+  packs = {},
+  onPack = (/** @type {string | null} */ _name) => {},
 }) {
   let character = null;
   let version = 1;
@@ -32,6 +36,9 @@ export function createLocalSocket({
   const cache = new Map();
   let presets = [preset];
   let thumbnails = null;
+  /** The picture packs on offer, and the one she is showing as just now (null: the drawn avatar). */
+  let packList = {};
+  let pack = null;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
   let waiting = null;
   /** The opening messages are out and the character is loaded: drawing can start. */
@@ -96,6 +103,8 @@ export function createLocalSocket({
     effortNow: null,
     shellOff: true,
   });
+  const packMessage = () => ({ type: "pack", pack: pack ? packList[pack] : null });
+  const packsMessage = () => ({ type: "packs", names: Object.keys(packList), active: pack });
   const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0 });
 
   /** The opening messages a page gets, then her greeting. */
@@ -109,6 +118,9 @@ export function createLocalSocket({
     out({ type: "hello", provider: "the demo", version });
     out(modeInfo());
     out(looksInfo());
+    packList = await packs;
+    out(packMessage());
+    out(packsMessage());
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
     out({ type: "history", items: history });
     out({ type: "queue", items: [], returned: [] });
@@ -181,6 +193,7 @@ export function createLocalSocket({
     }
     if (msg.type === "reset") return newChat();
     if (msg.type === "look-undo") {
+      if (pack && looks.length) await choosePack(null, true); // a drawn look was picked: show it, as the app does
       if (looks.length) {
         character = looks.pop();
         version += 1;
@@ -189,14 +202,19 @@ export function createLocalSocket({
       }
       return out(looksInfo());
     }
+    if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) return choosePack(msg.name);
     if (msg.type === "look-preset" && typeof msg.name === "string" && presets.includes(msg.name)) {
       const base = await (await renderer).call({ op: "base", name: msg.name });
-      if (base.ok) adopt(base.character, [`base=${msg.name}`]);
+      if (base.ok) {
+        if (pack) await choosePack(null, true);
+        adopt(base.character, [`base=${msg.name}`]);
+      }
       return;
     }
     if (msg.type === "reset-look") {
       const base = await (await renderer).call({ op: "base", name: preset });
       if (base.ok) {
+        if (pack) await choosePack(null, true);
         adopt(base.character, ["back to the original look"]);
         await newChat();
       }
@@ -211,19 +229,57 @@ export function createLocalSocket({
    */
   async function command(text) {
     const name = /^\/(\w*)/.exec(text)?.[1].toLowerCase() ?? "";
-    if (name === "show") return out(drawnDemoMessage(Object.keys(await emotions), Object.keys(GESTURES)));
+    if (name === "show") return out(await showMessage());
+    if (name === "frames") return framesCommand(text.slice(1 + name.length).trim());
     if (name === "clear" || name === "new") return newChat();
     if (name === "help") {
       return out({
         type: "notice",
         text:
           "/show: she shows all her emotions, a blink, talking and her gestures, one at a time, naming each\n" +
+          "/frames <name>: she is a set of pictures instead of the drawn avatar; /frames off goes back; /frames lists them\n" +
           "/clear (or /new): a fresh conversation\n" +
           "/help: this list\n" +
           "The real app has many more commands (the documentation lists them).",
       });
     }
-    out({ type: "notice", text: `/${name} is a command of the real app. This demo knows /show, /clear and /help.` });
+    out({ type: "notice", text: `/${name} is a command of the real app. This demo knows /show, /frames, /clear and /help.` });
+  }
+
+  /** The show-off sequence for what she is just now: the drawn avatar, or the picture pack's own pictures. */
+  async function showMessage() {
+    const names = Object.keys(await emotions);
+    return pack ? packDemoMessage(names, Object.keys(GESTURES), packList[pack]) : drawnDemoMessage(names, Object.keys(GESTURES));
+  }
+
+  /** She becomes a set of pictures (by name), or the drawn avatar again (null), and says what that means unless `quiet`. */
+  async function choosePack(name, quiet = false) {
+    if (name === null) {
+      if (!pack) return out({ type: "notice", text: "Already showing the drawn avatar." });
+      pack = null;
+    } else {
+      if (!Object.hasOwn(packList, name)) return out({ type: "notice", text: `There is no pack called "${name}" in this demo (it has: ${Object.keys(packList).join(", ") || "none"}).` });
+      if (pack === name) return out({ type: "notice", text: `Already showing the pack "${name}".` });
+      pack = name;
+    }
+    out(packMessage());
+    out(packsMessage());
+    onPack(pack);
+    if (!quiet) await speak(pack ? PACK_INTRO : DRAWN_AGAIN);
+  }
+
+  /** `/frames`: the packs there are, `/frames off` for the drawn avatar, `/frames <name>` for a pack. */
+  async function framesCommand(arg) {
+    if (!arg) {
+      const names = Object.keys(packList);
+      return out({
+        type: "notice",
+        text: names.length
+          ? `Picture packs in this demo: ${names.join(", ")}. Showing ${pack ? `the pack "${pack}"` : "the drawn avatar"}. /frames <name> shows one, /frames off goes back to the drawn avatar.`
+          : "This demo has no picture packs.",
+      });
+    }
+    return choosePack(arg.toLowerCase() === "off" ? null : arg);
   }
 
   /** A fresh conversation: an empty log, and her greeting again. */
@@ -265,13 +321,13 @@ export function createLocalSocket({
     history.push({ type: "bot", text });
     out({ type: "done" });
     // Asked to show off, a model ends with [demo] and the server then lists the steps; so does she.
-    if (/\[demo\]/.test(text)) out(drawnDemoMessage(Object.keys(await emotions), Object.keys(GESTURES)));
+    if (/\[demo\]/.test(text)) out(await showMessage());
   }
 
   async function answer(text) {
     history.push({ type: "user", text });
     out({ type: "user", text });
-    const answered = reply(text, { presets });
+    const answered = reply(text, { presets, pack: pack !== null });
     if (answered.scene === "work") return workScene();
     await speak(answered.text);
   }

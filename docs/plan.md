@@ -178,6 +178,13 @@ gets, all checked by hand in Chrome with no console errors:
 - 18 tests (`test/browser-demo.test.ts`) drive the stand-in against a fake renderer and check the reader, the staged folder and the creator's
   schema.
 
+**A picture pack in the demo: done, locally.** Looks… → Packs… offers Risa in a dress (the pack that ships with the app). Choosing it makes
+her say that she is a set of pictures now and cannot redraw herself; the suggested prompts swap to ones that do not redraw her (plus "Back to
+the drawn avatar"), a redraw request is declined in words, and `/show` shows only what the pictures have (every emotion, a blink, talking, wave
+and cheer). `/frames` and `/frames off` work as in the app. The page's gallery thumbnail path became relative (`pack-thumb/<name>`) so it works
+under a sub-folder. Open: the pack is 17 MB as PNG, loaded only when chosen; pick or shrink the pictures for the demo (the full pack stays
+in the repository) before it goes public.
+
 Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
 creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes; check a phone-width window;
 see what a visitor sees if the CDN is blocked (a notice appears and the page stays "disconnected"); proofread her lines; decide whether

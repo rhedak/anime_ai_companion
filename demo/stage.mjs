@@ -12,6 +12,10 @@ import { createServer } from "node:http";
 import { dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveCreatorSrc } from "../src/creator.ts";
+import { packInfo, readPack } from "../src/frame-pack.ts";
+
+/** The picture packs the demo offers, by folder name in packs/. Each is copied in whole, so it is only fetched when someone chooses it. */
+export const DEMO_PACKS = ["risa-dress"];
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -66,6 +70,20 @@ export async function stage(target = out) {
   cpSync(join(root, "python", "render_ops.py"), join(target, "render_ops.py"));
   cpSync(join(root, "emotions.json"), join(target, "emotions.json"));
 
+  // The picture packs: their pictures, a thumbnail for the gallery (the page asks for pack-thumb/<name>), and the list the socket hands the page.
+  const emotionNames = Object.keys(JSON.parse(readFileSync(join(root, "emotions.json"), "utf8")));
+  const packs = {};
+  for (const name of DEMO_PACKS) {
+    const read = await readPack(join(root, "packs"), name, emotionNames);
+    if (!read.ok) throw new Error(`the demo's pack "${name}" cannot be read: ${read.reason}`);
+    mkdirSync(join(target, "frames", name), { recursive: true });
+    for (const [file, { path }] of read.pack.files) cpSync(path, join(target, "frames", name, file));
+    mkdirSync(join(target, "pack-thumb"), { recursive: true });
+    cpSync(read.pack.files.get(read.pack.emotions.neutral.idle).path, join(target, "pack-thumb", name));
+    packs[name] = packInfo(read.pack, `frames/${encodeURIComponent(name)}/`);
+  }
+  writeFileSync(join(target, "packs.json"), JSON.stringify(packs, null, 1) + "\n");
+
   // The creator's package, from wherever the app finds it, and the list Pyodide needs (its file system must be told what to write).
   const creator = await resolveCreatorSrc();
   const packageDir = join(creator, "anime_character_creator");
@@ -78,7 +96,7 @@ export async function stage(target = out) {
   return { target, files: files.length };
 }
 
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".py": "text/plain; charset=utf-8" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".py": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp" };
 
 function serve(dir, port) {
   const server = createServer((req, res) => {
@@ -86,7 +104,7 @@ function serve(dir, port) {
     const file = normalize(join(dir, path === "/" ? "index.html" : path));
     if (file !== dir && !file.startsWith(dir + sep)) return void res.writeHead(403).end();
     if (!existsSync(file) || !statSync(file).isFile()) return void res.writeHead(404).end("Not found");
-    res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream", "cache-control": "no-cache" });
+    res.writeHead(200, { "content-type": types[extname(file)] ?? (path.startsWith("/pack-thumb/") ? "image/png" : "application/octet-stream"), "cache-control": "no-cache" });
     res.end(readFileSync(file));
   });
   server.listen(port, "127.0.0.1", () => console.log(`serving ${relative(process.cwd(), dir) || dir} on http://127.0.0.1:${port}/`));

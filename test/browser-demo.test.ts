@@ -6,10 +6,10 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
-import { drawnDemoMessage } from "../public/demo.js";
-import { createLocalSocket, type Renderer } from "../demo/local-socket.js";
-import { GREETING, reply } from "../demo/script.js";
-import { stage } from "../demo/stage.mjs";
+import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
+import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
+import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../demo/script.js";
+import { DEMO_PACKS, stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
 import { demoMessage } from "../src/demo.ts";
 
@@ -37,9 +37,9 @@ function fakeRenderer() {
 }
 
 /** A socket with the page's side of it: what the page receives, in order. */
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {} });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {}, packs: options.packs, onPack: options.onPack });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -65,7 +65,7 @@ function connect(options: { renderer?: Promise<Renderer>; greeting?: string } = 
 test("the stand-in opens like the server does, then she greets the visitor", async () => {
   const { events, next } = connect({ greeting: GREETING });
   await next((e) => e.type === "done");
-  assert.deepEqual(events.slice(0, 6).map((e) => e.type), ["hello", "mode", "looks", "meter", "history", "queue"]);
+  assert.deepEqual(events.slice(0, 8).map((e) => e.type), ["hello", "mode", "looks", "pack", "packs", "meter", "history", "queue"]);
   assert.equal(events[0].version, 1);
   assert.equal(events[1].mode, "chat");
   assert.equal(events[1].canUseTools, false, "no real work mode in the demo");
@@ -208,6 +208,113 @@ test("the other slash commands: /clear starts afresh, /help lists what there is,
   await next((e) => e.type === "reset", from);
   await next((e) => e.type === "done", from);
   assert.ok(!events.slice(from).some((e) => e.type === "user"));
+});
+
+const PICTURES: Record<string, PackInfo> = {
+  pic: {
+    name: "pic",
+    credit: "Pictures by someone.",
+    emotions: { neutral: { idle: "frames/pic/n.png", blink: "frames/pic/nb.png", talk: ["frames/pic/t1.png"] }, happy: { idle: "frames/pic/h.png", talk: [] } },
+    gestures: { wave: ["frames/pic/w1.png", "frames/pic/w2.png"] },
+  },
+};
+
+test("the demo offers its picture packs like the app's Looks menu does, and choosing one makes her say what that means", async () => {
+  const told: (string | null)[] = [];
+  const { events, next, send } = connect({ packs: PICTURES, onPack: (name) => told.push(name) });
+  await next((e) => e.type === "queue");
+  assert.deepEqual(events.find((e) => e.type === "packs"), { type: "packs", names: ["pic"], active: null });
+  assert.deepEqual(events.find((e) => e.type === "pack"), { type: "pack", pack: null });
+  let from = events.length;
+  send({ type: "pack-select", name: "pic" });
+  const shown = await next((e) => e.type === "pack", from);
+  assert.deepEqual(shown.pack, PICTURES.pic);
+  assert.deepEqual(await next((e) => e.type === "packs", from), { type: "packs", names: ["pic"], active: "pic" });
+  await next((e) => e.type === "done", from);
+  const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
+  assert.equal(said, PACK_INTRO);
+  assert.match(said, /image pack[^]*can't redraw myself[^]*Drawn avatar/, "she says it is a picture pack and cannot redraw");
+  assert.match(said, /^\[emotion:happy\]/);
+  assert.deepEqual(told, ["pic"]);
+  from = events.length;
+  send({ type: "pack-select", name: null });
+  assert.deepEqual((await next((e) => e.type === "pack", from)).pack, null);
+  await next((e) => e.type === "done", from);
+  assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), DRAWN_AGAIN);
+  assert.deepEqual(told, ["pic", null]);
+});
+
+test("/frames lists the packs, takes a name or off, and says so when there is no such pack", async () => {
+  const { events, next, send } = connect({ packs: PICTURES });
+  await next((e) => e.type === "queue");
+  const notice = async (text: string) => {
+    const from = events.length;
+    send({ type: "user", text });
+    return (await next((e) => e.type === "notice", from)).text as string;
+  };
+  assert.match(await notice("/frames"), /pic[^]*Showing the drawn avatar/);
+  assert.match(await notice("/frames off"), /Already showing the drawn avatar/);
+  assert.match(await notice("/frames nothing"), /no pack called "nothing"[^]*pic/);
+  const from = events.length;
+  send({ type: "user", text: "/frames pic" });
+  await next((e) => e.type === "done", from);
+  assert.ok(!events.slice(from).some((e) => e.type === "user"), "a command is not a line of the visitor's");
+  assert.match(await notice("/frames pic"), /Already showing the pack "pic"/);
+  assert.match(await notice("/frames"), /Showing the pack "pic"/);
+  assert.equal(events.filter((e) => e.type === "pack").at(-1).pack.name, "pic");
+});
+
+test("while she is a picture pack she cannot be redrawn, a mood or a gesture still works, and /show shows what the pictures have", async () => {
+  const { events, next, send, say, calls } = connect({ packs: PICTURES });
+  await next((e) => e.type === "queue");
+  send({ type: "pack-select", name: "pic" });
+  await next((e) => e.type === "done" && events.some((x) => x.type === "pack" && x.pack));
+  const version = events.find((e) => e.type === "hello").version;
+  const patches = () => calls.filter((c) => c.op === "patch").length;
+  const refused = await say("make my hair mint green and put on glasses");
+  assert.match(refused.filter((e) => e.type === "delta").map((e) => e.text).join(""), /can't do that as a picture pack[^]*Drawn avatar/);
+  assert.ok(!refused.some((e) => e.type === "avatar"), "her look did not change");
+  assert.equal(patches(), 0);
+  assert.equal(version, 1);
+  const also = await say("become Linnea");
+  assert.ok(!also.some((e) => e.type === "avatar"));
+  const mood = await say("wave at me");
+  assert.match(mood.filter((e) => e.type === "delta").map((e) => e.text).join(""), /\[gesture:wave\]/);
+  const from = events.length;
+  send({ type: "user", text: "/show" });
+  const show = await next((e) => e.type === "demo", from);
+  assert.deepEqual(show, packDemoMessage(Object.keys(emotions), Object.keys(GESTURES), PICTURES.pic));
+  assert.deepEqual(show.steps.filter((s: any) => s.kind === "gesture").map((s: any) => s.name), ["wave"], "only the gesture it has pictures for");
+  assert.match(show.note ?? "", /cheer \(no pictures\)/);
+});
+
+test("picking a drawn look while she is a picture pack shows the drawn avatar again, as the app does", async () => {
+  const { events, next, send } = connect({ packs: PICTURES });
+  await next((e) => e.type === "queue");
+  send({ type: "pack-select", name: "pic" });
+  await next((e) => e.type === "done" && events.some((x) => x.type === "pack" && x.pack));
+  const from = events.length;
+  send({ type: "look-preset", name: "linnea" });
+  await next((e) => e.type === "avatar", from);
+  const after = events.slice(from);
+  assert.deepEqual(after.find((e) => e.type === "pack"), { type: "pack", pack: null });
+  assert.ok(!after.some((e) => e.type === "delta"), "no speech for it: the visitor chose it themselves");
+});
+
+test("what she answers as a picture pack: no redrawing, honest help, and moods and gestures as before", () => {
+  const pack = (text: string) => reply(text, { presets: PRESETS, pack: true });
+  assert.doesNotMatch(pack("make my hair mint green").text, /\[avatar/);
+  assert.match(pack("make my hair mint green").text, /^\[emotion:shy\]/);
+  assert.doesNotMatch(pack("become Linnea").text, /\[avatar/);
+  assert.doesNotMatch(pack("a red coat").text, /\[avatar/);
+  assert.match(pack("be shy").text, /^\[emotion:shy\]/);
+  assert.match(pack("cheer").text, /\[gesture:cheer\]/);
+  assert.match(pack("what can you do?").text, /picture pack[^]*\/frames off/);
+  assert.doesNotMatch(pack("what can you do?").text, /hair/, "the help does not offer redrawing");
+  assert.match(pack("undo").text, /nothing to undo/);
+  assert.match(pack("how is the weather").text, /As a picture pack/);
+  assert.equal(pack("show me work mode").scene, "work");
+  assert.match(pack("show me all your expressions").text, /\[demo\]$/);
 });
 
 test("asked in words to show off, she says so and ends with [demo], and the show follows her reply like the server's", async () => {
@@ -381,6 +488,17 @@ test("staging the demo gives a flat static folder in demo mode that loads the de
     assert.ok(list.includes("anime_character_creator/__init__.py"));
     for (const file of list) assert.ok(existsSync(join(dir, "creator", file)), file);
     for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "demo.css", "render_ops.py", "emotions.json", "custom.css"]) assert.ok(existsSync(join(dir, file)), file);
+    const packs = JSON.parse(readFileSync(join(dir, "packs.json"), "utf8"));
+    assert.deepEqual(Object.keys(packs), DEMO_PACKS);
+    for (const [name, info] of Object.entries<any>(packs)) {
+      assert.ok(existsSync(join(dir, "pack-thumb", name)), "the gallery's picture of the pack");
+      const urls = [...Object.values<any>(info.emotions).flatMap((e) => [e.idle, e.blink, ...e.talk]), ...Object.values<any>(info.gestures).flat()].filter(Boolean);
+      assert.ok(urls.length > 30);
+      for (const url of urls) {
+        assert.match(url, /^frames\//, "relative, so the demo works under a sub-folder");
+        assert.ok(existsSync(join(dir, url)), url);
+      }
+    }
     const socket = readFileSync(join(dir, "local-socket.js"), "utf8");
     assert.doesNotMatch(socket, /\.\.\/public\//);
     assert.match(socket, /from "\.\/frames\.js"/);
