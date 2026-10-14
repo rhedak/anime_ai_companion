@@ -1,6 +1,6 @@
 # Plan: what comes next
 
-Updated 2026-10-13. Everything that was planned before this and is done (Cursor, opencode and Ollama as brains; character cards; her
+Updated 2026-10-14. Everything that was planned before this and is done (Cursor, opencode and Ollama as brains; character cards; her
 notes about you; speech input; queued messages; skills; `--doctor`; the server tests) is in the README and in git, and is not repeated here.
 This file is only what is still open. Everything here keeps the rules in `AGENTS.md`: loopback only, nothing from a model is injected as
 HTML, permission modes stay in memory, and the cache-friendly way of talking to Claude is not broken.
@@ -9,9 +9,9 @@ HTML, permission modes stay in memory, and the cache-friendly way of talking to 
 
 | # | Step | State | Why this place |
 | --- | --- | --- | --- |
-| 1 | Check Ollama work mode with real models | waiting for a machine that can run one | Local code never leaves the machine; quality depends on the model |
+| 1 | Check Ollama work mode with real models | first check done 2026-10-14 (`qwen3-coder:30b` good on small tasks, a 7B poor); docs wording and a real-app session still to do | Local code never leaves the machine; quality depends on the model |
 | 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
-| 3 | A demo that runs in the browser | phases 0 and 1 done and checked locally (`npm run demo`); publishing on the docs site is next | A try-before-you-install page, with no server and no cost |
+| 3 | A demo that runs in the browser | phases 0 to 2 done and live at `/demo/` on the docs site (since 0.5.0); a few small things left, below | A try-before-you-install page, with no server and no cost |
 
 Smaller ideas are at the end.
 
@@ -29,30 +29,49 @@ Smaller ideas are at the end.
 
 ## 1. Ollama work mode: check it with real models
 
-Built and tested against a fake Ollama only (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`): the loop, approvals,
-plan mode, the turn cap, stopping mid-card and the capability check. It has never run against a real model. Tools: `read_file`, `grep`,
+Built and tested against a fake Ollama (`src/providers/ollama-tools.ts`, the loop in `src/providers/ollama.ts`): the loop, approvals,
+plan mode, the turn cap, stopping mid-card and the capability check. Tools: `read_file`, `grep`,
 `bash`, `write_file` and `edit_file` (exact text replaced once, or everywhere with `replace_all`); `glob` is deferred, since grep and
 bash cover it. The docs carry the warning that a local model's tool use is the user's responsibility.
 
-The check waits for another machine (2026-10-13): this one (Intel i5, 16 GB, CPU only) cannot run `qwen3-coder:30b`, whose weights are
-19 GB. A machine with about 32 GB of memory, ideally Apple Silicon, can; a 4 to 8 GB tool-capable model such as `qwen3:8b` would also
-work here for a first look, slowly. To do: try `qwen3-coder` and one weaker model on a small real task; note which models call tools well,
-and whether the exact-match rule of `edit_file` is too strict for them; check whether `/api/show` reports `tools` on the installed Ollama;
-decide from that whether to widen the tool set. If the answers are poor, say so in the docs rather than adding tools.
+**First check against real models, 2026-10-14.** On an Apple M4 with 32 GB, Ollama 0.31.1: `qwen3-coder:30b` (Q4_K_M, 18 GB) and
+`qwen2.5-coder-tools:7b`. A script drove the real `OllamaProvider` in work mode on a throwaway project (tasks: find a value, read a long
+file, edit in a tab-indented file, edit in a CRLF file, rename a constant four times, create a file and its test, run the tests and fix the
+bug, plan mode, a refused command), 3 runs per task and model, `num_ctx` 16384, with an allowlist answering the approval cards. Small sample;
+the persona lacked the avatar prompt section.
+
+- `/api/show` reports `tools` for both, and the app's own check (`checkTools()`) returned true.
+- **`qwen3-coder:30b`** (about 30 tokens/s): all single-step tasks passed (`edit_file` 14 of 14, tabs, CRLF and `replace_all` included, so
+  the exact-match rule was not too strict for it), and it wrote an emotion tag in every run. Run the tests and fix the code: 5 of 5 correct,
+  in 8 to 12 steps, one run reaching the 12-step cap. The extra steps were optional `node -e` probes the allowlist refused, which it asked
+  for again in other words 2 to 4 times; told to run one refused command it stopped after one ask (3 of 3). In plan mode it called
+  `edit_file` and `bash` anyway in 3 of 3 runs (read-only tools only were offered, the app blocked each one and nothing changed) and never
+  gave a clean plan; `persona-work.md` says "read and edit files, run commands", which may be why (not tested).
+- **`qwen2.5-coder-tools:7b`** (about 21 tokens/s): 4 of 21 on the same tasks. It guessed file names and asked the user instead of
+  looking, said it would do something and stopped without a tool call, read a file and asked "Is this what you wanted?" without editing,
+  and wrote CommonJS into an ESM project. It gave up after one `edit_file` error asking for `replace_all` where another run recovered. No
+  tool call came back as plain text from either model; the 7B wrote an emotion tag in 15 of 27 runs.
+- Both models sometimes ended a reply with a stray `[demo]`, which in the app starts the show-off sequence (2 of 29 and 2 of 27 replies).
+- **Found in the app, fixed on `dev`:** `read_file`'s own cut at 12,000 characters, with its "ask again with a later `start_line`" note, was
+  itself cut at 8,000 characters by the provider, so the model never saw how to read on and took the first part for the whole file (one
+  30B run missed a value on line 380 this way). The provider's cap now sits above every tool's own limit (`RESULT_SAFETY_CAP`).
+- Open: a session in the real app with the 30B (`COMPANION_PROVIDER=ollama OLLAMA_MODEL=qwen3-coder:30b`); the plan-mode and stray `[demo]`
+  behaviour; the README's Ollama section could say what was seen (a 30B-class model works on small tasks, a 7B mostly does not); whether
+  to widen the tool set (nothing seen so far asks for it); memory use of the 18 GB model with 16384 context was not measured.
 
 ## 2. Splitting `server.ts` and `app.js` (in progress)
 
 Written 2026-10-13, paused for the day. An outside review (issue #1) found the two files too big: `src/server.ts` was 1,815 lines and
-`public/app.js` is 1,914. Nothing about behaviour changes in this work; it is only moving code, and the tests decide whether it was safe.
+`public/app.js` is 1,916. Nothing about behaviour changes in this work; it is only moving code, and the tests decide whether it was safe.
 
 **Where it stands**
 
-- `server.ts` is 1,252 lines. Seven pieces are out, each a module that is *given* what it needs: `memory-service.ts`, `card-service.ts`,
+- `server.ts` is 1,268 lines. Seven pieces are out, each a module that is *given* what it needs: `memory-service.ts`, `card-service.ts`,
   `skills-service.ts`, `queue-service.ts`, `http-routes.ts`, `notes.ts`, `turn-service.ts` (and `server-types.ts` for `Say` and `Broadcast`).
 - The net: `test/server.test.ts` (26 tests, `test/helpers/server.ts`) starts a throwaway copy of the app on a random port with a stand-in
   `claude` and a fake Ollama, and drives it over the websocket. Four deliberate breakages of the old code each failed a test, and so did
   breaking the content-security policy and the cold-cache decision after they moved.
-- `npm run typecheck` also checks the page's JavaScript loosely (`tsconfig.frontend.json`). `npm test` runs 242 tests in about 20 seconds.
+- `npm run typecheck` also checks the page's JavaScript loosely (`tsconfig.frontend.json`). `npm test` runs 288 tests in about 10 seconds.
 - Everything done so far is behaviour-neutral and released (0.4.0 and 0.4.1).
 
 **The rules that kept it safe (keep using them)**
@@ -93,7 +112,7 @@ D. **The websocket handler** → `ws-handler.ts`: the burst a new page gets (hel
 E. What stays in `server.ts` is the wiring: settings, the avatar, the providers, the services created in the right order, startup and
    shutdown. Target: about 500 lines, readable top to bottom.
 
-**`public/app.js` (1,914 lines), after the server**
+**`public/app.js` (1,916 lines), after the server**
 
 It has no automated tests, only checks by hand in Chrome, so it is moved last and in small steps, with `npm run typecheck` (the loose
 page check) and this checklist after every step: open the page at a desktop and a phone width; send a message and see the reply and the
@@ -108,8 +127,8 @@ loaded in Chrome by hand is what we have; a headless run would need a dependency
 
 **Where to pick up**
 
-`git checkout dev` in `/Users/henrik/git/anime_ai_companion-dev` (the worktree; your live checkout stays on `main`), run `npm run
-typecheck && npm test` (expect 242 passing), then start with step A: write the `/resume` test, watch it pass, move the code.
+`git checkout dev` in `../anime_ai_companion-dev` (the worktree; your live checkout stays on `main`), run `npm run
+typecheck && npm test` (expect 288 passing), then start with step A: write the `/resume` test, watch it pass, move the code.
 
 ## 3. A demo that runs in the browser
 
@@ -204,10 +223,9 @@ answer, then a technical error, and left the page on "Thinking…" for good. Now
 firewall or no connection stops it, reload to try again, where to read about the real thing, the details), every later message gets it again and
 ends its turn, and a new chat does not greet. The optional model's own download failing is reported in its dialog ("It could not be loaded: …").
 
-Still to do before it is public (small): publish it as `/demo/` on the docs site (the pages workflow stages it after the site build, with the
-creator checked out at the pinned tag as CI does) and link it from the README, the site and the release notes (the README and the site are linked and `npm run site:preview` shows them; the
-phone-width window is checked: see below); proofread her lines; decide whether
-the demo should say where the real app's screenshots are.
+Published: it is live at `/demo/` on the docs site (the pages workflow stages it after the site build, with the creator checked out at the
+pinned tag as CI does) and linked from the README and the site (0.5.0). Still to do (small): proofread her lines; decide whether the demo
+should say where the real app's screenshots are.
 
 **Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
 that says what is downloaded and from where, how big it is, that it is small and a model on the visitor's own computer (Ollama) is the way to a
