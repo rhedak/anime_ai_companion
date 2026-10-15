@@ -53,6 +53,8 @@ const modelDialog = createModelDialog({
 /** @type {ReturnType<typeof createLocalSocket> | null} */
 let socket = null;
 let packed = false;
+/** The drawing code is still loading: the idea buttons are held until it has. */
+let loading = true;
 
 /** @type {any} */ (window).anaicoSocket = () => {
   // The renderer starts a moment after the socket exists, so its first progress line has somewhere to go.
@@ -64,6 +66,11 @@ let packed = false;
     packs,
     onPack: (name) => showChips(name !== null),
     model,
+  });
+  // The buttons wait for her: a click before the drawing code is loaded is accepted and then nothing happens for a long while.
+  void socket.ready.then(() => {
+    loading = false;
+    showChips(packed);
   });
   return socket;
 };
@@ -154,10 +161,16 @@ function showChips(isPacked) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = typeof label === "function" ? label() : label;
+    if (loading && !action) {
+      button.disabled = true;
+      button.title = "She is still loading";
+    }
     button.addEventListener("click", () => {
       if (action) return action();
       // While she is still answering, the send button is the stop button: leave her alone until she is done.
       if (document.getElementById("send")?.classList.contains("stop")) return;
+      // A command is answered without the visitor's message in the log, so a button for one says what it was.
+      if (text.startsWith("/")) socket?.echo(button.textContent ?? text);
       input.value = text;
       input.dispatchEvent(new Event("input"));
       /** @type {HTMLFormElement} */ (form).requestSubmit();
