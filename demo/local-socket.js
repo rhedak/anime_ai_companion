@@ -140,6 +140,7 @@ export function createLocalSocket({
     /** Shows `text` as the visitor's own message, for a button that sends a command, which the server never echoes. */
     echo(text) {
       history.push({ type: "user", text });
+      echoOpen = true;
       out({ type: "user", text });
     },
     /** Tells the page something in its chat log (loading progress, mostly). */
@@ -150,7 +151,18 @@ export function createLocalSocket({
 
   // Delivered a moment later, so the page has set its handlers on the object it was just given.
   const out = (msg) => {
+    if (msg.type === "done" || msg.type === "reset") echoOpen = false; // the page's turn is over
     setTimeout(() => socket.onmessage?.({ data: JSON.stringify(msg) }), 0);
+  };
+
+  /**
+   * The page takes any `user` message as the start of a turn and waits for `done` (until then it is busy and refuses the showcase). An idea
+   * button for a command is echoed that way, but a command is answered without a turn, so this ends the one the echo opened. A command typed
+   * by hand opened nothing and gets nothing extra, as on the server.
+   */
+  let echoOpen = false;
+  const endEchoTurn = () => {
+    if (echoOpen) out({ type: "done" });
   };
 
   const modeInfo = () => ({
@@ -284,7 +296,9 @@ export function createLocalSocket({
   /** The rest of what the page sends. */
   async function handle(msg) {
     if (msg.type === "user" && typeof msg.text === "string" && msg.text.trim()) {
-      return msg.text.trimStart().startsWith("/") ? command(msg.text.trim()) : answer(msg.text.slice(0, 2000));
+      if (!msg.text.trimStart().startsWith("/")) return answer(msg.text.slice(0, 2000));
+      await command(msg.text.trim());
+      return endEchoTurn();
     }
     if (msg.type === "reset") return newChat();
     if (msg.type === "look-undo") {
@@ -328,7 +342,11 @@ export function createLocalSocket({
    */
   async function command(text) {
     const name = /^\/(\w*)/.exec(text)?.[1].toLowerCase() ?? "";
-    if (name === "show") return out(await showMessage());
+    if (name === "show") {
+      const steps = await showMessage();
+      endEchoTurn(); // the page refuses the showcase while a turn is open
+      return out(steps);
+    }
     if (name === "frames") return framesCommand(text.slice(1 + name.length).trim());
     if (name === "clear" || name === "new") return newChat();
     if (name === "help") {

@@ -725,6 +725,57 @@ test("echo shows what an idea button stands for as the visitor's own message", a
   assert.equal(user.text, "Try the picture pack");
 });
 
+/** The page's own rule (public/app.js): a `user` message opens a turn, only `done` or `reset` closes it, and `demo` is refused while one is open. */
+function pageBusyAfter(events: any[]) {
+  let busy = false;
+  let refusedDemo = false;
+  for (const e of events) {
+    if (e.type === "user") busy = true;
+    else if (e.type === "done" || e.type === "reset") busy = false;
+    else if (e.type === "demo" && busy) refusedDemo = true;
+  }
+  return { busy, refusedDemo };
+}
+
+test("an idea button that sends a command ends the turn its echo opened: the page would otherwise stay busy and refuse /show", async () => {
+  const { socket, events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  socket.echo("Show all her expressions");
+  send({ type: "user", text: "/show" });
+  await next((e) => e.type === "demo", from);
+  const page = pageBusyAfter(events.slice(from));
+  assert.equal(page.refusedDemo, false, "the page was still busy when the showcase arrived (\"She is still answering\")");
+  assert.equal(page.busy, false, "the page is waiting for a reply that never comes (\"Thinking…\" with no end)");
+  socket.close();
+});
+
+test("every command an idea button can send leaves the page idle: a notice-only answer ends the turn too", async () => {
+  for (const command of ["/help", "/frames off", "/frames nosuchpack", "/frames risa-dress", "/unknown"]) {
+    const { socket, events, next, send } = connect({ packs: { "risa-dress": { frames: {}, gestures: {} } as unknown as PackInfo } });
+    await next((e) => e.type === "queue");
+    const from = events.length;
+    socket.echo(command);
+    send({ type: "user", text: command });
+    send({ type: "user", text: "/help" }); // a second command behind it: when this one's answer is out, the first is over
+    await next((e) => e.type === "notice" && /\/show: she shows all/.test(e.text), from);
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(pageBusyAfter(events.slice(from)).busy, false, `${command} left the page busy`);
+    socket.close();
+  }
+});
+
+test("a command typed by hand sends no extra done: the server does not either", async () => {
+  const { socket, events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "/show" });
+  await next((e) => e.type === "demo", from);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(events.slice(from).filter((e) => e.type === "done").length, 0);
+  socket.close();
+});
+
 test("`ready` settles when the drawing code is loaded, so the page can hold its buttons until then", async () => {
   let release!: (r: Renderer) => void;
   const late = new Promise<Renderer>((r) => (release = r));
