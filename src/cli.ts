@@ -19,11 +19,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT ?? 3737);
 const args = process.argv.slice(2);
 
+if (args.includes("--version") || args.includes("-v")) {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  console.log(`anaico ${pkg.version} (character creator ${pkg.creator?.ref ?? "unpinned"})`);
+  process.exit(0);
+}
+
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`Usage: anaico [--chat] [--no-open] [--lan]
        anaico --daemon [--chat] [--no-open] [--lan]
        anaico --status | --stop | --restart [--chat] [--no-open] [--lan]
-       anaico --doctor
+       anaico --doctor | --version
 
   (no flags)   start the companion in work mode for the current folder and open the browser
   --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
@@ -36,6 +42,7 @@ if (args.includes("--help") || args.includes("-h")) {
   --status     say whether the background server is running
   --stop       stop the background server
   --restart    stop it and start it again (in the current folder; takes --chat and --no-open)
+  --version    print the version, and the character creator release it is pinned to
   --doctor     check what it needs (Node, Python, a brain, the character creator, the port) and say what is missing;
                it only looks, it changes nothing`);
   process.exit(0);
@@ -48,7 +55,7 @@ const restart = args.includes("--restart");
 const chat = args.includes("--chat");
 const open = !args.includes("--no-open");
 const lan = args.includes("--lan");
-const known = new Set(["--no-open", "--lan", "--chat", "--daemon", "--status", "--stop", "--restart", "--doctor", "--help", "-h"]);
+const known = new Set(["--no-open", "--lan", "--chat", "--daemon", "--status", "--stop", "--restart", "--doctor", "--version", "-v", "--help", "-h"]);
 const unknown = args.filter((a) => !known.has(a));
 if (unknown.length) {
   console.error(`Unknown option: ${unknown.join(" ")}${unknown.includes("--pro") ? " (the --pro terminal mode was removed; use the Work mode in the browser, and /setup on to load your own Claude Code setup)" : ""}\nTry: anaico --help`);
