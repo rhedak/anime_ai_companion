@@ -411,7 +411,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   }
   broadcast(modeInfo());
   if (wanted === "work") void skills.maybeNotice(say);
-  if (wanted === "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING);
+  if (wanted === "work" && before.mode !== "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING); // once on entering, not again when the folder is set
 }
 
 /** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
