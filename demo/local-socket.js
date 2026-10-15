@@ -30,6 +30,8 @@ export function createLocalSocket({
   packs = {},
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
+  restore = null,
+  onSave = (/** @type {{ character: any, pack: string | null } | null} */ _saved) => {},
 }) {
   let character = null;
   let version = 1;
@@ -146,12 +148,21 @@ export function createLocalSocket({
     const base = await r.call({ op: "base", name: preset });
     if (!base.ok) throw new Error(base.error);
     character = base.character;
+    // The look and the pack from the visitor's last visit, if the drawing code still accepts that look.
+    if (restore?.character && typeof restore.character === "object") {
+      const trial = await r.call({ op: "frames", character: restore.character, mouth: [0], face: {} }).catch(() => ({ ok: false }));
+      if (trial.ok) character = restore.character;
+    }
     const schema = await r.call({ op: "schema" });
     if (schema.ok) presets = [preset, ...schema.presets.filter((p) => p !== preset)];
     out({ type: "hello", provider: "the demo", version });
     out(modeInfo());
     out(looksInfo());
     packList = await packs;
+    if (restore?.pack && Object.hasOwn(packList, restore.pack)) {
+      pack = restore.pack;
+      onPack(pack);
+    }
     out(packMessage());
     out(packsMessage());
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
@@ -174,6 +185,12 @@ export function createLocalSocket({
     cache.clear();
     out({ type: "avatar", version, applied });
     out(looksInfo());
+    save();
+  }
+
+  /** What the page keeps for the visitor's next visit: her look, and the pack she shows if any. */
+  function save() {
+    onSave({ character, pack });
   }
 
   async function draw(request, key, answer) {
@@ -232,6 +249,7 @@ export function createLocalSocket({
         version += 1;
         cache.clear();
         out({ type: "avatar", version, applied: ["undid the last change"] });
+        save();
       }
       return out(looksInfo());
     }
@@ -249,6 +267,7 @@ export function createLocalSocket({
       if (base.ok) {
         if (pack) await choosePack(null, true);
         adopt(base.character, ["back to the original look"]);
+        onSave(null); // nothing to come back to: the next visit starts from the default
         await newChat();
       }
       return;
@@ -298,6 +317,7 @@ export function createLocalSocket({
     out(packMessage());
     out(packsMessage());
     onPack(pack);
+    save();
     if (!quiet) await speak(pack ? PACK_INTRO : DRAWN_AGAIN);
   }
 

@@ -30,5 +30,9 @@ export function createLocalSocket(options: {
   pause?: (ms: number) => Promise<void>;
   packs?: Record<string, PackInfo> | Promise<Record<string, PackInfo>>;
   onPack?: (name: string | null) => void;
+  /** The look and pack from the visitor's last visit. */
+  restore?: { character?: any; pack?: string | null } | null;
+  /** Called with what to keep for the next visit (her look and pack), or null to forget it. */
+  onSave?: (saved: { character: any; pack: string | null } | null) => void;
   model?: { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void } | null;
 }): LocalSocket;

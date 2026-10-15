@@ -40,9 +40,9 @@ function fakeRenderer() {
 
 /** A socket with the page's side of it: what the page receives, in order. */
 type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void> } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, onPack: options.onPack, model: options.model });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -752,4 +752,34 @@ test("pretend work mode: 'allow for this session' is remembered, so the second t
   assert.ok(!events.slice(from).some((e) => e.type === "permission"), "no card the second time");
   const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
   assert.match(said, /already allowed Edit for this session/);
+});
+
+test("a look change is reported for saving, with the pack she is showing", async () => {
+  const saved: any[] = [];
+  const { say, next } = connect({ onSave: (v) => saved.push(v) });
+  await next((e) => e.type === "queue");
+  await say("Make your hair mint green");
+  assert.ok(saved.length >= 1);
+  assert.match(saved.at(-1).character.hair_color, /^#[0-9a-f]{6}$/);
+  assert.notEqual(saved.at(-1).character.hair_color, "#800000", "not the starting hair");
+  assert.equal(saved.at(-1).pack, null);
+});
+
+test("a saved look and pack are restored on the next visit, and a look that cannot be drawn is dropped for the default", async () => {
+  const good = { preset: "kyoko", hair_color: "#00ff00", face: { mouth_open: 0 } };
+  const { events, next, calls } = connect({ restore: { character: good, pack: "risa-dress" }, packs: { "risa-dress": { name: "risa-dress", emotions: {}, gestures: {} } as any } });
+  await next((e) => e.type === "queue");
+  const pack = events.filter((e) => e.type === "pack").at(-1);
+  assert.equal(pack.pack?.name, "risa-dress");
+  assert.ok(calls.some((c) => c.op === "frames" && c.character?.hair_color === "#00ff00"), "she was drawn from the saved look");
+
+  // A saved look the drawing code rejects is not used.
+  const fake = fakeRenderer();
+  const picky = { async call(r: any) { return r.op === "frames" && r.character?.broken ? { ok: false, error: "bad" } : fake.renderer.call(r); } };
+  const kept: any[] = [];
+  const bad = connect({ renderer: Promise.resolve(picky), restore: { character: { broken: true } }, onSave: (v) => kept.push(v) });
+  await bad.next((e) => e.type === "queue");
+  await bad.say("Make your hair mint green");
+  assert.equal(kept.at(-1).character.preset, "risa", "she started from the default look");
+  assert.ok(!("broken" in kept.at(-1).character));
 });

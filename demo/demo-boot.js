@@ -20,6 +20,16 @@ const remember = (key, value) => {
     localStorage.setItem(key, value);
   } catch {}
 };
+/** Her look and pack from the visitor's last visit in this browser, or null (nothing saved, or storage is blocked). */
+function savedLook() {
+  try {
+    const raw = remembered("demoLook");
+    const saved = raw ? JSON.parse(raw) : null;
+    return saved && typeof saved === "object" ? saved : null;
+  } catch {
+    return null;
+  }
+}
 // On a phone she starts behind the chat, which then has the whole screen (the page's own "behind the chat" view, which app.js reads from
 // here when it starts). A choice the visitor has made with that button is kept.
 if (phone() && remembered("stageView") === null) remember("stageView", "behind");
@@ -66,6 +76,8 @@ let loading = true;
     packs,
     onPack: (name) => showChips(name !== null),
     model,
+    restore: savedLook(),
+    onSave: (saved) => remember("demoLook", saved ? JSON.stringify(saved) : ""),
   });
   // The buttons wait for her: a click before the drawing code is loaded is accepted and then nothing happens for a long while.
   void socket.ready.then(() => {
