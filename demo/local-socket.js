@@ -329,7 +329,6 @@ export function createLocalSocket({
         adopt(base.character, ["back to the original look"]);
         basePreset = preset;
         onSave(null); // nothing to come back to: the next visit starts from the default
-        await newChat();
       }
       return;
     }

@@ -64,6 +64,25 @@ describe("chatting", { skip }, () => {
     assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
   });
 
+  test("Reset look only restores the look: the conversation stays, and she is told on her next message", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    await ask(c, "before the reset");
+    const from = c.mark;
+    c.send({ type: "reset-look" });
+    const change = await c.next((e) => e.type === "avatar" && e.applied?.[0] === "back to the original look", 5000, from);
+    assert.equal(change.applied[0], "back to the original look");
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(!c.since(from).some((e) => e.type === "reset"), "the chat was not cleared");
+    const late = await server.client();
+    const kinds = (await late.next("history")).items.map((i: any) => i.type);
+    assert.deepEqual(kinds.slice(0, 2), ["user", "bot"], "what was said is still there");
+    await ask(c, "after the reset");
+    await waitFor(() => inputs(server).some((t) => /after the reset/.test(t)));
+    assert.match(inputs(server).at(-1)!, /reset your look/i, "she is told, as for any look change from the menu");
+  });
+
   test("only the app's own origin may connect: a website, or no origin at all, is refused", async () => {
     await assert.rejects(server.client("http://evil.example"), /socket hang up|refused/);
     await assert.rejects(server.client(null), /socket hang up|refused/);

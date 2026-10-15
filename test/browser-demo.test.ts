@@ -159,8 +159,8 @@ test("the page's look buttons work: a preset, the gallery's thumbnails (once), a
   const from = events.length;
   send({ type: "reset-look" });
   assert.deepEqual((await next((e) => e.type === "avatar", from)).applied, ["back to the original look"]);
-  await next((e) => e.type === "reset", from);
-  await next((e) => e.type === "done", from); // her greeting again
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!events.slice(from).some((e) => e.type === "reset" || e.type === "done"), "only the look is restored: the chat stays and her greeting does not come again");
   send({ type: "frames", emotion: "neutral" });
   await next((e) => e.type === "frames" && e.version === 3);
   assert.equal(calls.filter((c) => c.op === "frames").at(-1)!.character.preset, "risa");

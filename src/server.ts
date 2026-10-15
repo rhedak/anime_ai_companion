@@ -1212,13 +1212,9 @@ wss.on("connection", (ws) => {
       broadcast(looksInfo());
     } else if (msg.type === "reset-look") {
       await avatar.resetLook();
-      provider.reset();
-      forgetConversationSize();
-      transcript.clear();
-      persistTranscript();
-      pendingPermissions.clear();
-      broadcast({ type: "reset" });
-      broadcast(modeInfo());
+      if (settings.framePack) await choosePack(null, () => {}); // the original look is a drawn one: show it
+      notes.push("The user reset your look to the original one from the menu.");
+      transcript.look(["back to the original look"]);
       broadcast({ type: "avatar", version: avatar.version, applied: ["back to the original look"] });
       broadcast(looksInfo());
     } else if (msg.type === "gesture-frames" && typeof msg.emotion === "string" && typeof msg.gesture === "string") {
