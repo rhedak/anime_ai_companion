@@ -1684,6 +1684,9 @@ function packItem(name) {
   return item;
 }
 
+/** A preset's id as people read it ("lindita" is "Lindita"): the tile's label and tooltip say what its text shows, not the lowercase id. */
+const displayName = (/** @type {string} */ name) => name.replace(/(^|\s)(\S)/g, (_, gap, c) => gap + c.toUpperCase());
+
 /** The built-in character she is drawn from just now (the server says), so the gallery can mark it. */
 let currentPreset = null;
 
@@ -1716,15 +1719,15 @@ function openGallery(kind = "presets") {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "preset";
-        item.title = name;
-        item.setAttribute("aria-label", name); // the drawing can hold text of its own (a number on a wristband): the name is the label
+        item.title = displayName(name);
+        item.setAttribute("aria-label", displayName(name)); // the drawing can hold text of its own (a number on a wristband): the name is the label
         if (name === currentPreset) item.setAttribute("aria-current", "true");
         const pic = document.createElement("span");
         pic.className = "preset-pic";
         pic.setAttribute("aria-hidden", "true");
         // our own renderer's SVG; show the head and shoulders
         if (presetThumbs?.[name]) pic.innerHTML = uniqueIds(presetThumbs[name], `preset-${name}-`).replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
-        item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name }));
+        item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: displayName(name) }));
         item.onclick = () => {
           closeGallery();
           ws?.send(JSON.stringify({ type: "look-preset", name }));
