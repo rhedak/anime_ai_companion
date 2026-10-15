@@ -1624,10 +1624,15 @@ function packItem(name) {
 let currentPreset = null;
 
 function openGallery(kind = "presets") {
-  if (document.querySelector(".gallery")) return closeGallery();
+  const open = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
+  if (open) {
+    closeGallery();
+    if (open.dataset.kind === kind) return; // the same menu entry again closes it; the other one switches to its own
+  }
   const packs = kind === "packs";
   const box = document.createElement("div");
   box.className = "gallery";
+  box.dataset.kind = kind;
   box.setAttribute("role", "dialog");
   box.setAttribute("aria-label", packs ? "Choose a picture pack" : "Choose a preset character");
   const grid = document.createElement("div");
@@ -1684,6 +1689,10 @@ function openGallery(kind = "presets") {
     e.preventDefault();
   });
 }
+// Escape closes the gallery from wherever focus is (the menu that opened it, say), not only from inside it.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.querySelector(".gallery")) closeGallery();
+});
 let gallerySlot = null;
 document.addEventListener("click", (e) => {
   if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
