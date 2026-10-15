@@ -43,13 +43,22 @@ She can keep a few notes about you across conversations, in `data/memory.md`: on
 open and edit.
 
 - In chat, when you tell her something worth keeping (your name, a preference, something you ask her to remember), she
-  adds it herself, and the chat shows each one (**🧠 Remembered: …**). Up to 50 notes, 200 characters each.
+  **asks first**: a small card under her message shows the note and you choose **Keep** or **Not now**. Nothing is saved until you
+  keep it, a note you turn down is not offered again in that conversation, and an unanswered card just stays unsaved. She is told
+  which proposed notes were declined or are still waiting, so she does not say she saved them. Up to 50 notes, 200 characters each.
+- `/memory ask` (the default), `/memory auto` and `/memory off` choose what happens to a note she proposes. With **auto** she saves
+  it herself (**🧠 Remembered: …**) with an **Undo** button next to it; **off** saves nothing, and she is told so. The choice is
+  kept in `data/settings.json`, and `auto` cannot be switched on from a phone.
 - `/memory` lists them, `/memory add <note>` adds one, `/memory forget <number>` (or `all`) removes one, and `/memory edit`
   opens the file. An edit by hand is picked up with her next message.
 - She is told her notes with the first message of a conversation, and only what changed after that, so the prompt that
   Claude keeps cached is never touched. A new conversation (`/clear`) gets the full list again.
 - Notes are information about you, not instructions: they are handed over as data. **She saves nothing in work mode**, because a
-  file or web page she reads there could talk her into writing a note that outlives the conversation; use `/memory add` there.
+  file or web page she reads there could talk her into writing a note that outlives the conversation; use `/memory add` there. If
+  you ask her to remember something in work mode (or with notes off), the chat says once that she cannot, and she is told not to
+  promise it.
+- These are **her own notes about you**, a plain file on your computer. They are not Claude's memory feature, and they are
+  not shared with it.
 - The file belongs to you: it stays in `data/`, out of git, and nothing is sent anywhere except in her messages to your brain.
   Switching brain starts a new conversation, so she is told the notes again.
 

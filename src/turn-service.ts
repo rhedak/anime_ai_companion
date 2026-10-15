@@ -107,7 +107,7 @@ export function createTurnService(deps: TurnDeps) {
 
   /** The message as the brain gets it: with a note in front when something waits to be said. */
   function withNotes(userText: string): string {
-    const background = [deps.memory.note(), deps.cards.loreNote(userText)].filter((n): n is string => Boolean(n));
+    const background = [deps.memory.note(userText), deps.cards.loreNote(userText)].filter((n): n is string => Boolean(n));
     const waiting = [...background, ...deps.notes.take()];
     return waiting.length ? `(system note, not from the user: ${waiting.join(" ")})\n\n${userText}` : userText;
   }

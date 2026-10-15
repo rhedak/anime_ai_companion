@@ -93,6 +93,11 @@ export function toolDefinitions(readOnlyOnly: boolean) {
 
 const READ_CHARS = 12_000;
 const RESULT_CHARS = 8_000;
+/**
+ * The most a result may be, whatever tool made it. It sits above every tool's own limit, so a tool's own "cut off" note (read_file's says how to
+ * read on) is never itself cut away by a second, blind cut.
+ */
+export const RESULT_SAFETY_CAP = READ_CHARS + 300;
 const WRITE_BYTES = 200_000;
 const GREP_MATCHES = 100;
 const GREP_FILE_BYTES = 1_000_000;

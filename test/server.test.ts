@@ -301,14 +301,20 @@ describe("her notes about you", { skip }, () => {
     await server?.stop();
   });
 
-  test("she saves a note in chat, it is told to her in the next conversation, and forgetting removes it", async () => {
+  test("she asks first: nothing is saved until the user keeps it, then it is told to her in the next conversation, and forgetting removes it", async () => {
     const c = await server.client();
     await c.next("history");
     const from = c.mark;
     c.say("REMEMBER the cat");
-    const saved = await c.next((e) => e.type === "notice" && /Remembered/.test(e.text), 8000, from);
-    assert.match(saved.text, /Their cat is called Momo/);
+    const offer = await c.next("memory-offer", 8000, from);
+    assert.equal(offer.fact, "Their cat is called Momo");
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"), "asking is not saving");
+    c.send({ type: "memory-reply", id: offer.id, choice: "keep" });
+    const kept = await c.next("memory-resolved", 5000, from);
+    assert.equal(kept.choice, "keep");
     assert.match(server.data("memory.md") ?? "", /^- Their cat is called Momo$/m);
+    await ask(c, "what do your notes say");
+    assert.match(inputs(server).at(-1)!, /Added to the user's notes[^]*- Their cat is called Momo/, "she is told it was kept");
 
     await fresh(c);
     await ask(c, "hello again");
@@ -321,6 +327,116 @@ describe("her notes about you", { skip }, () => {
     c.say("/memory forget 1");
     await c.next((e) => e.type === "notice" && /Forgotten/.test(e.text), 5000, gone);
     assert.doesNotMatch(server.data("memory.md") ?? "", /Momo/);
+  });
+
+  test("a note the user turns down is not saved and not offered again in that conversation, only in a new one", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    let from = c.mark;
+    c.say("REMEMBER the cat");
+    const offer = await c.next("memory-offer", 8000, from);
+    c.send({ type: "memory-reply", id: offer.id, choice: "skip" });
+    assert.equal((await c.next("memory-resolved", 5000, from)).choice, "skip");
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"));
+
+    from = c.mark;
+    await ask(c, "REMEMBER the cat again");
+    assert.equal(c.since(from).filter((e) => e.type === "memory-offer").length, 0, "she does not ask the same thing twice");
+    assert.match(inputs(server).at(-1)!, /NOT saved: the user declined "Their cat is called Momo"/, "she is told it was not kept");
+    await ask(c, "and another thing");
+    assert.doesNotMatch(inputs(server).at(-1)!, /NOT saved/, "once, not on every message");
+
+    await fresh(c);
+    from = c.mark;
+    c.say("REMEMBER the cat");
+    await c.next("memory-offer", 8000, from);
+    c.say("/clear"); // leave nothing pending for the next test
+    await c.next((e) => e.type === "memory-resolved", 5000, from);
+  });
+
+  test("a note still waiting for an answer is reported to her once as not saved, so she does not say she saved it", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("REMEMBER the cat");
+    await c.next("memory-offer", 8000, from);
+    await ask(c, "did you save that?");
+    assert.match(inputs(server).at(-1)!, /not saved yet: "Their cat is called Momo"[^]*do not tell them you saved it/);
+    await ask(c, "and now?");
+    assert.doesNotMatch(inputs(server).at(-1)!, /not saved yet/, "once, not on every message");
+    await fresh(c);
+  });
+
+  test("a card that waits is shown again to a page that reloads, and answering a stale one does nothing", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("REMEMBER the cat");
+    const offer = await c.next("memory-offer", 8000, from);
+    const again = await server.client();
+    const shown = await again.next("memory-offer", 5000);
+    assert.equal(shown.id, offer.id);
+    assert.equal(shown.fact, offer.fact);
+    c.send({ type: "memory-reply", id: "not-an-offer", choice: "keep" });
+    c.send({ type: "memory-reply", id: offer.id, choice: "maybe" });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"));
+    again.close();
+    await fresh(c);
+  });
+
+  test("with asking turned off she saves it by herself and shows an Undo that takes it out again; the choice is kept", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    let from = c.mark;
+    c.say("/memory auto");
+    await c.next((e) => e.type === "notice" && /by herself/.test(e.text), 5000, from);
+    assert.equal(JSON.parse(server.data("settings.json") ?? "{}").memorySaving, "auto");
+
+    from = c.mark;
+    c.say("REMEMBER the cat");
+    const saved = await c.next("memory-saved", 8000, from);
+    assert.equal(saved.fact, "Their cat is called Momo");
+    assert.match(saved.text, /Remembered/);
+    assert.match(server.data("memory.md") ?? "", /Momo/);
+    assert.equal(c.since(from).filter((e) => e.type === "memory-offer").length, 0);
+
+    await ask(c, "and now?");
+    assert.match(inputs(server).at(-1)!, /Added to the user's notes[^]*Momo/, "she is told it was saved");
+    c.send({ type: "memory-undo", fact: saved.fact });
+    await c.next((e) => e.type === "notice" && /Forgotten/.test(e.text), 5000, from);
+    assert.doesNotMatch(server.data("memory.md") ?? "", /Momo/);
+    await ask(c, "after the undo");
+    assert.match(inputs(server).at(-1)!, /Removed from the user's notes[^]*Momo/, "she is told it is gone");
+
+    c.say("/memory ask");
+    await c.next((e) => e.type === "notice" && /ask before/.test(e.text), 5000, c.mark);
+    assert.equal(JSON.parse(server.data("settings.json") ?? "{}").memorySaving, "ask");
+  });
+
+  test("with notes switched off nothing is offered or saved, and she is told", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    await ask(c, "settle");
+    c.say("/memory off");
+    await c.next((e) => e.type === "notice" && /not save notes/.test(e.text), 5000, c.mark);
+    const from = c.mark;
+    await ask(c, "REMEMBER the cat");
+    assert.match(inputs(server).slice(-1)[0], /switched off saving notes/);
+    assert.ok(c.since(from).some((e) => e.type === "notice" && /Saving notes is switched off/.test(e.text)), "the user is told why she did not save it");
+    assert.equal(c.since(from).filter((e) => e.type === "memory-offer" || e.type === "memory-saved").length, 0);
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"));
+
+    await fresh(c);
+    await ask(c, "hello");
+    assert.match(inputs(server).at(-1)!, /switched off saving notes/, "a new conversation hears it from the start");
+    c.say("/memory ask");
+    await c.next((e) => e.type === "notice" && /ask before/.test(e.text), 5000, c.mark);
   });
 
   test("an edit by hand is picked up with her next message, as a change", async () => {
@@ -501,6 +617,41 @@ describe("work mode", { skip }, () => {
     c.say("/memory add Likes green tea");
     await c.next((e) => e.type === "notice" && /Noted/.test(e.text), 5000, from);
     assert.match(server.data("memory.md") ?? "", /Likes green tea/);
+  });
+
+  test("asked to remember something in work mode, the user is told once that notes are chat only and not Claude's memory, and she is told to say so", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    await fresh(c);
+    let from = c.mark;
+    await ask(c, "you might want to remember that I like pink");
+    const told = c.since(from).filter((e) => e.type === "notice" && /chat mode only/.test(e.text));
+    assert.equal(told.length, 1);
+    assert.match(told[0].text, /\/memory add/);
+    assert.match(told[0].text, /not Claude's memory feature/);
+    assert.match(inputs(server).at(-1)!, /cannot save notes in work mode[^]*do not promise to remember/);
+
+    from = c.mark;
+    await ask(c, "please remember my cat too");
+    assert.equal(c.since(from).filter((e) => e.type === "notice" && /chat mode only/.test(e.text)).length, 0, "said once per conversation");
+    assert.match(inputs(server).at(-1)!, /do not promise to remember/, "but she is told every time");
+
+    // The two reasons are told separately: switching notes off in the same conversation gets its own notice.
+    c.say("/chat");
+    await c.next("mode", 5000, c.mark);
+    c.say("/memory off");
+    await c.next((e) => e.type === "notice" && /not save notes/.test(e.text), 5000, c.mark);
+    from = c.mark;
+    await ask(c, "please remember my dog too");
+    assert.equal(c.since(from).filter((e) => e.type === "notice" && /Saving notes is switched off/.test(e.text)).length, 1);
+    c.say("/memory ask");
+    await c.next((e) => e.type === "notice" && /ask before/.test(e.text), 5000, c.mark);
+
+    from = c.mark;
+    await ask(c, "remember to run the tests");
+    assert.equal(c.since(from).filter((e) => e.type === "notice" && /chat mode only/.test(e.text)).length, 0);
+    assert.doesNotMatch(inputs(server).at(-1)!, /do not promise to remember/, "a code task is not a request for a note");
   });
 
   test("!command runs in the project folder, without a card, and shows its output", async () => {

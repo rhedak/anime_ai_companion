@@ -6,6 +6,10 @@ import { isPackName } from "./frame-pack.ts";
 
 export type ProviderName = "claude" | "ollama" | "cursor" | "opencode";
 
+/** What happens to a note she proposes in chat: she asks first, she saves it (with an undo), or notes are off. */
+export type MemorySaving = "ask" | "auto" | "off";
+export const isMemorySaving = (v: unknown): v is MemorySaving => v === "ask" || v === "auto" || v === "off";
+
 export interface Settings {
   /** Which backend powers her. */
   provider: ProviderName;
@@ -25,6 +29,8 @@ export interface Settings {
   framePack: string | null;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
   effort: Effort | "default";
+  /** How her notes about the user get saved (chat only). Asking is the default. */
+  memorySaving: MemorySaving;
   /** Tools pre-approved in work mode. Reads in the folder are cheap; everything else asks. */
   allowedTools: string[];
 }
@@ -40,6 +46,7 @@ const defaults = (): Settings => ({
   name: "Risa",
   framePack: null,
   effort: "default",
+  memorySaving: "ask",
   allowedTools: ["Read", "Grep", "Glob"],
 });
 
@@ -55,6 +62,7 @@ export async function loadSettings(path: string): Promise<Settings> {
   settings.name = cleanName(String(settings.name)) ?? "Risa";
   if (typeof settings.framePack !== "string" || !isPackName(settings.framePack)) settings.framePack = null;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
+  if (!isMemorySaving(settings.memorySaving)) settings.memorySaving = "ask";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
   if (
     process.env.COMPANION_PROVIDER === "ollama" ||
@@ -82,9 +90,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack, memorySaving } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack, memorySaving }, null, 2));
 }
 
 /**
