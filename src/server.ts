@@ -501,6 +501,8 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
 }
 
 const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto", everything: "everything" };
+/** The name the user types and the documentation uses ("ask"), not the internal one ("manual"). */
+const permissionLabel = (mode: PermissionMode): string => Object.entries(permissionNames).find(([, v]) => v === mode)?.[0] ?? mode;
 
 interface CommandContext {
   /** Everything after the command name. */
@@ -605,7 +607,7 @@ const slashCommands: Record<
       say(
         [
           `Brain: ${provider.name}`,
-          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionMode}` : ""}`,
+          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionLabel(permissionMode)}` : ""}`,
           `Folder: ${settings.projectDir ?? "(none)"}`,
           `Session: ${provider.sessionId ?? "(none)"}`,
         ].join("\n"),
@@ -661,7 +663,7 @@ const slashCommands: Record<
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
-      if (!wanted) return say(`Permissions: ${permissionMode}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
+      if (!wanted) return say(`Permissions: ${permissionLabel(permissionMode)}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
       changePermissionMode(wanted, say);
     },
   },

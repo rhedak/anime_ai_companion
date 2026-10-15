@@ -2,6 +2,7 @@ import { createAvatar } from "./avatar.js";
 import { RATES, createVoice, sampleText, takeSentences } from "./speech.js";
 import { createDictation, dictationVendor, joinDictation } from "./dictation.js";
 import { renderMarkdown } from "./markdown.js";
+import { BUBBLE_LINGER_MS, bubbleText } from "./bubble.js";
 import { createDemo } from "./demo.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
@@ -377,14 +378,21 @@ setInterval(renderWorking, 500);
 
 // The bubble is a glimpse, not the transcript: show the latest few lines only.
 const BUBBLE_MAX = 220;
+let bubbleTimer;
 function showBubble(text) {
-  text = text.replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, "$1"); // a link is just its words here: the chat has the link
+  text = bubbleText(text);
+  clearTimeout(bubbleTimer);
   bubble.hidden = !text;
   if (text.length > BUBBLE_MAX) {
     const tail = text.slice(-BUBBLE_MAX);
     text = "…" + tail.slice(tail.search(/\s/) + 1);
   }
   bubble.textContent = text;
+}
+/** A finished reply's bubble does not stay up for ever. */
+function lingerBubble() {
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => showBubble(""), BUBBLE_LINGER_MS);
 }
 
 function onDelta(text) {
@@ -422,6 +430,7 @@ function speakRest() {
 
 function endTurn() {
   speakRest();
+  lingerBubble();
   toolEls.clear();
   runningTools.clear();
   statusText = null;
@@ -1291,6 +1300,7 @@ const browserCommands = {
     link.download = `conversation-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
     link.click();
     URL.revokeObjectURL(link.href);
+    addMsg("sys", `Saved as ${link.download} in your downloads.`);
   },
   "/voice": () => {
     const button = $("voice");

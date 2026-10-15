@@ -139,6 +139,16 @@ describe("chatting", { skip }, () => {
     assert.equal(inputs(server).length, before);
   });
 
+  test("/permissions names the mode the way the documentation does: ask, not manual", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("/permissions");
+    const notice = await c.next((e) => e.type === "notice" && /^Permissions:/.test(e.text), 5000, from);
+    assert.match(notice.text, /^Permissions: ask\./);
+    assert.doesNotMatch(notice.text, /manual/);
+  });
+
   test("a slash command with a picture attached still runs as a command, and says the picture was not sent", async () => {
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
     const c = await server.client();
