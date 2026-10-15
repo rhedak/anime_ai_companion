@@ -131,3 +131,14 @@ test("the model cannot make her younger, shorter than standard, or take her down
     s.close();
   }
 });
+
+test("[avatar load=<preset>] works like base=<preset>, since a preset is the thing she meant", { skip }, async () => {
+  const s = await service();
+  try {
+    const res = await s.applyPatch({ load: "Katherina", hair_color: "#0000aa" });
+    assert.deepEqual(res.rejected, []);
+    assert.deepEqual(res.applied, ["base=katherina", "hair_color=#0000aa"]);
+  } finally {
+    s.close();
+  }
+});
