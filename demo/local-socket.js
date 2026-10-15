@@ -43,6 +43,10 @@ export function createLocalSocket({
   /** The picture packs on offer, and the one she is showing as just now (null: the drawn avatar). */
   let packList = {};
   let pack = null;
+  /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
+  let editAllowed = false;
+  /** The stop button was pressed: the reply being streamed ends where it is. */
+  let aborted = false;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
   let waiting = null;
   /** The opening messages are out and the character is loaded: drawing can start. */
@@ -72,6 +76,7 @@ export function createLocalSocket({
       // An answer to the approval card must not wait behind the turn that is waiting for it.
       if (msg.type === "permission-reply") return void answerCard(msg.id, msg.decision);
       if (msg.type === "stop") {
+        aborted = true;
         model?.stop();
         return void (waiting && answerCard(waiting.id, "deny"));
       }
@@ -88,6 +93,16 @@ export function createLocalSocket({
     /** She says something unprompted, in her turn (the model is ready, the model is off). Tags in it work as in any reply. */
     announce(text) {
       chain = chain.then(() => speak(text)).catch(() => {});
+    },
+    /** Settles when the drawing code is loaded (or has failed to): until then the page holds its buttons. */
+    ready: ready.then(
+      () => undefined,
+      () => undefined,
+    ),
+    /** Shows `text` as the visitor's own message, for a button that sends a command, which the server never echoes. */
+    echo(text) {
+      history.push({ type: "user", text });
+      out({ type: "user", text });
     },
     /** Tells the page something in its chat log (loading progress, mostly). */
     notice(text) {
@@ -303,6 +318,7 @@ export function createLocalSocket({
   /** A fresh conversation: an empty log, and her greeting again. */
   async function newChat() {
     history = [];
+    editAllowed = false;
     out({ type: "reset" });
     out(modeInfo());
     if (failure) return void out({ type: "notice", text: failure });
@@ -311,11 +327,14 @@ export function createLocalSocket({
 
   /** Streams `text` to the page a few words at a time, like a model would, and returns it. */
   async function stream(text) {
+    let said = "";
     for (const piece of text.match(/\S+\s*/g) ?? []) {
+      if (aborted) break;
       out({ type: "delta", text: piece });
+      said += piece;
       await pause(35);
     }
-    return text;
+    return said;
   }
 
   /** Applies the [avatar …] tags of a finished reply as one change, the way the server does. */
@@ -334,8 +353,15 @@ export function createLocalSocket({
   }
 
   /** A whole reply: streamed, its tags applied, kept in the log, and the turn ended. */
-  async function speak(text) {
-    await stream(text);
+  async function speak(whole) {
+    aborted = false;
+    const text = await stream(whole);
+    if (aborted) {
+      // Stopped: what was said stays, nothing more happens, and the turn is over now.
+      aborted = false;
+      if (text) history.push({ type: "bot", text });
+      return void out({ type: "done" });
+    }
     await applyTags(text);
     history.push({ type: "bot", text });
     out({ type: "done" });
@@ -411,6 +437,12 @@ export function createLocalSocket({
     out(tool("demo-read", "Read", "index.html", "done"));
     said += await stream(" [emotion:thinking] The heading is plain. Let's make it pink: one small edit.");
     out(tool("demo-edit", "Edit", "index.html", "running"));
+    if (editAllowed) {
+      out(tool("demo-edit", "Edit", "index.html", "done"));
+      said += await stream(" [emotion:happy] You've already allowed Edit for this session, so I don't ask again: the heading is pink. (Pretend, of course.)");
+      history.push({ type: "bot", text: said });
+      return void out({ type: "done" });
+    }
     const decision = await askCard({
       id: "demo-edit",
       tool: "Edit",
@@ -422,6 +454,7 @@ export function createLocalSocket({
       },
       description: "A pretend card: this demo changes nothing. In the real app this is the exact edit you approve.",
     });
+    if (decision === "allow-session") editAllowed = true;
     if (decision === "deny") {
       out(tool("demo-edit", "Edit", "index.html", "error"));
       said += await stream(" [emotion:shy] Okay, I'll leave it alone. A denial is never retried: I'd ask what you'd rather do instead.");

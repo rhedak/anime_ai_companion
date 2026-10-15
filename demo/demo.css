@@ -107,3 +107,4 @@ body.demo #file { display: none !important; }
   body.demo .tools { gap: 4px; }
   body.demo .tools button, body.demo .tools select { padding: 5px 5px; font-size: 11.5px; }
 }
+#demo-chips .chips-list button:disabled { opacity: 0.55; cursor: default; }

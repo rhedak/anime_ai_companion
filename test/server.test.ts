@@ -138,6 +138,18 @@ describe("chatting", { skip }, () => {
     assert.match(notice.text, /\/nosuchcommand/);
     assert.equal(inputs(server).length, before);
   });
+
+  test("a slash command with a picture attached still runs as a command, and says the picture was not sent", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const c = await server.client();
+    await c.next("history");
+    const before = inputs(server).length;
+    const from = c.mark;
+    c.send({ type: "user", text: "/nosuchcommand", images: [{ mediaType: "image/png", data: png }] });
+    await c.next((e) => e.type === "notice" && /Unknown command/.test(e.text), 5000, from);
+    await c.next((e) => e.type === "notice" && /picture was not sent/.test(e.text), 5000, from);
+    assert.equal(inputs(server).length, before, "the model was not asked");
+  });
 });
 
 describe("a long conversation that went cold", { skip }, () => {
@@ -667,6 +679,55 @@ describe("starting with Ollama as the brain and no model named", { skip }, () =>
       const again = await server.client();
       const history = await again.next("history");
       assert.equal(history.items.filter((i: any) => i.type === "user").length, 0, "nothing was saved");
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe("Ollama answering the tool check before the server is ready", { skip }, () => {
+  test("the server still comes up when /api/show is answered long before /api/tags", async () => {
+    // The tool check starts at the top of server.ts and its callback broadcasts to the page, which
+    // only exists further down. A slow model list makes the check come back first.
+    const fake = createServer(async (req: IncomingMessage, res) => {
+      for await (const _ of req) void _;
+      if (req.url === "/api/tags") await new Promise((r) => setTimeout(r, 600));
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen2.5:3b" }] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: ["completion", "tools"] }));
+      res.writeHead(404);
+      res.end("{}");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const host = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
+    try {
+      const server = await startServer({ settings: { provider: "ollama", ollamaModel: "qwen2.5:3b" }, env: { OLLAMA_HOST: host } });
+      try {
+        const c = await server.client();
+        const mode = await c.next((e) => e.type === "mode" && e.provider === "ollama");
+        assert.equal(mode.ollamaModel, "qwen2.5:3b");
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      fake.close();
+    }
+  });
+});
+
+describe("switching to a brain whose program is missing", { skip }, () => {
+  test("she stays on the current brain and is told, for every command-line brain", async () => {
+    const server = await startServer({ env: { CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" } });
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      for (const [brain, program] of [["cursor", "cursor-agent"], ["opencode", "opencode"]]) {
+        const from = c.mark;
+        c.send({ type: "provider", provider: brain });
+        const notice = await c.next((e) => e.type === "notice" && e.text.includes(program), 5000, from);
+        assert.match(notice.text, /not installed or not on PATH, so she stays on claude/);
+        assert.ok(!c.since(from).some((e) => e.type === "reset"), "no new conversation");
+      }
+      assert.equal(JSON.parse(server.data("settings.json") ?? "{}").provider, "claude");
     } finally {
       await server.stop();
     }

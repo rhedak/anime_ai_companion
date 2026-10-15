@@ -40,9 +40,9 @@ function fakeRenderer() {
 
 /** A socket with the page's side of it: what the page receives, in order. */
 type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void> } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: async () => {}, packs: options.packs, onPack: options.onPack, model: options.model });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, onPack: options.onPack, model: options.model });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -698,4 +698,58 @@ test("staging the demo gives a flat static folder in demo mode that loads the de
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("stop ends a scripted reply at once: no more words, and the turn is over", async () => {
+  const { socket, events, next, send } = connect({ pause: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))) });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "What can you do?" });
+  await next((e) => e.type === "delta", from);
+  const stoppedAt = Date.now();
+  send({ type: "stop" });
+  await next((e) => e.type === "done", from, 500);
+  assert.ok(Date.now() - stoppedAt < 300, "the turn ended right after the stop");
+  const wordsAfter = events.slice(from).filter((e) => e.type === "delta").length;
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(events.slice(from).filter((e) => e.type === "delta").length, wordsAfter, "nothing more was said after the turn ended");
+  socket.close();
+});
+
+test("echo shows what an idea button stands for as the visitor's own message", async () => {
+  const { socket, events, next } = connect();
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  socket.echo("Try the picture pack");
+  const user = await next((e) => e.type === "user", from);
+  assert.equal(user.text, "Try the picture pack");
+});
+
+test("`ready` settles when the drawing code is loaded, so the page can hold its buttons until then", async () => {
+  let release!: (r: Renderer) => void;
+  const late = new Promise<Renderer>((r) => (release = r));
+  const { socket } = connect({ renderer: late });
+  let loaded = false;
+  void socket.ready.then(() => (loaded = true));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(loaded, false, "still loading");
+  release(fakeRenderer().renderer);
+  await socket.ready;
+  assert.equal(loaded, true);
+});
+
+test("pretend work mode: 'allow for this session' is remembered, so the second time she does not ask again", async () => {
+  const { events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  let from = events.length;
+  send({ type: "user", text: "Show me work mode" });
+  const card = await next((e) => e.type === "permission", from);
+  send({ type: "permission-reply", id: card.request.id, decision: "allow-session" });
+  await next((e) => e.type === "done", from);
+  from = events.length;
+  send({ type: "user", text: "Show me work mode" });
+  await next((e) => e.type === "done", from);
+  assert.ok(!events.slice(from).some((e) => e.type === "permission"), "no card the second time");
+  const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
+  assert.match(said, /already allowed Edit for this session/);
 });

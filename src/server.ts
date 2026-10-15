@@ -10,6 +10,7 @@ import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
+import { brainProgram, isInstalled } from "./programs.ts";
 import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
@@ -212,9 +213,6 @@ const providers: Record<ProviderName, Provider> = {
   }),
 };
 let provider: Provider = providers[settings.provider];
-// A local model can only do work mode if Ollama says it takes tool calls: ask now, and again whenever the model changes.
-ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
-if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
 const OLLAMA_WORK_WARNING =
@@ -348,6 +346,11 @@ const broadcast = (msg: unknown) => {
     for (const c of clients) if (c.readyState === c.OPEN) c.send(meter);
   }
 };
+
+// A local model can only do work mode if Ollama says it takes tool calls: ask now, and again whenever the model changes.
+// After `broadcast`, which the answer calls: asked earlier, a fast Ollama could reply before it existed (it crashed the start).
+ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
+if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
 await mkdir(join(root, "data"), { recursive: true });
 
@@ -1032,9 +1035,11 @@ wss.on("connection", (ws) => {
       const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
       const images = parseImages(msg.images);
       if (typeof images === "string") return say(images);
-      const bang = images.length ? null : /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
+      // A command is a command with a picture attached too: it runs here and the model never sees either.
+      const bang = /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
+      const command = bang ? null : parseSlash(msg.text);
+      if ((bang || command) && images.length) say("Commands run on their own, so the attached picture was not sent.");
       if (bang) return remote ? say(remoteRefusal) : void (await runBang(bang[1], say));
-      const command = images.length ? null : parseSlash(msg.text);
       if (command) {
         const known = slashCommands[command.name];
         if (!known) say(`Unknown command /${command.name}. Try /help.`);
@@ -1093,6 +1098,10 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
+      const program = brainProgram(msg.provider);
+      if (program && !isInstalled(program)) {
+        return notice(`${program} is not installed or not on PATH, so she stays on ${provider.name}.`);
+      }
       if (msg.provider === "ollama") {
         await refreshOllamaModels();
         const chosen = typeof msg.model === "string" && msg.model ? msg.model : (settings.ollamaModel ?? ollamaModels?.[0]);

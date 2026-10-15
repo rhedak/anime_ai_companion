@@ -189,7 +189,8 @@ export class AvatarService {
   /** Apply `[avatar ...]` changes one after another, in the order the model wrote them. */
   applyPatch(set: Record<string, string>): Promise<PatchResult> {
     const run = this.queue.then(async () => {
-      const { load, ...rest } = set;
+      const { load, ...others } = set;
+      let rest = others;
       let base = this.character;
       let loadedName: string | null = null;
       const rejected: PatchResult["rejected"] = [];
@@ -198,6 +199,8 @@ export class AvatarService {
         if (look) {
           base = look;
           loadedName = AvatarService.slug(load);
+        } else if (this.presetNames.includes(load.toLowerCase())) {
+          rest = { base: load.toLowerCase(), ...others }; // a preset named where a saved look was expected: it is what she meant
         } else {
           const saved = this.lookNames.length ? this.lookNames.join(", ") : "none yet";
           rejected.push({ key: "load", reason: `no saved look named '${load}' (saved looks: ${saved})` });

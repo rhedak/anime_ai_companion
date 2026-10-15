@@ -170,7 +170,7 @@ Flip the **Work** switch, pick a project folder, and she can read and edit files
 there, like a regular Claude Code session. She asks first:
 
 - Every action that is not pre-approved shows an approval card with the **exact** command or file
-  content. Choose *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried.
+  content. Choose *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried. With a local (Ollama) model, *for this session* covers later file writes and edits in the project folder, but a shell command only as written.
 - The **Permissions** menu changes how approvals work: *Ask for each action* (the default),
   *Plan first* (she reads and proposes a plan; nothing changes until you approve it), *Accept edits*
   (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves

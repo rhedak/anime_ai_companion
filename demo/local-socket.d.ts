@@ -7,6 +7,8 @@ export interface LocalSocket {
   close(): void;
   notice(text: string): void;
   announce(text: string): void;
+  echo(text: string): void;
+  ready: Promise<void>;
 }
 export interface PackInfo {
   name: string;
