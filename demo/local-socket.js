@@ -43,6 +43,8 @@ export function createLocalSocket({
   /** The picture packs on offer, and the one she is showing as just now (null: the drawn avatar). */
   let packList = {};
   let pack = null;
+  /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
+  let editAllowed = false;
   /** The stop button was pressed: the reply being streamed ends where it is. */
   let aborted = false;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
@@ -316,6 +318,7 @@ export function createLocalSocket({
   /** A fresh conversation: an empty log, and her greeting again. */
   async function newChat() {
     history = [];
+    editAllowed = false;
     out({ type: "reset" });
     out(modeInfo());
     if (failure) return void out({ type: "notice", text: failure });
@@ -434,6 +437,12 @@ export function createLocalSocket({
     out(tool("demo-read", "Read", "index.html", "done"));
     said += await stream(" [emotion:thinking] The heading is plain. Let's make it pink: one small edit.");
     out(tool("demo-edit", "Edit", "index.html", "running"));
+    if (editAllowed) {
+      out(tool("demo-edit", "Edit", "index.html", "done"));
+      said += await stream(" [emotion:happy] You've already allowed Edit for this session, so I don't ask again: the heading is pink. (Pretend, of course.)");
+      history.push({ type: "bot", text: said });
+      return void out({ type: "done" });
+    }
     const decision = await askCard({
       id: "demo-edit",
       tool: "Edit",
@@ -445,6 +454,7 @@ export function createLocalSocket({
       },
       description: "A pretend card: this demo changes nothing. In the real app this is the exact edit you approve.",
     });
+    if (decision === "allow-session") editAllowed = true;
     if (decision === "deny") {
       out(tool("demo-edit", "Edit", "index.html", "error"));
       said += await stream(" [emotion:shy] Okay, I'll leave it alone. A denial is never retried: I'd ask what you'd rather do instead.");

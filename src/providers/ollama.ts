@@ -164,6 +164,7 @@ export class OllamaProvider implements Provider {
         this.onCapability?.();
       }
     }
+    if (this.config && config.cwd !== this.config.cwd) this.allowedCalls.clear(); // a grant is for the folder it was given in
     this.config = { mode: config.mode, cwd: config.cwd, permissionMode: config.permissionMode, allowedTools: config.allowedTools };
   }
 
@@ -344,7 +345,8 @@ export class OllamaProvider implements Provider {
       status("error");
       return "Plan mode: she may only read and search. Nothing is changed. Propose the change as a plan instead.";
     }
-    const key = `${name}:${JSON.stringify(args)}`;
+    // "Allow for this session" covers a file tool for the whole project (these cannot leave the project folder), but a shell command only as written.
+    const key = spec.card === "Write" || spec.card === "Edit" ? `tool:${spec.card}` : `${name}:${JSON.stringify(args)}`;
     const preApproved = spec.readOnly && this.config.allowedTools.includes(spec.card);
     if (!preApproved && !this.allowedCalls.has(key)) {
       const decision = await this.ask(id, shown);

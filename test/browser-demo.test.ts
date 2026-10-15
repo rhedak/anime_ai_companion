@@ -737,3 +737,19 @@ test("`ready` settles when the drawing code is loaded, so the page can hold its 
   await socket.ready;
   assert.equal(loaded, true);
 });
+
+test("pretend work mode: 'allow for this session' is remembered, so the second time she does not ask again", async () => {
+  const { events, next, send } = connect();
+  await next((e) => e.type === "queue");
+  let from = events.length;
+  send({ type: "user", text: "Show me work mode" });
+  const card = await next((e) => e.type === "permission", from);
+  send({ type: "permission-reply", id: card.request.id, decision: "allow-session" });
+  await next((e) => e.type === "done", from);
+  from = events.length;
+  send({ type: "user", text: "Show me work mode" });
+  await next((e) => e.type === "done", from);
+  assert.ok(!events.slice(from).some((e) => e.type === "permission"), "no card the second time");
+  const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
+  assert.match(said, /already allowed Edit for this session/);
+});

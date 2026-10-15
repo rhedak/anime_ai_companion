@@ -108,7 +108,7 @@ test("a command waits for the user: allowed once it runs, denied it does not, an
   }
 });
 
-test("'allow for this session' covers only that exact call", async () => {
+test("'allow for this session' on a shell command covers only that exact command", async () => {
   const w = setup();
   const fake = await fakeOllama((n) => {
     if (n === 1 || n === 3) return { calls: [{ name: "bash", arguments: { command: "echo one" } }] };
@@ -125,6 +125,33 @@ test("'allow for this session' covers only that exact call", async () => {
     assert.equal(cards, 1);
     await ask(p, "c", decide); // another command
     assert.equal(cards, 2);
+  } finally {
+    fake.close();
+    w.done();
+  }
+});
+
+test("'allow for this session' on a file edit covers every later write and edit in the project, not the shell", async () => {
+  const w = setup();
+  const fake = await fakeOllama((n) => {
+    if (n === 1) return { calls: [{ name: "write_file", arguments: { path: "a.txt", content: "one" } }] };
+    if (n === 3) return { calls: [{ name: "write_file", arguments: { path: "b.txt", content: "two" } }] };
+    if (n === 5) return { calls: [{ name: "edit_file", arguments: { path: "a.txt", old_string: "one", new_string: "uno" } }] };
+    if (n === 7) return { calls: [{ name: "bash", arguments: { command: "echo hi" } }] };
+    return { text: "ok" };
+  });
+  try {
+    const p = w.make(fake.host);
+    await p.checkTools();
+    const asked: string[] = [];
+    const decide = (e: Extract<ProviderEvent, { type: "permission" }>) => (asked.push(e.request.tool), "allow-session" as const);
+    await ask(p, "a", decide); // Write: asked
+    await ask(p, "b", decide); // another Write, another file: not asked
+    assert.deepEqual(asked, ["Write"]);
+    await ask(p, "c", decide); // Edit is its own tool: asked once
+    assert.deepEqual(asked, ["Write", "Edit"]);
+    await ask(p, "d", decide); // the shell is never covered by a file grant
+    assert.deepEqual(asked, ["Write", "Edit", "Bash"]);
   } finally {
     fake.close();
     w.done();

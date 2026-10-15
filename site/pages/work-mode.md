@@ -12,7 +12,7 @@ regular Claude Code session. She asks first.
 ## Approvals
 
 Every action that is not pre-approved shows an **approval card** with the exact command or file change. Choose
-*Allow once*, *Allow for this session*, or *Deny*; a denial is not retried. `Read`, `Grep` and `Glob` are
+*Allow once*, *Allow for this session*, or *Deny*; a denial is not retried. With a local (Ollama) model, *for this session* covers later file writes and edits in the project folder, but a shell command only as written. `Read`, `Grep` and `Glob` are
 pre-approved (change that in `data/settings.json`).
 
 The **Permissions** menu changes how approvals work. It resets to *Ask* every time the server starts, and can be
