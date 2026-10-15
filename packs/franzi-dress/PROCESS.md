@@ -21,7 +21,7 @@ Like the rest of this repository and the `risa-dress` pack, these pictures are u
    picture's edge, plus the enclosed black gaps between arms and body, with a 1 px soft edge and the dark fringe
    removed. Her black hair and outlines are kept. Blinks and mouths reuse their emotion picture's mask.
 5. **Packaging.** All pictures were scaled to 940 × 1070 (the size of `risa-dress`) and saved as lossless WebP,
-   with the same file names as `risa-dress`: 41 files in all, with `NOTICE.md` and `credit.txt`.
+   with the same file names as `risa-dress`: 39 pictures, plus `NOTICE.md`, `credit.txt` and this file.
 
 ## Licence
 
