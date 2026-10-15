@@ -115,3 +115,19 @@ test("gesture frames are two different poses, and unknown gestures are refused",
     s.close();
   }
 });
+
+test("the model cannot make her younger, shorter than standard, or take her down to underwear", { skip }, async () => {
+  const s = await service(); // linnea: tunic and trousers
+  try {
+    const res = await s.applyPatch({ face_age: "0", height: "0.8" });
+    assert.deepEqual(res.applied, []);
+    assert.deepEqual(res.rejected.map((r) => r.key).sort(), ["face_age", "height"]);
+    const before = s.character.face_age;
+    await s.applyPatch({ tunic_color: "none", skirt_color: "none", trouser_color: "none", coat_color: "none" });
+    const o = s.character.outfit as Record<string, unknown>;
+    assert.ok(["tunic_color", "coat_color", "robe_color", "skirt_color", "trouser_color"].some((k) => o[k]));
+    assert.equal(s.character.face_age, before);
+  } finally {
+    s.close();
+  }
+});
