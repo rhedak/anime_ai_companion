@@ -11,7 +11,7 @@ mouth openings (`<emotion>-talk1` to `-talk3`) of the seven emotions were **not*
 closed eyes and an open mouth over the face of each emotion picture, and left every other pixel identical. They
 are simpler than the hand-finished pictures of the other packs.
 
-The background of every picture is plain black, not transparent. It was not removed.
+The background of every picture is transparent. It was removed with a script from the plain black background the pictures were made on: black pixels connected to the picture's edge, and the black gaps between her arms and body, were made transparent.
 
 ## A caveat about AI-made pictures
 

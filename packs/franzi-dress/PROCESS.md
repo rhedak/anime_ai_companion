@@ -7,8 +7,7 @@ Like the rest of this repository and the `risa-dress` pack, these pictures are u
 ## The process
 
 1. **Design and base picture.** The repository's owner designed Franzi (black hair in a low ponytail, amber eyes,
-   a green dirndl with a red apron) and made the neutral base picture with xAI's Grok Imagine. Backgrounds were
-   not removed: every picture has a plain black background.
+   a green dirndl with a red apron) and made the neutral base picture with xAI's Grok Imagine. The pictures came out on a plain black background.
 2. **Emotions and poses.** Each of the six other emotions (`happy`, `sad`, `angry`, `surprised`, `shy`,
    `thinking`) and the four poses (`wave-1`, `wave-2`, `cheer-1`, `cheer-2`) was made by editing that same base
    picture in Grok Imagine, one change at a time. Every edit started again from the base, never from a previous
@@ -18,7 +17,10 @@ Like the rest of this repository and the `risa-dress` pack, these pictures are u
    for all seven emotions were not made with an image tool. A script drew closed eyes or an open mouth over the
    face of each emotion picture and left every other pixel identical. They are simpler than the hand-finished
    pictures of `risa-dress`.
-4. **Packaging.** All pictures were scaled to 940 × 1070 (the size of `risa-dress`) and saved as lossless WebP,
+4. **Transparent background.** A script made the black background transparent: near-black pixels connected to the
+   picture's edge, plus the enclosed black gaps between arms and body, with a 1 px soft edge and the dark fringe
+   removed. Her black hair and outlines are kept. Blinks and mouths reuse their emotion picture's mask.
+5. **Packaging.** All pictures were scaled to 940 × 1070 (the size of `risa-dress`) and saved as lossless WebP,
    with the same file names as `risa-dress`: 41 files in all, with `NOTICE.md` and `credit.txt`.
 
 ## Licence
