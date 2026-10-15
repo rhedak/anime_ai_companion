@@ -10,7 +10,7 @@ import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
-import { brainProgram, isInstalled } from "./programs.ts";
+import { brainProgram, isInstalled, programLabel } from "./programs.ts";
 import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
@@ -1113,7 +1113,7 @@ wss.on("connection", (ws) => {
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       const program = brainProgram(msg.provider);
       if (program && !isInstalled(program)) {
-        return notice(`${program} is not installed or not on PATH, so she stays on ${provider.name}.`);
+        return notice(`${programLabel(msg.provider)} is not installed or not on PATH, so she stays on ${provider.name}.`);
       }
       if (msg.provider === "ollama") {
         await refreshOllamaModels();
