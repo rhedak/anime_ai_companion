@@ -804,3 +804,41 @@ test("the looks message names the preset she is based on, through tweaks, undo a
   await again.next((e) => e.type === "queue");
   assert.equal(again.events.filter((e) => e.type === "looks").at(-1).current, "kyoko");
 });
+
+const slow = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.min(ms, 15)));
+
+test("a message sent while she is answering is shown as queued, then answered in its turn", async () => {
+  const { events, next, send } = connect({ pause: slow });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "What can you do?" });
+  await next((e) => e.type === "delta", from);
+  send({ type: "user", text: "Be shy" });
+  const queued = await next((e) => e.type === "queue" && e.items.length === 1, from);
+  assert.equal(queued.items[0].text, "Be shy");
+  assert.ok(queued.items[0].id);
+  await next((e) => e.type === "queue" && e.items.length === 0, from);
+  await next((e) => e.type === "user" && e.text === "Be shy", from);
+  await next((e) => e.type === "done" && events.slice(from).filter((x) => x.type === "done").length === 2, from, 3000).catch(() => {});
+  assert.equal(events.slice(from).filter((e) => e.type === "done").length, 2, "both turns finished");
+});
+
+test("a queued message can be taken out, and Stop gives the waiting words back for the input box", async () => {
+  const { events, next, send } = connect({ pause: slow });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "What can you do?" });
+  await next((e) => e.type === "delta", from);
+  send({ type: "user", text: "Wave at me" });
+  send({ type: "user", text: "Be shy" });
+  const two = await next((e) => e.type === "queue" && e.items.length === 2, from);
+  send({ type: "unqueue", id: two.items[0].id });
+  await next((e) => e.type === "queue" && e.items.length === 1 && e.items[0].text === "Be shy", from);
+  send({ type: "stop" });
+  const back = await next((e) => e.type === "queue" && e.returned?.length, from);
+  assert.deepEqual(back.returned, ["Be shy"]);
+  assert.equal(back.items.length, 0);
+  await next((e) => e.type === "done", from);
+  await new Promise((r) => setTimeout(r, 150));
+  assert.ok(!events.slice(from).some((e) => e.type === "user" && (e.text === "Wave at me" || e.text === "Be shy")), "neither waiting message was answered");
+});

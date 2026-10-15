@@ -1847,6 +1847,7 @@ let full = false;
 $("zoom").addEventListener("click", () => {
   full = !full;
   avatar.setFull(full);
+  document.querySelector(".stage")?.classList.toggle("full-body", full);
   $("zoom").textContent = full ? "Close-up" : "Full body";
 });
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));

@@ -51,6 +51,11 @@ export function createLocalSocket({
   let basePreset = preset;
   /** The base she had at each earlier look, in step with `looks`, so Undo goes back to it too. */
   const bases = [];
+  /** Turns running or waiting in the chain, and the user's messages that are waiting behind a running one (listed above the box). */
+  let working = 1;
+  const queued = [];
+  let nextQueueId = 1;
+  const queueMessage = (returned = []) => ({ type: "queue", items: queued.map(({ id, text }) => ({ id, text })), returned });
   /** The stop button was pressed: the reply being streamed ends where it is. */
   let aborted = false;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
@@ -65,7 +70,10 @@ export function createLocalSocket({
     `https://rhedak.github.io/anime_ai_companion/ . (Details: ${err?.message ?? err})`;
   ready.catch((err) => void (failure = startFailure(err)));
   /** The conversation is answered one request at a time, in order, like the server's queue; it starts with her greeting. */
-  let chain = ready.then(() => greet()).catch(() => out({ type: "notice", text: failure ?? "The demo could not start." }));
+  let chain = ready
+    .then(() => greet())
+    .catch(() => out({ type: "notice", text: failure ?? "The demo could not start." }))
+    .finally(() => void (working -= 1)); // the greeting is the first turn: a message sent during it waits, and is shown as waiting
 
   const socket = {
     readyState: OPEN,
@@ -83,6 +91,7 @@ export function createLocalSocket({
       if (msg.type === "permission-reply") return void answerCard(msg.id, msg.decision);
       if (msg.type === "stop") {
         aborted = true;
+        if (queued.length) out(queueMessage(queued.splice(0).map((q) => q.text))); // the waiting words go back to the box
         model?.stop();
         return void (waiting && answerCard(waiting.id, "deny"));
       }
@@ -91,7 +100,30 @@ export function createLocalSocket({
         ready.then(() => drawing(msg)).catch(() => {}); // a failed load has already been reported
         return;
       }
-      chain = chain.then(() => handle(msg)).catch((err) => out({ type: "notice", text: `Something went wrong in the demo: ${err?.message ?? err}` }));
+      if (msg.type === "unqueue") {
+        const at = queued.findIndex((q) => q.id === msg.id);
+        if (at >= 0) queued.splice(at, 1);
+        return void out(queueMessage());
+      }
+      // A message that arrives while a turn is running waits its turn, and is listed above the box meanwhile.
+      const entry = msg.type === "user" && typeof msg.text === "string" && msg.text.trim() && working > 0 ? { id: `q${nextQueueId++}`, text: msg.text.trim() } : null;
+      if (entry) {
+        queued.push(entry);
+        out(queueMessage());
+      }
+      working += 1;
+      chain = chain
+        .then(async () => {
+          if (entry) {
+            const at = queued.indexOf(entry);
+            if (at < 0) return; // taken out, or given back by Stop
+            queued.splice(at, 1);
+            out(queueMessage());
+          }
+          await handle(msg);
+        })
+        .catch((err) => out({ type: "notice", text: `Something went wrong in the demo: ${err?.message ?? err}` }))
+        .finally(() => void (working -= 1));
     },
     close() {
       socket.readyState = 3;
