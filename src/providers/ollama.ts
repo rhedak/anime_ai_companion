@@ -36,6 +36,20 @@ const TOOL_FAMILIES = /^(qwen2\.5|qwen3|llama3\.[123]|llama4|mistral-nemo|mistra
  */
 export async function ollamaSupportsTools(host: string, model: string, forced: string[] = []): Promise<boolean | null> {
   if (forced.includes("all") || forced.includes(model)) return true;
+  const capabilities = await ollamaCapabilities(host, model);
+  if (capabilities === undefined) return null;
+  if (capabilities) return capabilities.includes("tools");
+  return TOOL_FAMILIES.test(model) ? true : null;
+}
+
+/** Whether a model can take pictures: Ollama's own report, else null (cannot tell, and she does not guess). */
+export async function ollamaSupportsVision(host: string, model: string): Promise<boolean | null> {
+  const capabilities = await ollamaCapabilities(host, model);
+  return capabilities ? capabilities.includes("vision") : null;
+}
+
+/** What Ollama says a model can do (`capabilities` of /api/show): the list, null for an Ollama that does not say, undefined when it cannot be asked. */
+async function ollamaCapabilities(host: string, model: string): Promise<string[] | null | undefined> {
   try {
     const res = await fetch(`${host.replace(/\/+$/, "")}/api/show`, {
       method: "POST",
@@ -43,12 +57,11 @@ export async function ollamaSupportsTools(host: string, model: string, forced: s
       body: JSON.stringify({ model }),
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return undefined;
     const body: any = await res.json();
-    if (Array.isArray(body.capabilities)) return body.capabilities.includes("tools");
-    return TOOL_FAMILIES.test(model) ? true : null;
+    return Array.isArray(body.capabilities) ? body.capabilities.map(String) : null;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -98,6 +111,7 @@ export class OllamaProvider implements Provider {
   private readonly pending = new Map<string, (decision: Decision) => void>();
   /** Exact calls the user allowed for the rest of this conversation. */
   private readonly allowedCalls = new Set<string>();
+  private visionCapable: boolean | null = null;
 
   constructor(opts: OllamaOptions) {
     this.host = opts.host.replace(/\/+$/, "");
@@ -122,12 +136,18 @@ export class OllamaProvider implements Provider {
   /** Asks Ollama whether the current model takes tool calls, and tells the listener if the answer changed. */
   async checkTools(): Promise<boolean | null> {
     const model = this.model;
-    const result = model ? await ollamaSupportsTools(this.host, model, this.forceTools) : null;
-    if (model === this.model && result !== this.toolCapable) {
+    const [result, vision] = model ? await Promise.all([ollamaSupportsTools(this.host, model, this.forceTools), ollamaSupportsVision(this.host, model)]) : [null, null];
+    if (model === this.model && (result !== this.toolCapable || vision !== this.visionCapable)) {
       this.toolCapable = result;
+      this.visionCapable = vision;
       this.onCapability?.();
     }
     return result;
+  }
+
+  /** False when Ollama says the model cannot take pictures; null when it has not said (attaching is then allowed). */
+  get cannotSeePictures(): boolean {
+    return this.visionCapable === false;
   }
 
   onToolSupport(listener: () => void): void {
@@ -159,8 +179,9 @@ export class OllamaProvider implements Provider {
     if (this.listener) throw new Error("Wait for the current reply to finish first.");
     if (config.model !== this.model) {
       this.model = config.model; // the conversation continues with the new model
-      if (this.toolCapable !== null) {
+      if (this.toolCapable !== null || this.visionCapable !== null) {
         this.toolCapable = null;
+        this.visionCapable = null;
         this.onCapability?.();
       }
     }

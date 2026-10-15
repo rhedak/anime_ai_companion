@@ -1011,6 +1011,7 @@ function handle(msg) {
       state = { ...state, ...msg };
       if (msg.mode === "work") wantWork = false;
       renderMode();
+      renderAttachAvailability();
       break;
     case "looks":
       $("undo-look").disabled = !msg.canUndo;
@@ -1245,7 +1246,19 @@ async function prepareImage(file) {
   return { mediaType: type, data: url.slice(url.indexOf(",") + 1), url };
 }
 
+const ATTACH_TITLE = $("attach").title;
+/** A local model that Ollama says cannot see pictures: the button is off, and says why. */
+function renderAttachAvailability() {
+  const blind = Boolean(state.cannotSeePictures);
+  $("attach").disabled = blind;
+  $("attach").title = blind ? `${state.ollamaModel ?? "This model"} cannot see pictures. Pick a model with vision to attach them.` : ATTACH_TITLE;
+}
+
 async function addFiles(files) {
+  if (state.cannotSeePictures) {
+    addMsg("sys", `${state.ollamaModel ?? "This model"} cannot see pictures, so nothing was attached. Pick a model with vision.`);
+    return;
+  }
   for (const file of files) {
     if (attachments.length >= MAX_IMAGES) {
       addMsg("sys", `At most ${MAX_IMAGES} images per message.`);

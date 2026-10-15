@@ -562,7 +562,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
       for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : {};
       if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-coder:30b" }, { name: "llama2:7b" }] }));
-      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools"] : ["completion"] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools", "vision"] : ["completion"] }));
       chats.push(body);
       const last = body.messages.at(-1);
       res.writeHead(200, { "content-type": "application/x-ndjson" });
@@ -624,6 +624,21 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     await c.done(from);
     assert.equal(readFileSync(join(server.project, "made.txt"), "utf8").trim(), "made");
   });
+  test("a model Ollama says cannot see pictures turns the attach button off, and one that can does not", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "llama2:7b" });
+    const blind = await c.next((e) => e.type === "mode" && e.provider === "ollama" && e.cannotSeePictures === true, 8000, from);
+    assert.equal(blind.ollamaModel, "llama2:7b");
+    from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.canUseTools === true, 8000, from);
+    await new Promise((r) => setTimeout(r, 400)); // the vision answer comes with the tools one
+    const last = c.since(from).filter((e) => e.type === "mode").at(-1)!;
+    assert.equal(last.cannotSeePictures, false);
+  });
+
   test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
     const c = await server.client();
     await c.next("history");

@@ -258,6 +258,8 @@ const modeInfo = () => ({
   mode,
   provider: settings.provider,
   canUseTools: provider.canUseTools,
+  // Only a local model that Ollama says cannot see pictures: everything else may attach (the page hides nothing otherwise).
+  cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePictures,
   ollamaModels,
   ollamaModel: settings.ollamaModel,
   cursorModels: cursorBrain()?.availableModels ?? [],

@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { MAX_TOOL_ROUNDS, OllamaProvider, ollamaSupportsTools } from "../src/providers/ollama.ts";
+import { MAX_TOOL_ROUNDS, OllamaProvider, ollamaSupportsTools, ollamaSupportsVision } from "../src/providers/ollama.ts";
 import type { PermissionMode, ProviderEvent } from "../src/providers/types.ts";
 
 type Reply = { text?: string; calls?: { name: string; arguments: unknown }[]; error?: string; status?: number };
@@ -303,5 +303,24 @@ test("tool support: Ollama's own report wins; without one a known family counts,
     assert.equal(await ollamaSupportsTools("http://127.0.0.1:1", "x"), null);
   } finally {
     [withTools, without, silent].forEach((f) => f.close());
+  }
+});
+
+test("the provider learns from /api/show whether a model can see pictures, and says nothing when it cannot tell", async () => {
+  const shows: Record<string, any> = { seer: { capabilities: ["completion", "tools", "vision"] }, blind: { capabilities: ["completion", "tools"] }, old: {} };
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const model = JSON.parse(raw || "{}").model;
+    res.end(JSON.stringify(shows[model] ?? {}));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    assert.equal(await ollamaSupportsVision(host, "seer"), true);
+    assert.equal(await ollamaSupportsVision(host, "blind"), false);
+    assert.equal(await ollamaSupportsVision(host, "old"), null, "an Ollama that reports no capabilities: cannot tell");
+  } finally {
+    server.close();
   }
 });
