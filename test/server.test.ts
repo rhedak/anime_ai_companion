@@ -790,6 +790,25 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     assert.equal(last.cannotSeePictures, false);
   });
 
+  test("switching from a model with tools to one without never announces tools for the new model", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.canUseTools === true, 8000, from);
+    await new Promise((r) => setTimeout(r, 300));
+    from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "llama2:7b" });
+    await new Promise((r) => setTimeout(r, 800));
+    const modes = c.since(from).filter((e) => e.type === "mode");
+    assert.ok(modes.length > 0);
+    for (const m of modes) {
+      assert.ok(!(m.ollamaModel === "llama2:7b" && m.canUseTools === true), `tools announced for llama2: ${JSON.stringify({ model: m.ollamaModel, tools: m.canUseTools })}`);
+      assert.ok(!(m.ollamaModel === "qwen3-coder:30b" && m.provider === "ollama" && m.canUseTools === false), "the old model was reported as having lost its tools");
+    }
+    assert.equal(modes.at(-1).canUseTools, false, "the settled state: no tools for llama2");
+  });
+
   test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
     const c = await server.client();
     await c.next("history");
