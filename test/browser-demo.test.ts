@@ -783,3 +783,24 @@ test("a saved look and pack are restored on the next visit, and a look that cann
   assert.equal(kept.at(-1).character.preset, "risa", "she started from the default look");
   assert.ok(!("broken" in kept.at(-1).character));
 });
+
+test("the looks message names the preset she is based on, through tweaks, undo and a saved visit", async () => {
+  const saved: any[] = [];
+  const { events, next, say, send } = connect({ onSave: (v) => saved.push(v) });
+  await next((e) => e.type === "queue");
+  const current = () => events.filter((e) => e.type === "looks").at(-1).current;
+  assert.equal(current(), "risa");
+  await say("Become Linnea");
+  assert.equal(current(), "linnea");
+  await say("Make your hair mint green");
+  assert.equal(current(), "linnea", "a tweak keeps it");
+  send({ type: "look-undo" });
+  await next((e) => e.type === "looks" && e.current === "linnea");
+  send({ type: "look-undo" });
+  await next((e) => e.type === "looks" && e.current === "risa");
+  assert.equal(saved.at(-1).base, "linnea" === saved.at(-1).base ? "linnea" : saved.at(-1).base);
+
+  const again = connect({ restore: { character: { preset: "kyoko", face: {} }, pack: null, base: "kyoko" } as any });
+  await again.next((e) => e.type === "queue");
+  assert.equal(again.events.filter((e) => e.type === "looks").at(-1).current, "kyoko");
+});

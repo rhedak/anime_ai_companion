@@ -142,3 +142,36 @@ test("[avatar load=<preset>] works like base=<preset>, since a preset is the thi
     s.close();
   }
 });
+
+test("the preset she is based on is tracked through changes, undo and a restart, so the gallery can mark it", { skip }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
+  const make = () => new AvatarService({ creatorSrc, python: pythonCommand(), workerPath: resolve(import.meta.dirname, "../python/render_worker.py"), statePath: join(dir, "avatar.json"), looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "linnea" });
+  let s = make();
+  await s.start();
+  try {
+    assert.equal(s.basePreset, "linnea", "a fresh start is the starting character");
+    await s.applyPatch({ hair_color: "#aa0000" });
+    assert.equal(s.basePreset, "linnea", "a tweak keeps the base");
+    await s.applyPatch({ base: "risa" });
+    assert.equal(s.basePreset, "risa");
+    await s.applyPatch({ load: "Katherina" }); // a preset named as a saved look
+    assert.equal(s.basePreset, "katherina");
+    await s.undo();
+    assert.equal(s.basePreset, "risa", "undo goes back to the base she had");
+    await s.saveLook("mine");
+    await s.applyPatch({ base: "gero" });
+    await s.loadLook("mine");
+    assert.equal(s.basePreset, null, "a saved look is not a preset");
+  } finally {
+    s.close();
+  }
+  s = make();
+  await s.start();
+  try {
+    assert.equal(s.basePreset, null, "remembered over a restart");
+    await s.resetLook();
+    assert.equal(s.basePreset, "linnea");
+  } finally {
+    s.close();
+  }
+});

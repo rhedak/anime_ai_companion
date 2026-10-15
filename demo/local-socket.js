@@ -31,7 +31,7 @@ export function createLocalSocket({
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
   restore = null,
-  onSave = (/** @type {{ character: any, pack: string | null } | null} */ _saved) => {},
+  onSave = (/** @type {{ character: any, pack: string | null, base: string | null } | null} */ _saved) => {},
 }) {
   let character = null;
   let version = 1;
@@ -47,6 +47,10 @@ export function createLocalSocket({
   let pack = null;
   /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
   let editAllowed = false;
+  /** The built-in character her look started from (a tweak keeps it), for the gallery to mark; null when it is not known. */
+  let basePreset = preset;
+  /** The base she had at each earlier look, in step with `looks`, so Undo goes back to it too. */
+  const bases = [];
   /** The stop button was pressed: the reply being streamed ends where it is. */
   let aborted = false;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
@@ -140,7 +144,7 @@ export function createLocalSocket({
   });
   const packMessage = () => ({ type: "pack", pack: pack ? packList[pack] : null });
   const packsMessage = () => ({ type: "packs", names: Object.keys(packList), active: pack });
-  const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0 });
+  const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0, current: basePreset });
 
   /** The opening messages a page gets, then her greeting. */
   async function start() {
@@ -151,7 +155,10 @@ export function createLocalSocket({
     // The look and the pack from the visitor's last visit, if the drawing code still accepts that look.
     if (restore?.character && typeof restore.character === "object") {
       const trial = await r.call({ op: "frames", character: restore.character, mouth: [0], face: {} }).catch(() => ({ ok: false }));
-      if (trial.ok) character = restore.character;
+      if (trial.ok) {
+        character = restore.character;
+        basePreset = typeof restore.base === "string" ? restore.base : null;
+      }
     }
     const schema = await r.call({ op: "schema" });
     if (schema.ok) presets = [preset, ...schema.presets.filter((p) => p !== preset)];
@@ -179,7 +186,13 @@ export function createLocalSocket({
   /** The look changes: remember the old one for Undo, and tell the page so it asks for new frames. */
   function adopt(next, applied) {
     looks.push(character);
-    if (looks.length > 20) looks.shift();
+    bases.push(basePreset);
+    if (looks.length > 20) {
+      looks.shift();
+      bases.shift();
+    }
+    const based = applied.find((a) => a.startsWith("base="));
+    if (based) basePreset = based.slice("base=".length);
     character = next;
     version += 1;
     cache.clear();
@@ -190,7 +203,7 @@ export function createLocalSocket({
 
   /** What the page keeps for the visitor's next visit: her look, and the pack she shows if any. */
   function save() {
-    onSave({ character, pack });
+    onSave({ character, pack, base: basePreset });
   }
 
   async function draw(request, key, answer) {
@@ -246,6 +259,7 @@ export function createLocalSocket({
       if (pack && looks.length) await choosePack(null, true); // a drawn look was picked: show it, as the app does
       if (looks.length) {
         character = looks.pop();
+        basePreset = bases.pop() ?? null;
         version += 1;
         cache.clear();
         out({ type: "avatar", version, applied: ["undid the last change"] });
@@ -267,6 +281,7 @@ export function createLocalSocket({
       if (base.ok) {
         if (pack) await choosePack(null, true);
         adopt(base.character, ["back to the original look"]);
+        basePreset = preset;
         onSave(null); // nothing to come back to: the next visit starts from the default
         await newChat();
       }

@@ -278,7 +278,7 @@ const modeInfo = () => ({
   shellOff: shellDisabled(),
 });
 
-const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
+const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo, current: avatar.basePreset });
 
 async function refreshOllamaModels(announce = true): Promise<void> {
   const before = JSON.stringify([ollamaModels, settings.ollamaModel]);

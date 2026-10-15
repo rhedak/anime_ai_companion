@@ -1017,6 +1017,7 @@ function handle(msg) {
       $("undo-look").disabled = !msg.canUndo;
       lastLooks = msg;
       presetNames = msg.presets ?? [];
+      currentPreset = msg.current ?? null;
       renderLooksMenu();
       break;
     case "packs":
@@ -1619,6 +1620,9 @@ function packItem(name) {
   return item;
 }
 
+/** The built-in character she is drawn from just now (the server says), so the gallery can mark it. */
+let currentPreset = null;
+
 function openGallery(kind = "presets") {
   if (document.querySelector(".gallery")) return closeGallery();
   const packs = kind === "packs";
@@ -1644,8 +1648,11 @@ function openGallery(kind = "presets") {
         item.type = "button";
         item.className = "preset";
         item.title = name;
+        item.setAttribute("aria-label", name); // the drawing can hold text of its own (a number on a wristband): the name is the label
+        if (name === currentPreset) item.setAttribute("aria-current", "true");
         const pic = document.createElement("span");
         pic.className = "preset-pic";
+        pic.setAttribute("aria-hidden", "true");
         // our own renderer's SVG; show the head and shoulders
         if (presetThumbs?.[name]) pic.innerHTML = uniqueIds(presetThumbs[name], `preset-${name}-`).replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
         item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name }));
