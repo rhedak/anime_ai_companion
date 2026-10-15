@@ -19,7 +19,7 @@ description: Requirements, installation, the anaico command, configuration, and 
 ## Install and run
 
 ```bash
-git clone --branch v0.2.2 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.2.5 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
