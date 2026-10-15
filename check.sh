@@ -10,6 +10,9 @@
 # `git push --no-verify` skips the hook; then CI is the only net.
 set -euo pipefail
 cd "$(dirname "$0")"
+# git sets GIT_DIR and friends for a hook, which would point `git -C <creator>` (and the tests' own git calls) at this repo.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
 
 full=0 dirty_ok=0
 for arg in "$@"; do
