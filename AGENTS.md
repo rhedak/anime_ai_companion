@@ -258,6 +258,10 @@ npm run typecheck
 npm test
 ```
 
+`./check.sh` runs both the way CI does (plus the lockfile check) and fails on skipped tests, uncommitted files or a creator that is not at the
+pinned tag; `./check.sh --full` is the release set (oldest Node, docs site, staged demo). Run it before every push; `--install-hook` makes
+git do so (`.githooks/pre-push`, which runs `--full` for a push to `main`).
+
 `npm run typecheck` also checks the page's JavaScript (`public/*.js`, `tsconfig.frontend.json`, loosely: no strict mode,
 and `$("id")` is typed `any`). The `.d.ts` files next to those modules are what the page and the tests import, so keep them
 in step. Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is that repo's `src`
