@@ -806,7 +806,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
       assert.ok(!(m.ollamaModel === "llama2:7b" && m.canUseTools === true), `tools announced for llama2: ${JSON.stringify({ model: m.ollamaModel, tools: m.canUseTools })}`);
       assert.ok(!(m.ollamaModel === "qwen3-coder:30b" && m.provider === "ollama" && m.canUseTools === false), "the old model was reported as having lost its tools");
     }
-    assert.equal(modes.at(-1).canUseTools, false, "the settled state: no tools for llama2");
+    assert.equal(modes.at(-1)!.canUseTools, false, "the settled state: no tools for llama2");
   });
 
   test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
