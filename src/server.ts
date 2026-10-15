@@ -212,9 +212,6 @@ const providers: Record<ProviderName, Provider> = {
   }),
 };
 let provider: Provider = providers[settings.provider];
-// A local model can only do work mode if Ollama says it takes tool calls: ask now, and again whenever the model changes.
-ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
-if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
 const OLLAMA_WORK_WARNING =
@@ -348,6 +345,11 @@ const broadcast = (msg: unknown) => {
     for (const c of clients) if (c.readyState === c.OPEN) c.send(meter);
   }
 };
+
+// A local model can only do work mode if Ollama says it takes tool calls: ask now, and again whenever the model changes.
+// After `broadcast`, which the answer calls: asked earlier, a fast Ollama could reply before it existed (it crashed the start).
+ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
+if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
 await mkdir(join(root, "data"), { recursive: true });
 

@@ -672,3 +672,32 @@ describe("starting with Ollama as the brain and no model named", { skip }, () =>
     }
   });
 });
+
+describe("Ollama answering the tool check before the server is ready", { skip }, () => {
+  test("the server still comes up when /api/show is answered long before /api/tags", async () => {
+    // The tool check starts at the top of server.ts and its callback broadcasts to the page, which
+    // only exists further down. A slow model list makes the check come back first.
+    const fake = createServer(async (req: IncomingMessage, res) => {
+      for await (const _ of req) void _;
+      if (req.url === "/api/tags") await new Promise((r) => setTimeout(r, 600));
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen2.5:3b" }] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: ["completion", "tools"] }));
+      res.writeHead(404);
+      res.end("{}");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const host = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
+    try {
+      const server = await startServer({ settings: { provider: "ollama", ollamaModel: "qwen2.5:3b" }, env: { OLLAMA_HOST: host } });
+      try {
+        const c = await server.client();
+        const mode = await c.next((e) => e.type === "mode" && e.provider === "ollama");
+        assert.equal(mode.ollamaModel, "qwen2.5:3b");
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      fake.close();
+    }
+  });
+});
