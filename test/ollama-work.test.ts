@@ -83,6 +83,26 @@ test("a model that reports tools can read a file: the call is run, its result go
   }
 });
 
+test("a file too long to read at once reaches the model with the note on how to read on, not cut again", async () => {
+  const w = setup();
+  // 400 lines, about 24,000 characters: the vault code is on line 380, past what one read returns
+  const lines = Array.from({ length: 400 }, (_, i) => (i === 379 ? "vault code 7421-ALPINE" : `Line ${i + 1}: the quick brown fox jumps over the lazy dog again.`));
+  writeFileSync(join(w.dir, "long.txt"), lines.join("\n") + "\n");
+  const fake = await fakeOllama((n) => (n === 1 ? { calls: [{ name: "read_file", arguments: { path: "long.txt" } }] } : { text: "ok" }));
+  try {
+    const p = w.make(fake.host);
+    await p.checkTools();
+    await ask(p, "what is the vault code?");
+    const result: string = fake.chats[1].messages.at(-1).content;
+    assert.equal(fake.chats[1].messages.at(-1).tool_name, "read_file");
+    assert.match(result, /ask again with a later start_line\]$/, "the note that says how to carry on must survive, and must be the last thing");
+    assert.doesNotMatch(result, /output cut off/, "one cut, by the tool itself, not a second blind cut on top of it");
+  } finally {
+    fake.close();
+    w.done();
+  }
+});
+
 test("a command waits for the user: allowed once it runs, denied it does not, and the model is told which", async () => {
   const w = setup();
   const marker = join(w.dir, "ran.txt");

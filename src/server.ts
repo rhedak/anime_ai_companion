@@ -10,7 +10,7 @@ import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
-import { brainProgram, isInstalled } from "./programs.ts";
+import { brainProgram, isInstalled, programLabel } from "./programs.ts";
 import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
@@ -448,6 +448,9 @@ const memory = createMemoryService({
   broadcast: (msg) => broadcast(msg),
   openFile: (path) => openBrowser(path),
   remoteRefusal: () => remoteRefusal,
+  settings,
+  saveSettings: () => saveSettings(settingsPath, settings),
+  pushNote: (text) => notes.push(text),
 });
 
 // --- character cards: see card-service.ts ---
@@ -527,6 +530,7 @@ function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
   if (name === "work") return a !== ""; // /work alone returns to the saved folder
   if (name === "setup") return a === "on";
+  if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
   if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
   return false;
 }
@@ -693,8 +697,8 @@ const slashCommands: Record<
     },
   },
   memory: {
-    help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit",
-    run: ({ args, say, remote }) => memory.command(args, say, remote),
+    help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit | ask | auto | off",
+    run: async ({ args, say, remote }) => memory.command(args, say, remote),
   },
   card: {
     help: "character cards: /card import <file.png|.json> | apply [greeting] [lore] [orders] | cancel | export | reset",
@@ -1024,6 +1028,7 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: "notice", text: `Could not resume that ${settings.provider} session, so this is a new conversation.` }));
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
+  for (const offer of memory.pending()) ws.send(JSON.stringify({ type: "memory-offer", ...offer }));
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
@@ -1056,6 +1061,10 @@ wss.on("connection", (ws) => {
       turns.submit(msg.text, images, say);
     } else if (msg.type === "card-reply" && (msg.choice === "apply" || msg.choice === "cancel")) {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
+    } else if (msg.type === "memory-reply") {
+      memory.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "memory-undo") {
+      memory.undo(msg.fact, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {
       queue.remove(msg.id);
     } else if (msg.type === "claude-skills" && typeof msg.value === "boolean") {
@@ -1104,7 +1113,7 @@ wss.on("connection", (ws) => {
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       const program = brainProgram(msg.provider);
       if (program && !isInstalled(program)) {
-        return notice(`${program} is not installed or not on PATH, so she stays on ${provider.name}.`);
+        return notice(`${programLabel(msg.provider)} is not installed or not on PATH, so she stays on ${provider.name}.`);
       }
       if (msg.provider === "ollama") {
         await refreshOllamaModels();
@@ -1203,13 +1212,9 @@ wss.on("connection", (ws) => {
       broadcast(looksInfo());
     } else if (msg.type === "reset-look") {
       await avatar.resetLook();
-      provider.reset();
-      forgetConversationSize();
-      transcript.clear();
-      persistTranscript();
-      pendingPermissions.clear();
-      broadcast({ type: "reset" });
-      broadcast(modeInfo());
+      if (settings.framePack) await choosePack(null, () => {}); // the original look is a drawn one: show it
+      notes.push("The user reset your look to the original one from the menu.");
+      transcript.look(["back to the original look"]);
       broadcast({ type: "avatar", version: avatar.version, applied: ["back to the original look"] });
       broadcast(looksInfo());
     } else if (msg.type === "gesture-frames" && typeof msg.emotion === "string" && typeof msg.gesture === "string") {

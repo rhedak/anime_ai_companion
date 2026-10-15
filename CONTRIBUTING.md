@@ -20,6 +20,10 @@ npm run typecheck
 npm test
 ```
 
+`./check.sh` runs what CI runs (lockfile, typecheck, tests) and refuses to pass with uncommitted files, a creator that is not at
+the pinned tag, or skipped tests. `./check.sh --full` adds the oldest Node and the docs site and demo builds, for a release.
+`./check.sh --install-hook` makes git run it before every push.
+
 The tests that need the character renderer look for it in `../anime-character-creator` (or
 `CREATOR_SRC`) and skip with a message if it is missing.
 

@@ -51,7 +51,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | Her personality and voice | `persona.md` (chat), `persona-work.md` (work-mode rules) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
 | Her name | click it, or `/rename Hana` | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
-| What she remembers about the user | `data/memory.md` (she adds to it herself in chat; `/memory`) | with her next message |
+| What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
 | Her expressions | `emotions.json` | restart the server |
 | Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
@@ -137,7 +137,9 @@ The server can run an agent that edits files and runs commands. These are not op
 - Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through
   `notesForModel`, never in the system prompt. She may save a note (`[remember …]`) only in chat mode: in
   work mode a file or page she reads could talk her into writing something that outlives the conversation.
-  Keep it a single append-only file the user can see, edit and clear.
+  Keep it a single append-only file the user can see, edit and clear. A note is a proposal: by default (`memorySaving: "ask"`, in
+  `data/settings.json`) the page shows a card and nothing is written until the user keeps it. `auto` saves it with an Undo and
+  `off` ignores it; `/memory auto` is refused from a phone, like any loosening.
 - Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
   maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
   sends the text by itself.
@@ -255,6 +257,10 @@ Switching brains starts a new conversation. The brains do not share memory.
 npm run typecheck
 npm test
 ```
+
+`./check.sh` runs both the way CI does (plus the lockfile check) and fails on skipped tests, uncommitted files or a creator that is not at the
+pinned tag; `./check.sh --full` is the release set (oldest Node, docs site, staged demo). Run it before every push; `--install-hook` makes
+git do so (`.githooks/pre-push`, which runs `--full` for a push to `main`).
 
 `npm run typecheck` also checks the page's JavaScript (`public/*.js`, `tsconfig.frontend.json`, loosely: no strict mode,
 and `$("id")` is typed `any`). The `.d.ts` files next to those modules are what the page and the tests import, so keep them

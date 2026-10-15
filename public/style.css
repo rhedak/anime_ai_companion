@@ -160,6 +160,9 @@ form.composer.shell textarea { font-family: var(--font-mono); }
 .perm-actions .deny { background: var(--fill-2); color: var(--text); }
 .perm-more { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
 .perm-more button { padding: 5px 10px; font-size: 12px; }
+.msg.perm.memory { background: var(--fill-1); border-color: var(--line); }
+.memory-fact { margin-bottom: 8px; overflow-wrap: anywhere; }
+.memory-undo { margin-left: 4px; padding: 2px 8px; font-size: 12px; }
 .perm-done { font-size: var(--font-size-small); color: var(--muted); }
 .perm-option { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: var(--font-size-small); cursor: pointer; }
 .perm-option input { margin-top: 3px; }
@@ -231,6 +234,11 @@ form.composer:focus-within { border-color: var(--focus); }
   .status { top: 10px; left: 12px; }
   .tools { top: 38px; left: 10px; right: 10px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
   .tools > * { flex: none; }
+  /* The row scrolls sideways with no scrollbar, so its right edge fades out as the hint that there is more (the voice pickers make it wider than a
+     phone). The spacer at the end keeps the last button clear of the fade once it is scrolled all the way, and when everything fits it is empty. */
+  .tools { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  .tools::after { content: ""; flex: none; width: 28px; }
+  #voice-pick { max-width: 140px; } /* it is as wide as its longest voice name (300px and more), which pushes Speed, Full body and Reset look away */
   .avatar { height: max(calc(100% - 84px), 120px); }
   .save-form { top: 82px; left: 10px; right: 10px; }
   .save-form input { flex: 1; min-width: 0; }

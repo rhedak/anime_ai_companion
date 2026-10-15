@@ -22,3 +22,12 @@ export function brainProgram(provider: string, env: NodeJS.ProcessEnv = process.
   if (provider === "opencode") return env.OPENCODE_BIN ?? "opencode";
   return null;
 }
+
+const PROGRAM_VARIABLE: Record<string, string> = { cursor: "CURSOR_AGENT", opencode: "OPENCODE_BIN" };
+
+/** How to name a brain's program to the user: its name, and when an environment variable chose it, that variable (`CURSOR_AGENT=1` is not a program). */
+export function programLabel(provider: string, env: NodeJS.ProcessEnv = process.env): string {
+  const program = brainProgram(provider, env) ?? provider;
+  const variable = PROGRAM_VARIABLE[provider];
+  return variable && env[variable] !== undefined ? `${program} (the value of ${variable})` : program;
+}

@@ -21,7 +21,7 @@ asked, she is told why on her next turn.
 - **Save look** stores the current look under a name. The **Looks** menu loads one. She can load a saved look
   herself when you ask.
 - Saved looks are plain files in `data/looks/`. Delete a file to delete a look.
-- **Reset look** restores the character you started with.
+- **Reset look** restores the character you started with. The conversation stays, and she is told about the change.
 
 ## Presets: 19 characters
 
