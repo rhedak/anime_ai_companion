@@ -1034,9 +1034,11 @@ wss.on("connection", (ws) => {
       const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
       const images = parseImages(msg.images);
       if (typeof images === "string") return say(images);
-      const bang = images.length ? null : /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
+      // A command is a command with a picture attached too: it runs here and the model never sees either.
+      const bang = /^!\s*(\S[\s\S]*)$/.exec(msg.text.trim());
+      const command = bang ? null : parseSlash(msg.text);
+      if ((bang || command) && images.length) say("Commands run on their own, so the attached picture was not sent.");
       if (bang) return remote ? say(remoteRefusal) : void (await runBang(bang[1], say));
-      const command = images.length ? null : parseSlash(msg.text);
       if (command) {
         const known = slashCommands[command.name];
         if (!known) say(`Unknown command /${command.name}. Try /help.`);

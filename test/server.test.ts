@@ -138,6 +138,18 @@ describe("chatting", { skip }, () => {
     assert.match(notice.text, /\/nosuchcommand/);
     assert.equal(inputs(server).length, before);
   });
+
+  test("a slash command with a picture attached still runs as a command, and says the picture was not sent", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const c = await server.client();
+    await c.next("history");
+    const before = inputs(server).length;
+    const from = c.mark;
+    c.send({ type: "user", text: "/nosuchcommand", images: [{ mediaType: "image/png", data: png }] });
+    await c.next((e) => e.type === "notice" && /Unknown command/.test(e.text), 5000, from);
+    await c.next((e) => e.type === "notice" && /picture was not sent/.test(e.text), 5000, from);
+    assert.equal(inputs(server).length, before, "the model was not asked");
+  });
 });
 
 describe("a long conversation that went cold", { skip }, () => {
