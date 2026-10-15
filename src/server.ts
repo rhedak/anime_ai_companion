@@ -10,6 +10,7 @@ import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
+import { brainProgram, isInstalled } from "./programs.ts";
 import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
@@ -1097,6 +1098,10 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
+      const program = brainProgram(msg.provider);
+      if (program && !isInstalled(program)) {
+        return notice(`${program} is not installed or not on PATH, so she stays on ${provider.name}.`);
+      }
       if (msg.provider === "ollama") {
         await refreshOllamaModels();
         const chosen = typeof msg.model === "string" && msg.model ? msg.model : (settings.ollamaModel ?? ollamaModels?.[0]);

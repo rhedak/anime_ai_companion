@@ -713,3 +713,23 @@ describe("Ollama answering the tool check before the server is ready", { skip },
     }
   });
 });
+
+describe("switching to a brain whose program is missing", { skip }, () => {
+  test("she stays on the current brain and is told, for every command-line brain", async () => {
+    const server = await startServer({ env: { CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" } });
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      for (const [brain, program] of [["cursor", "cursor-agent"], ["opencode", "opencode"]]) {
+        const from = c.mark;
+        c.send({ type: "provider", provider: brain });
+        const notice = await c.next((e) => e.type === "notice" && e.text.includes(program), 5000, from);
+        assert.match(notice.text, /not installed or not on PATH, so she stays on claude/);
+        assert.ok(!c.since(from).some((e) => e.type === "reset"), "no new conversation");
+      }
+      assert.equal(JSON.parse(server.data("settings.json") ?? "{}").provider, "claude");
+    } finally {
+      await server.stop();
+    }
+  });
+});
