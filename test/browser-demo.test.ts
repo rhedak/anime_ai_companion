@@ -40,9 +40,9 @@ function fakeRenderer() {
 
 /** A socket with the page's side of it: what the page receives, in order. */
 type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void> } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, onPack: options.onPack, model: options.model });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -752,4 +752,93 @@ test("pretend work mode: 'allow for this session' is remembered, so the second t
   assert.ok(!events.slice(from).some((e) => e.type === "permission"), "no card the second time");
   const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
   assert.match(said, /already allowed Edit for this session/);
+});
+
+test("a look change is reported for saving, with the pack she is showing", async () => {
+  const saved: any[] = [];
+  const { say, next } = connect({ onSave: (v) => saved.push(v) });
+  await next((e) => e.type === "queue");
+  await say("Make your hair mint green");
+  assert.ok(saved.length >= 1);
+  assert.match(saved.at(-1).character.hair_color, /^#[0-9a-f]{6}$/);
+  assert.notEqual(saved.at(-1).character.hair_color, "#800000", "not the starting hair");
+  assert.equal(saved.at(-1).pack, null);
+});
+
+test("a saved look and pack are restored on the next visit, and a look that cannot be drawn is dropped for the default", async () => {
+  const good = { preset: "kyoko", hair_color: "#00ff00", face: { mouth_open: 0 } };
+  const { events, next, calls } = connect({ restore: { character: good, pack: "risa-dress" }, packs: { "risa-dress": { name: "risa-dress", emotions: {}, gestures: {} } as any } });
+  await next((e) => e.type === "queue");
+  const pack = events.filter((e) => e.type === "pack").at(-1);
+  assert.equal(pack.pack?.name, "risa-dress");
+  assert.ok(calls.some((c) => c.op === "frames" && c.character?.hair_color === "#00ff00"), "she was drawn from the saved look");
+
+  // A saved look the drawing code rejects is not used.
+  const fake = fakeRenderer();
+  const picky = { async call(r: any) { return r.op === "frames" && r.character?.broken ? { ok: false, error: "bad" } : fake.renderer.call(r); } };
+  const kept: any[] = [];
+  const bad = connect({ renderer: Promise.resolve(picky), restore: { character: { broken: true } }, onSave: (v) => kept.push(v) });
+  await bad.next((e) => e.type === "queue");
+  await bad.say("Make your hair mint green");
+  assert.equal(kept.at(-1).character.preset, "risa", "she started from the default look");
+  assert.ok(!("broken" in kept.at(-1).character));
+});
+
+test("the looks message names the preset she is based on, through tweaks, undo and a saved visit", async () => {
+  const saved: any[] = [];
+  const { events, next, say, send } = connect({ onSave: (v) => saved.push(v) });
+  await next((e) => e.type === "queue");
+  const current = () => events.filter((e) => e.type === "looks").at(-1).current;
+  assert.equal(current(), "risa");
+  await say("Become Linnea");
+  assert.equal(current(), "linnea");
+  await say("Make your hair mint green");
+  assert.equal(current(), "linnea", "a tweak keeps it");
+  send({ type: "look-undo" });
+  await next((e) => e.type === "looks" && e.current === "linnea");
+  send({ type: "look-undo" });
+  await next((e) => e.type === "looks" && e.current === "risa");
+  assert.equal(saved.at(-1).base, "linnea" === saved.at(-1).base ? "linnea" : saved.at(-1).base);
+
+  const again = connect({ restore: { character: { preset: "kyoko", face: {} }, pack: null, base: "kyoko" } as any });
+  await again.next((e) => e.type === "queue");
+  assert.equal(again.events.filter((e) => e.type === "looks").at(-1).current, "kyoko");
+});
+
+const slow = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.min(ms, 15)));
+
+test("a message sent while she is answering is shown as queued, then answered in its turn", async () => {
+  const { events, next, send } = connect({ pause: slow });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "What can you do?" });
+  await next((e) => e.type === "delta", from);
+  send({ type: "user", text: "Be shy" });
+  const queued = await next((e) => e.type === "queue" && e.items.length === 1, from);
+  assert.equal(queued.items[0].text, "Be shy");
+  assert.ok(queued.items[0].id);
+  await next((e) => e.type === "queue" && e.items.length === 0, from);
+  await next((e) => e.type === "user" && e.text === "Be shy", from);
+  await next((e) => e.type === "done" && events.slice(from).filter((x) => x.type === "done").length === 2, from, 3000).catch(() => {});
+  assert.equal(events.slice(from).filter((e) => e.type === "done").length, 2, "both turns finished");
+});
+
+test("a queued message can be taken out, and Stop gives the waiting words back for the input box", async () => {
+  const { events, next, send } = connect({ pause: slow });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "What can you do?" });
+  await next((e) => e.type === "delta", from);
+  send({ type: "user", text: "Wave at me" });
+  send({ type: "user", text: "Be shy" });
+  const two = await next((e) => e.type === "queue" && e.items.length === 2, from);
+  send({ type: "unqueue", id: two.items[0].id });
+  await next((e) => e.type === "queue" && e.items.length === 1 && e.items[0].text === "Be shy", from);
+  send({ type: "stop" });
+  const back = await next((e) => e.type === "queue" && e.returned?.length, from);
+  assert.deepEqual(back.returned, ["Be shy"]);
+  assert.equal(back.items.length, 0);
+  await next((e) => e.type === "done", from);
+  await new Promise((r) => setTimeout(r, 150));
+  assert.ok(!events.slice(from).some((e) => e.type === "user" && (e.text === "Wave at me" || e.text === "Be shy")), "neither waiting message was answered");
 });

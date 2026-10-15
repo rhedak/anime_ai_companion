@@ -71,9 +71,13 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `COMPANION_OLLAMA_TOOLS` | unset | model names (comma separated) or `all` that you vouch can use tools, when your Ollama cannot report it |
 | `COMPANION_OLLAMA_CTX` | `16384` | context size asked of Ollama in work mode with tools |
-| `OLLAMA_MODEL` | first installed | model to use with Ollama |
+| `OLLAMA_MODEL` | first installed | model to use with Ollama. A model you name here is saved to `data/settings.json` like a pick in the menu; the first-installed default is only used, never saved |
 | `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
+| `ANAICO_HOME` | `~/.anaico` | where the pinned creator copy is cloned when none is found next to this repo |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's own folder, which she reads sessions and skills from |
+| `CURSOR_AGENT` | `cursor-agent` | the command that starts the Cursor agent |
+| `OPENCODE_BIN` | `opencode` | the command that starts opencode |
 | `PORT` | `3737` | |
 | `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box (see Security model) |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |

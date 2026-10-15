@@ -30,6 +30,8 @@ export function createLocalSocket({
   packs = {},
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
+  restore = null,
+  onSave = (/** @type {{ character: any, pack: string | null, base: string | null } | null} */ _saved) => {},
 }) {
   let character = null;
   let version = 1;
@@ -45,6 +47,15 @@ export function createLocalSocket({
   let pack = null;
   /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
   let editAllowed = false;
+  /** The built-in character her look started from (a tweak keeps it), for the gallery to mark; null when it is not known. */
+  let basePreset = preset;
+  /** The base she had at each earlier look, in step with `looks`, so Undo goes back to it too. */
+  const bases = [];
+  /** Turns running or waiting in the chain, and the user's messages that are waiting behind a running one (listed above the box). */
+  let working = 1;
+  const queued = [];
+  let nextQueueId = 1;
+  const queueMessage = (returned = []) => ({ type: "queue", items: queued.map(({ id, text }) => ({ id, text })), returned });
   /** The stop button was pressed: the reply being streamed ends where it is. */
   let aborted = false;
   /** The approval card waiting for an answer, if the pretend work session is showing one. */
@@ -59,7 +70,10 @@ export function createLocalSocket({
     `https://rhedak.github.io/anime_ai_companion/ . (Details: ${err?.message ?? err})`;
   ready.catch((err) => void (failure = startFailure(err)));
   /** The conversation is answered one request at a time, in order, like the server's queue; it starts with her greeting. */
-  let chain = ready.then(() => greet()).catch(() => out({ type: "notice", text: failure ?? "The demo could not start." }));
+  let chain = ready
+    .then(() => greet())
+    .catch(() => out({ type: "notice", text: failure ?? "The demo could not start." }))
+    .finally(() => void (working -= 1)); // the greeting is the first turn: a message sent during it waits, and is shown as waiting
 
   const socket = {
     readyState: OPEN,
@@ -77,6 +91,7 @@ export function createLocalSocket({
       if (msg.type === "permission-reply") return void answerCard(msg.id, msg.decision);
       if (msg.type === "stop") {
         aborted = true;
+        if (queued.length) out(queueMessage(queued.splice(0).map((q) => q.text))); // the waiting words go back to the box
         model?.stop();
         return void (waiting && answerCard(waiting.id, "deny"));
       }
@@ -85,7 +100,30 @@ export function createLocalSocket({
         ready.then(() => drawing(msg)).catch(() => {}); // a failed load has already been reported
         return;
       }
-      chain = chain.then(() => handle(msg)).catch((err) => out({ type: "notice", text: `Something went wrong in the demo: ${err?.message ?? err}` }));
+      if (msg.type === "unqueue") {
+        const at = queued.findIndex((q) => q.id === msg.id);
+        if (at >= 0) queued.splice(at, 1);
+        return void out(queueMessage());
+      }
+      // A message that arrives while a turn is running waits its turn, and is listed above the box meanwhile.
+      const entry = msg.type === "user" && typeof msg.text === "string" && msg.text.trim() && working > 0 ? { id: `q${nextQueueId++}`, text: msg.text.trim() } : null;
+      if (entry) {
+        queued.push(entry);
+        out(queueMessage());
+      }
+      working += 1;
+      chain = chain
+        .then(async () => {
+          if (entry) {
+            const at = queued.indexOf(entry);
+            if (at < 0) return; // taken out, or given back by Stop
+            queued.splice(at, 1);
+            out(queueMessage());
+          }
+          await handle(msg);
+        })
+        .catch((err) => out({ type: "notice", text: `Something went wrong in the demo: ${err?.message ?? err}` }))
+        .finally(() => void (working -= 1));
     },
     close() {
       socket.readyState = 3;
@@ -138,7 +176,7 @@ export function createLocalSocket({
   });
   const packMessage = () => ({ type: "pack", pack: pack ? packList[pack] : null });
   const packsMessage = () => ({ type: "packs", names: Object.keys(packList), active: pack });
-  const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0 });
+  const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0, current: basePreset });
 
   /** The opening messages a page gets, then her greeting. */
   async function start() {
@@ -146,12 +184,24 @@ export function createLocalSocket({
     const base = await r.call({ op: "base", name: preset });
     if (!base.ok) throw new Error(base.error);
     character = base.character;
+    // The look and the pack from the visitor's last visit, if the drawing code still accepts that look.
+    if (restore?.character && typeof restore.character === "object") {
+      const trial = await r.call({ op: "frames", character: restore.character, mouth: [0], face: {} }).catch(() => ({ ok: false }));
+      if (trial.ok) {
+        character = restore.character;
+        basePreset = typeof restore.base === "string" ? restore.base : null;
+      }
+    }
     const schema = await r.call({ op: "schema" });
     if (schema.ok) presets = [preset, ...schema.presets.filter((p) => p !== preset)];
     out({ type: "hello", provider: "the demo", version });
     out(modeInfo());
     out(looksInfo());
     packList = await packs;
+    if (restore?.pack && Object.hasOwn(packList, restore.pack)) {
+      pack = restore.pack;
+      onPack(pack);
+    }
     out(packMessage());
     out(packsMessage());
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
@@ -168,12 +218,24 @@ export function createLocalSocket({
   /** The look changes: remember the old one for Undo, and tell the page so it asks for new frames. */
   function adopt(next, applied) {
     looks.push(character);
-    if (looks.length > 20) looks.shift();
+    bases.push(basePreset);
+    if (looks.length > 20) {
+      looks.shift();
+      bases.shift();
+    }
+    const based = applied.find((a) => a.startsWith("base="));
+    if (based) basePreset = based.slice("base=".length);
     character = next;
     version += 1;
     cache.clear();
     out({ type: "avatar", version, applied });
     out(looksInfo());
+    save();
+  }
+
+  /** What the page keeps for the visitor's next visit: her look, and the pack she shows if any. */
+  function save() {
+    onSave({ character, pack, base: basePreset });
   }
 
   async function draw(request, key, answer) {
@@ -229,9 +291,11 @@ export function createLocalSocket({
       if (pack && looks.length) await choosePack(null, true); // a drawn look was picked: show it, as the app does
       if (looks.length) {
         character = looks.pop();
+        basePreset = bases.pop() ?? null;
         version += 1;
         cache.clear();
         out({ type: "avatar", version, applied: ["undid the last change"] });
+        save();
       }
       return out(looksInfo());
     }
@@ -249,6 +313,8 @@ export function createLocalSocket({
       if (base.ok) {
         if (pack) await choosePack(null, true);
         adopt(base.character, ["back to the original look"]);
+        basePreset = preset;
+        onSave(null); // nothing to come back to: the next visit starts from the default
         await newChat();
       }
       return;
@@ -298,6 +364,7 @@ export function createLocalSocket({
     out(packMessage());
     out(packsMessage());
     onPack(pack);
+    save();
     if (!quiet) await speak(pack ? PACK_INTRO : DRAWN_AGAIN);
   }
 

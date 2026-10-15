@@ -258,6 +258,8 @@ const modeInfo = () => ({
   mode,
   provider: settings.provider,
   canUseTools: provider.canUseTools,
+  // Only a local model that Ollama says cannot see pictures: everything else may attach (the page hides nothing otherwise).
+  cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePictures,
   ollamaModels,
   ollamaModel: settings.ollamaModel,
   cursorModels: cursorBrain()?.availableModels ?? [],
@@ -276,7 +278,7 @@ const modeInfo = () => ({
   shellOff: shellDisabled(),
 });
 
-const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo });
+const looksInfo = () => ({ type: "looks", names: avatar.lookNames, presets: avatar.presetNames, canUndo: avatar.canUndo, current: avatar.basePreset });
 
 async function refreshOllamaModels(announce = true): Promise<void> {
   const before = JSON.stringify([ollamaModels, settings.ollamaModel]);
@@ -411,7 +413,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
   }
   broadcast(modeInfo());
   if (wanted === "work") void skills.maybeNotice(say);
-  if (wanted === "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING);
+  if (wanted === "work" && before.mode !== "work" && settings.provider === "ollama") say(OLLAMA_WORK_WARNING); // once on entering, not again when the folder is set
 }
 
 /** Works in the middle of a reply too (Claude Code takes the change live), so an approval card can switch it. */
@@ -501,6 +503,8 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
 }
 
 const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto", everything: "everything" };
+/** The name the user types and the documentation uses ("ask"), not the internal one ("manual"). */
+const permissionLabel = (mode: PermissionMode): string => Object.entries(permissionNames).find(([, v]) => v === mode)?.[0] ?? mode;
 
 interface CommandContext {
   /** Everything after the command name. */
@@ -605,7 +609,7 @@ const slashCommands: Record<
       say(
         [
           `Brain: ${provider.name}`,
-          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionMode}` : ""}`,
+          `Mode: ${info.mode}${mode === "work" ? ` · permissions: ${permissionLabel(permissionMode)}` : ""}`,
           `Folder: ${settings.projectDir ?? "(none)"}`,
           `Session: ${provider.sessionId ?? "(none)"}`,
         ].join("\n"),
@@ -661,7 +665,7 @@ const slashCommands: Record<
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
-      if (!wanted) return say(`Permissions: ${permissionMode}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
+      if (!wanted) return say(`Permissions: ${permissionLabel(permissionMode)}. Use /permissions ${Object.keys(permissionNames).join(" | ")}`);
       changePermissionMode(wanted, say);
     },
   },

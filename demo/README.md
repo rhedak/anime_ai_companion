@@ -46,6 +46,9 @@ What is here, and how the pieces fit:
   once that she is a set of pictures and cannot redraw herself, the suggested prompts leave out everything that would redraw her (and offer
   the way back), and a request to redraw is declined in words. `/show` plays only what the pictures have. Picking a drawn look from the
   menu (a preset, Undo, Reset look) shows the drawn avatar again, as in the app.
+- Her look, the preset it started from, and the picture pack she shows are kept in the browser's `localStorage` (`demoLook`), so a reload
+  brings her back as she was; Reset look forgets it. The chat itself is not kept. A look the drawing code no longer accepts is dropped for the
+  default. Messages sent while she answers are listed as queued, can be taken out, and come back to the box on Stop, as in the app.
 - `public/frames.js` and `public/tags.js` are shared with the server (`src/avatar.ts`, `src/avatar-tags.ts`): the demo asks for exactly the
   frames the server would, because it runs the same code. Do not fork them.
 

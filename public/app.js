@@ -2,6 +2,7 @@ import { createAvatar } from "./avatar.js";
 import { RATES, createVoice, sampleText, takeSentences } from "./speech.js";
 import { createDictation, dictationVendor, joinDictation } from "./dictation.js";
 import { renderMarkdown } from "./markdown.js";
+import { BUBBLE_LINGER_MS, bubbleText } from "./bubble.js";
 import { createDemo } from "./demo.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
@@ -377,14 +378,21 @@ setInterval(renderWorking, 500);
 
 // The bubble is a glimpse, not the transcript: show the latest few lines only.
 const BUBBLE_MAX = 220;
+let bubbleTimer;
 function showBubble(text) {
-  text = text.replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, "$1"); // a link is just its words here: the chat has the link
+  text = bubbleText(text);
+  clearTimeout(bubbleTimer);
   bubble.hidden = !text;
   if (text.length > BUBBLE_MAX) {
     const tail = text.slice(-BUBBLE_MAX);
     text = "…" + tail.slice(tail.search(/\s/) + 1);
   }
   bubble.textContent = text;
+}
+/** A finished reply's bubble does not stay up for ever. */
+function lingerBubble() {
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => showBubble(""), BUBBLE_LINGER_MS);
 }
 
 function onDelta(text) {
@@ -422,6 +430,7 @@ function speakRest() {
 
 function endTurn() {
   speakRest();
+  lingerBubble();
   toolEls.clear();
   runningTools.clear();
   statusText = null;
@@ -1002,11 +1011,13 @@ function handle(msg) {
       state = { ...state, ...msg };
       if (msg.mode === "work") wantWork = false;
       renderMode();
+      renderAttachAvailability();
       break;
     case "looks":
       $("undo-look").disabled = !msg.canUndo;
       lastLooks = msg;
       presetNames = msg.presets ?? [];
+      currentPreset = msg.current ?? null;
       renderLooksMenu();
       break;
     case "packs":
@@ -1236,7 +1247,19 @@ async function prepareImage(file) {
   return { mediaType: type, data: url.slice(url.indexOf(",") + 1), url };
 }
 
+const ATTACH_TITLE = $("attach").title;
+/** A local model that Ollama says cannot see pictures: the button is off, and says why. */
+function renderAttachAvailability() {
+  const blind = Boolean(state.cannotSeePictures);
+  $("attach").disabled = blind;
+  $("attach").title = blind ? `${state.ollamaModel ?? "This model"} cannot see pictures. Pick a model with vision to attach them.` : ATTACH_TITLE;
+}
+
 async function addFiles(files) {
+  if (state.cannotSeePictures) {
+    addMsg("sys", `${state.ollamaModel ?? "This model"} cannot see pictures, so nothing was attached. Pick a model with vision.`);
+    return;
+  }
   for (const file of files) {
     if (attachments.length >= MAX_IMAGES) {
       addMsg("sys", `At most ${MAX_IMAGES} images per message.`);
@@ -1291,6 +1314,7 @@ const browserCommands = {
     link.download = `conversation-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
     link.click();
     URL.revokeObjectURL(link.href);
+    addMsg("sys", `Saved as ${link.download} in your downloads.`);
   },
   "/voice": () => {
     const button = $("voice");
@@ -1596,11 +1620,19 @@ function packItem(name) {
   return item;
 }
 
+/** The built-in character she is drawn from just now (the server says), so the gallery can mark it. */
+let currentPreset = null;
+
 function openGallery(kind = "presets") {
-  if (document.querySelector(".gallery")) return closeGallery();
+  const open = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
+  if (open) {
+    closeGallery();
+    if (open.dataset.kind === kind) return; // the same menu entry again closes it; the other one switches to its own
+  }
   const packs = kind === "packs";
   const box = document.createElement("div");
   box.className = "gallery";
+  box.dataset.kind = kind;
   box.setAttribute("role", "dialog");
   box.setAttribute("aria-label", packs ? "Choose a picture pack" : "Choose a preset character");
   const grid = document.createElement("div");
@@ -1621,8 +1653,11 @@ function openGallery(kind = "presets") {
         item.type = "button";
         item.className = "preset";
         item.title = name;
+        item.setAttribute("aria-label", name); // the drawing can hold text of its own (a number on a wristband): the name is the label
+        if (name === currentPreset) item.setAttribute("aria-current", "true");
         const pic = document.createElement("span");
         pic.className = "preset-pic";
+        pic.setAttribute("aria-hidden", "true");
         // our own renderer's SVG; show the head and shoulders
         if (presetThumbs?.[name]) pic.innerHTML = uniqueIds(presetThumbs[name], `preset-${name}-`).replace(/viewBox="[^"]*"/, 'viewBox="75 10 250 250"');
         item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name }));
@@ -1654,6 +1689,10 @@ function openGallery(kind = "presets") {
     e.preventDefault();
   });
 }
+// Escape closes the gallery from wherever focus is (the menu that opened it, say), not only from inside it.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.querySelector(".gallery")) closeGallery();
+});
 let gallerySlot = null;
 document.addEventListener("click", (e) => {
   if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
@@ -1808,6 +1847,7 @@ let full = false;
 $("zoom").addEventListener("click", () => {
   full = !full;
   avatar.setFull(full);
+  document.querySelector(".stage")?.classList.toggle("full-body", full);
   $("zoom").textContent = full ? "Close-up" : "Full body";
 });
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));

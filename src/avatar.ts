@@ -46,7 +46,9 @@ export class AvatarService {
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private frameCache = new Map<string, string[]>();
   /** Earlier looks, newest last, so a redesign can be undone. */
-  private history: Character[] = [];
+  private history: { character: Character; base: string | null }[] = [];
+  /** The built-in character the look started from (a tweak keeps it), or null: a saved look, or one from before this was kept. */
+  basePreset: string | null = null;
   lookNames: string[] = [];
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -57,9 +59,12 @@ export class AvatarService {
   async start(): Promise<void> {
     this.schema = await this.call("schema", {});
     try {
-      this.character = JSON.parse(await readFile(this.opts.statePath, "utf8")).character;
+      const state = JSON.parse(await readFile(this.opts.statePath, "utf8"));
+      this.character = state.character;
+      this.basePreset = typeof state.base === "string" ? state.base : null;
     } catch {
       this.character = (await this.call("base", { name: this.opts.defaultPreset })).character;
+      this.basePreset = this.opts.defaultPreset;
     }
     await this.listLooks();
   }
@@ -69,10 +74,11 @@ export class AvatarService {
   }
 
   /** Replace the current look, remembering the old one for undo. */
-  private async adopt(character: Character): Promise<void> {
-    this.history.push(this.character);
+  private async adopt(character: Character, base: string | null | undefined = undefined): Promise<void> {
+    this.history.push({ character: this.character, base: this.basePreset });
     if (this.history.length > 20) this.history.shift();
     this.character = character;
+    if (base !== undefined) this.basePreset = base; // undefined: a tweak, the base stays
     this.version++;
     this.frameCache.clear();
     await this.persist();
@@ -80,7 +86,7 @@ export class AvatarService {
 
   private async persist(): Promise<void> {
     await mkdir(dirname(this.opts.statePath), { recursive: true });
-    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character }, null, 2));
+    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character, base: this.basePreset }, null, 2));
   }
 
   /** Go back to the look before the last change. */
@@ -88,7 +94,8 @@ export class AvatarService {
     const run = this.queue.then(async () => {
       const previous = this.history.pop();
       if (!previous) return false;
-      this.character = previous;
+      this.character = previous.character;
+      this.basePreset = previous.base;
       this.version++;
       this.frameCache.clear();
       await this.persist();
@@ -167,7 +174,7 @@ export class AvatarService {
   loadPreset(name: string): Promise<boolean> {
     const run = this.queue.then(async () => {
       if (!this.presetNames.includes(name)) return false;
-      await this.adopt((await this.call("base", { name })).character);
+      await this.adopt((await this.call("base", { name })).character, name);
       return true;
     });
     this.queue = run.catch(() => undefined);
@@ -179,7 +186,7 @@ export class AvatarService {
     const run = this.queue.then(async () => {
       const look = await this.readLook(name);
       if (!look) return false;
-      await this.adopt(look);
+      await this.adopt(look, null);
       return true;
     });
     this.queue = run.catch(() => undefined);
@@ -208,7 +215,11 @@ export class AvatarService {
       }
       const res = await this.call("patch", { character: base, set: rest });
       const applied: string[] = [...(loadedName ? [`load=${loadedName}`] : []), ...res.applied];
-      if (applied.length > 0) await this.adopt(res.character);
+      if (applied.length > 0) {
+        const based = applied.find((a) => a.startsWith("base="));
+        const loaded = loadedName ? null : undefined; // a saved look is not a preset
+        await this.adopt(res.character, based ? based.slice("base=".length) : loaded);
+      }
       return { applied, rejected: [...rejected, ...res.rejected] } as PatchResult;
     });
     this.queue = run.catch(() => undefined);
@@ -222,7 +233,7 @@ export class AvatarService {
 
   async resetLook(): Promise<void> {
     await this.settled();
-    await this.adopt((await this.call("base", { name: this.opts.defaultPreset })).character);
+    await this.adopt((await this.call("base", { name: this.opts.defaultPreset })).character, this.opts.defaultPreset);
   }
 
   /**

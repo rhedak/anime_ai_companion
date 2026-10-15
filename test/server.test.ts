@@ -139,6 +139,16 @@ describe("chatting", { skip }, () => {
     assert.equal(inputs(server).length, before);
   });
 
+  test("/permissions names the mode the way the documentation does: ask, not manual", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("/permissions");
+    const notice = await c.next((e) => e.type === "notice" && /^Permissions:/.test(e.text), 5000, from);
+    assert.match(notice.text, /^Permissions: ask\./);
+    assert.doesNotMatch(notice.text, /manual/);
+  });
+
   test("a slash command with a picture attached still runs as a command, and says the picture was not sent", async () => {
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
     const c = await server.client();
@@ -552,7 +562,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
       for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : {};
       if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-coder:30b" }, { name: "llama2:7b" }] }));
-      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools"] : ["completion"] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools", "vision"] : ["completion"] }));
       chats.push(body);
       const last = body.messages.at(-1);
       res.writeHead(200, { "content-type": "application/x-ndjson" });
@@ -613,6 +623,36 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     c.send({ type: "permission-reply", id: card.request.id, decision: "allow" });
     await c.done(from);
     assert.equal(readFileSync(join(server.project, "made.txt"), "utf8").trim(), "made");
+  });
+  test("a model Ollama says cannot see pictures turns the attach button off, and one that can does not", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "llama2:7b" });
+    const blind = await c.next((e) => e.type === "mode" && e.provider === "ollama" && e.cannotSeePictures === true, 8000, from);
+    assert.equal(blind.ollamaModel, "llama2:7b");
+    from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.canUseTools === true, 8000, from);
+    await new Promise((r) => setTimeout(r, 400)); // the vision answer comes with the tools one
+    const last = c.since(from).filter((e) => e.type === "mode").at(-1)!;
+    assert.equal(last.cannotSeePictures, false);
+  });
+
+  test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.canUseTools === true, 8000, from);
+    c.send({ type: "mode", mode: "chat" });
+    await c.next((e) => e.type === "mode" && e.mode === "chat", 5000, from);
+    from = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    await c.next((e) => e.type === "notice" && /experimental/.test(e.text), 8000, from);
+    c.send({ type: "mode", mode: "work", projectDir: server.project }); // the page sends it again when the folder is chosen
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(c.since(from).filter((e) => e.type === "notice" && /experimental/.test(e.text)).length, 1);
   });
 });
 
