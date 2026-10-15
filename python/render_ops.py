@@ -86,6 +86,24 @@ def coerce(name, type_str, raw):
     raise ValueError(f"unsupported field type {type_str}")
 
 
+# What the model may and may not do to her own look. The drawn figure is an adult, so she
+# cannot be drawn younger, and she keeps at least one covering garment: the creator always
+# draws underwear, and nothing the model sends takes her down to just that.
+MODEL_LOCKED = {"face_age": "her age is fixed; she is always drawn as an adult"}
+COVERING = ("tunic_color", "coat_color", "robe_color", "skirt_color", "trouser_color")
+
+
+def check_allowed(character, section, name, value):
+    """Raise ValueError if the model may not make this change to this character."""
+    if name in MODEL_LOCKED:
+        raise ValueError(MODEL_LOCKED[name])
+    if name == "height" and value < 1.0:
+        raise ValueError("height must be 1.0 or more")
+    if section == "outfit" and name in COVERING and value is None:
+        if not any(character["outfit"].get(c) for c in COVERING if c != name):
+            raise ValueError("she keeps at least one covering garment on")
+
+
 def show(value):
     """A value as the model wrote it: true, false, none, #rrggbb."""
     if isinstance(value, bool):
@@ -134,6 +152,7 @@ def op_patch(req):
         try:
             section, name = locate(key)
             value = coerce(name, str(FIELDS[section][name].type), raw)
+            check_allowed(character, section, name, value)
             target = character[section] if section else character
             previous = target.get(name)
             target[name] = value
