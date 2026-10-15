@@ -91,3 +91,44 @@ test("lists installed models, or null when unreachable", async () => {
   assert.equal(await listOllamaModels("http://127.0.0.1:1"), null);
   fake.close();
 });
+
+test("a model that cannot read pictures gets a plain sentence, not Ollama's JSON", async () => {
+  const server = createServer(async (req: IncomingMessage, res) => {
+    for await (const _ of req) void _;
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: 400, message: "Multimodal data provided, but model does not support multimodal requests." } }));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const p = new OllamaProvider({ host, model: "qwen2.5:3b", persona: () => "P" });
+    const events = await new Promise<ProviderEvent[]>((resolve) => {
+      const seen: ProviderEvent[] = [];
+      p.send("what is this?", (e) => {
+        seen.push(e);
+        if (e.type === "done" || e.type === "error") resolve(seen);
+      }, [{ mediaType: "image/png", data: "iVBORw0KGgo=" }]);
+    });
+    const error = events.find((e) => e.type === "error") as { message: string };
+    assert.match(error.message, /qwen2\.5:3b cannot read pictures/);
+    assert.doesNotMatch(error.message, /[{}]/);
+  } finally {
+    server.close();
+  }
+});
+
+test("any other error object from Ollama is shown as its message, not as JSON", async () => {
+  const server = createServer(async (req: IncomingMessage, res) => {
+    for await (const _ of req) void _;
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: 500, message: "out of memory" } }));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const events = await ask(new OllamaProvider({ host, model: "llama3.2", persona: () => "P" }), "hi");
+    assert.equal((events.find((e) => e.type === "error") as { message: string }).message, "out of memory");
+  } finally {
+    server.close();
+  }
+});

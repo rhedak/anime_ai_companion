@@ -250,7 +250,12 @@ export class OllamaProvider implements Provider {
             this.onCapability?.();
             return this.finish({ type: "error", message: `${this.model} does not support tools after all, so work mode is off for it.` });
           }
-          return this.finish({ type: "error", message: detail ?? `Ollama answered ${res.status}.` });
+          // Newer Ollama answers with an object ({"code", "message"}); older ones with a string. Never show the JSON itself.
+          const said = typeof detail === "string" ? detail : typeof detail?.message === "string" ? detail.message : undefined;
+          if (images.length && /multimodal|does not support (images|vision)|vision/i.test(said ?? "")) {
+            return this.finish({ type: "error", message: `${this.model} cannot read pictures. Pick a model with vision, or send the message without the picture.` });
+          }
+          return this.finish({ type: "error", message: said ?? `Ollama answered ${res.status}.` });
         }
         if (round > 0 && reply) this.listener?.({ type: "delta", text: "\n\n" });
         const { text: said, calls } = await this.readStream(res.body, (piece) => {
