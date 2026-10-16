@@ -39,6 +39,9 @@ jobs:
       - run: npm run site
       # The browser demo goes in the site at demo/. It carries the character creator's Python files (the pinned release, as CI uses), which
       # Pyodide runs in the visitor's browser.
+      # TODO(browser demo on the TypeScript): the app itself no longer needs Python, but the demo still does (demo/stage.mjs finds the
+      # creator's Python package in `<creator>/src`, next to the `ts/src` folder CREATOR_SRC names). When the demo draws with the creator's
+      # TypeScript, this staging changes with it: what is copied into demo/, the `python/render_ops.py` path filter above, and the CREATOR_SRC below.
       - id: creator
         run: echo "ref=$(node -p "require('./package.json').creator.ref")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -48,7 +51,7 @@ jobs:
           path: creator
       - run: node demo/stage.mjs --out site/dist/demo
         env:
-          CREATOR_SRC: ${{ github.workspace }}/creator/src
+          CREATOR_SRC: ${{ github.workspace }}/creator/ts/src
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist

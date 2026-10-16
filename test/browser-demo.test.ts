@@ -642,25 +642,21 @@ test("presets, moods, gestures, and the things she is honest about", () => {
   for (const text of ["make my hair red", "put on glasses", "hello", "how is the weather", "be sad"]) assert.match(say(text).text, /^\[emotion:\w+\]/, "every reply starts with an emotion, like a model's");
 });
 
-test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(resolve(repo, "../anime-character-creator/src")) ? false : "the creator is not next to this repo" }, async () => {
-  const { spawnSync } = await import("node:child_process");
+const creatorSrc = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/ts/src");
+test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(join(creatorSrc, "render.ts")) ? false : "the creator's TypeScript is not next to this repo (set CREATOR_SRC to its ts/src folder)" }, async () => {
+  const { createRenderOps, loadCreator } = await import("../src/render-ops.ts");
   const keys = new Set<string>();
   for (const text of ["hair mint green and blue eyes", "short messy hair", "pink tips", "witch hat", "a red coat and skirt and top", "ribbon scarf mask boots belt black", "glasses"]) {
     for (const tag of findAvatarTags(say(text).text)) for (const key of Object.keys(tag)) keys.add(key);
   }
-  const venv = join(repo, ".venv", "bin", "python");
-  const python = existsSync(venv) ? venv : "python3";
-  const probe = spawnSync(
-    python,
-    ["-I", "-c", `import sys, json; sys.path.insert(0, "python"); from render_ops import handle; s = handle({"op": "schema"}); known = set(s["top"]) | set(s["face"]) | set(s["outfit"]); print(json.dumps([k for k in json.loads(sys.argv[1]) if k not in known]))`, JSON.stringify([...keys])],
-    { cwd: repo, encoding: "utf8", env: { ...process.env, CREATOR_SRC: resolve(repo, "../anime-character-creator/src") } },
-  );
-  if (probe.status !== 0 && /Python 3\.(9|10)|SyntaxError/.test(probe.stderr)) return; // an old python: the renderer tests report that
-  assert.equal(probe.status, 0, probe.stderr);
-  assert.deepEqual(JSON.parse(probe.stdout), [], "every field she can change exists in the creator");
+  const schema = createRenderOps(await loadCreator(creatorSrc)).handle(new Map([["op", "schema"]]));
+  const known = new Set(["top", "face", "outfit"].flatMap((section) => [...(schema.get(section) as Map<string, unknown>).keys()]));
+  assert.deepEqual([...keys].filter((k) => !known.has(k)), [], "every field she can change exists in the creator");
 });
 
-const creatorAvailable = existsSync(process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src"));
+// The staged demo still carries the creator's Python package for Pyodide (the browser demo has not moved to the TypeScript yet), which sits in `src/`
+// next to the `ts/src` folder the app uses (demo/stage.mjs says where it looks).
+const creatorAvailable = existsSync(join(creatorSrc, "render.ts")) && existsSync(resolve(creatorSrc, "../../src/anime_character_creator"));
 test("staging the demo gives a flat static folder in demo mode that loads the demo's socket first and carries the renderer", { skip: creatorAvailable ? false : "the character creator is not next to this repo" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "anaico-demo-"));
   try {

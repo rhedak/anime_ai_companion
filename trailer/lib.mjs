@@ -14,7 +14,7 @@ const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
 
 // ---- the throwaway copy of the app ------------------------------------------------------------------------------
 /** A fresh copy of the app with its own data, a demo project, and a server on `port`. Returns a handle to stop it. */
-export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/src"), before = async () => {} } = {}) {
+export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/ts/src"), before = async () => {} } = {}) {
   const app = join(stageDir, "app");
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(join(app, "data"), { recursive: true });

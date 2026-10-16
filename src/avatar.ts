@@ -1,7 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createInterface } from "node:readline";
+import { Worker } from "node:worker_threads";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 
 type Character = Record<string, any>;
@@ -12,10 +11,12 @@ export interface PatchResult {
 }
 
 export interface AvatarOptions {
-  /** The anime-character-creator `src` directory (it is imported, never modified). */
+  /** The anime-character-creator's TypeScript, its `ts/src` directory (it is imported by path, never modified). */
   creatorSrc: string;
-  python: string;
-  workerPath: string;
+  /** The module the renderer thread runs. Tests give a stand-in; the default is src/render-worker.ts. */
+  workerPath?: string | URL;
+  /** How long a request may take before the renderer thread is cut off, in milliseconds. 15 seconds unless a test says less. */
+  timeoutMs?: number;
   statePath: string;
   /** Folder for the user's saved looks, one JSON file each. */
   looksDir: string;
@@ -33,7 +34,7 @@ interface Schema {
   outfit: Record<string, { type: string }>;
 }
 
-/** Owns the Python renderer, the current character and its rendered frames. */
+/** Owns the renderer thread (the creator's TypeScript, run by src/render-worker.ts), the current character and its rendered frames. */
 export class AvatarService {
   character: Character = {};
   /** Bumps whenever the character changes, so clients know cached frames are stale. */
@@ -41,9 +42,9 @@ export class AvatarService {
   schema!: Schema;
 
   private readonly opts: AvatarOptions;
-  private proc: ChildProcessWithoutNullStreams | null = null;
+  private worker: Worker | null = null;
   private nextId = 1;
-  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { worker: Worker; resolve: (v: any) => void; reject: (e: Error) => void }>();
   private frameCache = new Map<string, string[]>();
   /** Earlier looks, newest last, so a redesign can be undone. */
   private history: { character: Character; base: string | null }[] = [];
@@ -304,44 +305,70 @@ Your current look: ${current}`;
   }
 
   close(): void {
-    this.proc?.kill();
-    this.proc = null;
+    this.dropWorker(this.worker);
   }
 
-  private ensureProcess(): ChildProcessWithoutNullStreams {
-    if (this.proc) return this.proc;
-    const proc = spawn(this.opts.python, ["-I", this.opts.workerPath], {
-      env: { ...process.env, CREATOR_SRC: this.opts.creatorSrc },
+  /** Ends a renderer thread (a stuck or finished one). The next call starts a fresh one. */
+  private dropWorker(worker: Worker | null): void {
+    if (!worker) return;
+    if (this.worker === worker) this.worker = null;
+    void worker.terminate();
+  }
+
+  private ensureWorker(): Worker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(this.opts.workerPath ?? new URL("./render-worker.ts", import.meta.url), {
+      workerData: { creatorSrc: this.opts.creatorSrc },
+      stderr: true,
     });
-    this.proc = proc;
-    createInterface({ input: proc.stdout }).on("line", (line) => {
-      const msg = JSON.parse(line);
+    worker.unref(); // a forgotten close() must not keep the process alive
+    this.worker = worker;
+    const failAll = (error: Error) => {
+      for (const [id, waiter] of this.pending) {
+        if (waiter.worker !== worker) continue;
+        this.pending.delete(id);
+        waiter.reject(error);
+      }
+    };
+    worker.on("message", (line: string) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        return;
+      }
       const waiter = this.pending.get(msg.id);
-      if (!waiter) return;
+      if (!waiter || waiter.worker !== worker) return;
       this.pending.delete(msg.id);
       msg.ok ? waiter.resolve(msg) : waiter.reject(new Error(msg.error));
     });
-    proc.stderr.on("data", (chunk) => process.stderr.write(`[avatar] ${chunk}`));
-    proc.on("exit", () => {
-      if (this.proc === proc) this.proc = null;
-      for (const w of this.pending.values()) w.reject(new Error("avatar renderer exited"));
-      this.pending.clear();
+    worker.stderr.on("data", (chunk) => process.stderr.write(`[avatar] ${chunk}`));
+    worker.on("error", (err) => {
+      if (this.worker === worker) this.worker = null;
+      failAll(new Error(`avatar renderer failed: ${err.message}`));
     });
-    return proc;
+    worker.on("exit", () => {
+      if (this.worker === worker) this.worker = null;
+      failAll(new Error("avatar renderer exited"));
+    });
+    return worker;
   }
 
   private call(op: string, payload: Record<string, unknown>): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++;
+      const worker = this.ensureWorker();
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        this.dropWorker(worker); // a render that never ends is cut off, not waited for: the next call starts a fresh one
         reject(new Error(`avatar renderer timed out on '${op}'`));
-      }, 15_000);
+      }, this.opts.timeoutMs ?? 15_000);
       this.pending.set(id, {
+        worker,
         resolve: (v) => (clearTimeout(timer), resolve(v)),
         reject: (e) => (clearTimeout(timer), reject(e)),
       });
-      this.ensureProcess().stdin.write(JSON.stringify({ id, op, ...payload }) + "\n");
+      worker.postMessage(JSON.stringify({ id, op, ...payload }));
     });
   }
 }

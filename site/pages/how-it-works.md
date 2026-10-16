@@ -6,7 +6,7 @@ description: The pieces, the tag protocol that drives her face, and where her da
 
 ```
 browser ──ws── Node server ──┬─ the brain (Claude Code, Cursor, opencode, or Ollama)
-                             └─ python render_worker.py      draws her, via anime-character-creator
+                             └─ a worker thread              draws her, via anime-character-creator
 ```
 
 - **The browser** shows her and the chat. It talks to the server over a WebSocket.
@@ -14,8 +14,8 @@ browser ──ws── Node server ──┬─ the brain (Claude Code, Cursor, 
   current look and your settings.
 - **The brain** is the model that answers. Each brain implements one small interface, `Provider`, so the page never
   needs to know how a particular brain speaks. A new brain only has to implement it.
-- **The renderer** is a Python worker that imports the [creator](https://github.com/rhedak/anime-character-creator)
-  and returns her as SVG.
+- **The renderer** is a worker thread (`src/render-worker.ts`) that loads the [creator](https://github.com/rhedak/anime-character-creator)'s
+  TypeScript and returns her as SVG. It is cut off and restarted if one drawing takes longer than 15 seconds.
 
 ## Tags: how a reply drives her face
 

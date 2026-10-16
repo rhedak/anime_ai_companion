@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -15,26 +15,14 @@ import WebSocket from "ws";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/**
- * The Python the server's renderer will use: PYTHON, else the repo's own .venv, else the first python3 on the PATH (as an absolute path,
- * because the server under test gets a PATH of its own that only holds the stand-in `claude` and Node).
- */
-function pythonForServer(): string {
-  if (process.env.PYTHON) return process.env.PYTHON;
-  const venv = join(repo, ".venv", "bin", "python");
-  if (existsSync(venv)) return venv;
-  const found = spawnSync("which", ["python3"], { encoding: "utf8" }).stdout.trim();
-  return found || "python3";
+/** The creator's TypeScript the server draws with: CREATOR_SRC (its `ts/src` folder), else the checkout next to this repo. */
+export function creatorSrcForServer(): string {
+  return process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/ts/src");
 }
 
-/** Why the server tests cannot run here, or null. They need the creator and a Python that is new enough, like the renderer tests. */
+/** Why the server tests cannot run here, or null. They need the creator's TypeScript, like the renderer tests. */
 export function cannotRunServer(): string | null {
-  const creator = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src");
-  if (!existsSync(creator)) return "the character creator is not next to this repo (set CREATOR_SRC)";
-  const python = pythonForServer();
-  const version = spawnSync(python, ["--version"], { encoding: "utf8" });
-  const match = /Python (\d+)\.(\d+)/.exec(`${version.stdout}${version.stderr}`);
-  if (!match || Number(match[1]) < 3 || (Number(match[1]) === 3 && Number(match[2]) < 11)) return "Python 3.11 or newer is needed (run `uv sync`)";
+  if (!existsSync(join(creatorSrcForServer(), "render.ts"))) return "the character creator's TypeScript is not next to this repo (set CREATOR_SRC to its ts/src folder)";
   return null;
 }
 
@@ -184,9 +172,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const dir = mkdtempSync(join(tmpdir(), "anaico-test-"));
   const app = join(dir, "app");
   mkdirSync(app);
-  for (const name of ["src", "public", "python", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
+  for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
   symlinkSync(join(repo, "node_modules"), join(app, "node_modules"));
-  if (existsSync(join(repo, ".venv"))) symlinkSync(join(repo, ".venv"), join(app, ".venv"));
   mkdirSync(join(app, "data"));
   writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
@@ -237,8 +224,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       HOME: join(dir, "home"),
       PORT: String(port),
       CLAUDE_CONFIG_DIR: config,
-      CREATOR_SRC: process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/src"),
-      PYTHON: pythonForServer(),
+      CREATOR_SRC: creatorSrcForServer(),
       STANDIN_LOG: log,
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",

@@ -20,7 +20,7 @@ glasses, please") and she redraws.
 
 ```
 browser ──ws── Node server ──┬─ a brain: Claude Code, Cursor, opencode or Ollama   (the persona and the tools)
-                             └─ python render_worker.py                            draws her, via anime-character-creator
+                             └─ a worker thread (src/render-worker.ts)             draws her, via anime-character-creator
 ```
 
 **Documentation: <https://rhedak.github.io/anime_ai_companion/>** (the same material as below, with pictures and a menu).
@@ -34,12 +34,10 @@ button, the recording your browser's speech recognition sends to the browser mak
 
 - **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step). Many systems ship an older one, and `npm install` itself
   refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`
-- **Python 3.11 or newer** (the character renderer is pure standard-library Python). If your `python3`
-  is older, `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically
 - **One brain**, installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
   or [Ollama](https://ollama.com) for a local model
 - A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (the drawing code) next to this repo,
-  at the release this version pins (the Quick start does that), or point `CREATOR_SRC` at its `src` folder. Without either, the app downloads
+  at the release this version pins (the Quick start does that), or point `CREATOR_SRC` at its `ts/src` folder (the creator's TypeScript draws her, in the app's own process: no Python is involved). Without either, the app downloads
   the pinned release itself on the first start
 
 ## Quick start
@@ -49,13 +47,13 @@ git clone --branch v0.3.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
-node bin/anaico.js --doctor   # optional: says what is missing (Node, Python, a brain, the creator, the port)
+node bin/anaico.js --doctor   # optional: says what is missing (Node, a brain, the creator, the port)
 npm start          # then open http://127.0.0.1:3737
 ```
 
-The first line takes the creator release this version was made for (`--branch`); its `main` may be ahead of it. If `python3 --version` says
-older than 3.11, run `uv sync` once before `npm start`: it makes a `.venv` with a suitable Python, which the app then uses. With 3.11 or
-newer you do not need it.
+The first line takes the creator release this version was made for (`--branch`); its `main` may be ahead of it. Nothing else needs installing:
+the app draws her with the creator's TypeScript, so there is no Python to set up. (Python is only for the optional picture-pack tools under
+`python/`, which `docs/frame-packs.md` describes.)
 
 Try: *"Hi! Could you change your hair to mint green and put on a black witch hat?"*
 
@@ -67,13 +65,12 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
 | `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent), `opencode` or `ollama` (local models); also switchable in the UI |
 | `COMPANION_OPENCODE_MODEL` | opencode's own default | model for opencode, `provider/model` (e.g. `opencode/big-pickle`) |
-| `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `COMPANION_OLLAMA_TOOLS` | unset | model names (comma separated) or `all` that you vouch can use tools, when your Ollama cannot report it |
 | `COMPANION_OLLAMA_CTX` | `16384` | context size asked of Ollama in work mode with tools |
 | `OLLAMA_MODEL` | first installed | model to use with Ollama. A model you name here is saved to `data/settings.json` like a pick in the menu; the first-installed default is only used, never saved |
 | `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
-| `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
+| `CREATOR_SRC` | `../anime-character-creator/ts/src` | the creator's TypeScript folder (its `ts/src`), which draws her |
 | `ANAICO_HOME` | `~/.anaico` | where the pinned creator copy is cloned when none is found next to this repo |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's own folder, which she reads sessions and skills from |
 | `CURSOR_AGENT` | `cursor-agent` | the command that starts the Cursor agent |
@@ -221,7 +218,7 @@ terminal (its output goes to `data/server.log`). Take the same `--chat` and `--n
 
 A problem in the page itself (a script error, an animation frame that failed) shows as an orange ⚠ line in the chat; tap it
 for the details. It is also written to the server's log as `[page ...]`, so a problem on your phone can be read on the computer.
-`anaico --doctor` checks what the companion needs (Node, Python, a brain, the character creator, the port) and says what is
+`anaico --doctor` checks what the companion needs (Node, a brain, the character creator, the port) and says what is
 missing and how to fix it; it only looks and changes nothing. `anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
 starts it again in the folder you run it from (use it after an update, or to change folder or mode).
 Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
@@ -479,7 +476,7 @@ so plainly when another brain, such as Ollama, is active, instead of pretending 
   face settings. The server renders a few mouth openings and a blink per emotion and the browser
   flips between them while text streams.
 - **Looks:** she writes `[avatar hair_color=#ff88cc outfit.hat_color=#222 glasses=true]`.
-  `python/render_worker.py` validates every key; rejected ones are reported back to her on her next
+  `src/render-ops.ts` validates every key; rejected ones are reported back to her on her next
   turn. Your current look is saved in `data/avatar.json` (git-ignored).
 - **Providers:** `src/providers/types.ts` is the interface and Claude Code is the first
   implementation. The tags are plain text, so other backends (for example Ollama) can reuse them.

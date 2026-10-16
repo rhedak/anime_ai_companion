@@ -1,11 +1,11 @@
 [project]
-name = "anime-ai-companion-renderer"
+name = "anime-ai-companion-pack-tools"
 version = "0.1.0"
-description = "Python environment for the companion's render worker (python/render_worker.py)"
+description = "Optional Python environment for the picture-pack tools (python/finish_pack.py, python/make_sample_pack.py). The app itself needs no Python."
 requires-python = ">=3.11"
-# The worker uses only the standard library plus anime-character-creator, which it imports by path
-# (CREATOR_SRC, default ../anime-character-creator/src), so there is nothing to install. The environment
-# exists to pin a Python new enough for the creator.
+# Nothing to install: the tools get PIL, numpy and cairosvg per run (`uv run --with pillow --with numpy python python/finish_pack.py ...`,
+# see docs/frame-packs.md). This file only pins which Python `uv run` picks (with .python-version). python/render_ops.py is not a tool: it
+# is the browser demo's renderer and the oracle for src/render-ops.ts.
 dependencies = []
 
 [tool.uv]

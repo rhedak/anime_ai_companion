@@ -1,24 +1,30 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { pythonCommand } from "../src/python.ts";
+import { Worker } from "node:worker_threads";
 
-const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/src");
-const worker = resolve(import.meta.dirname, "../python/render_worker.py");
+const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/ts/src");
+const worker = resolve(import.meta.dirname, "../src/render-worker.ts");
+const skip = !existsSync(join(creatorSrc, "render.ts")) && `the creator's TypeScript is not at ${creatorSrc} (set CREATOR_SRC to its ts/src folder)`;
 
-test("render worker validates patches and renders frames", { skip: !existsSync(creatorSrc) && `creator not found at ${creatorSrc}` }, async () => {
-  const proc = spawn(pythonCommand(), ["-I", worker], {
-    env: { ...process.env, CREATOR_SRC: creatorSrc },
-  });
-  const lines = createInterface({ input: proc.stdout })[Symbol.asyncIterator]();
+/** The renderer thread itself, spoken to the way AvatarService speaks to it: JSON text in, JSON text out. */
+function renderer() {
+  const thread = new Worker(worker, { workerData: { creatorSrc } });
+  const replies: ((text: string) => void)[] = [];
+  thread.on("message", (text: string) => replies.shift()?.(text));
   let id = 0;
-  const call = async (payload: object): Promise<any> => {
-    proc.stdin.write(JSON.stringify({ id: ++id, ...payload }) + "\n");
-    return JSON.parse((await lines.next()).value);
-  };
+  const call = (payload: object): Promise<any> =>
+    new Promise((resolveReply, reject) => {
+      replies.push((text) => resolveReply(JSON.parse(text)));
+      thread.once("error", reject);
+      thread.postMessage(JSON.stringify({ id: ++id, ...payload }));
+    });
+  return { call, stop: () => thread.terminate() };
+}
+
+test("render worker validates patches and renders frames", { skip }, async () => {
+  const { call, stop } = renderer();
   try {
     const { character } = await call({ op: "base", name: "linnea" });
     const patched = await call({
@@ -42,20 +48,27 @@ test("render worker validates patches and renders frames", { skip: !existsSync(c
     assert.equal(frames.svgs.length, 3); // two mouth openings plus a blink
     assert.ok(frames.svgs.every((svg: string) => svg.startsWith("<svg")));
   } finally {
-    proc.kill();
+    await stop();
   }
 });
 
-test("every starting character is soft, and she can still change the finish", { skip: !existsSync(creatorSrc) && `creator not found at ${creatorSrc}` }, async () => {
-  const proc = spawn(pythonCommand(), ["-I", worker], {
-    env: { ...process.env, CREATOR_SRC: creatorSrc },
-  });
-  const lines = createInterface({ input: proc.stdout })[Symbol.asyncIterator]();
-  let id = 0;
-  const call = async (payload: object): Promise<any> => {
-    proc.stdin.write(JSON.stringify({ id: ++id, ...payload }) + "\n");
-    return JSON.parse((await lines.next()).value);
-  };
+test("a request that fails is an error reply, and the renderer answers the next one", { skip }, async () => {
+  const { call, stop } = renderer();
+  try {
+    const unknown = await call({ op: "nope" });
+    assert.deepEqual(unknown, { ok: false, error: "KeyError: 'nope'", id: 1 });
+    const broken = await call({ op: "patch" });
+    assert.deepEqual(broken, { ok: false, error: "KeyError: 'character'", id: 2 });
+    const fine = await call({ op: "base", name: "nobody" });
+    assert.deepEqual(fine, { ok: false, error: "KeyError: 'nobody'", id: 3 });
+    assert.equal((await call({ op: "base", name: "risa" })).ok, true);
+  } finally {
+    await stop();
+  }
+});
+
+test("every starting character is soft, and she can still change the finish", { skip }, async () => {
+  const { call, stop } = renderer();
   try {
     const schema = await call({ op: "schema" });
     const { character } = await call({ op: "base", name: "risa" });
@@ -88,6 +101,6 @@ test("every starting character is soft, and she can still change the finish", { 
     const flat = await call({ op: "frames", character: changed.character, face: {}, mouth: [0] });
     assert.ok(soft.svgs[0].length > flat.svgs[0].length);
   } finally {
-    proc.kill();
+    await stop();
   }
 });

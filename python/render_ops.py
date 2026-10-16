@@ -1,7 +1,9 @@
 """What the renderer can be asked, as plain functions: schema, base, patch, frames.
 
-`handle(request)` takes one request (a dict, as in the protocol described in render_worker.py) and returns the reply dict.
-It is used by python/render_worker.py (JSON lines on stdin and stdout) and by the browser demo (Pyodide), so the two cannot disagree.
+`handle(request)` takes one request (a dict) and returns the reply dict.
+The app's server no longer runs this file: it draws with the creator's TypeScript (src/render-ops.ts is this file ported, and
+test/render-ops.test.ts checks it against this one through test/fixtures/render-ops.json, made by scripts/gen-render-ops-fixtures.py).
+It stays for the browser demo (Pyodide, which has not moved yet) and as that oracle: keep the two in step until the demo moves.
 
 The creator is only imported, never modified: set CREATOR_SRC to its `src` dir, or put the package on sys.path yourself.
 """

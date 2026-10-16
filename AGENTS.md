@@ -1,7 +1,7 @@
 # Notes for agents
 
 A local anime companion. The browser talks to a Node server; a provider is the brain
-(Claude Code, Cursor, or Ollama); a Python worker draws her. The README is the product
+(Claude Code, Cursor, or Ollama); a worker thread running the creator's TypeScript draws her. The README is the product
 description; this file is what an agent needs beyond it. Find which of these the user wants:
 
 - **Run it** (use the app): the first section.
@@ -10,7 +10,7 @@ description; this file is what an agent needs beyond it. Find which of these the
 
 ## Run it
 
-You need Node 22.18+, Python 3.11+, and one brain: Claude Code (`claude` installed and signed in),
+You need Node 22.18+ and one brain: Claude Code (`claude` installed and signed in),
 Cursor (`cursor-agent`), opencode, or Ollama. It runs on the user's own machine with their own login.
 
 Clone both repos **side by side** (the drawing code is a separate repo), the creator at the release this version pins
@@ -24,8 +24,8 @@ npm install
 npm start        # http://127.0.0.1:3737
 ```
 
-If `python3 --version` is older than 3.11, run `uv sync` once first: it makes `.venv`, which the app then uses. Newer Python needs no
-`.venv`. `npm install` refuses an older Node (`engine-strict`); `nvm install 22 && nvm use 22` fixes that.
+No Python is needed: the creator's TypeScript draws her inside the server. `npm install` refuses an older Node (`engine-strict`);
+`nvm install 22 && nvm use 22` fixes that. (Python is only for the optional picture-pack tools in `python/`, which `docs/frame-packs.md` describes.)
 
 - `npm link` puts the `anaico` command on the PATH. `anaico` starts in work mode for the folder it is run
   from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart`, `--doctor` are in the README.
@@ -36,9 +36,9 @@ If `python3 --version` is older than 3.11, run `uv sync` once first: it makes `.
 - Everything personal is in `data/` (settings, chat log, her current look, `custom.css`) and `workspace/`.
   Both are git-ignored and belong to the user: do not delete or reset them without asking.
 - If the creator is not found next to this repo, the app clones a pinned copy into `~/.anaico/creator/`.
-  Point `CREATOR_SRC` at the creator's `src` folder to use another one.
+  Point `CREATOR_SRC` at the creator's `ts/src` folder to use another one (before the creator's TypeScript, `src` held its Python package).
 
-When it does not start: run `anaico --doctor` (or `node bin/anaico.js --doctor`; it only looks and says what is missing, and warns when the creator checkout is not at the pinned release), or check `python3 --version` (the creator needs 3.11+; run `uv sync`, or set `PYTHON`),
+When it does not start: run `anaico --doctor` (or `node bin/anaico.js --doctor`; it only looks and says what is missing, and warns when the creator checkout is not at the pinned release), or check that `CREATOR_SRC` (if set) is the creator's `ts/src` folder with a `render.ts` in it,
 that `claude` (or `cursor-agent`) is on the PATH and signed in, and that the port is free. In daemon mode the
 log is `data/server.log`.
 
@@ -65,7 +65,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   install it: the renderer imports it by path, so edits are picked up on the next server start, and an
   installed copy would only be a second source of truth. This repo's `package.json` pins a creator tag, and a
   checkout of the creator's `main` may be ahead of it. If the user forks, point that pin at their fork.
-- The creator has its own `uv` environment for its tests and linting; that is separate from this repo's `.venv`.
+- The creator has its own tests and tooling; they are separate from this repo's checks.
 - A change to behaviour (`src/`, `public/`) is the next section. It is fine, but the safety rules below
   still hold for a personal fork.
 
@@ -82,14 +82,18 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
   server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by Pyodide running
-  `python/render_ops.py` on the creator's files, and what she says comes from a small rule-based reader (`demo/script.js`) or, only if the
+  `python/render_ops.py` on the creator's Python files (the demo has not moved to the creator's TypeScript yet; the app has), and what she says comes from a small rule-based reader (`demo/script.js`) or, only if the
   visitor opts in, a small model in the browser (`demo/model*.js`). `public/app.js` takes its socket from `window.anaicoSocket` when
   something has set it; that one line is the only change the page needs. `node demo/stage.mjs` builds the static folder; `npm run demo`
   serves it on 8765; `npm run site:preview` builds the docs site with the demo in it at `demo/` (what the pages workflow publishes) and
   serves it on 8766.
-- `public/frames.js`, `public/tags.js`, `public/demo.js` and `python/render_ops.py` are shared by the server and the demo (the server imports
+- `public/frames.js`, `public/tags.js` and `public/demo.js` are shared by the server and the demo (the server imports
   them from `src/avatar.ts`, `src/avatar-tags.ts`, `src/demo.ts`), so both ask for the same frames and read the same tags and show-off list.
-  Do not copy them; `render_worker.py` is only the stdin loop. Nothing in `src/` may import from `demo/`. The demo is plain JavaScript with
+  Do not copy them. The request handling (schema, base, patch, frames) is `src/render-ops.ts` for the server, run in a worker thread by
+  `src/render-worker.ts` (`AvatarService` cuts it off after 15 s and starts another); `python/render_ops.py` is its Python original, which the demo
+  still runs in Pyodide and which is the oracle `test/render-ops.test.ts` checks the TypeScript against (`test/fixtures/render-ops.json`, made by
+  `scripts/gen-render-ops-fixtures.py`, the one job that still needs Python 3.13 and the creator's Python package). Keep `python/render_ops.py`
+  and `src/render-ops.ts` answering alike until the demo moves. Nothing in `src/` may import from `demo/`. The demo is plain JavaScript with
   no build step, and its URLs are relative so it works under a sub-folder (`/demo/`): keep it so in `public/` too (`pack-thumb/<name>`).
 - **The script has first say in the demo.** A request about her look (hair, eyes, an outfit, "that colour") is answered by the reader, never
   by the model, which only gets what the reader cannot answer. A tag for her look written by the model is applied to nothing.
@@ -248,7 +252,7 @@ Switching brains starts a new conversation. The brains do not share memory.
   pinned creator release (`git clone --branch <ref>`); `test/docs.test.ts` checks them against `package.json`.
 - **When the owner's own app runs from a checkout, leave that checkout on `main`.** The server serves `public/`
   from disk, so switching branches under a running app changes the page it serves. Work on `dev` in a second
-  worktree (`git worktree add ../anime_ai_companion-dev dev`, then link `node_modules` and `.venv` into it).
+  worktree (`git worktree add ../anime_ai_companion-dev dev`, then link `node_modules` into it).
 - **Pull requests from other people go to `dev`.**
 
 ### Checks
@@ -264,16 +268,14 @@ git do so (`.githooks/pre-push`, which runs `--full` for a push to `main`).
 
 `npm run typecheck` also checks the page's JavaScript (`public/*.js`, `tsconfig.frontend.json`, loosely: no strict mode,
 and `$("id")` is typed `any`). The `.d.ts` files next to those modules are what the page and the tests import, so keep them
-in step. Renderer tests look for `../anime-character-creator` (or `CREATOR_SRC`, which is that repo's `src`
-folder) and skip if it is missing. The creator needs Python 3.11 or newer. `uv sync` creates `.venv`
-(`pyproject.toml`, `.python-version`), and `src/python.ts` uses it when it exists, unless `PYTHON` is set;
-on an older `python3` the four avatar and render tests fail even though the code is fine. `test/server.test.ts` runs a throwaway copy of the whole app (its own `data/`, a random port) against a stand-in
+in step. Renderer tests look for `../anime-character-creator/ts/src` (or `CREATOR_SRC`, which is that folder, the creator's TypeScript)
+and skip if it is missing. No Python is involved (`pyproject.toml` and `.python-version` are only for the optional picture-pack tools). `test/server.test.ts` runs a throwaway copy of the whole app (its own `data/`, a random port) against a stand-in
 `claude` and a fake Ollama (`test/helpers/server.ts`) and drives it over the websocket: queueing, cards, notes, skills,
 work mode, the shell opt-out, local tools and the origin check. It is the net for changing `src/server.ts`, and it needs the
-creator and Python 3.11+ like the renderer tests (it skips without them). Add a test there when you change what the page is
+creator's TypeScript like the renderer tests (it skips without it). Add a test there when you change what the page is
 told. Keep new tests passing without a Claude, Cursor or opencode login. `test/browser-demo.test.ts` drives the demo's stand-in server
 against a fake renderer and a fake model and checks the staged folder; `test/frame-pack.test.ts` and `test/pack-avatar.test.ts` cover packs and
-the pose pictures. Before a release also run the suite against a clean checkout of the pinned creator release (`CREATOR_SRC=<its src> npm test`)
+the pose pictures. Before a release also run the suite against a clean checkout of the pinned creator release (`CREATOR_SRC=<its ts/src> npm test`)
 and on the oldest Node (`npx --yes node@22.18 --test "test/**/*.test.ts"`).
 
 To watch a change work without touching anyone's real `data/`, run a copy of the repo with its own

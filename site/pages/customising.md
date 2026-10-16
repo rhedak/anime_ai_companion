@@ -115,7 +115,7 @@ message box with `SpeechRecognition`". [AGENTS.md](../../AGENTS.md) has the rule
 
 ## The drawing
 
-The renderer imports the creator by path, so work in the creator checkout next to this repo (or wherever
+The renderer loads the creator's TypeScript by path, so work in the creator checkout next to this repo (or wherever
 `CREATOR_SRC` points): edits are picked up the next time the server starts. Do not install it: a second copy would
 only be a second source of truth. This repo pins a creator release in `package.json`; your checkout of the creator's
 `main` may be ahead of it.

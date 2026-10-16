@@ -1,30 +1,28 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { AvatarService } from "../src/avatar.ts";
-import { pythonCommand } from "../src/python.ts";
+import { AvatarService, type AvatarOptions } from "../src/avatar.ts";
 
-const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/src");
+const creatorSrc = process.env.CREATOR_SRC ?? resolve(import.meta.dirname, "../../anime-character-creator/ts/src");
 
-async function service() {
+async function service(extra: Partial<AvatarOptions> = {}, defaultPreset = "linnea") {
   const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
   const s = new AvatarService({
     creatorSrc,
-    python: pythonCommand(),
-    workerPath: resolve(import.meta.dirname, "../python/render_worker.py"),
     statePath: join(dir, "avatar.json"),
     looksDir: join(dir, "looks"),
     emotions: { neutral: {} },
-    defaultPreset: "linnea",
+    defaultPreset,
+    ...extra,
   });
   await s.start();
   return s;
 }
 
-const skip = !existsSync(creatorSrc) && `creator not found at ${creatorSrc}`;
+const skip = !existsSync(join(creatorSrc, "render.ts")) && `the creator's TypeScript is not at ${creatorSrc} (set CREATOR_SRC to its ts/src folder)`;
 
 test("the starting character comes first in the list of presets, and nothing is lost", { skip }, async () => {
   const s = await service(); // starts as linnea
@@ -36,17 +34,7 @@ test("the starting character comes first in the list of presets, and nothing is 
   } finally {
     s.close();
   }
-  const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
-  const r = new AvatarService({
-    creatorSrc,
-    python: pythonCommand(),
-    workerPath: resolve(import.meta.dirname, "../python/render_worker.py"),
-    statePath: join(dir, "avatar.json"),
-    looksDir: join(dir, "looks"),
-    emotions: { neutral: {} },
-    defaultPreset: "risa",
-  });
-  await r.start();
+  const r = await service({}, "risa");
   try {
     assert.equal(r.presetNames[0], "risa");
   } finally {
@@ -145,7 +133,7 @@ test("[avatar load=<preset>] works like base=<preset>, since a preset is the thi
 
 test("the preset she is based on is tracked through changes, undo and a restart, so the gallery can mark it", { skip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
-  const make = () => new AvatarService({ creatorSrc, python: pythonCommand(), workerPath: resolve(import.meta.dirname, "../python/render_worker.py"), statePath: join(dir, "avatar.json"), looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "linnea" });
+  const make = () => new AvatarService({ creatorSrc, statePath: join(dir, "avatar.json"), looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "linnea" });
   let s = make();
   await s.start();
   try {
@@ -174,4 +162,81 @@ test("the preset she is based on is tracked through changes, undo and a restart,
   } finally {
     s.close();
   }
+});
+
+// ---- the renderer thread going wrong: the server must outlive it ----
+
+const STUB = resolve(import.meta.dirname, "helpers/stub-render-worker.ts");
+
+/** A service whose renderer thread goes wrong on its first `frames` request (see the stub for the modes), and the log the stub writes. */
+async function stubbed(mode: "hang" | "exit" | "throw", timeoutMs = 15_000) {
+  const dir = await mkdtemp(join(tmpdir(), "aic-stub-"));
+  const log = join(dir, "stub.log");
+  Object.assign(process.env, { STUB_RENDER_MODE: mode, STUB_RENDER_LOG: log, STUB_RENDER_FLAG: join(dir, "flag") });
+  const s = await service({ workerPath: STUB, timeoutMs });
+  const lines = () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : []);
+  return { s, lines };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("a render that never ends is cut off at the timeout, the thread is really stopped, and the next call gets a fresh renderer", { skip }, async () => {
+  const { s, lines } = await stubbed("hang", 700);
+  try {
+    const started = Date.now();
+    await assert.rejects(s.frames("neutral"), /avatar renderer timed out on 'frames'/);
+    const waited = Date.now() - started;
+    assert.ok(waited >= 650 && waited < 5000, `cut off at the timeout, not before or long after (${waited} ms)`);
+    assert.ok(lines().some((l) => l.startsWith("spin")), "it was really hung");
+    await sleep(300); // the thread is being terminated; once it is, nothing more is written
+    const settled = lines().length;
+    await sleep(400);
+    assert.equal(lines().length, settled, "the hung thread was terminated, not left spinning");
+    const svgs = await s.frames("neutral"); // a fresh renderer answers
+    assert.equal(svgs.length, 5); // four mouth openings and a blink
+    assert.equal(lines().filter((l) => l.startsWith("start")).length, 2, "a second renderer thread was started");
+    assert.ok((await s.applyPatch({ hair_color: "#112233" })).applied.length === 1, "and it is a working one");
+  } finally {
+    s.close();
+  }
+});
+
+test("a renderer that exits or throws fails that call only: the service stays up and starts another", { skip }, async () => {
+  for (const mode of ["exit", "throw"] as const) {
+    const { s, lines } = await stubbed(mode);
+    try {
+      await assert.rejects(s.frames("neutral"), mode === "exit" ? /avatar renderer exited/ : /avatar renderer failed: the renderer broke/);
+      const svgs = await s.frames("neutral");
+      assert.equal(svgs.length, 5);
+      assert.equal(lines().filter((l) => l.startsWith("start")).length, 2, `${mode}: restarted once`);
+      // the look survived: it lives in the service, not in the thread
+      assert.equal((await s.applyPatch({ hair_color: "#445566" })).applied.length, 1);
+      assert.equal(s.character.hair_color, "#445566");
+    } finally {
+      s.close();
+    }
+  }
+});
+
+test("a request the renderer answers with an error comes back as a rejection, and the renderer keeps working", { skip }, async () => {
+  const s = await service();
+  try {
+    const good = s.character;
+    s.character = { face: 5 }; // a look that cannot be drawn (hand-edited saved look)
+    await assert.rejects(s.frames("neutral"), /AttributeError: 'int' object has no attribute 'update'/);
+    s.character = good;
+    s.version++; // the failed frames were not cached, but a changed look is what clears the cache in the app
+    assert.equal((await s.frames("neutral")).length, 5);
+  } finally {
+    s.close();
+  }
+});
+
+test("close() ends the renderer thread, and a call after it starts a fresh one", { skip }, async () => {
+  const s = await service();
+  const first = (await s.frames("neutral"))[0];
+  s.close();
+  s.version++; // not the cached frames
+  assert.equal((await s.frames("neutral"))[0], first);
+  s.close();
 });

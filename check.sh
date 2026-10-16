@@ -43,21 +43,17 @@ fi
 
 # CI checks out the creator at the tag pinned in package.json, not whatever its main holds.
 pin=$(node -p "require('./package.json').creator.ref")
-creator_src=${CREATOR_SRC:-../anime-character-creator/src}
-creator_root=$(dirname "$creator_src")
-[ -d "$creator_src" ] || die "the creator is not at $creator_src: the renderer and server tests would skip. Clone it next to this repo at $pin."
+# The creator's TypeScript draws her (its ts/src folder); the checkout is two folders up.
+creator_src=${CREATOR_SRC:-../anime-character-creator/ts/src}
+creator_root=$(dirname "$(dirname "$creator_src")")
+[ -f "$creator_src/render.ts" ] || die "the creator's TypeScript is not at $creator_src: the renderer and server tests would skip. Clone the creator next to this repo at $pin (or set CREATOR_SRC to its ts/src folder)."
 if [ "${CHECK_ALLOW_CREATOR_DRIFT:-0}" != 1 ]; then
   at=$(git -C "$creator_root" describe --tags --exact-match HEAD 2>/dev/null || echo "no tag")
   [ "$at" = "$pin" ] || die "the creator at $creator_root is at '$at', CI uses $pin. Check out $pin (git -C $creator_root checkout $pin) or set CHECK_ALLOW_CREATOR_DRIFT=1."
   [ -z "$(git -C "$creator_root" status --porcelain)" ] || die "the creator checkout at $creator_root has local changes; CI would not have them."
 fi
 
-# The renderer tests need Python 3.11+, from python3 or from .venv (uv sync).
-if [ ! -d .venv ] && ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
-  die "python3 is older than 3.11 and there is no .venv: run 'uv sync' once."
-fi
-
-echo "node $(node -v), $(python3 --version), creator $pin, commit $(git rev-parse --short HEAD)"
+echo "node $(node -v), creator $pin, commit $(git rev-parse --short HEAD)"
 
 # --- Steps -------------------------------------------------------------------------------------------------------------------------
 
@@ -81,7 +77,7 @@ run_tests() {
   fi
   skipped=$(sed -n 's/^# skipped \([0-9]*\)$/\1/p' "$log")
   if [ "${skipped:-0}" != 0 ] && [ "${CHECK_ALLOW_SKIPS:-0}" != 1 ]; then
-    echo "$skipped test(s) skipped (a missing creator or Python?). Set CHECK_ALLOW_SKIPS=1 to accept."
+    echo "$skipped test(s) skipped (a missing creator?). Set CHECK_ALLOW_SKIPS=1 to accept."
     grep -E '^ *ok .*# SKIP' "$log" | head -10 || true
     return 1
   fi
@@ -91,7 +87,7 @@ run_tests() {
 # The same command as CI: a lockfile npm would rewrite makes a fresh clone look modified.
 lockfile() { npm install --package-lock-only --ignore-scripts >/dev/null && git diff --exit-code package-lock.json; }
 
-stage_demo() { local dir; dir=$(mktemp -d) && CREATOR_SRC="$PWD/$creator_src" node demo/stage.mjs --out "$dir" >/dev/null; }
+stage_demo() { local dir; dir=$(mktemp -d) && CREATOR_SRC="$(cd "$creator_src" && pwd)" node demo/stage.mjs --out "$dir" >/dev/null; }
 
 step "lockfile in step with package.json" lockfile
 step "typecheck" npm run --silent typecheck

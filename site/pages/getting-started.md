@@ -8,12 +8,10 @@ description: Requirements, installation, the anaico command, configuration, and 
 
 - **Node.js 22.18 or newer.** It runs the TypeScript directly: there is no build step. Many systems ship an older Node, and
   `npm install` itself refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`.
-- **Python 3.11 or newer.** The character renderer is pure standard-library Python. If your `python3` is older,
-  `uv sync` makes a `.venv` with a suitable one, and the app uses it automatically.
 - **One brain.** Claude Code (`claude` installed and signed in), Cursor (`cursor-agent`), opencode, or Ollama.
   See [Brains](brains.html) for what each one can do.
 - **A checkout of [anime-character-creator](https://github.com/rhedak/anime-character-creator)** next to this repo, at the release
-  this version pins (the commands below do that), or `CREATOR_SRC` pointing at its `src` folder. If it is missing, the app clones the
+  this version pins (the commands below do that), or `CREATOR_SRC` pointing at its `ts/src` folder (its TypeScript draws her; no Python is needed). If it is missing, the app clones the
   pinned release into `~/.anaico/creator/` by itself.
 
 ## Install and run
@@ -26,9 +24,8 @@ npm install
 npm start          # http://127.0.0.1:3737
 ```
 
-The first line takes the creator release this version was made for; its `main` may be ahead of it. If `python3 --version` says older than
-3.11, run `uv sync` once before `npm start`: it makes a `.venv` with a suitable Python, which the app then uses. With 3.11 or newer you do
-not need it.
+The first line takes the creator release this version was made for; its `main` may be ahead of it. Nothing else needs installing: there is
+no Python to set up.
 
 Open the address in a browser and say hello. Her first look is Risa; the **Looks** menu has the rest.
 
@@ -45,7 +42,7 @@ Open the address in a browser and say hello. Her first look is Risa; the **Looks
 | `anaico --lan` | also let your phone in, see [From your phone](phone.html) (off again at every start) |
 | `anaico --daemon` | run in the background; output goes to `data/server.log` |
 | `anaico --status`, `--stop`, `--restart` | look at, stop or restart that background server |
-| `anaico --doctor` | check what it needs (Node, Python, a brain, the creator, the port) and say what is missing; it changes nothing |
+| `anaico --doctor` | check what it needs (Node, a brain, the creator, the port) and say what is missing; it changes nothing |
 
 ## Configuration
 
@@ -59,8 +56,7 @@ Everything has a default. Set these as environment variables when you start the 
 | `COMPANION_OPENCODE_MODEL` | opencode's default | model for opencode, as `provider/model` |
 | `COMPANION_PRESET` | `risa` | the starting character (any preset of the creator) |
 | `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://127.0.0.1:11434`, first installed | where Ollama listens and which model to use |
-| `PYTHON` | `.venv` if present, else `python3` | the Python that runs the renderer |
-| `CREATOR_SRC` | `../anime-character-creator/src` | where the creator package lives |
+| `CREATOR_SRC` | `../anime-character-creator/ts/src` | the creator's TypeScript folder (its `ts/src`), which draws her |
 | `PORT` | `3737` | the port |
 | `COMPANION_NO_NUDGE` | unset | `1` silences the weekly "you have local changes" reminder |
 
@@ -73,8 +69,8 @@ First, run `anaico --doctor` (or `node bin/anaico.js --doctor` before you have l
 prints what is missing and how to fix it. Nothing is installed or changed, and it exits with 1 when something must be fixed. By hand:
 
 
-1. **Check the versions.** `node --version` should say 22.18 or newer, and `python3 --version` 3.11 or newer. If
-   not, run `uv sync`, or set `PYTHON`.
+1. **Check the version.** `node --version` should say 22.18 or newer. The creator's `ts/src` folder (`CREATOR_SRC`) must have
+   `render.ts` in it.
 2. **Check the brain.** `claude` (or `cursor-agent`, or `opencode`) must be on your PATH and signed in.
 3. **Check the port.** Something else may be using 3737: set `PORT`.
 4. **Read the log.** In the background mode it is `data/server.log`. Problems in the page itself also show as an

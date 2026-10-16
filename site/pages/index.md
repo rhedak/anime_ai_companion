@@ -39,7 +39,7 @@ ask her to change her hair or put on glasses she **redraws herself**. In chat mo
 
 ## Start in a minute
 
-You need Node.js 22.18 or newer, Python 3.11 or newer, and one brain (for example a signed-in `claude`).
+You need Node.js 22.18 or newer and one brain (for example a signed-in `claude`).
 
 ```bash
 git clone https://github.com/rhedak/anime-character-creator.git

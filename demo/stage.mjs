@@ -85,7 +85,10 @@ export async function stage(target = out) {
   writeFileSync(join(target, "packs.json"), JSON.stringify(packs, null, 1) + "\n");
 
   // The creator's package, from wherever the app finds it, and the list Pyodide needs (its file system must be told what to write).
-  const creator = await resolveCreatorSrc();
+  // TODO(browser demo on the TypeScript): the app now draws with the creator's TypeScript, whose folder is what resolveCreatorSrc() returns
+  // (`<creator>/ts/src`). The demo still runs the creator's Python package in Pyodide, which sits in `<creator>/src` beside it, so it is
+  // found from there until the demo draws with the TypeScript too (then this block, pythonFiles() and creator-files.json go).
+  const creator = resolve(await resolveCreatorSrc(), "../../src");
   const packageDir = join(creator, "anime_character_creator");
   const files = pythonFiles(packageDir).map((f) => `anime_character_creator/${f}`);
   for (const f of files) {

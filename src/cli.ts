@@ -6,7 +6,7 @@
  *   anaico --chat             start in chat mode instead (the folder is still pre-filled)
  *   anaico --daemon           run the server in the background; it keeps running after the terminal closes
  *   anaico --status | --stop | --restart    look at, stop or restart that background server
- *   anaico --doctor           check what the companion needs (Node, Python, a brain, the creator, the port) and say what is missing
+ *   anaico --doctor           check what the companion needs (Node, a brain, the creator, the port) and say what is missing
  *
  * If a server is already running on the port, it is reused and left running.
  */
@@ -43,7 +43,7 @@ if (args.includes("--help") || args.includes("-h")) {
   --stop       stop the background server
   --restart    stop it and start it again (in the current folder; takes --chat and --no-open)
   --version    print the version, and the character creator release it is pinned to
-  --doctor     check what it needs (Node, Python, a brain, the character creator, the port) and say what is missing;
+  --doctor     check what it needs (Node, a brain, the character creator, the port) and say what is missing;
                it only looks, it changes nothing`);
   process.exit(0);
 }
