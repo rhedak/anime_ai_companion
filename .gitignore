@@ -20,3 +20,6 @@ trailer/.stage/
 site/dist/
 out/
 trailer/.sample-pack/
+
+# editor settings (PyCharm / JetBrains)
+.idea/
