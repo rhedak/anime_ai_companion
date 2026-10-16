@@ -103,6 +103,11 @@ changes, **Save look** stores the current look by name, and the **Looks** menu l
 a saved look herself too (`[avatar load=name]`). Saved looks are plain files in `data/looks/`; delete a
 file to delete a look.
 
+She is drawn in the creator's **soft finish** by default (gradients in the eyes and blush, tinted lines, tone clumps in the hair),
+which sits closer to a picture pack than the flat house style. It is only a starting value: ask her for `finish=flat` (`[avatar finish=flat]`)
+to turn it off, or `highlight_strength=0.5` (0 to 2, 1 by default) for softer hair, and a look you saved keeps the finish it was saved with.
+The soft finish needs the creator at v0.3.0 or newer; an older creator draws the flat style and nothing is set.
+
 ## Your own pictures instead of the drawn avatar
 
 If you would rather show her as pictures from an AI image tool (or your own drawings), put a set of images
