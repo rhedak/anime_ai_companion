@@ -43,7 +43,7 @@ button, the recording your browser's speech recognition sends to the browser mak
 ## Quick start
 
 ```bash
-git clone --branch v0.3.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.4.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
