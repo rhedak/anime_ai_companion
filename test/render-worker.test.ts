@@ -78,6 +78,11 @@ test("every starting character is soft, and she can still change the finish", { 
     const bad = await call({ op: "patch", character, set: { finish: "glossy", highlight_strength: "7" } });
     assert.deepEqual(bad.applied, []);
     assert.deepEqual(bad.rejected.map((r: any) => r.key), ["finish", "highlight_strength"]);
+    // a look saved before the finish existed has no `finish`: it has chosen nothing, so it is drawn with the default; flat stays flat
+    const { finish: _dropped, highlight_strength: _kept, ...older } = character;
+    const unsaid = await call({ op: "frames", character: older, face: {}, mouth: [0] });
+    const said = await call({ op: "frames", character, face: {}, mouth: [0] });
+    assert.equal(unsaid.svgs[0], said.svgs[0]);
     // soft draws the clumps and the finish costs bytes, so the frames really are different
     const soft = await call({ op: "frames", character, face: {}, mouth: [0] });
     const flat = await call({ op: "frames", character: changed.character, face: {}, mouth: [0] });
