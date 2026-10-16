@@ -8,7 +8,8 @@
  */
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { parentPort, threadId, workerData } from "node:worker_threads";
-import { createRenderOps, loadCreator } from "../../src/render-ops.ts";
+import { loadCreator } from "../../src/creator-load.ts";
+import { createRenderOps } from "../../src/render-ops.ts";
 
 const port = parentPort!;
 const log = process.env.STUB_RENDER_LOG as string;

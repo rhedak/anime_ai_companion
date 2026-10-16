@@ -1,4 +1,4 @@
-// What it takes to draw her, as requests for the renderer (python/render_ops.py). One source for the server (src/avatar.ts) and the
+// What it takes to draw her, as requests for the renderer (src/render-ops.ts). One source for the server (src/avatar.ts) and the
 // browser demo (demo/local-socket.js): they ask for exactly the same frames, because they run this same code.
 
 /** Arm poses to alternate between for a gesture, in degrees from the body (about 115 to 155 reads as a raised arm). */

@@ -9,7 +9,8 @@
  * `workerData.creatorSrc` is the creator's `ts/src` folder, loaded here by path (src/creator.ts says where it is).
  */
 import { parentPort, workerData } from "node:worker_threads";
-import { createRenderOps, loadCreator } from "./render-ops.ts";
+import { loadCreator } from "./creator-load.ts";
+import { createRenderOps } from "./render-ops.ts";
 
 if (!parentPort) throw new Error("src/render-worker.ts runs as a worker thread (AvatarService starts it)");
 const port = parentPort;

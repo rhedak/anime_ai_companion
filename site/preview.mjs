@@ -12,5 +12,5 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 execFileSync(process.execPath, [join(root, "site/build.mjs")], { stdio: "inherit" });
 const dist = join(root, "site/dist");
 const done = await stage(join(dist, "demo"));
-console.log(`staged the demo into site/dist/demo (${done.files} creator files)`);
+console.log(`staged the demo into site/dist/demo (${done.files} compiled files)`);
 serve(dist, Number(process.argv[2]) || 8766);

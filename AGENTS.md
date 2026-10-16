@@ -73,7 +73,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 ### How it is built
 
-- Node runs the TypeScript directly. There is no build step. `npm start` is `node src/server.ts`;
+- Node runs the TypeScript directly. There is no build step for the app (only the browser demo's staging compiles, below). `npm start` is `node src/server.ts`;
   the `anaico` command is `src/cli.ts`, which starts (or reuses) that server and opens the browser.
 - `src/providers/types.ts` is the brain interface. A new brain implements `Provider` and nothing
   in the page should need to know how that process speaks.
@@ -81,8 +81,8 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`). The server strips them. Keep that
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
-  server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by Pyodide running
-  `python/render_ops.py` on the creator's Python files (the demo has not moved to the creator's TypeScript yet; the app has), and what she says comes from a small rule-based reader (`demo/script.js`) or, only if the
+  server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by the creator's TypeScript
+  compiled to JavaScript (about half a megabyte) with the app's own `src/render-ops.ts` (`demo/render-bridge.js`), and what she says comes from a small rule-based reader (`demo/script.js`) or, only if the
   visitor opts in, a small model in the browser (`demo/model*.js`). `public/app.js` takes its socket from `window.anaicoSocket` when
   something has set it; that one line is the only change the page needs. `node demo/stage.mjs` builds the static folder; `npm run demo`
   serves it on 8765; `npm run site:preview` builds the docs site with the demo in it at `demo/` (what the pages workflow publishes) and
@@ -90,11 +90,15 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - `public/frames.js`, `public/tags.js` and `public/demo.js` are shared by the server and the demo (the server imports
   them from `src/avatar.ts`, `src/avatar-tags.ts`, `src/demo.ts`), so both ask for the same frames and read the same tags and show-off list.
   Do not copy them. The request handling (schema, base, patch, frames) is `src/render-ops.ts` for the server, run in a worker thread by
-  `src/render-worker.ts` (`AvatarService` cuts it off after 15 s and starts another); `python/render_ops.py` is its Python original, which the demo
-  still runs in Pyodide and which is the oracle `test/render-ops.test.ts` checks the TypeScript against (`test/fixtures/render-ops.json`, made by
-  `scripts/gen-render-ops-fixtures.py`, the one job that still needs Python 3.13 and the creator's Python package). Keep `python/render_ops.py`
-  and `src/render-ops.ts` answering alike until the demo moves. Nothing in `src/` may import from `demo/`. The demo is plain JavaScript with
-  no build step, and its URLs are relative so it works under a sub-folder (`/demo/`): keep it so in `public/` too (`pack-thumb/<name>`).
+  `src/render-worker.ts` (`AvatarService` cuts it off after 15 s and starts another), which gets the creator from `src/creator-load.ts` (imports by
+  path, Node only). `src/render-ops.ts` itself imports nothing from Node, because the demo compiles it for the browser (`tsconfig.demo.json`,
+  checked by `npm run typecheck`, which has no Node types) and builds its `Creator` from modules imported by URL (`creatorFromModules`). `python/render_ops.py` is the Python original
+  and is not run by the app or the demo any more: it is only the reference that `scripts/gen-render-ops-fixtures.py` runs to make the oracle
+  `test/render-ops.test.ts` checks the TypeScript against (`test/fixtures/render-ops.json`; regenerating it is the one job that still needs Python
+  3.13 and the creator's Python package, and the one reason `python/render_ops.py` stays, frozen; the other Python is the optional picture-pack
+  tools). Nothing in `src/` may import from `demo/`. The demo's own files are plain JavaScript that is copied as they are (no bundler); the one
+  build step is `demo/stage.mjs` compiling the renderer with `tsc` (`js/` and `creator/js/` in the staged folder). Its URLs are relative so it works
+  under a sub-folder (`/demo/`): keep it so in `public/` too (`pack-thumb/<name>`).
 - **The script has first say in the demo.** A request about her look (hair, eyes, an outfit, "that colour") is answered by the reader, never
   by the model, which only gets what the reader cannot answer. A tag for her look written by the model is applied to nothing.
 - **Picture packs** (`src/frame-pack.ts`, `public/avatar.js`, `docs/frame-packs.md`): the file names are the manifest. Besides
@@ -274,7 +278,8 @@ and skip if it is missing. No Python is involved (`pyproject.toml` and `.python-
 work mode, the shell opt-out, local tools and the origin check. It is the net for changing `src/server.ts`, and it needs the
 creator's TypeScript like the renderer tests (it skips without it). Add a test there when you change what the page is
 told. Keep new tests passing without a Claude, Cursor or opencode login. `test/browser-demo.test.ts` drives the demo's stand-in server
-against a fake renderer and a fake model and checks the staged folder; `test/frame-pack.test.ts` and `test/pack-avatar.test.ts` cover packs and
+against a fake renderer and a fake model and checks the staged folder; `test/demo-stage.test.ts` stages the demo for real and checks that it has no Python, is under 2 MB
+and draws the server's bytes from its compiled modules; `test/frame-pack.test.ts` and `test/pack-avatar.test.ts` cover packs and
 the pose pictures. Before a release also run the suite against a clean checkout of the pinned creator release (`CREATOR_SRC=<its ts/src> npm test`)
 and on the oldest Node (`npx --yes node@22.18 --test "test/**/*.test.ts"`).
 

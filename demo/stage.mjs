@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // Assembles the browser demo as a flat static folder (out/demo by default) from three places: the page itself (public/), the demo's own
-// files (demo/), and the renderer (python/render_ops.py plus the creator's package, from the same place the app finds it).
+// files (demo/), and the renderer: the creator's TypeScript (its `ts/src`, from the same place the app finds it) and this app's
+// src/render-ops.ts, both compiled to browser JavaScript with this repository's `tsc` (tsconfig.demo.json for ours, the creator's own
+// ts/tsconfig.web.json for its code). Nothing is downloaded by the page except these files: no Python, no Pyodide, no CDN.
 //
 //   node demo/stage.mjs                 stage into out/demo
 //   node demo/stage.mjs --serve [port]  stage, then serve it on http://127.0.0.1:<port> (default 8765)
 //   node demo/stage.mjs --out <dir>     stage somewhere else
 //
 // Nothing here is served by the app; the folder is what a static host (GitHub Pages) would publish.
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveCreatorSrc } from "../src/creator.ts";
@@ -22,15 +26,27 @@ const args = process.argv.slice(2);
 const flag = (name) => args.indexOf(name);
 const out = resolve(flag("--out") >= 0 ? args[flag("--out") + 1] : join(root, "out", "demo"));
 
-/** Every .py file under `dir`, relative to it, without caches. */
-function pythonFiles(dir, prefix = "") {
-  const found = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.name === "__pycache__") continue;
-    if (entry.isDirectory()) found.push(...pythonFiles(join(dir, entry.name), `${prefix}${entry.name}/`));
-    else if (entry.name.endsWith(".py")) found.push(`${prefix}${entry.name}`);
+/** Runs this repository's TypeScript compiler (the `typescript` dev dependency) and stops with its own output if it reports an error. */
+function tsc(args) {
+  const bin = createRequire(import.meta.url).resolve("typescript/bin/tsc");
+  try {
+    execFileSync(process.execPath, [bin, ...args], { cwd: root, stdio: "pipe", encoding: "utf8" });
+  } catch (err) {
+    throw new Error(`tsc ${args.join(" ")} failed:\n${err.stdout ?? ""}${err.stderr ?? ""}`);
   }
-  return found;
+}
+
+/**
+ * The creator's TypeScript as browser JavaScript, in `<target>/creator/js`. It is the creator's own build (`<creator>/ts/tsconfig.web.json`,
+ * the one its web tool uses: it rewrites the `.ts` imports to `.js`, which a browser needs), run with this repository's compiler. That config
+ * asks for Node's types, which only exist in a checkout that ran `npm install` in `ts/`; the pinned clone has none, so the types come from this
+ * repository's own `@types/node` (`--typeRoots`). The code itself imports nothing from Node.
+ */
+function buildCreator(creatorSrc, target) {
+  const config = join(dirname(creatorSrc), "tsconfig.web.json");
+  if (!existsSync(config)) throw new Error(`${config} is missing: the creator at ${creatorSrc} has no browser build, so the demo cannot draw with it`);
+  const typeRoots = dirname(dirname(createRequire(import.meta.url).resolve("@types/node/package.json")));
+  tsc(["-p", config, "--outDir", join(target, "creator", "js"), "--typeRoots", typeRoots]);
 }
 
 export async function stage(target = out) {
@@ -67,7 +83,6 @@ export async function stage(target = out) {
     if (!name.endsWith(".js")) continue;
     writeFileSync(join(target, name), readFileSync(join(root, "demo", name), "utf8").replaceAll('"../public/', '"./'));
   }
-  cpSync(join(root, "python", "render_ops.py"), join(target, "render_ops.py"));
   cpSync(join(root, "emotions.json"), join(target, "emotions.json"));
 
   // The picture packs: their pictures, a thumbnail for the gallery (the page asks for pack-thumb/<name>), and the list the socket hands the page.
@@ -84,22 +99,16 @@ export async function stage(target = out) {
   }
   writeFileSync(join(target, "packs.json"), JSON.stringify(packs, null, 1) + "\n");
 
-  // The creator's package, from wherever the app finds it, and the list Pyodide needs (its file system must be told what to write).
-  // TODO(browser demo on the TypeScript): the app now draws with the creator's TypeScript, whose folder is what resolveCreatorSrc() returns
-  // (`<creator>/ts/src`). The demo still runs the creator's Python package in Pyodide, which sits in `<creator>/src` beside it, so it is
-  // found from there until the demo draws with the TypeScript too (then this block, pythonFiles() and creator-files.json go).
-  const creator = resolve(await resolveCreatorSrc(), "../../src");
-  const packageDir = join(creator, "anime_character_creator");
-  const files = pythonFiles(packageDir).map((f) => `anime_character_creator/${f}`);
-  for (const f of files) {
-    mkdirSync(dirname(join(target, "creator", f)), { recursive: true });
-    cpSync(join(creator, f), join(target, "creator", f));
-  }
-  writeFileSync(join(target, "creator-files.json"), JSON.stringify(files, null, 1) + "\n");
-  return { target, files: files.length };
+  // The renderer: this app's request handling (src/render-ops.ts) in `js/`, the creator's drawing code in `creator/js/` (demo/render-bridge.js
+  // imports both by relative URL). The creator comes from wherever the app finds it.
+  const creatorSrc = resolve(await resolveCreatorSrc());
+  tsc(["-p", "tsconfig.demo.json", "--outDir", join(target, "js")]);
+  buildCreator(creatorSrc, target);
+  const files = readdirSync(join(target, "creator", "js")).filter((f) => f.endsWith(".js")).length + readdirSync(join(target, "js")).length;
+  return { target, files };
 }
 
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".py": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp" };
 
 /** A small static file server for a staged folder (or the whole built site), on 127.0.0.1 only. */
 export function serve(dir, port) {
@@ -121,7 +130,7 @@ export function serve(dir, port) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const done = await stage();
-  console.log(`staged ${done.files} creator files into ${relative(process.cwd(), done.target) || done.target}`);
+  console.log(`staged ${done.files} compiled files into ${relative(process.cwd(), done.target) || done.target}`);
   const at = flag("--serve");
   if (at >= 0) serve(out, Number(args[at + 1]) || 8765);
 }

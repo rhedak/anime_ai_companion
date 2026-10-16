@@ -14,7 +14,8 @@ jobs:
         with:
           path: anime_ai_companion
       # The pinned creator release (package.json), not whatever its default branch holds today. The app draws with the creator's TypeScript
-      # (ts/src), so the pin must be a release that has it; no Python is needed.
+      # (ts/src), so the pin must be a release that has it; no Python is needed. The demo-staging test compiles that folder to browser JavaScript too
+      # (with this repo's own tsc, from `npm ci`).
       - id: creator
         run: echo "ref=$(node -p "require('./anime_ai_companion/package.json').creator.ref")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4

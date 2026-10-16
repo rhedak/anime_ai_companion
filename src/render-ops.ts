@@ -13,16 +13,15 @@
  * scripts/gen-render-ops-fixtures.py) and compares: the replies are the same JSON, down to the error text.
  *
  * The creator is only loaded, never modified and never imported statically (the app's typecheck must not read its sources):
- * `loadCreator` imports it by path at run time, and `Creator` below is the small part of it this file uses.
+ * a caller imports its modules at run time and `creatorFromModules` below turns them into a `Creator`, the small part of it this file uses.
+ * This file is also compiled for the browser demo (tsconfig.demo.json, `demo/stage.mjs`), so it imports nothing at all, and nothing from
+ * `node:`. `loadCreator` (src/creator-load.ts) is what imports the creator by path under Node.
  *
  * How values are carried. A request is read with the creator's `loadsText`, which is Python's `json.loads`: an object is a `Map`, an int a
  * `PyInt` and every other number a plain float, so `1` and `1.0` stay different, as they did in Python. A reply is written with the creator's
  * `dumps` (Python's `json.dumps`). The Python behaviours this file reproduces on purpose (the `float()` parser, `str.strip`, the text of
  * a KeyError) are named where they are.
  */
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
 type FieldSpec = { readonly name: string; readonly type: string; readonly nullable: boolean; readonly default: unknown };
 type PyIntLike = { readonly value: number | bigint };
 
@@ -49,38 +48,45 @@ export interface Creator {
   pyStrReprFull(s: string): string;
 }
 
-/** Imports the creator's TypeScript from its `ts/src` folder, at run time, by path. */
-export async function loadCreator(creatorSrc: string): Promise<Creator> {
-  const load = (file: string): Promise<any> => import(pathToFileURL(join(creatorSrc, file)).href);
-  const render = await load("render.ts");
-  const presets = await load("presets.ts");
-  const head = await load("core-head.ts");
-  const body = await load("body.ts");
-  const model = await load("model.ts");
-  const urlstate = await load("urlstate.ts");
-  const pynum = await load("pynum.ts");
-  const pyjson = await load("pyjson.ts");
-  const pyjsonload = await load("pyjsonload.ts");
-  const pyvalue = await load("pyvalue.ts");
+/**
+ * The creator's modules, as `import()` hands them over. A caller that has imported them (the server's worker by path, in
+ * src/creator-load.ts; the browser demo by URL, in demo/render-bridge.js) passes the namespaces here and gets a `Creator`. Each name is the
+ * creator's file (render.ts is `render`); a namespace is typed `any` because the creator is never read by this app's typecheck.
+ */
+export interface CreatorModules {
+  render: any;
+  presets: any;
+  head: any; // core-head
+  body: any;
+  model: any;
+  urlstate: any;
+  pynum: any;
+  pyjson: any;
+  pyjsonload: any;
+  pyvalue: any;
+}
+
+/** Builds a `Creator` from the creator's already-imported modules. This is the only place that knows which module holds which name. */
+export function creatorFromModules(m: CreatorModules): Creator {
   return {
-    PRESETS: presets.PRESETS,
-    HAIRSTYLES: head.HAIRSTYLES,
-    BODY_TYPES: body.BODY_TYPES,
-    FIELDS: model.FIELDS,
-    renderCharacter: (p) => render.renderCharacter(p),
-    paramsFromDict: urlstate.paramsFromDict,
-    paramsToJson: urlstate.paramsToJson,
-    pyDict: urlstate.pyDict,
-    loadsText: pyjsonload.loadsText,
-    dumps: (value) => pyjson.dumps(value),
-    PyInt: pyjson.PyInt,
-    pyRound: pynum.pyRound,
-    pyRepr: pynum.pyRepr,
-    truthy: pynum.truthy,
-    pyValueRepr: pyvalue.pyValueRepr,
-    pyStr: pyvalue.pyStr,
-    pyTypeName: pyvalue.pyTypeName,
-    pyStrReprFull: pyvalue.pyStrReprFull,
+    PRESETS: m.presets.PRESETS,
+    HAIRSTYLES: m.head.HAIRSTYLES,
+    BODY_TYPES: m.body.BODY_TYPES,
+    FIELDS: m.model.FIELDS,
+    renderCharacter: (p) => m.render.renderCharacter(p),
+    paramsFromDict: m.urlstate.paramsFromDict,
+    paramsToJson: m.urlstate.paramsToJson,
+    pyDict: m.urlstate.pyDict,
+    loadsText: m.pyjsonload.loadsText,
+    dumps: (value) => m.pyjson.dumps(value),
+    PyInt: m.pyjson.PyInt,
+    pyRound: m.pynum.pyRound,
+    pyRepr: m.pynum.pyRepr,
+    truthy: m.pynum.truthy,
+    pyValueRepr: m.pyvalue.pyValueRepr,
+    pyStr: m.pyvalue.pyStr,
+    pyTypeName: m.pyvalue.pyTypeName,
+    pyStrReprFull: m.pyvalue.pyStrReprFull,
   };
 }
 

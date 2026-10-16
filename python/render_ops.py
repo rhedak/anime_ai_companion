@@ -1,9 +1,10 @@
 """What the renderer can be asked, as plain functions: schema, base, patch, frames.
 
 `handle(request)` takes one request (a dict) and returns the reply dict.
-The app's server no longer runs this file: it draws with the creator's TypeScript (src/render-ops.ts is this file ported, and
-test/render-ops.test.ts checks it against this one through test/fixtures/render-ops.json, made by scripts/gen-render-ops-fixtures.py).
-It stays for the browser demo (Pyodide, which has not moved yet) and as that oracle: keep the two in step until the demo moves.
+Nothing runs this file any more: the server and the browser demo both draw with the creator's TypeScript (src/render-ops.ts is this file
+ported, and test/render-ops.test.ts checks it against this one through test/fixtures/render-ops.json, made by
+scripts/gen-render-ops-fixtures.py). It stays only as the reference that generator runs, the oracle for the TypeScript: it is frozen, and
+it is not changed unless the oracle should cover something new (then regenerate the fixture).
 
 The creator is only imported, never modified: set CREATOR_SRC to its `src` dir, or put the package on sys.path yourself.
 """
@@ -15,7 +16,7 @@ import os
 import re
 import sys
 
-if os.environ.get("CREATOR_SRC"):  # in the browser (Pyodide) the package is put on sys.path by the page instead
+if os.environ.get("CREATOR_SRC"):  # the generator sets it; otherwise the package must already be on sys.path
     sys.path.insert(0, os.environ["CREATOR_SRC"])
 
 from anime_character_creator import (  # noqa: E402

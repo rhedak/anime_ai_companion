@@ -3,7 +3,8 @@
 
 This is the oracle for src/render-ops.ts. python/render_ops.py (the frozen Python implementation of the request handling, run against the
 frozen Python creator) answers every request; test/render-ops.test.ts replays the same requests through the TypeScript and compares.
-Python is needed only to REGENERATE the file (a rare job: when the oracle should cover more); the test needs no Python.
+Python is needed only to REGENERATE the file (a rare job: when the oracle should cover more); the test needs no Python. python/render_ops.py is
+kept for exactly this job: neither the server nor the browser demo runs it any more, it is the frozen reference this script asks.
 
     CREATOR_SRC=../anime-character-creator-ts/src uv run --no-project --python 3.13 scripts/gen-render-ops-fixtures.py
 
@@ -35,6 +36,7 @@ CREATOR_SRC = os.environ.get("CREATOR_SRC") or os.path.normpath(os.path.join(ROO
 os.environ["CREATOR_SRC"] = CREATOR_SRC
 sys.path.insert(0, os.path.join(ROOT, "python"))
 
+# python/render_ops.py is kept only for this: it is the frozen Python reference that answers the oracle's requests. Nothing else runs it.
 from render_ops import handle  # noqa: E402
 
 OUT = os.path.join(ROOT, "test", "fixtures", "render-ops.json")

@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { before, describe, test } from "node:test";
-import { createRenderOps, loadCreator, type Creator, type RenderOps } from "../src/render-ops.ts";
+import { loadCreator } from "../src/creator-load.ts";
+import { createRenderOps, type Creator, type RenderOps } from "../src/render-ops.ts";
 
 /**
  * The oracle: test/fixtures/render-ops.json holds about three thousand requests and what Python's python/render_ops.py answered to each

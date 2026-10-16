@@ -1,5 +1,5 @@
 /**
- * Where the anime-character-creator's TypeScript comes from (its `ts/src` folder, which src/render-ops.ts loads by path), in order:
+ * Where the anime-character-creator's TypeScript comes from (its `ts/src` folder, which src/creator-load.ts loads by path), in order:
  *   1. CREATOR_SRC (explicit override: the `ts/src` folder, not the Python `src` folder of the earlier releases)
  *   2. a sibling checkout at ../anime-character-creator (the development layout)
  *   3. a clone of the pinned tag from package.json ("creator"), kept in ~/.anaico/creator/<ref>

@@ -5,7 +5,7 @@ description = "Optional Python environment for the picture-pack tools (python/fi
 requires-python = ">=3.11"
 # Nothing to install: the tools get PIL, numpy and cairosvg per run (`uv run --with pillow --with numpy python python/finish_pack.py ...`,
 # see docs/frame-packs.md). This file only pins which Python `uv run` picks (with .python-version). python/render_ops.py is not a tool: it
-# is the browser demo's renderer and the oracle for src/render-ops.ts.
+# is the frozen reference that scripts/gen-render-ops-fixtures.py runs to make the oracle for src/render-ops.ts.
 dependencies = []
 
 [tool.uv]

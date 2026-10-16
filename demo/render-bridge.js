@@ -1,60 +1,31 @@
-// The renderer in the browser: Pyodide (Python compiled to WebAssembly) running the very same python/render_ops.py as the server's
-// worker, on the creator's own package. Nothing here draws anything itself. The files it needs sit next to the page:
-//   creator-files.json              the list of the creator's .py files
-//   creator/<path>                  each of them
-//   render_ops.py                   the request handling shared with the server
+// The renderer in the browser: the creator's own drawing code, compiled from TypeScript to JavaScript (about half a megabyte, no library
+// and no download from anywhere else), and this app's request handling (src/render-ops.ts, compiled the same way). It is the code the
+// server's worker thread runs, so a request gets the same reply here as there. Nothing in this file draws anything itself.
+// `demo/stage.mjs` builds the two folders it needs and puts them next to the page:
+//   js/render-ops.js       src/render-ops.ts (createRenderOps, creatorFromModules)
+//   creator/js/<name>.js   the creator's ts/src files
+// Both are loaded by relative URL from this file, so the demo works under any sub-folder (/demo/ on the docs site).
 
-const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const el = document.createElement("script");
-    el.src = src;
-    el.onload = resolve;
-    el.onerror = () => reject(new Error(`could not load ${src}`));
-    document.head.append(el);
-  });
-}
-
-const text = async (url) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: ${res.status}`);
-  return res.text();
-};
+/** The compiled module at `path` (relative to this file), imported at run time. */
+const load = (path) => import(new URL(path, import.meta.url).href);
 
 /**
- * Loads Python and the creator, and returns `{ call(request) }`, which answers a request of python/render_ops.py with its reply.
- * `onStatus(text)` is told what is happening (the first load is a few megabytes).
+ * Loads the creator and returns `{ call(request) }`, which answers a request of src/render-ops.ts ({"op": "frames", ...}) with its reply.
+ * `onStatus(text)` is told what is happening (the first load is half a megabyte of JavaScript).
  * @param {{ onStatus?: (text: string) => void }} [options]
  */
 export async function loadRenderer({ onStatus = () => {} } = {}) {
-  onStatus("Loading the in-browser Python (a few megabytes, once)…");
-  await loadScript(`${PYODIDE}pyodide.js`);
-  const pyodide = await globalThis.loadPyodide({ indexURL: PYODIDE });
-
   onStatus("Loading her drawing code…");
-  const files = JSON.parse(await text("creator-files.json"));
-  for (const path of files) {
-    const dir = `/pkg/${path.split("/").slice(0, -1).join("/")}`;
-    pyodide.FS.mkdirTree(dir);
-    pyodide.FS.writeFile(`/pkg/${path}`, await text(`creator/${path}`));
-  }
-  pyodide.FS.mkdirTree("/app");
-  pyodide.FS.writeFile("/app/render_ops.py", await text("render_ops.py"));
-  pyodide.runPython(`
-import sys, json as _json
-sys.path.insert(0, "/pkg")
-sys.path.insert(0, "/app")
-from render_ops import handle as _handle
-
-def _call(request_json):
-    return _json.dumps(_handle(_json.loads(request_json)))
-`);
-  const call = pyodide.globals.get("_call");
+  const [ops, render, presets, head, body, model, urlstate, pynum, pyjson, pyjsonload, pyvalue] = await Promise.all([
+    load("js/render-ops.js"),
+    ...["render", "presets", "core-head", "body", "model", "urlstate", "pynum", "pyjson", "pyjsonload", "pyvalue"].map((name) => load(`creator/js/${name}.js`)),
+  ]);
+  const { handleLine } = ops.createRenderOps(ops.creatorFromModules({ render, presets, head, body, model, urlstate, pynum, pyjson, pyjsonload, pyvalue }));
   return {
-    // Python runs on this thread, so a request blocks the page while it draws; the frames are small, and a worker can come later.
+    // This runs on the page's own thread, so a request blocks the page while it draws; the frames are small, and a worker can come later.
+    // A request is JSON text in and a reply JSON text out, as it is between the server and its worker thread.
     async call(request) {
-      return JSON.parse(call(JSON.stringify(request)));
+      return JSON.parse(handleLine(JSON.stringify(request)));
     },
   };
 }

@@ -19,7 +19,7 @@ const repo = resolve(fileURLToPath(import.meta.url), "../..");
 const emotions = JSON.parse(readFileSync(join(repo, "emotions.json"), "utf8"));
 const PRESETS = ["risa", "linnea", "kyoko"];
 
-/** A renderer that answers like python/render_ops.py would, without Python, and remembers what it was asked. */
+/** A renderer that answers like src/render-ops.ts would, without the creator, and remembers what it was asked. */
 function fakeRenderer() {
   const calls: Record<string, any>[] = [];
   const renderer: Renderer = {
@@ -548,12 +548,13 @@ test("a card answered with a wrong id does nothing", async () => {
 test("when the renderer cannot load, the page is told instead of waiting for ever", async () => {
   const { events, next, say, send } = connect({ renderer: Promise.reject(new Error("no network")) });
   const notice = await next((e) => e.type === "notice");
-  assert.match(notice.text, /could not load its drawing code[^]*cdn\.jsdelivr\.net[^]*blocker[^]*Reload the page[^]*rhedak\.github\.io\/anime_ai_companion/);
+  assert.match(notice.text, /Could not load the drawing code[^]*blocker[^]*Reload the page[^]*rhedak\.github\.io\/anime_ai_companion/);
   assert.match(notice.text, /Details: no network/);
   // Later messages do not get a half-working answer or a stuck page: the reason again, and her turn ends.
   const reply = await say("make your hair mint green");
   assert.deepEqual(reply.map((e) => e.type), ["user", "notice", "done"]);
-  assert.match(reply[1].text, /could not load its drawing code/);
+  assert.match(reply[1].text, /Could not load the drawing code/);
+  assert.doesNotMatch(reply[1].text, /pyodide|python|jsdelivr/i);
   assert.ok(!events.some((e) => e.type === "delta" || e.type === "avatar"), "she said nothing and changed nothing");
   const work = await say("show me work mode");
   assert.deepEqual(work.map((e) => e.type), ["user", "notice", "done"]);
@@ -644,7 +645,8 @@ test("presets, moods, gestures, and the things she is honest about", () => {
 
 const creatorSrc = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/ts/src");
 test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(join(creatorSrc, "render.ts")) ? false : "the creator's TypeScript is not next to this repo (set CREATOR_SRC to its ts/src folder)" }, async () => {
-  const { createRenderOps, loadCreator } = await import("../src/render-ops.ts");
+  const { createRenderOps } = await import("../src/render-ops.ts");
+  const { loadCreator } = await import("../src/creator-load.ts");
   const keys = new Set<string>();
   for (const text of ["hair mint green and blue eyes", "short messy hair", "pink tips", "witch hat", "a red coat and skirt and top", "ribbon scarf mask boots belt black", "glasses"]) {
     for (const tag of findAvatarTags(say(text).text)) for (const key of Object.keys(tag)) keys.add(key);
@@ -654,9 +656,9 @@ test("every redraw she can ask for is something the creator's patch op accepts (
   assert.deepEqual([...keys].filter((k) => !known.has(k)), [], "every field she can change exists in the creator");
 });
 
-// The staged demo still carries the creator's Python package for Pyodide (the browser demo has not moved to the TypeScript yet), which sits in `src/`
-// next to the `ts/src` folder the app uses (demo/stage.mjs says where it looks).
-const creatorAvailable = existsSync(join(creatorSrc, "render.ts")) && existsSync(resolve(creatorSrc, "../../src/anime_character_creator"));
+// The staged demo carries the creator's TypeScript compiled to browser JavaScript (demo/stage.mjs says where it looks); test/demo-stage.test.ts
+// loads those modules and checks them against the server's drawing.
+const creatorAvailable = existsSync(join(creatorSrc, "render.ts"));
 test("staging the demo gives a flat static folder in demo mode that loads the demo's socket first and carries the renderer", { skip: creatorAvailable ? false : "the character creator is not next to this repo" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "anaico-demo-"));
   try {
@@ -672,10 +674,8 @@ test("staging the demo gives a flat static folder in demo mode that loads the de
     assert.match(html, /demo-banner[^]*nothing you type is sent anywhere[^]*github\.com\/rhedak\/anime_ai_companion/);
     assert.match(html, /demo-banner-short[^>]*>[^<]*nothing is sent anywhere/, "the short line keeps the privacy statement");
     assert.match(html, /class="demo-banner-toggle" aria-expanded="true"/, "the notice can be folded");
-    const list = JSON.parse(readFileSync(join(dir, "creator-files.json"), "utf8")) as string[];
-    assert.ok(list.includes("anime_character_creator/__init__.py"));
-    for (const file of list) assert.ok(existsSync(join(dir, "creator", file)), file);
-    for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "demo.css", "render_ops.py", "emotions.json", "custom.css"]) assert.ok(existsSync(join(dir, file)), file);
+    for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "demo.css", "emotions.json", "custom.css", "js/render-ops.js", "creator/js/render.js", "creator/js/presets.js", "creator/js/pyjsonload.js"]) assert.ok(existsSync(join(dir, file)), file);
+    assert.ok(!existsSync(join(dir, "creator-files.json")) && !existsSync(join(dir, "render_ops.py")), "no Python files list and no Python request handling");
     const packs = JSON.parse(readFileSync(join(dir, "packs.json"), "utf8"));
     assert.deepEqual(Object.keys(packs), DEMO_PACKS);
     for (const [name, info] of Object.entries<any>(packs)) {
