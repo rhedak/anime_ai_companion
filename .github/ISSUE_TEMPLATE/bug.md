@@ -7,4 +7,4 @@ about: Something does not work
 
 **Steps to reproduce**
 
-**Environment** (Node, Python, `claude --version`, OS)
+**Environment** (Node, `claude --version`, OS)

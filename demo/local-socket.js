@@ -65,8 +65,8 @@ export function createLocalSocket({
   /** Why the demo could not start (its drawing code did not load, say), or null. Nothing she says is any use without her, so every message gets this. */
   let failure = null;
   const startFailure = (err) =>
-    "The demo could not load its drawing code, so she cannot be drawn or answer yet. It fetches Python for the browser (Pyodide) from cdn.jsdelivr.net: " +
-    "a content blocker, a firewall or having no internet connection stops that. Reload the page to try again, or read about the real thing at " +
+    "Could not load the drawing code, so she cannot be drawn or answer yet. It is a few JavaScript files that come from the same place as this page: " +
+    "an interrupted connection, a content blocker or a browser too old for modern JavaScript stops that. Reload the page to try again, or read about the real thing at " +
     `https://rhedak.github.io/anime_ai_companion/ . (Details: ${err?.message ?? err})`;
   ready.catch((err) => void (failure = startFailure(err)));
   /** The conversation is answered one request at a time, in order, like the server's queue; it starts with her greeting. */

@@ -8,7 +8,6 @@ import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { MIN_NODE, tooOld } from "../bin/check-node.js";
-import { pythonCommand } from "./python.ts";
 
 export type Level = "ok" | "warn" | "fail";
 export interface DoctorLine {
@@ -24,7 +23,6 @@ export interface Probe {
   /** This repository's folder. */
   root: string;
   home: string;
-  python: string;
   port: number;
   /** Runs a program for its output; null when it is not there or does not answer. */
   run(command: string, args: string[]): string | null;
@@ -42,7 +40,6 @@ export function realProbe(root: string, port: number): Probe {
     nodeVersion: process.versions.node,
     root,
     home: homedir(),
-    python: pythonCommand(),
     port,
     run(command, args) {
       const result = spawnSync(command, args, { encoding: "utf8", timeout: 8000 });
@@ -83,12 +80,6 @@ export function realProbe(root: string, port: number): Probe {
   };
 }
 
-/** "Python 3.12.1" -> [3, 12]; null when it does not look like a version. */
-export function parsePython(output: string): [number, number] | null {
-  const match = /Python\s+(\d+)\.(\d+)/.exec(output);
-  return match ? [Number(match[1]), Number(match[2])] : null;
-}
-
 const firstLine = (text: string) => text.split("\n")[0].trim();
 
 export async function checkAll(p: Probe): Promise<DoctorLine[]> {
@@ -103,19 +94,9 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   if (p.exists(join(p.root, "node_modules", "ws"))) add("ok", "npm packages are installed");
   else add("fail", "npm packages are not installed", "Run: npm install");
 
-  // Python, which draws her
-  const version = p.run(p.python, ["--version"]);
-  const parsed = version ? parsePython(version) : null;
-  if (!parsed) {
-    add("fail", `Python not found (looked for ${p.python})`, "Install Python 3.11 or newer, or run `uv sync` here to make a .venv with one. PYTHON=/path/to/python picks another.");
-  } else if (parsed[0] < 3 || (parsed[0] === 3 && parsed[1] < 11)) {
-    add("fail", `Python ${parsed[0]}.${parsed[1]} is too old for the character drawing (${p.python})`, "Run `uv sync` here (makes a .venv with a new enough Python), or set PYTHON=/path/to/python3.11+");
-  } else {
-    add("ok", `Python ${parsed[0]}.${parsed[1]} (${p.python})`);
-  }
-
-  // The character creator
-  const sibling = resolve(p.root, "../anime-character-creator/src");
+  // The character creator: its TypeScript draws her, in this process (no Python, no other program)
+  const creatorRoot = resolve(p.root, "../anime-character-creator");
+  const sibling = join(creatorRoot, "ts/src");
   const pinned = (() => {
     try {
       return JSON.parse(p.readText(join(p.root, "package.json")) ?? "{}").creator?.ref as string | undefined;
@@ -123,20 +104,31 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
       return undefined;
     }
   })();
-  const cloned = pinned ? join(p.env.ANAICO_HOME ?? join(p.home, ".anaico"), "creator", pinned, "src") : "";
+  const clonedRoot = pinned ? join(p.env.ANAICO_HOME ?? join(p.home, ".anaico"), "creator", pinned) : "";
+  const cloned = clonedRoot ? join(clonedRoot, "ts/src") : "";
+  const hasTypeScript = (dir: string) => p.exists(join(dir, "render.ts"));
+  const notTypeScript = (dir: string, what: string) =>
+    add("fail", `Character creator: ${dir} (${what}) has no render.ts, so it is not the creator's TypeScript`, "Point it at the creator's ts/src folder. The releases before its TypeScript kept the Python package in src/, which this version no longer reads.");
   if (p.env.CREATOR_SRC) {
-    if (p.exists(p.env.CREATOR_SRC)) add("ok", `Character creator: ${p.env.CREATOR_SRC} (CREATOR_SRC)`);
-    else add("fail", `CREATOR_SRC points at ${p.env.CREATOR_SRC}, which does not exist`, "Fix the path, or unset CREATOR_SRC to use a checkout next to this repo or the pinned release.");
+    if (!p.exists(p.env.CREATOR_SRC)) add("fail", `CREATOR_SRC points at ${p.env.CREATOR_SRC}, which does not exist`, "Fix the path, or unset CREATOR_SRC to use a checkout next to this repo or the pinned release.");
+    else if (!hasTypeScript(p.env.CREATOR_SRC)) notTypeScript(p.env.CREATOR_SRC, "CREATOR_SRC");
+    else add("ok", `Character creator: ${p.env.CREATOR_SRC} (CREATOR_SRC)`);
   } else if (p.exists(sibling)) {
-    // The release this version was made for (package.json) is what a fresh install gets; a checkout of the creator's main may be ahead of it.
-    const at = pinned ? p.run("git", ["-C", resolve(sibling, ".."), "describe", "--tags", "--always"]) : null;
-    if (pinned && at && at !== pinned) {
-      add("warn", `Character creator: the checkout next to this repo is at ${at}, not the release this version pins (${pinned})`, `Fine for development, but a fresh install uses ${pinned}. To match it: git -C ${resolve(sibling, "..")} checkout ${pinned}`);
-    } else add("ok", `Character creator: the checkout next to this repo (${sibling})`);
-  }
-  else if (cloned && p.exists(cloned)) add("ok", `Character creator ${pinned}: already fetched (${cloned})`);
-  else if (p.run("git", ["--version"])) add("warn", `Character creator ${pinned ?? ""}: not here yet, so the first start downloads it into ${cloned || "~/.anaico/creator"}`, "That needs internet once. Or clone it next to this repo: git clone https://github.com/rhedak/anime-character-creator.git ../anime-character-creator");
-  else add("fail", "Character creator: not found, and git is not installed to fetch it", "Install git, or clone https://github.com/rhedak/anime-character-creator.git next to this repo and run again.");
+    if (!hasTypeScript(sibling)) notTypeScript(sibling, "the checkout next to this repo");
+    else {
+      // The release this version was made for (package.json) is what a fresh install gets; a checkout of the creator's main may be ahead of it.
+      const at = pinned ? p.run("git", ["-C", creatorRoot, "describe", "--tags", "--always"]) : null;
+      if (pinned && at && at !== pinned) {
+        add("warn", `Character creator: the checkout next to this repo is at ${at}, not the release this version pins (${pinned})`, `Fine for development, but a fresh install uses ${pinned}. To match it: git -C ${creatorRoot} checkout ${pinned}`);
+      } else add("ok", `Character creator: the checkout next to this repo (${sibling})`);
+    }
+  } else if (clonedRoot && p.exists(clonedRoot)) {
+    if (hasTypeScript(cloned)) add("ok", `Character creator ${pinned}: already fetched (${cloned})`);
+    else notTypeScript(cloned, `the copy fetched for ${pinned}`);
+  } else if (p.run("git", ["--version"])) {
+    const older = p.exists(join(creatorRoot, "src")) ? ` The checkout next to this repo (${creatorRoot}) has no ts/src, a release before the TypeScript, so it is not used.` : "";
+    add("warn", `Character creator ${pinned ?? ""}: not here yet, so the first start downloads it into ${cloned || "~/.anaico/creator"}`, `That needs internet once. Or clone it next to this repo: git clone https://github.com/rhedak/anime-character-creator.git ../anime-character-creator.${older}`);
+  } else add("fail", "Character creator: not found, and git is not installed to fetch it", "Install git, or clone https://github.com/rhedak/anime-character-creator.git next to this repo and run again.");
 
   // Brains: at least one must be there. Whether you are signed in is the brain's own business, so this does not try.
   const claude = p.run("claude", ["--version"]);

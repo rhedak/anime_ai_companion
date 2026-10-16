@@ -11,7 +11,7 @@ HTML, permission modes stay in memory, and the cache-friendly way of talking to 
 | --- | --- | --- | --- |
 | 1 | Check Ollama work mode with real models | first check done 2026-10-14 (`qwen3-coder:30b` good on small tasks, a 7B poor); docs wording and a real-app session still to do | Local code never leaves the machine; quality depends on the model |
 | 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
-| 3 | A demo that runs in the browser | phases 0 to 2 done and live at `/demo/` on the docs site (since 0.5.0); a few small things left, below | A try-before-you-install page, with no server and no cost |
+| 3 | A demo that runs in the browser | phases 0 to 2 done and live at `/demo/` on the docs site (since 0.5.0); drawing moved from Pyodide to the creator's compiled TypeScript (about 0.7 MB instead of about 6.5 MB, not yet released); a few small things left, below | A try-before-you-install page, with no server and no cost |
 
 Smaller ideas are at the end.
 
@@ -135,22 +135,25 @@ typecheck && npm test` (expect 288 passing), then start with step A: write the `
 Added 2026-10-13. Idea: a page people can open and try without installing anything, like the Godot web exports in `tank_tactics_2d`:
 a static folder on GitHub Pages (where the docs site already lives), no server and no running cost. The chat never leaves the visitor's browser.
 
-**Why it looks feasible.** `anime-character-creator` already ships a static web tool (`web/`, deployed to GitHub Pages) in which the visitor's
-browser runs the real Python through Pyodide and gets an SVG back from `render_character`; its bridge is about twenty lines and it loads
-Pyodide (v0.26.4) from jsDelivr and the package's `.py` files as plain files (3 MB). Our `python/render_worker.py` (191 lines) is the
-standard library plus the creator, JSON in and JSON out, so it becomes one function that takes a request and returns a reply instead of
-reading stdin. That keeps her whole redraw (hair, glasses, hats, expression, blink, mouth) without a picture pack.
+**Why it looked feasible (as first built, and since changed).** `anime-character-creator` shipped a static web tool (`web/`, deployed to GitHub
+Pages) in which the visitor's browser ran the real Python through Pyodide and got an SVG back from `render_character`; the demo started the
+same way, with our `python/render_worker.py` turned into one function that takes a request and returns a reply. **Now** (2026-10, the creator's
+TypeScript port): the demo has no Python and no Pyodide. The creator's `ts/src` is compiled to browser JavaScript by `demo/stage.mjs` (the creator's
+own `ts/tsconfig.web.json`, run with this repo's `tsc`) and so is the app's own request handling, `src/render-ops.ts`, which the server's worker
+thread also runs. The bridge builds the creator from those modules (`creatorFromModules`) and the page downloads about 0.7 MB instead of about
+6.5 MB. That keeps her whole redraw (hair, glasses, hats, expression, blink, mouth) without a picture pack, and with the server's exact bytes.
 
 **The architecture, to be confirmed by the spike.** `public/app.js` creates its WebSocket in one place and, as far as I can read, uses a
 handful of members of it (`send`, `onmessage`, `readyState`, `close`). A small stand-in object with those members, living in the page,
 could answer the messages the server answers today, so the real page (menus, bubbles, drawing, history) runs almost unmodified:
 
-- `demo/` (plain JavaScript, no build step, no TypeScript): `index.html`, `local-socket.js` (the stand-in for the server), a Pyodide worker
-  with the ported render function, `script.js` (the scripted conversation), later `model.js`.
+- `demo/` (plain JavaScript that is copied as it is; only the renderer is compiled, at staging): `index.html`, `local-socket.js` (the stand-in for
+  the server), `render-bridge.js` (the compiled drawing code; at first a Pyodide worker with the ported render function), `script.js` (the
+  scripted conversation), later `model.js`.
 - `public/` is copied into the demo at build time, so the demo always shows the real UI. The only change to `public/app.js` is that
   `connect()` may be handed a socket (`window.anaicoSocket`) instead of opening a WebSocket.
-- The creator's `.py` files are copied in at build time from the pinned tag in `package.json` (the pages workflow checks the creator out the
-  way CI does). Pyodide comes from the CDN at a pinned version.
+- The creator's TypeScript is compiled in at build time from the pinned tag in `package.json` (the pages workflow checks the creator out the
+  way CI does; the tag that has its TypeScript is still to be cut). Nothing comes from a CDN for drawing (it was Pyodide, at a pinned version).
 - Hosting: `/demo/` on the docs site; GitHub Pages already builds and serves it. Nothing else is needed (itch.io was considered and is not
   wanted).
 
@@ -163,10 +166,11 @@ port 8765). What it showed, in the browser, with no server:
 - "Make my hair mint green" produced a real redraw through Pyodide (hair colour, the page's own "new look" line, her expression and
   blush), and the page said "connected".
 - Timing on this machine, Chrome: connected in 4.7 s with the Pyodide files cached. A cold first visit is about 5.5 MB from the CDN
-  (`pyodide.asm.wasm` 3.1 MB, the standard library 2.3 MB, both gzip) plus about 1 MB for the demo itself, roughly 6.5 MB.
+  (`pyodide.asm.wasm` 3.1 MB, the standard library 2.3 MB, both gzip) plus about 1 MB for the demo itself, roughly 6.5 MB (the figures of the
+  Pyodide version; see "Drawing moved to the creator's TypeScript" below for today's).
 - The server and the demo now share code, so they cannot drift apart: `public/frames.js` (which frames to ask for) and `public/tags.js`
-  (how an `[avatar …]` tag is read) are imported by `src/avatar.ts` and `src/avatar-tags.ts`, and `python/render_ops.py` is the one place the
-  renderer's requests are answered (`render_worker.py` is only its stdin loop).
+  (how an `[avatar …]` tag is read) are imported by `src/avatar.ts` and `src/avatar-tags.ts`, and `python/render_ops.py` was the one place the
+  renderer's requests were answered (`render_worker.py` was only its stdin loop); that is `src/render-ops.ts` now.
 - Tests: `test/browser-demo.test.ts` (12) drives the stand-in against a fake renderer and checks the staged folder; the server tests and
   the avatar tests still pass against the shared code.
 
@@ -174,12 +178,13 @@ Found while doing it, to deal with in phase 1:
 
 - The page still shows controls that mean nothing without a server (the brain menu says "Ollama (local)", Work is greyed out, the folder,
   permission and effort menus, the phone link). Hide or replace them for the demo, and say plainly that it is a demo.
-- Python runs on the page's own thread, so a draw blocks the page for a moment. Fine so far; a Web Worker is the fix if it ever shows.
+- The drawing runs on the page's own thread (it did with Pyodide too), so a draw blocks the page for a moment. Fine so far; a Web Worker is the fix if it ever shows.
 - A message with two requests ("hair mint green and glasses") only gets the first: the scripted reply is one branch. Phase 1 should handle
   several, and a small rule-based reader for redraw requests (colours, glasses, hats, a few moods) will do more for the feel of it than
   canned buttons.
 - Not yet checked: a phone-width window, the speech and dictation buttons (they should be hidden), and what a visitor sees if the CDN is
-  blocked (a notice appears, and the page stays "disconnected").
+  blocked (a notice appears, and the page stays "disconnected"; with the drawing code now on the demo's own host, only the optional model's
+  downloads can be blocked).
 
 **Phase 1, the scripted demo (no model): done, locally.** `npm run demo` stages it and serves it on http://127.0.0.1:8765. What a visitor
 gets, all checked by hand in Chrome with no console errors:
@@ -217,7 +222,7 @@ header puts her beside the chat again.
 The docs site's top bar keeps "Try the demo" on one line and drops the plain GitHub pill below 480 px. Not tested on a real phone (touch,
 the on-screen keyboard, WebGPU on mobile).
 
-**CDN blocked: checked and fixed.** With the Pyodide address unreachable (tried with a host that does not resolve) the page stays "connecting…"
+**CDN blocked: checked and fixed (history: this was the Pyodide address, which the demo no longer uses; the notice now says the drawing code could not be loaded).** With the Pyodide address unreachable (tried with a host that does not resolve) the page stays "connecting…"
 with no picture. It used to say only "The demo could not start: could not load <url>", and a message sent after that got a half-working
 answer, then a technical error, and left the page on "Thinking…" for good. Now there is one plain notice (what failed, that a content blocker, a
 firewall or no connection stops it, reload to try again, where to read about the real thing, the details), every later message gets it again and
@@ -226,6 +231,17 @@ ends its turn, and a new chat does not greet. The optional model's own download 
 Published: it is live at `/demo/` on the docs site (the pages workflow stages it after the site build, with the creator checked out at the
 pinned tag as CI does) and linked from the README and the site (0.5.0). Still to do (small): proofread her lines; decide whether the demo
 should say where the real app's screenshots are.
+
+**Drawing moved to the creator's TypeScript: done, locally (2026-10, not yet released).** `src/render-ops.ts` is browser-safe (no `node:` import;
+`src/creator-load.ts` is the Node-only loader and `creatorFromModules` builds the creator from imported modules), `tsconfig.demo.json` compiles it
+(and `npm run typecheck` checks that it stays so), `demo/stage.mjs` compiles it to `js/` and the creator's `ts/src` to `creator/js/` (the creator's own
+`tsconfig.web.json` with `--outDir` and `--typeRoots` overridden: a checkout with no `node_modules` works), and `demo/render-bridge.js` imports them by
+relative URL. Python, Pyodide, `creator-files.json` and the jsDelivr address are gone from the demo. The page's files without the picture pack are
+about 0.7 MB (the creator's compiled code is 0.55 MB, about a quarter of that compressed), where it was about 6.5 MB. Checked in headless Chrome
+at the site root and under a sub-folder: the avatar's `<svg` is in the page, the status is "connected", and a patch and four frames drew in the
+browser. `test/demo-stage.test.ts` stages the demo for real: no Python or Pyodide in it, under 2 MB, and its compiled modules load in Node and draw
+the same SHA-256 as the server's path. Still to do: a creator release that has its TypeScript (the pin in `package.json` is v0.3.0, which has none,
+so the pages workflow and the README's clone commands wait for that tag).
 
 **Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
 that says what is downloaded and from where, how big it is, that it is small and a model on the visitor's own computer (Ollama) is the way to a
@@ -251,8 +267,8 @@ address. The build follows the GPU: `q4f16_1` where WebGPU has `shader-f16`, els
 
 - **Model quality.** A ~1B model is weak at persona, tags and long context; the demo must set that expectation, and phase 1 must be good on
   its own so the demo does not depend on it.
-- **Browser support.** WebGPU is solid in desktop Chrome and Edge and patchy elsewhere, and on phones. The first load is Pyodide (about
-  10 MB) plus the creator files; a model adds 0.5 to 1 GB.
+- **Browser support.** WebGPU is solid in desktop Chrome and Edge and patchy elsewhere, and on phones. The first load is about 0.7 MB (it was
+  about 10 MB with Pyodide and the creator's Python files); a model adds 0.5 to 1 GB.
 - **Staying in step with the app.** The stand-in server reimplements a small part of `server.ts`. Keep it to chat only, keep it in plain
   JavaScript, and list the messages it answers in one place, so a change to the protocol shows up as a failing test.
 - **Privacy wording.** True for the demo: nothing leaves the browser except the downloads. Say it, and say what is downloaded from where.

@@ -9,7 +9,8 @@ on:
       - "site/**"
       - "demo/**"
       - "public/**"
-      - "python/render_ops.py"
+      - "src/render-ops.ts"
+      - "tsconfig.demo.json"
       - "packs/risa-dress/**"
       - "emotions.json"
       - "src/frame-pack.ts"
@@ -37,8 +38,8 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run site
-      # The browser demo goes in the site at demo/. It carries the character creator's Python files (the pinned release, as CI uses), which
-      # Pyodide runs in the visitor's browser.
+      # The browser demo goes in the site at demo/. Staging compiles the character creator's TypeScript (the pinned release, as CI uses; its `ts/src`
+      # folder is CREATOR_SRC) and src/render-ops.ts to browser JavaScript with the `tsc` that `npm ci` installed: no Python, no Pyodide, no CDN.
       - id: creator
         run: echo "ref=$(node -p "require('./package.json').creator.ref")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -48,7 +49,7 @@ jobs:
           path: creator
       - run: node demo/stage.mjs --out site/dist/demo
         env:
-          CREATOR_SRC: ${{ github.workspace }}/creator/src
+          CREATOR_SRC: ${{ github.workspace }}/creator/ts/src
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist

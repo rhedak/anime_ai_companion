@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": [],
+    "removeComments": false,
+    "sourceMap": false,
+    "declaration": false,
+    "rootDir": "src",
+    "outDir": "out/demo/js"
+  },
+  "files": ["src/render-ops.ts"]
+}

@@ -9,8 +9,8 @@ If a `CLAUDE.local.md` exists, it describes this particular machine and wins whe
   `anaico`; `data/` is theirs and is meant to be used. The exception is when `CLAUDE.local.md` says the
   checkout is their live app: then verify your own changes in a scratch copy instead (see the end of the
   Checks section in `AGENTS.md`).
-- **Run `uv sync` once** before `npm test`: without `.venv`, the avatar and render tests fail on an
-  older `python3`.
+- **No Python is needed** to run the app or `npm test`: the creator's TypeScript (`../anime-character-creator/ts/src`, or `CREATOR_SRC`) draws her
+  in a worker thread. Without that folder the avatar, render and server tests skip.
 - **The app starts its own `claude` processes** (`claude -p`, on the user's plan). Tests must never start a
   real one: test the stream parsing against recorded output (`test/claude-stream.test.ts`,
   `test/fixtures/`). For a manual check, a stand-in `claude` script on the `PATH` is enough.

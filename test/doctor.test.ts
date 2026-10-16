@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkAll, formatDoctor, parsePython, type Probe } from "../src/doctor.ts";
+import { checkAll, formatDoctor, type Probe } from "../src/doctor.ts";
 
 /** A machine where everything is fine; each test spoils one thing. */
 function machine(overrides: Partial<Probe> & { files?: string[]; programs?: Record<string, string>; web?: Record<string, string> } = {}): Probe {
-  const files = new Set(["/repo/node_modules/ws", "/repo/data", "/anime-character-creator/src", ...(overrides.files ?? [])]);
+  const files = new Set(["/repo/node_modules/ws", "/repo/data", "/anime-character-creator/ts/src", "/anime-character-creator/ts/src/render.ts", ...(overrides.files ?? [])]);
   // `programs` and `web` replace the defaults when given, so a test can take a thing away.
-  const programs: Record<string, string> = overrides.programs ?? { "/repo/.venv/bin/python --version": "Python 3.12.1", "claude --version": "2.1.296 (Claude Code)", "git --version": "git version 2.45" };
+  const programs: Record<string, string> = overrides.programs ?? { "claude --version": "2.1.296 (Claude Code)", "git --version": "git version 2.45" };
   const web: Record<string, string> = overrides.web ?? { "http://127.0.0.1:11434/api/tags": JSON.stringify({ models: [{ name: "a" }, { name: "b" }] }) };
   const { files: _files, programs: _programs, web: _web, ...probe } = overrides;
   return {
@@ -14,7 +14,6 @@ function machine(overrides: Partial<Probe> & { files?: string[]; programs?: Reco
     nodeVersion: "25.9.0",
     root: "/repo",
     home: "/home/me",
-    python: "/repo/.venv/bin/python",
     port: 3737,
     run: (command, args) => programs[[command, ...args].join(" ")] ?? null,
     exists: (path) => files.has(path),
@@ -34,21 +33,12 @@ test("everything in place: all ok, exit clean, and the summary says so", async (
   assert.deepEqual(bad, []);
   assert.ok(lines.some((l) => l.level === "ok" && /Claude Code 2\.1\.296/.test(l.text)));
   assert.ok(lines.some((l) => l.level === "ok" && /Ollama.*2 models/.test(l.text)));
-  assert.ok(lines.some((l) => l.level === "ok" && /Python 3\.12/.test(l.text)));
+  assert.ok(!lines.some((l) => /python/i.test(l.text)), "nothing about Python: the creator's TypeScript draws her, in this process");
   assert.match(formatDoctor(lines.filter((l) => l.level === "ok")), /Everything looks fine/);
 });
 
-test("a Python that is too old, or missing, is a failure with the way out", async () => {
-  const old = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.9.9", "claude --version": "2" } }));
-  const tooOld = old.find((l) => l.level === "fail")!;
-  assert.match(tooOld.text, /Python 3\.9 is too old/);
-  assert.match(tooOld.hint!, /uv sync/);
-  const missing = await checkAll(machine({ python: "python3", programs: {} }));
-  assert.ok(missing.some((l) => l.level === "fail" && /Python not found/.test(l.text)));
-});
-
 test("no brain at all is a failure; a single missing brain is only a note", async () => {
-  const none = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.12.1", "git --version": "git version 2" }, web: {} }));
+  const none = await checkAll(machine({ programs: { "git --version": "git version 2" }, web: {} }));
   assert.ok(none.some((l) => l.level === "fail" && /No brain found/.test(l.text)));
   const one = await checkAll(machine());
   assert.ok(!one.some((l) => l.level === "fail"));
@@ -60,7 +50,7 @@ test("the creator: next to the repo, already fetched, to be fetched, or impossib
   const sibling = await checkAll(machine());
   assert.ok(sibling.some((l) => l.level === "ok" && /next to this repo/.test(l.text)));
   const gone = machine();
-  const fetchedLater = await checkAll({ ...gone, exists: (p) => p === "/repo/node_modules/ws" || p === "/repo/data" || p === "/home/me/.anaico/creator/v0.2.2/src" });
+  const fetchedLater = await checkAll({ ...gone, exists: (p) => ["/repo/node_modules/ws", "/repo/data", "/home/me/.anaico/creator/v0.2.2", "/home/me/.anaico/creator/v0.2.2/ts/src/render.ts"].includes(p) });
   assert.ok(fetchedLater.some((l) => l.level === "ok" && /v0\.2\.2: already fetched/.test(l.text)));
   const willFetch = await checkAll({ ...gone, exists: (p) => p === "/repo/node_modules/ws" || p === "/repo/data" });
   assert.ok(willFetch.some((l) => l.level === "warn" && /first start downloads it/.test(l.text)));
@@ -68,6 +58,24 @@ test("the creator: next to the repo, already fetched, to be fetched, or impossib
   assert.ok(noGit.some((l) => l.level === "fail" && /git is not installed/.test(l.text)));
   const badOverride = await checkAll({ ...gone, env: { CREATOR_SRC: "/nowhere/src" } });
   assert.ok(badOverride.some((l) => l.level === "fail" && /CREATOR_SRC points at/.test(l.text)));
+});
+
+test("the creator must be its TypeScript: a folder without render.ts (the Python src of an earlier release) is a failure with the way out", async () => {
+  const only = ["/repo/node_modules/ws", "/repo/data"];
+  const exists = (extra: string[]) => (p: string) => [...only, ...extra].includes(p);
+  const override = await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: exists(["/old/src"]) }));
+  const bad = override.find((l) => l.level === "fail" && /has no render\.ts/.test(l.text));
+  assert.ok(bad, "an override that is not the TypeScript");
+  assert.match(bad!.hint!, /ts\/src/);
+  assert.ok((await checkAll(machine({ env: { CREATOR_SRC: "/new/ts/src" }, exists: exists(["/new/ts/src", "/new/ts/src/render.ts"]) }))).some((l) => l.level === "ok" && /CREATOR_SRC/.test(l.text)));
+  const sibling = await checkAll(machine({ exists: exists(["/anime-character-creator/ts/src"]) }));
+  assert.ok(sibling.some((l) => l.level === "fail" && /next to this repo\) has no render\.ts/.test(l.text)));
+  const fetched = await checkAll(machine({ exists: exists(["/home/me/.anaico/creator/v0.2.2"]) }));
+  assert.ok(fetched.some((l) => l.level === "fail" && /fetched for v0\.2\.2\) has no render\.ts/.test(l.text)));
+  // an older release next to this repo (the Python layout) is not used; the first start fetches the pinned one, and the hint says so
+  const older = await checkAll(machine({ exists: exists(["/anime-character-creator/src"]) }));
+  const fetch = older.find((l) => l.level === "warn" && /first start downloads it/.test(l.text));
+  assert.match(fetch!.hint!, /has no ts\/src/);
 });
 
 test("a busy port is fine when it is the companion itself, and a warning when it is not", async () => {
@@ -84,26 +92,20 @@ test("missing packages and an unwritable data folder are failures", async () => 
 });
 
 test("the report lists hints under problems only, and counts them", async () => {
-  const text = formatDoctor(await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.9.9", "claude --version": "2" } })));
-  assert.match(text, /✗ Python 3\.9 is too old[^]*\n {4}Run `uv sync`/);
+  const text = formatDoctor(await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: (p) => ["/repo/node_modules/ws", "/repo/data", "/old/src"].includes(p) })));
+  assert.match(text, /✗ Character creator: \/old\/src \(CREATOR_SRC\) has no render\.ts[^\n]*\n {4}Point it at the creator's ts\/src folder/);
   assert.match(text, /1 problem to fix before it will start/);
   assert.doesNotMatch(text, /✓ Node[^\n]*\n {4}/, "no hint under an ok line");
 });
 
-test("Python versions are read from `python --version` output", () => {
-  assert.deepEqual(parsePython("Python 3.12.1"), [3, 12]);
-  assert.deepEqual(parsePython("Python 3.9.9\n"), [3, 9]);
-  assert.equal(parsePython("command not found"), null);
-});
-
 test("a checkout of the creator that is not at the pinned release is a warning with the way back, and one at it is fine", async () => {
   const git = "git -C /anime-character-creator describe --tags --always";
-  const ahead = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.12.1", "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2-1-g1bcb2f8" } }));
+  const ahead = await checkAll(machine({ programs: { "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2-1-g1bcb2f8" } }));
   const warning = ahead.find((l) => /next to this repo is at v0\.2\.2-1-g1bcb2f8/.test(l.text));
   assert.equal(warning?.level, "warn");
   assert.match(warning!.text, /not the release this version pins \(v0\.2\.2\)/);
   assert.match(warning!.hint!, /checkout v0\.2\.2/);
-  const exact = await checkAll(machine({ programs: { "/repo/.venv/bin/python --version": "Python 3.12.1", "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2" } }));
+  const exact = await checkAll(machine({ programs: { "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2" } }));
   assert.ok(exact.some((l) => l.level === "ok" && /the checkout next to this repo/.test(l.text)));
   assert.ok(!exact.some((l) => /not the release/.test(l.text)));
 });

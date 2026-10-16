@@ -1,25 +1,33 @@
 # The browser demo (work in progress)
 
-A version of the page that runs with no server: the visitor's browser runs the character's drawing code (Python, through Pyodide) and a
-stand-in for the server answers the page. See step 3 of [docs/plan.md](../docs/plan.md) for the whole idea and what is still to do.
+A version of the page that runs with no server: the visitor's browser runs the character's drawing code (the creator's TypeScript, compiled to
+JavaScript, with this app's own `src/render-ops.ts`) and a stand-in for the server answers the page. See step 3 of
+[docs/plan.md](../docs/plan.md) for the whole idea and what is still to do.
 
 ```bash
 npm run demo                       # stages into out/demo and serves it on http://127.0.0.1:8765
 node demo/stage.mjs --out <dir>    # only stage
 ```
 
-The first load needs the internet (Pyodide comes from a CDN, about 5.5 MB); after that it is cached by the browser.
+Staging runs this repository's `tsc` twice (about two seconds), so it needs `npm install` and the creator's `ts/src` folder (found the way the app
+finds it, or `CREATOR_SRC`). The first load downloads about 0.7 MB in all (0.55 MB of that is the creator's compiled drawing code, and a static host compresses it to
+about a quarter), without the picture pack, which comes only when it is chosen. The drawing needs no CDN, no Python and no WebAssembly (the
+first load was about 6.5 MB, mostly Pyodide, when she was drawn by Python). The browser caches it.
 
 What is here, and how the pieces fit:
 
-- `stage.mjs` assembles a flat static folder from `public/` (the real page), these files, `python/render_ops.py` and the creator's package
-  (found the same way the app finds it). In the repository the demo's files import the shared code as `../public/x.js`; staging rewrites that
-  to `./x.js`.
+- `stage.mjs` assembles a flat static folder from `public/` (the real page), these files, and the renderer, which it compiles: `src/render-ops.ts`
+  with `tsconfig.demo.json` into `js/`, and the creator's `ts/src` with the creator's own `ts/tsconfig.web.json` (run with this repository's `tsc`,
+  and `--outDir` and `--typeRoots` overridden, because the creator's config asks for Node's types and a pinned clone has no `node_modules`) into
+  `creator/js/`. Both compile with `rewriteRelativeImportExtensions`, which turns the `.ts` imports into `.js` ones, as a browser needs. In the
+  repository the demo's files import the shared code as `../public/x.js`; staging rewrites that to `./x.js`.
 - `demo-boot.js` runs before `public/app.js` and gives it a socket (`window.anaicoSocket`) that lives in the page.
 - `local-socket.js` is that socket: the few members of a `WebSocket` the page uses, answering the messages the page sends the way
   `src/server.ts` does for a chat without tools.
-- `render-bridge.js` loads Pyodide (from jsDelivr, pinned) and the creator's files, and runs `python/render_ops.py`, the same request
-  handling as the server's worker.
+- `render-bridge.js` imports the compiled files by relative URL (`js/render-ops.js`, `creator/js/*.js`), builds the creator with
+  `creatorFromModules` and runs `createRenderOps`, the same request handling the server's worker thread runs (`src/render-worker.ts`, which
+  gets the creator from `src/creator-load.ts` instead). It answers `call(request)` with the reply, so a request gets the same bytes here as
+  there (`test/demo-stage.test.ts` checks the SHA-256 of the SVGs).
 - `script.js` is what she says: a small rule-based reader that turns a message into a reply with the same tags a model would write. It
   understands several requests in one message (hair, eyes, glasses, hats, a coat, a skirt, hairstyles, presets, moods, gestures, taking things
   off) and answers honestly about anything else. `GREETING` is her first message.
@@ -52,5 +60,11 @@ What is here, and how the pieces fit:
 - `public/frames.js` and `public/tags.js` are shared with the server (`src/avatar.ts`, `src/avatar-tags.ts`): the demo asks for exactly the
   frames the server would, because it runs the same code. Do not fork them.
 
-Rules: plain JavaScript, no build step, nothing from here imported by `src/`. Tests: `test/browser-demo.test.ts` (run under `npm test`);
-the page itself is checked by hand in Chrome.
+Rules: the demo's own files are plain JavaScript that is copied as it is, nothing from here is imported by `src/`, and every URL is relative so
+it works under a sub-folder. The one build step is the renderer's compile in `stage.mjs`; `src/render-ops.ts` must stay free of `node:` imports
+(`npm run typecheck` compiles it with `tsconfig.demo.json`, which has no Node types, so an import of Node fails there), and Node-only loading
+lives in `src/creator-load.ts`. Tests: `test/browser-demo.test.ts` and `test/demo-stage.test.ts` (stages the demo into a temporary folder, checks
+that there is no Python or Pyodide in it, that it is under 2 MB without the picture pack, and that its compiled modules load in Node and
+draw the server's bytes); both run under `npm test`. The page itself is checked by hand in Chrome: stage it, serve the folder with
+`python3 -m http.server <port> --bind 127.0.0.1 --directory <dir>` (or `npm run demo`), and look for the avatar's `<svg` in
+`chrome --headless=new --virtual-time-budget=60000 --dump-dom http://127.0.0.1:<port>/`, also with the folder staged under `<dir>/demo/`.

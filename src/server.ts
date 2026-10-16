@@ -6,7 +6,6 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { AvatarService, GESTURE_NAMES } from "./avatar.ts";
-import { pythonCommand } from "./python.ts";
 import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
@@ -58,8 +57,6 @@ const emotions = JSON.parse(await readFile(join(root, "emotions.json"), "utf8"))
 const creatorSrc = await resolveCreatorSrc();
 const avatar = new AvatarService({
   creatorSrc,
-  python: pythonCommand(),
-  workerPath: join(root, "python/render_worker.py"),
   statePath: join(root, "data/avatar.json"),
   looksDir: join(root, "data/looks"),
   emotions,
@@ -1263,7 +1260,7 @@ server.listen(port, bindHost, () => {
   void shareNudge(
     [
       { name: "anime_ai_companion", dir: root, url: "https://github.com/rhedak/anime_ai_companion" },
-      { name: "anime-character-creator", dir: resolve(creatorSrc, ".."), url: "https://github.com/rhedak/anime-character-creator" },
+      { name: "anime-character-creator", dir: resolve(creatorSrc, "../.."), url: "https://github.com/rhedak/anime-character-creator" },
     ],
     join(root, "data/nudge.json"),
   );
