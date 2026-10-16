@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.2.5 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.3.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -52,7 +52,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | Her name | click it, or `/rename Hana` | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
-| Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
+| Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
 | Her expressions | `emotions.json` | restart the server |
 | Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |

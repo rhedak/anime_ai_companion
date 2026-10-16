@@ -45,7 +45,7 @@ button, the recording your browser's speech recognition sends to the browser mak
 ## Quick start
 
 ```bash
-git clone --branch v0.2.5 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.3.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -102,6 +102,11 @@ She can redesign herself at any time, so it is reversible: **Undo** steps back t
 changes, **Save look** stores the current look by name, and the **Looks** menu loads one, or opens **Presets…**, a gallery with a preview of each of the 19 built-in characters (Undo brings the old look back). She can load
 a saved look herself too (`[avatar load=name]`). Saved looks are plain files in `data/looks/`; delete a
 file to delete a look.
+
+She is drawn in the creator's **soft finish** by default (gradients in the eyes and blush, tinted lines, tone clumps in the hair),
+which sits closer to a picture pack than the flat house style. It is only a starting value: ask her for `finish=flat` (`[avatar finish=flat]`)
+to turn it off, or `highlight_strength=0.5` (0 to 2, 1 by default) for softer hair, and a look that says `flat` stays flat (one saved before the finish existed has chosen nothing, so it is drawn soft too).
+The soft finish needs the creator at v0.3.0 or newer; an older creator draws the flat style and nothing is set.
 
 ## Your own pictures instead of the drawn avatar
 

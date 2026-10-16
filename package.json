@@ -1,6 +1,6 @@
 {
   "name": "anime-ai-companion",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "A local browser-based anime AI companion, drawn by code and driven by a headless Claude Code session",
@@ -28,7 +28,7 @@
   },
   "creator": {
     "url": "https://github.com/rhedak/anime-character-creator.git",
-    "ref": "v0.2.5"
+    "ref": "v0.3.0"
   },
   "scripts": {
     "start": "node bin/check-node.js && node src/server.ts",

@@ -133,8 +133,25 @@ def op_schema(_req):
     }
 
 
+# She is drawn beside picture packs, and the creator's soft finish (gradients, tinted lines, tone in the hair) is what
+# closes most of the gap between a drawn figure and a painted one, so every starting character is soft. It is only a
+# starting value: `finish` and `highlight_strength` are ordinary fields she or the user can change (`[avatar finish=flat]`),
+# and a creator older than the soft finish has neither field, so then nothing is set.
+# A character with no `finish` at all (a look saved before the field existed, in the app or in a visitor's browser) has made no
+# choice, so it is drawn with the default too; one that says `flat` stays flat.
+DEFAULT_FINISH = "soft"
+
+
+def starting_look(name):
+    """The creator's preset as a character dict, with the companion's default finish."""
+    character = params_to_dict(PRESETS[name])
+    if "finish" in TOP:
+        character["finish"] = DEFAULT_FINISH
+    return character
+
+
 def op_base(req):
-    return {"character": params_to_dict(PRESETS[req["name"]])}
+    return {"character": starting_look(req["name"])}
 
 
 def op_patch(req):
@@ -144,7 +161,7 @@ def op_patch(req):
     base = items.pop("base", None)
     if base is not None:
         if base in PRESETS:
-            character = params_to_dict(PRESETS[base])
+            character = starting_look(base)
             applied.append(f"base={base}")
         else:
             rejected.append({"key": "base", "reason": f"unknown preset '{base}'"})
@@ -169,6 +186,8 @@ def op_patch(req):
 
 def op_frames(req):
     character = json.loads(json.dumps(req["character"]))
+    if "finish" in TOP:
+        character.setdefault("finish", DEFAULT_FINISH)
     character["face"].update(req.get("face", {}))
     if "poses" in req:
         # one frame per pose (a pose overrides top-level fields such as right_arm_out), mouth at rest
