@@ -1,5 +1,5 @@
 // Stages what the installer carries next to the shell: the app itself (only what runs, with its production packages) and the character creator at the
-// release package.json pins. Same contents as the Mac app builder (scripts/build-mac-app.sh) puts in its bundle. Output: app/stage/.
+// release package.json pins. Output: app/stage/.
 //   node scripts/stage.mjs
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";

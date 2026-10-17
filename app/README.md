@@ -9,6 +9,7 @@ cd app
 npm install     # downloads Electron and electron-builder
 npm start       # a checkout: runs ../src/server.ts, creator from ../../anime-character-creator
 npm run dist    # stages the app and the creator, builds dist/Anime AI Companion Setup <version>.exe (about 145 MB)
+npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -mac.zip, one per chip (about 210 MB each)
 ```
 
 - **User files** are in Electron's `userData` folder (`%APPDATA%\Anime AI Companion` on Windows), as `data/`, `workspace/` and `server.log`
@@ -23,4 +24,11 @@ npm run dist    # stages the app and the creator, builds dist/Anime AI Companion
 - **Choosing a folder** uses the server's own dialog (`src/folder-picker.ts`: PowerShell on Windows, osascript on a Mac), so the shell needs nothing extra.
 - **The tray icon** (Risa) brings the window back on a click; its menu has Show, Open in Browser and Quit. Closing the window only hides it: she and her
   server keep running until Quit, and the first time Windows says so in a notice. Quit stops the server too.
-- **Not done yet:** signing, auto-update, and moving the Mac app onto this shell.
+- **On a Mac** the files are in `~/Library/Application Support/Anime AI Companion/`. A Finder-launched app has a bare `PATH`, so the shell asks the user's
+  login shell for theirs (and adds `~/.local/bin`, `~/.opencode/bin`, Homebrew and the like) before starting the server; otherwise `claude`, `opencode`,
+  `cursor-agent` and `ollama` would not be found. Choosing the first brain on a fresh start is the server's own job (basic mode), not the shell's.
+  Closing the window hides it (the Dock icon or the menu-bar icon brings it back); Cmd-Q quits and stops the server.
+- **Signing:** the Mac build is signed ad hoc (`identity: "-"`), not with a developer certificate (that needs an Apple Developer account), so Apple Silicon
+  accepts it but macOS still blocks the first launch of a downloaded copy: right-click → **Open**, then **Open** again (or System Settings → Privacy &
+  Security → **Open Anyway**). The Windows installer is unsigned too.
+- **Not done yet:** a developer certificate and notarisation, and auto-update.

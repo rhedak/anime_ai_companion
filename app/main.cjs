@@ -1,5 +1,5 @@
 // The desktop shell. It does not contain the app: it starts the app's own server (src/server.ts, run by Electron's bundled Node) and shows the
-// page it serves in a window, like the Mac stub (scripts/mac) does with a native one. The server stays what it is everywhere else: listening on
+// page it serves in a window (Windows and macOS). The server stays what it is everywhere else: listening on
 // 127.0.0.1 only, with the user's files in a folder of their own (ANAICO_DATA, ANAICO_WORKSPACE), never inside the program.
 const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
@@ -22,6 +22,20 @@ let quitting = false;
 let win = null;
 let tray = null; // kept in a variable so it is not garbage collected, which would remove the icon
 const iconPath = path.join(__dirname, "build", "icon.png");
+const isMac = process.platform === "darwin";
+
+// A Finder-launched app gets a bare PATH, so the server would not find claude, opencode, cursor-agent or ollama. Ask the user's own login shell for its PATH
+// (a marker line, because start-up files may print other things) and add the usual install places in case that fails.
+function macPath() {
+  const home = app.getPath("home");
+  let fromShell = "";
+  try {
+    const out = spawnSync(process.env.SHELL || "/bin/zsh", ["-ilc", 'printf "\\nANAICO_PATH=%s\\n" "$PATH"'], { encoding: "utf8", timeout: 5000 }).stdout || "";
+    fromShell = (out.match(/^ANAICO_PATH=(.*)$/m) || [])[1] || "";
+  } catch {}
+  const usual = [".local/bin", ".opencode/bin", ".claude/local", ".npm-global/bin"].map((d) => path.join(home, d)).concat(["/opt/homebrew/bin", "/usr/local/bin"]);
+  return [fromShell, ...usual, process.env.PATH || ""].filter(Boolean).join(":");
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -87,6 +101,7 @@ async function startServer() {
     ANAICO_DATA: data,
     ANAICO_WORKSPACE: workspace,
   };
+  if (isMac) env.PATH = macPath();
   if (bundledCreator) env.CREATOR_SRC = bundledCreator;
   const log = fs.openSync(logPath(), "a");
   server = spawn(process.execPath, [path.join(appRoot, "src", "server.ts")], { cwd: appRoot, env, stdio: ["ignore", log, log], windowsHide: true });
@@ -118,7 +133,7 @@ function hideToTray() {
 }
 
 function createTray() {
-  tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32, quality: "best" }));
+  tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: isMac ? 18 : 32, height: isMac ? 18 : 32, quality: "best" }));
   tray.setToolTip("Anaico");
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -175,7 +190,8 @@ function createWindow() {
 
 function buildMenu() {
   const template = [
-    { label: "File", submenu: [{ label: "Open in Browser", click: () => shell.openExternal(origin + "/") }, { type: "separator" }, { role: "quit" }] },
+    ...(isMac ? [{ role: "appMenu" }] : []),
+    { label: "File", submenu: [{ label: "Open in Browser", click: () => shell.openExternal(origin + "/") }, ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }])] },
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
     {
       label: "View",
@@ -187,6 +203,7 @@ function buildMenu() {
 
 async function main() {
   buildMenu();
+  if (isMac && !app.isPackaged) app.dock.setIcon(nativeImage.createFromPath(iconPath));
   origin = await startServer();
   createTray();
   createWindow();
