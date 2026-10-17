@@ -1,8 +1,8 @@
-import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { MIN_NODE, oldNodeMessage, tooOld } from "../bin/check-node.js";
 
 test("a Node older than the minimum is refused, equal or newer is not", () => {
@@ -29,8 +29,8 @@ test("an old Node gets a plain message and a failing exit code, before any TypeS
   assert.match(oldNodeMessage("20.11.1"), /nodejs\.org/);
 });
 
-test("the anaico launcher starts the CLI on a Node that is new enough", { skip: winSkip }, () => {
-  const run = spawnSync(process.execPath, [new URL("../bin/anaico.js", import.meta.url).pathname, "--help"], { encoding: "utf8" });
+test("the anaico launcher starts the CLI on a Node that is new enough", () => {
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL("../bin/anaico.js", import.meta.url)), "--help"], { encoding: "utf8" });
   assert.equal(run.status, 0);
   assert.match(run.stdout, /Usage: anaico/);
 });

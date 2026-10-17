@@ -1,4 +1,4 @@
-﻿import { removeDir } from "./helpers/platform.ts";
+import { removeDir } from "./helpers/platform.ts";
 import { writeStandIn } from "./helpers/standin.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";

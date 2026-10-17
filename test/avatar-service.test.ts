@@ -1,4 +1,3 @@
-import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
@@ -182,7 +181,7 @@ async function stubbed(mode: "hang" | "exit" | "throw", timeoutMs = 15_000) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Skipped on Windows for now: its short timeout is flaky on a slow runner. To be made robust.
 
-test("a render that never ends is cut off at the timeout, the thread is really stopped, and the next call gets a fresh renderer", { skip: skip || winSkip }, async () => {
+test("a render that never ends is cut off at the timeout, the thread is really stopped, and the next call gets a fresh renderer", { skip }, async () => {
   const { s, lines } = await stubbed("hang", 700);
   try {
     const started = Date.now();
