@@ -19,6 +19,15 @@ what to send.
 Next time, double-click `windows-start.bat` again; it skips what is already there. Under *Brain* in the page you can switch to
 Claude Code, Cursor or Ollama if you have one of them.
 
+## Installing opencode from the page
+
+With no brain installed, the page shows a card, **Install opencode for her?** (it also appears when you pick opencode in the *Brain* menu and it is not
+there). It says what it will do and fetches nothing until you press **Install opencode**: it downloads a fixed version of opencode from GitHub (about
+60 MB), checks it against a checksum the app already knows, keeps it in `data\tools\` (for the desktop app that is `%APPDATA%\Anime AI Companion`),
+runs it once to see that it starts, and switches her to it. There is no administrator prompt and nothing is added to your PATH. The copy has its own
+settings and history, separate from any OpenCode you have installed yourself, and one you installed yourself is never touched. If it fails, the
+card says why and offers to try again.
+
 ## Notes
 
 - **Where things live.** Your chat, settings and her look are in the app's `data\` folder; the creator is kept in `%USERPROFILE%\.anaico\creator`.

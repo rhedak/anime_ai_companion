@@ -49,6 +49,16 @@ export function managedOpencode(root: string = dataDir, platform: string = proce
   return existsSync(program) ? program : null;
 }
 
+/**
+ * The environment the managed copy runs with: its own config, data, cache and state folders. opencode keeps one database in the user's home and
+ * refuses to start when another generation of OpenCode (the desktop app, a newer or older CLI) has written there ("Database is not empty and has no
+ * session table"), and this copy must neither fall over that nor touch what is there. Free models need no sign-in, so nothing is lost by it.
+ */
+export function managedOpencodeEnv(root: string = dataDir): Record<string, string> {
+  const home = join(root, "tools", "opencode-home");
+  return { XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config"), XDG_CACHE_HOME: join(home, "cache"), XDG_STATE_HOME: join(home, "state") };
+}
+
 export interface InstallProgress {
   stage: "download" | "unpack" | "check";
   received?: number;
@@ -70,6 +80,22 @@ export interface InstallOptions {
 
 /** An install that failed, with a message that is fit to show the user as it is. */
 export class InstallError extends Error {}
+
+/**
+ * Renames, trying again for a few seconds when Windows says no. A program that has just been written or run is held for a moment by the virus scanner
+ * (Defender), and renaming its folder then fails with EPERM, EBUSY or EACCES: it passes on its own. Other errors are not retried.
+ */
+export async function renameWithRetry(from: string, to: string, rename_: (a: string, b: string) => Promise<void> = rename, waitMs = 250, tries = 20): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename_(from, to);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (attempt >= tries || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw err;
+      await new Promise((resolve) => setTimeout(resolve, waitMs * Math.min(attempt, 8)));
+    }
+  }
+}
 
 /** `tar` ships with Windows 10 (1803) and later and reads zip files. */
 function defaultExtract(archive: string, into: string): Promise<void> {
@@ -157,7 +183,7 @@ export async function installOpencode(options: InstallOptions = {}): Promise<str
     const finalFolder = opencodeFolder(root);
     await rm(finalFolder, { recursive: true, force: true });
     await mkdir(dirname(finalFolder), { recursive: true });
-    await rename(unpacked, finalFolder);
+    await renameWithRetry(unpacked, finalFolder);
     return join(finalFolder, asset.program);
   } finally {
     await rm(scratch, { recursive: true, force: true });

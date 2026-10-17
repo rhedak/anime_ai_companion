@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, managedOpencode, opencodeAsset, opencodeFolder, opencodeUrl, type InstallProgress, type OpencodeAsset } from "../src/install-opencode.ts";
+import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, managedOpencode, managedOpencodeEnv, opencodeAsset, opencodeFolder, opencodeUrl, renameWithRetry, type InstallProgress, type OpencodeAsset } from "../src/install-opencode.ts";
 import { brainProgram } from "../src/programs.ts";
 
 let root = "";
@@ -155,7 +155,41 @@ describe("installing", () => {
   });
 });
 
+describe("renaming while the virus scanner holds the file", () => {
+  const failing = (code: string, times: number) => {
+    let calls = 0;
+    const rename_ = async () => {
+      if (++calls <= times) throw Object.assign(new Error(code), { code });
+    };
+    return { rename_, calls: () => calls };
+  };
+
+  test("EPERM, EBUSY and EACCES are tried again until it works", async () => {
+    for (const code of ["EPERM", "EBUSY", "EACCES"]) {
+      const f = failing(code, 3);
+      await renameWithRetry("a", "b", f.rename_, 1);
+      assert.equal(f.calls(), 4, code);
+    }
+  });
+
+  test("it gives up after the last try, and another error is not retried at all", async () => {
+    const stuck = failing("EPERM", 99);
+    await assert.rejects(renameWithRetry("a", "b", stuck.rename_, 1, 5), /EPERM/);
+    assert.equal(stuck.calls(), 5);
+    const missing = failing("ENOENT", 99);
+    await assert.rejects(renameWithRetry("a", "b", missing.rename_, 1), /ENOENT/);
+    assert.equal(missing.calls(), 1);
+  });
+});
+
 describe("finding the program", () => {
+  test("the managed copy runs in folders of its own, inside the app's data folder", () => {
+    const env = managedOpencodeEnv(root);
+    assert.deepEqual(Object.keys(env).sort(), ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]);
+    for (const folder of Object.values(env)) assert.ok(folder.startsWith(join(root, "tools", "opencode-home")), folder);
+    assert.equal(new Set(Object.values(env)).size, 4, "four different folders");
+  });
+
   test("nothing installed by us: the plain name; the user's own OPENCODE_BIN always wins", () => {
     assert.equal(managedOpencode(join(root, "nowhere"), "win32", "x64"), null);
     assert.equal(brainProgram("opencode", { OPENCODE_BIN: "C:\\mine\\opencode.exe" }), "C:\\mine\\opencode.exe");
