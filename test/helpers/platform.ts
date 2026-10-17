@@ -3,11 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
- * The tests that assume a POSIX machine (stand-in programs written as shell scripts, `ls`, `/`-separated fake paths, file permission bits)
- * are skipped on Windows until Windows has been tried for real. The rest of the suite runs there, so the Windows CI job still guards it.
- * Remove a skip when its test has been made portable.
+ * Helpers for tests that touch the file system or start programs, so the same suite runs on macOS, Linux and Windows. Nothing is skipped on Windows
+ * any more: a test that has to say something in a system's own words (a shell command, a permission bit, a path) branches on
+ * `process.platform` inside the test and still asserts the same thing. See also standin.ts for the fake `claude`, `opencode` and `cursor-agent`.
  */
-export const winSkip: string | false = process.platform === "win32" ? "assumes a POSIX machine; not yet ported to Windows" : false;
 
 /**
  * A link to a folder. On Windows a real symlink needs Developer Mode or an administrator, a junction does not, and both resolve through
@@ -23,15 +22,21 @@ export function symlinkDir(target: string, path: string): void {
  * instead of failing a test that already passed. Elsewhere it is a plain `rmSync` and any error is real.
  */
 export function removeDir(dir: string): void {
-  try {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (process.platform === "win32" && (code === "EPERM" || code === "EBUSY" || code === "EACCES")) {
-      console.warn(`note: could not delete ${dir} (${code}); it is left in the temp folder`);
+  // `rmSync`'s own `maxRetries` does nothing here (the synchronous call gives up at once), so the waiting is done by hand.
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
       return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw err;
+      if (Date.now() >= deadline) {
+        console.warn(`note: could not delete ${dir} (${code}); it is left in the temp folder`);
+        return;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
     }
-    throw err;
   }
 }
 

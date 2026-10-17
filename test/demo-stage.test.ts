@@ -1,4 +1,3 @@
-import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -26,7 +25,7 @@ function files(dir: string, skipPacks = true): { path: string; size: number }[] 
     for (const entry of readdirSync(at, { withFileTypes: true })) {
       const full = join(at, entry.name);
       if (entry.isDirectory()) walk(full);
-      else found.push({ path: relative(dir, full), size: statSync(full).size });
+      else found.push({ path: relative(dir, full).replace(/\\/g, "/"), size: statSync(full).size }); // `/` on every system, as the patterns below and the staged URLs use it
     }
   };
   walk(dir);
@@ -58,7 +57,7 @@ describe("the staged demo", { skip }, () => {
     assert.ok(!existsSync(join(dir, "render_ops.py")));
   });
 
-  test("is small: what a visitor downloads on the first load is under 2 MB (the picture pack waits until it is chosen)", { skip: winSkip }, () => {
+  test("is small: what a visitor downloads on the first load is under 2 MB (the picture pack waits until it is chosen)", () => {
     const code = files(dir).reduce((sum, f) => sum + f.size, 0);
     assert.ok(code < 2 * 1024 * 1024, `${code} bytes`);
     assert.ok(code > 300 * 1024, "the creator's compiled code is in it");

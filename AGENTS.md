@@ -299,7 +299,12 @@ and skip if it is missing. No Python is involved (`pyproject.toml` and `.python-
 `claude` and a fake Ollama (`test/helpers/server.ts`) and drives it over the websocket: queueing, cards, notes, skills,
 work mode, the shell opt-out, local tools and the origin check. It is the net for changing `src/server.ts`, and it needs the
 creator's TypeScript like the renderer tests (it skips without it). Add a test there when you change what the page is
-told. Keep new tests passing without a Claude, Cursor or opencode login. `test/browser-demo.test.ts` drives the demo's stand-in server
+told. Keep new tests passing without a Claude, Cursor or opencode login. Nothing is skipped on Windows: a fake `claude`, `opencode` or `cursor-agent`
+is a Node script written with `writeStandIn` (`test/helpers/standin.ts`; on Windows it becomes a real `.exe` launcher, because a script cannot be
+started by name and a `.cmd` cannot carry `claude`'s long multi-line arguments), a test that has to say something in a system's own words
+(a shell command, a permission bit, a path) branches on `process.platform` inside the test, and scratch folders are removed with `removeDir`
+(`test/helpers/platform.ts`), because Windows will not delete a folder a program has only just left. Edit files with a tool that keeps their
+encoding (no byte order mark, no re-encoded characters): `Set-Content` in Windows PowerShell does both. `test/browser-demo.test.ts` drives the demo's stand-in server
 against a fake renderer and a fake model and checks the staged folder; `test/demo-stage.test.ts` stages the demo for real and checks that it has no Python, is under 2 MB
 and draws the server's bytes from its compiled modules; `test/frame-pack.test.ts` and `test/pack-avatar.test.ts` cover packs and
 the pose pictures. Before a release also run the suite against a clean checkout of the pinned creator release (`CREATOR_SRC=<its ts/src> npm test`)
