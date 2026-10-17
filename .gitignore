@@ -26,3 +26,7 @@ trailer/.sample-pack/
 
 # built Mac app
 /dist/
+
+# the desktop shell's staged contents and installer
+/app/stage/
+/app/dist/

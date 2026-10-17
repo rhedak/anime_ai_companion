@@ -6,12 +6,17 @@ origin and nothing else; other links open in the user's browser, and every brows
 
 ```bash
 cd app
-npm install     # downloads Electron
+npm install     # downloads Electron and electron-builder
 npm start       # a checkout: runs ../src/server.ts, creator from ../../anime-character-creator
+npm run dist    # stages the app and the creator, builds dist/Anime AI Companion Setup <version>.exe (about 145 MB)
 ```
 
-- **User files** are in Electron's `userData` folder (`%APPDATA%\anaico-desktop` on Windows, `~/Library/Application Support/anaico-desktop` on a Mac), as
-  `data/`, `workspace/` and `server.log` (`ANAICO_DATA`, `ANAICO_WORKSPACE`). Nothing is written next to the code.
+- **User files** are in Electron's `userData` folder (`%APPDATA%\Anime AI Companion` on Windows), as `data/`, `workspace/` and `server.log`
+  (`ANAICO_DATA`, `ANAICO_WORKSPACE`). Nothing is written next to the code, and uninstalling leaves them.
 - **A server already running** on the port (3737, or `PORT`) is shown instead of starting another one. Quitting the app stops only a server it started.
-- **Not done yet:** packaging (an installer that carries the app and the creator at its pinned release in `resources/`), a native folder dialog
-  for "choose a folder" (`src/folder-picker.ts` has no Windows branch), a tray icon, signing, and moving the Mac app onto this shell.
+- **What the installer carries** (`scripts/stage.mjs`): the app without tests, site or demo, with its production packages (`resources/anaico-app/`, not
+  `app/`, which Electron would take for its own program), and the creator's TypeScript at the release `package.json` pins (`resources/creator/`). The
+  packages are put in by `scripts/after-pack.cjs`, because electron-builder never copies a `node_modules` folder through `extraResources`.
+- **The installer** is per user (no administrator needed), lets the user pick the folder, and is not signed, so Windows SmartScreen warns on first run.
+- **Not done yet:** an application icon (the default Electron one is used), a native folder dialog for "choose a folder" (`src/folder-picker.ts` has no
+  Windows branch), a tray icon, signing, auto-update, and moving the Mac app onto this shell.

@@ -11,8 +11,9 @@ const path = require("node:path");
 const DEFAULT_PORT = Number(process.env.PORT ?? 3737);
 const HOST = "127.0.0.1";
 
-// In a checkout the app is the folder above this one; a packaged build puts it (and the creator at the pinned release) in resources/.
-const appRoot = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..");
+// In a checkout the app is the folder above this one; a packaged build puts it (and the creator at the pinned release) in resources/. Not named
+// "app": Electron takes resources/app for its own program.
+const appRoot = app.isPackaged ? path.join(process.resourcesPath, "anaico-app") : path.join(__dirname, "..");
 const bundledCreator = app.isPackaged ? path.join(process.resourcesPath, "creator", "ts", "src") : null;
 
 let server = null; // the child we started (null when we are showing a server that was already running)

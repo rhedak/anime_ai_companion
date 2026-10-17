@@ -1,13 +1,31 @@
 {
   "name": "anaico-desktop",
   "version": "0.8.0",
+  "productName": "Anime AI Companion",
   "private": true,
   "description": "Desktop shell for Anime AI Companion: starts the app's own server and shows its page in a window.",
+  "author": "Henrik Hanssen",
   "main": "main.cjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "stage": "node scripts/stage.mjs",
+    "dist": "npm run stage && electron-builder --win"
   },
   "devDependencies": {
-    "electron": "44.9.0"
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "io.github.rhedak.anaico",
+    "productName": "Anime AI Companion",
+    "directories": { "output": "dist" },
+    "files": ["main.cjs", "package.json"],
+    "afterPack": "scripts/after-pack.cjs",
+    "extraResources": [
+      { "from": "stage/anaico-app", "to": "anaico-app" },
+      { "from": "stage/creator", "to": "creator" }
+    ],
+    "win": { "target": "nsis" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
   }
 }
