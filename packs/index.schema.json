@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "packs/index.schema.json",
+  "title": "Picture-pack index",
+  "description": "packs/index.json, the list of picture packs hosted outside the repository. parsePackIndex in src/pack-index.ts is the check the code runs; this schema describes the same fields. Download URLs are https. A GitHub Release asset (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>.tar) is the expected one, including when the file lives in another repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "packs"],
+  "properties": {
+    "format": {
+      "description": "Index format. 1 is the only version.",
+      "const": 1
+    },
+    "packs": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/pack" }
+    }
+  },
+  "$defs": {
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "frameCount", "sizes", "hashes", "url"],
+      "properties": {
+        "id": {
+          "description": "Folder name the pack installs as, under data/frames/ and packs/.",
+          "type": "string",
+          "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$"
+        },
+        "name": {
+          "description": "Name shown in the gallery.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "version": {
+          "description": "The pack's own version (1 or 1.2.3), not the app's. It changes when the archive bytes change.",
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+){0,2}$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "sizes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "archiveBytes"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "archiveBytes": {
+              "description": "The patch archive, in bytes.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483648
+            },
+            "framesBytes": {
+              "description": "The plain WebP frames the archive was built from, in bytes. Text files are not counted.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483648
+            }
+          }
+        },
+        "hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256"],
+          "properties": {
+            "sha256": {
+              "description": "SHA-256 of the archive file, 64 lowercase hex characters.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "url": {
+          "description": "https URL of the archive file.",
+          "type": "string",
+          "maxLength": 2000,
+          "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(?::[0-9]+)?(?:/[^\\s]*)?$"
+        },
+        "thumbnail": {
+          "description": "https URL of a preview picture.",
+          "type": "string",
+          "maxLength": 2000,
+          "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(?::[0-9]+)?(?:/[^\\s]*)?$"
+        },
+        "credit": {
+          "description": "The credit line shown with the pack.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "aiMade": {
+          "description": "True when the pictures were made with an image model.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

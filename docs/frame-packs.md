@@ -131,3 +131,9 @@ is Crypton's, so the pack is not MIT: see `packs/miku/NOTICE.md`. The pictures a
 `/frames/<pack>/<file>`, and only for the chosen pack); `createPackAvatar` in `public/avatar.js` shows it. The
 chosen pack's name is in `data/settings.json` as `framePack`. It is a look, not a permission, so unlike
 `--lan` or a looser permission mode it is kept across restarts.
+
+## Packs hosted outside the repository
+
+The folders in `packs/` are still the pictures the app reads. A downloadable archive of the same pictures, and the
+`packs/index.json` list that will point at one, are described in [pack archives](pack-archives.md). The app does not
+download anything yet.
