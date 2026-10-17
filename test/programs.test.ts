@@ -24,7 +24,8 @@ test("on Windows a program on the PATH has an extension (claude.exe, opencode.cm
     writeFileSync(join(dir, name), "");
     chmodSync(join(dir, name), 0o755);
   }
-  const env = { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" };
+  // Lower case here because the temp folder of a case-sensitive file system (Linux) would not match .EXE to claude.exe; Windows ignores case.
+  const env = { PATH: dir, PATHEXT: ".com;.exe;.bat;.cmd" };
   assert.equal(isInstalled("claude", env, "win32"), true);
   assert.equal(isInstalled("opencode", env, "win32"), true);
   assert.equal(isInstalled("cursor-agent", env, "win32"), false);
