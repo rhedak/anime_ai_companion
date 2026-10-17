@@ -21,6 +21,7 @@ import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
+import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
 import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
@@ -868,6 +869,49 @@ async function chooseFolder(say: Say): Promise<void> {
   }
 }
 
+let installAbort: AbortController | null = null;
+void cleanInstallLeftovers(); // a scratch folder from an install that was cut short by closing the app
+
+/**
+ * The question shown before anything is fetched, saying who is contacted, how much and where it goes. Null when opencode is already there, or when
+ * there is no pinned build for this machine (then the page falls back to saying how to install it by hand).
+ */
+function opencodeOffer(): Record<string, unknown> | null {
+  const asset = opencodeAsset();
+  if (!asset || isInstalled(brainProgram("opencode") ?? "opencode")) return null;
+  return {
+    type: "install-offer",
+    brain: "opencode",
+    version: OPENCODE_PIN.version,
+    host: "github.com",
+    megabytes: Math.round(asset.bytes / 1048576),
+    folder: opencodeFolder(),
+  };
+}
+
+/** Installs the pinned opencode, telling every page how far it is. The page that asked then picks the brain, as if from the menu. */
+async function installOpencodeFor(say: Say): Promise<void> {
+  if (installAbort) return say("opencode is already being installed.");
+  const abort = (installAbort = new AbortController());
+  let shown = -1;
+  try {
+    await installOpencode({
+      signal: abort.signal,
+      onProgress: (p) => {
+        const percent = p.stage === "download" && p.total ? Math.floor(((p.received ?? 0) / p.total) * 100) : null;
+        if (percent !== null && percent === shown) return;
+        if (percent !== null) shown = percent;
+        broadcast({ type: "install-progress", stage: p.stage, percent });
+      },
+    });
+    broadcast({ type: "install-done", ok: true });
+  } catch (err) {
+    broadcast({ type: "install-done", ok: false, text: err instanceof InstallError ? err.message : `Could not install opencode: ${err instanceof Error ? err.message : String(err)}` });
+  } finally {
+    installAbort = null;
+  }
+}
+
 let shellRunning = false;
 let shellAbort: AbortController | null = null;
 
@@ -1104,6 +1148,8 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
   greetBasic();
+  const offer = basicMode && !remote ? opencodeOffer() : null; // with no brain at all, the way out is one click away
+  if (offer) ws.send(JSON.stringify(offer));
   const acp = acpBrain();
   if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
   if (acp?.replacedSession) {
@@ -1175,6 +1221,11 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, remote ? undefined : msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "install-brain" && msg.brain === "opencode" && (msg.choice === "yes" || msg.choice === "stop")) {
+      // It fetches and runs a program, so it is a decision for the person at the computer, never a phone.
+      if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+      if (msg.choice === "stop") installAbort?.abort();
+      else await installOpencodeFor((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pick-folder") {
       if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       await chooseFolder((text) => ws.send(JSON.stringify({ type: "notice", text })));
@@ -1196,6 +1247,11 @@ wss.on("connection", (ws) => {
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       const program = brainProgram(msg.provider);
       if (program && !isInstalled(program)) {
+        const offer = msg.provider === "opencode" && !remote ? opencodeOffer() : null;
+        if (offer) {
+          ws.send(JSON.stringify(offer));
+          return notice(`opencode is not installed, so she stays on ${provider.name}. I can install it for you: answer the question below.`);
+        }
         return notice(`${programLabel(msg.provider)} is not installed or not on PATH, so she stays on ${provider.name}.`);
       }
       if (msg.provider === "ollama") {

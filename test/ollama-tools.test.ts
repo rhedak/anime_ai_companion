@@ -1,6 +1,6 @@
-import { winSkip } from "./helpers/platform.ts";
+import { symlinkDir, winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -15,7 +15,7 @@ function project() {
   writeFileSync(join(dir, "src", "a.ts"), "const one = 1;\nconst Two = 2;\nexport { one };\n");
   writeFileSync(join(dir, "node_modules", "skipped.js"), "const one = 1;\n");
   writeFileSync(join(dir, "bin.dat"), Buffer.from([1, 2, 0, 3]));
-  symlinkSync(outside, join(dir, "link"));
+  symlinkDir(outside, join(dir, "link"));
   return { dir, outside, done: () => [dir, outside].forEach((d) => rmSync(d, { recursive: true, force: true })) };
 }
 

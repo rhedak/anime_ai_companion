@@ -221,6 +221,12 @@ command named `agent` is not necessarily that binary.
   do not start an `authenticate` login flow.
 - Tests must not need an opencode login or a live agent. Fake the ACP process, as
   `test/opencode-acp.test.ts` does.
+- **One-click install** (`src/install-opencode.ts`, Windows only so far): when opencode is missing the page shows a card (from the Brain menu, and
+  on connect in basic mode). It names GitHub, the size and the folder, and fetches nothing until the button is pressed. The install downloads the
+  **pinned** release, checks its SHA-256, unpacks it with Windows' own `tar`, runs it to see the pinned version, and moves it into
+  `data/tools/opencode-<version>/`. It never touches the PATH or a copy the user installed; `brainProgram("opencode")` is `OPENCODE_BIN`, then
+  that copy, then the plain name. The `install-brain` message is refused from a phone (it fetches and runs a program). Keep it opt-in, keep the
+  checksum, and keep the pin out of reach of `latest` (see "Before a release" below). Tests fake the network and the unpacker; nothing is downloaded.
 
 **Ollama** (`src/providers/ollama.ts`, tools in `ollama-tools.ts`) is chat, and work mode for models that take
 tool calls. Ollama only runs the model, so the tools and the call loop are ours: `read_file`, `grep`,
@@ -242,6 +248,13 @@ tool calls. Ollama only runs the model, so the tools and the call loop are ours:
   sent yet (no model, Ollama not running) is neither sent nor kept in the log (`notReady` in `src/turn-service.ts`).
 - Tests fake the Ollama server (`test/ollama-work.test.ts`, `test/server.test.ts`); no real model or install in CI.
 
+**Basic mode** (`src/providers/scripted.ts`) is what runs when the chosen command-line brain is not installed (or, on a first start, none is):
+the browser demo's rule-based reader (`public/script.js`, shared with `demo/`) answers with the same tags a model writes. It has no tools, so
+no work mode and nothing to approve; it opens with a greeting that says it is a script and how to get a brain (opencode first), and never
+passes for a model. It is a state of the server (`basicMode`, in `mode.basic`), not a saved provider: nothing is written to settings for it,
+its transcript is saved as `"basic"` and dropped once a real brain runs, and choosing a real brain in the menu ends it. On a first start another
+installed brain is used instead, in memory only; a brain the user chose that has since gone missing is not swapped.
+
 Switching brains starts a new conversation. The brains do not share memory.
 
 ### Branches and releases
@@ -257,6 +270,15 @@ Switching brains starts a new conversation. The brains do not share memory.
   clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
   unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new
   tag in the release commit.
+- **Before a release, sanity check the opencode pin** (`OPENCODE_PIN` in `src/install-opencode.ts`: the one version, file names, sizes and SHA-256 the
+  one-click install fetches). It is pinned on purpose, so it does not move by itself and nothing checks it for you. Look at whether the pinned release is
+  still the one you want: `gh release view v<pinned> -R anomalyco/opencode` (it must still exist and the assets and checksums must still match; compare
+  `gh api repos/anomalyco/opencode/releases/tags/v<pinned> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'` with the table), the newest release's notes
+  (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to move the pin), and that the pinned
+  program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick opencode, send a message). To move the
+  pin: change the version and, for each `win32-*` asset, the name, `bytes` and `sha256` (the digest GitHub shows for the asset), run
+  `node --test test/install-opencode.test.ts`, and do the install by hand once. Never point it at `latest`. A new platform is a new row in the table,
+  tried on that platform.
 - **The documentation site and the README describe released behaviour.** The site (`site/`) is built from
   `main` by `.github/workflows/pages.yml`, together with the demo (staged into `demo/` with the creator at its pinned release), so write a
   change's documentation on `dev` and let the release publish it. The clone commands in the README and on the getting-started page take the

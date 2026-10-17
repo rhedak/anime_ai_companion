@@ -2,6 +2,7 @@
  * `anaico --doctor`: looks at what the app needs and says what is missing, in plain words. It only looks: nothing is installed,
  * started or signed in. Every check goes through a `Probe`, so the checks can be tested without this machine's real setup.
  */
+import { brainProgram } from "./programs.ts";
 import { spawnCliSync } from "./spawn-cli.ts";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -133,7 +134,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   // Brains: at least one must be there. Whether you are signed in is the brain's own business, so this does not try.
   const claude = p.run("claude", ["--version"]);
   const cursor = p.run("cursor-agent", ["--version"]);
-  const opencode = p.run("opencode", ["--version"]);
+  const opencode = p.run(brainProgram("opencode", p.env) ?? "opencode", ["--version"]); // also the copy this app installed itself
   const host = (p.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
   const tags = await p.get(`${host}/api/tags`);
   let ollamaModels: number | null = null;

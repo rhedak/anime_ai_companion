@@ -22,7 +22,9 @@ If none of the brains is installed, she does not fail at your first message: she
 [browser demo](demo/) uses) and says so when you open the page. It can change her hair, eyes and clothes, become one of the starting
 characters, show a mood, wave and run through her animations (`/show`), but it cannot hold a conversation or use work mode. Her first message
 tells you how to get a real brain; [opencode](https://opencode.ai) is the easiest, free and without an account
-(`npm install -g opencode-ai`, then restart the app). Installing one is enough: choose it in the **Brain** menu or restart, and the next
+(`npm install -g opencode-ai`, then restart the app). On Windows the page also offers to do it for you: a card asks first, says it will download
+opencode from GitHub (about 60 MB, a fixed version that is checked against a known checksum) into the app's own folder, and fetches nothing until
+you press **Install opencode**; it then switches her to it. That copy keeps its files apart from any other OpenCode on your computer. Installing one is enough: choose it in the **Brain** menu or restart, and the next
 conversation is a real one. On a first start the app uses whichever brain it finds, in the order Claude Code, opencode, Cursor, a running
 Ollama; a brain you chose yourself that has gone missing is not swapped for another one.
 

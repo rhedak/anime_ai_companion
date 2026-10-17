@@ -19,6 +19,15 @@ what to send.
 Next time, double-click `windows-start.bat` again; it skips what is already there. Under *Brain* in the page you can switch to
 Claude Code, Cursor or Ollama if you have one of them.
 
+## Installing opencode from the page
+
+With no brain installed, the page shows a card, **Install opencode for her?** (it also appears when you pick opencode in the *Brain* menu and it is not
+there). It says what it will do and fetches nothing until you press **Install opencode**: it downloads a fixed version of opencode from GitHub (about
+60 MB), checks it against a checksum the app already knows, keeps it in `data\tools\` (for the desktop app that is `%APPDATA%\Anime AI Companion`),
+runs it once to see that it starts, and switches her to it. There is no administrator prompt and nothing is added to your PATH. The copy has its own
+settings and history, separate from any OpenCode you have installed yourself, and one you installed yourself is never touched. If it fails, the
+card says why and offers to try again.
+
 ## Notes
 
 - **Where things live.** Your chat, settings and her look are in the app's `data\` folder; the creator is kept in `%USERPROFILE%\.anaico\creator`.
@@ -26,7 +35,8 @@ Claude Code, Cursor or Ollama if you have one of them.
   works for opencode and Cursor but is not a good fit for Claude's long launch arguments.
 - **Work mode.** Letting her edit files and run commands works the same way as elsewhere (every change asks first). `!command` in
   the chat runs through `cmd.exe`.
-- **No folder dialog.** The "choose a folder" button has no Windows dialog yet; type or paste the folder's path instead.
+- **Choosing a folder.** The "choose a folder" button opens the standard Windows folder dialog (a small PowerShell script, fixed text, with the
+  start folder passed in the environment). You can also type or paste the folder's path.
 - **Port in use.** If 3737 is taken, open a terminal in the app folder and run `set PORT=3800 && node src/server.ts --open`.
 
 ## If it does not start

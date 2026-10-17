@@ -866,6 +866,91 @@ function addColdCache(msg) {
   coldEl = { card, actions, text: msg.text };
 }
 
+// Installing opencode for her (src/install-opencode.ts). The card says who is contacted, how much is fetched and where it goes, and nothing happens
+// until the button is pressed. Afterwards the page picks the brain, as if from the Brain menu.
+let installEl = null; // { card, desc, actions, active }
+
+const INSTALL_STAGES = { unpack: "Unpacking…", check: "Checking that it starts…" };
+
+function addInstallOffer(msg) {
+  installEl?.card.remove();
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Install opencode for her?";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    `opencode is a free brain and needs no account. Pressing the button downloads opencode ${msg.version} (about ${msg.megabytes} MB) from ${msg.host}, ` +
+    `checks it against a checksum this app already knows, and keeps it in ${msg.folder}. ${msg.host} will see your IP address. ` +
+    "Nothing is installed anywhere else, and nothing is fetched until you press it.";
+  desc.style.whiteSpace = "pre-wrap";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  card.append(title, desc, actions);
+  installEl = { card, desc, actions, active: false };
+  showInstallChoices(msg);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+}
+
+function installButton(label, cls, onclick) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.className = cls;
+  b.onclick = onclick;
+  return b;
+}
+
+function showInstallChoices(msg) {
+  if (!installEl) return;
+  installEl.actions.replaceChildren(
+    installButton("Install opencode", "allow", () => {
+      if (!installEl) return;
+      installEl.active = true;
+      installEl.actions.replaceChildren(
+        Object.assign(document.createElement("span"), { id: "install-progress", textContent: "Starting…" }),
+        " ",
+        installButton("Stop", "deny", () => ws?.send(JSON.stringify({ type: "install-brain", brain: "opencode", choice: "stop" }))),
+      );
+      ws?.send(JSON.stringify({ type: "install-brain", brain: "opencode", choice: "yes" }));
+    }),
+    installButton("Not now", "deny", () => {
+      installEl?.card.remove();
+      installEl = null;
+    }),
+  );
+}
+
+function installProgress(msg) {
+  const el = installEl && $("install-progress");
+  if (!el) return;
+  el.textContent = msg.stage === "download" ? `Downloading… ${msg.percent ?? 0}%` : (INSTALL_STAGES[msg.stage] ?? "Working…");
+}
+
+function installDone(msg) {
+  if (!installEl?.active) return; // another page started it, or this card was closed
+  installEl.active = false;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  if (msg.ok) {
+    done.textContent = "✓ Installed. Switching her to opencode…";
+    installEl.actions.replaceWith(done);
+    ws?.send(JSON.stringify({ type: "provider", provider: "opencode" }));
+    installEl = null;
+    return;
+  }
+  installEl.desc.textContent = msg.text;
+  installEl.actions.replaceChildren(
+    installButton("Try again", "allow", () => showInstallChoices(msg)),
+    installButton("Close", "deny", () => {
+      installEl?.card.remove();
+      installEl = null;
+    }),
+  );
+}
+
 let skillsEl = null;
 let cardEl = null;
 
@@ -1141,6 +1226,15 @@ function handle(msg) {
       break;
     case "cold-cache":
       addColdCache(msg);
+      break;
+    case "install-offer":
+      addInstallOffer(msg);
+      break;
+    case "install-progress":
+      installProgress(msg);
+      break;
+    case "install-done":
+      installDone(msg);
       break;
     case "memory-offer":
       addMemoryOffer(msg);
