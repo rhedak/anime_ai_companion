@@ -1,12 +1,15 @@
 /**
  * `packs/index.json`: the list of picture packs that live outside the repository.
- * The app does not read it yet. A later step downloads an entry's archive, checks `hashes.sha256`,
- * and expands it into `data/frames/<id>/`. The schema that mirrors these checks is `packs/index.schema.json`.
+ * `src/pack-install.ts` downloads an entry's archive, checks `hashes.sha256` and the size, and
+ * expands it into `data/frames/<id>/`. The schema that mirrors these checks is `packs/index.schema.json`.
  *
  * A download URL is whatever https address holds the archive. The one this project will publish is a
  * GitHub Release asset:
  *   https://github.com/<owner>/<repo>/releases/download/<tag>/<file>.tar
  * The same fields still work if the files move to another repository.
+ *
+ * `thumbnail` is an https URL, or a path `thumbs/<id>.webp` relative to the index (the same file as
+ * `packs/thumbs/<id>.webp` in this repository). The gallery can show that preview before the pack is installed.
  */
 import { isPackName } from "./frame-pack.ts";
 
@@ -98,7 +101,58 @@ export function isDownloadUrl(value: unknown): value is string {
   return url.protocol === "https:" && url.username === "" && url.password === "" && url.hostname.includes(".");
 }
 
-function parseEntry(value: unknown, index: number): PackIndexEntry | string {
+export interface PackIndexOptions {
+  /**
+   * Also accept `http://127.0.0.1` and `http://localhost`. The installer turns this on only when the
+   * index itself was loaded from a loopback address, so a published https index cannot point at http.
+   */
+  allowLoopbackHttp?: boolean;
+}
+
+/** `http://127.0.0.1` or `http://localhost`, with no user name or password. */
+export function isLoopbackHttp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > MAX_URL || /\s/.test(value)) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const host = url.hostname;
+  return url.protocol === "http:" && url.username === "" && url.password === "" && (host === "127.0.0.1" || host === "localhost" || host === "::1");
+}
+
+/** An address the installer may fetch: https, or loopback http when the option says so. */
+export function isRemoteUrl(value: unknown, options?: PackIndexOptions): value is string {
+  return isDownloadUrl(value) || (options?.allowLoopbackHttp === true && isLoopbackHttp(value));
+}
+
+/** `thumbs/<id>.webp`, relative to the index file. No `..`, no scheme, one path segment. */
+const RELATIVE_THUMB = /^thumbs\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,60}\.webp$/;
+
+/** A gallery preview: an https URL, or `thumbs/<id>.webp` next to the index. */
+export function isThumbnailRef(value: unknown, options?: PackIndexOptions): value is string {
+  if (isRemoteUrl(value, options)) return true;
+  return typeof value === "string" && RELATIVE_THUMB.test(value) && !value.includes("..");
+}
+
+/**
+ * The absolute URL of a thumbnail. A relative `thumbs/<id>.webp` is resolved against the index URL
+ * (`…/index.json` + `thumbs/a.webp` is `…/thumbs/a.webp`). Anything that is not a fetchable address is null.
+ */
+export function resolveThumbnail(indexUrl: string, thumbnail: string): string | null {
+  if (!isThumbnailRef(thumbnail, { allowLoopbackHttp: true })) return null;
+  if (isDownloadUrl(thumbnail) || isLoopbackHttp(thumbnail)) return thumbnail;
+  let resolved: string;
+  try {
+    resolved = new URL(thumbnail, indexUrl).href;
+  } catch {
+    return null;
+  }
+  return isRemoteUrl(resolved, { allowLoopbackHttp: isLoopbackHttp(indexUrl) }) ? resolved : null;
+}
+
+function parseEntry(value: unknown, index: number, options?: PackIndexOptions): PackIndexEntry | string {
   const where = `packs[${index}]`;
   if (!isRecord(value)) return `${where} must be an object.`;
   const extra = unknownKey(value, PACK_INDEX_ENTRY_KEYS);
@@ -109,7 +163,7 @@ function parseEntry(value: unknown, index: number): PackIndexEntry | string {
   if (!plainText(value.name, MAX_NAME)) return `${where}.name must be 1 to ${MAX_NAME} characters.`;
   if (typeof value.version !== "string" || !VERSION.test(value.version)) return `${where}.version must look like 1 or 1.2.3.`;
   if (!integer(value.frameCount, 1, MAX_FRAMES)) return `${where}.frameCount must be a whole number from 1 to ${MAX_FRAMES}.`;
-  if (!isDownloadUrl(value.url)) return `${where}.url must be an https address, with no password in it.`;
+  if (!isRemoteUrl(value.url, options)) return `${where}.url must be an https address, with no password in it.`;
 
   if (!isRecord(value.sizes)) return `${where}.sizes must be an object.`;
   const extraSize = unknownKey(value.sizes, [...SIZE_REQUIRED, ...SIZE_OPTIONAL]);
@@ -131,7 +185,9 @@ function parseEntry(value: unknown, index: number): PackIndexEntry | string {
   }
 
   if ("description" in value && !plainText(value.description, MAX_DESCRIPTION)) return `${where}.description must be 1 to ${MAX_DESCRIPTION} characters.`;
-  if ("thumbnail" in value && !isDownloadUrl(value.thumbnail)) return `${where}.thumbnail must be an https address.`;
+  if ("thumbnail" in value && !isThumbnailRef(value.thumbnail, options)) {
+    return `${where}.thumbnail must be an https address or a thumbs/<id>.webp path.`;
+  }
   if ("credit" in value && !plainText(value.credit, MAX_CREDIT)) return `${where}.credit must be 1 to ${MAX_CREDIT} characters.`;
   if ("aiMade" in value && typeof value.aiMade !== "boolean") return `${where}.aiMade must be true or false.`;
 
@@ -154,7 +210,7 @@ function parseEntry(value: unknown, index: number): PackIndexEntry | string {
 }
 
 /** Checks a parsed `packs/index.json`. Never throws. */
-export function parsePackIndex(value: unknown): PackIndexResult {
+export function parsePackIndex(value: unknown, options?: PackIndexOptions): PackIndexResult {
   if (!isRecord(value)) return fail("The index must be a JSON object.");
   const extra = unknownKey(value, ["format", "packs"]);
   if (extra) return fail(`${extra} is not a field of the index.`);
@@ -164,7 +220,7 @@ export function parsePackIndex(value: unknown): PackIndexResult {
   const packs: PackIndexEntry[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < value.packs.length; i++) {
-    const entry = parseEntry(value.packs[i], i);
+    const entry = parseEntry(value.packs[i], i, options);
     if (typeof entry === "string") return fail(entry);
     if (seen.has(entry.id)) return fail(`The index lists "${entry.id}" twice.`);
     seen.add(entry.id);

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "packs/index.schema.json",
   "title": "Picture-pack index",
-  "description": "packs/index.json, the list of picture packs hosted outside the repository. parsePackIndex in src/pack-index.ts is the check the code runs; this schema describes the same fields. Download URLs are https. A GitHub Release asset (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>.tar) is the expected one, including when the file lives in another repository.",
+  "description": "packs/index.json, the list of picture packs hosted outside the repository. parsePackIndex in src/pack-index.ts is the check the code runs; this schema describes the same fields. Download URLs are https. A GitHub Release asset (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>.tar) is the expected one, including when the file lives in another repository. A thumbnail is an https URL or a path thumbs/<id>.webp relative to this file.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "packs"],
@@ -90,10 +90,19 @@
           "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(?::[0-9]+)?(?:/[^\\s]*)?$"
         },
         "thumbnail": {
-          "description": "https URL of a preview picture.",
-          "type": "string",
-          "maxLength": 2000,
-          "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(?::[0-9]+)?(?:/[^\\s]*)?$"
+          "description": "A preview of the neutral frame, about 200 px wide. An https URL, or thumbs/<id>.webp relative to this file (the same picture as packs/thumbs/<id>.webp in the app repository).",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(?::[0-9]+)?(?:/[^\\s]*)?$"
+            },
+            {
+              "type": "string",
+              "pattern": "^thumbs/[A-Za-z0-9][A-Za-z0-9 ._-]{0,60}\\.webp$",
+              "not": { "pattern": "\\.\\." }
+            }
+          ]
         },
         "credit": {
           "description": "The credit line shown with the pack.",

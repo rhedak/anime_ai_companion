@@ -59,6 +59,7 @@ Everything has a default. Set these as environment variables when you start the 
 | `CREATOR_SRC` | `../anime-character-creator/ts/src` | the creator's TypeScript folder (its `ts/src`), which draws her |
 | `PORT` | `3737` | the port |
 | `COMPANION_NO_NUDGE` | unset | `1` silences the weekly "you have local changes" reminder |
+| `COMPANION_PACK_INDEX` | a placeholder URL | https address of the downloadable pack list; `off` skips it ([picture packs](picture-packs.html)) |
 
 Your own data lives in `data/` (settings, chat log, current look, saved looks, `custom.css`) and `workspace/`.
 Both are git-ignored and belong to you.

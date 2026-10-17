@@ -1,7 +1,7 @@
 /**
- * Lossless WebP, as plain RGBA pixels. `sharp` is a devDependency: the build tool and the tests use it,
- * and the running app does not load this module. `exact` keeps the colour of fully transparent pixels,
- * which a pack relies on (the background is transparent, and those pixels still have to match).
+ * Lossless WebP, as plain RGBA pixels. `sharp` reads and writes the pictures. The archive tool, its tests
+ * and the pack installer (`src/pack-install.ts`) load this module. `exact` keeps the colour of fully
+ * transparent pixels, which a pack relies on (the background is transparent, and those pixels still have to match).
  */
 import sharp from "sharp";
 

@@ -1,8 +1,8 @@
 /**
  * A patch archive of a picture pack.
  *
- * The pictures the app shows stay ordinary files in a folder (`readPack` is unchanged). This module only
- * packs and unpacks that folder for later, when a pack is downloaded instead of shipped in the repository.
+ * The pictures the app shows stay ordinary files in a folder (`readPack` is unchanged). This module
+ * packs that folder for download, and the installer (`src/pack-install.ts`) unpacks it into `data/frames/<id>/`.
  *
  * Stored whole, byte for byte:
  *   the emotion rest frames (`neutral.webp`, `happy.webp`, ...),

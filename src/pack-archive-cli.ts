@@ -5,7 +5,7 @@
  *   node src/pack-archive-cli.ts restore <archive.tar> -o <folder>
  *   node src/pack-archive-cli.ts report <archive.tar>
  *   node src/pack-archive-cli.ts index <archive.tar> --name <name> --version <version> --url <https-url>
- *       [--description text] [--credit text] [--thumbnail https-url] [--ai-made]
+ *       [--description text] [--credit text] [--thumbnail thumbs/<id>.webp|https-url] [--ai-made]
  */
 import { realpathSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -36,7 +36,7 @@ function usage(): string {
   node src/pack-archive-cli.ts restore <archive.tar> -o <folder>
   node src/pack-archive-cli.ts report <archive.tar>
   node src/pack-archive-cli.ts index <archive.tar> --name <name> --version <version> --url <https-url>
-      [--description text] [--credit text] [--thumbnail https-url] [--ai-made]
+      [--description text] [--credit text] [--thumbnail thumbs/<id>.webp or an https url] [--ai-made]
 
 build prints a size report. index prints a packs/index.json document for that one archive.`;
 }

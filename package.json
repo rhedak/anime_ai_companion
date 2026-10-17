@@ -39,11 +39,13 @@
     "site": "node site/build.mjs",
     "site:preview": "node bin/check-node.js && node site/preview.mjs",
     "demo": "node bin/check-node.js && node demo/stage.mjs --serve",
-    "pack-archive": "node src/pack-archive-cli.ts"
+    "pack-archive": "node src/pack-archive-cli.ts",
+    "pack-thumbs": "node src/pack-thumb-cli.ts"
   },
   "dependencies": {
     "cross-spawn": "^7.0.6",
     "qrcode-generator": "^2.0.4",
+    "sharp": "^0.35.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -51,7 +53,6 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "marked": "^18.1.0",
-    "sharp": "^0.35.5",
     "typescript": "^5.6.0"
   }
 }

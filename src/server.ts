@@ -24,6 +24,8 @@ import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
 import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
+import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -90,8 +92,33 @@ async function refreshPack(): Promise<string[]> {
   return result.ok ? result.pack.notes : [result.reason];
 }
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
-/** The packs the Looks menu offers, and which one is on. */
-const packsMessage = async () => ({ type: "packs", names: await listPacks(...packDirs), active: settings.framePack });
+/** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
+const packInstaller = createPackInstaller({
+  destDir: framesDir,
+  indexUrl: packIndexUrl(),
+  thumbsDir: join(root, "packs", "thumbs"),
+});
+let packIndexLogged = false;
+/** Loads the remote list. A failure is remembered by the installer and said once here; packs on disk are unaffected. */
+async function refreshPackIndex(force = false): Promise<void> {
+  const loaded = await packInstaller.loadIndex(force);
+  if (!loaded.ok && !packIndexLogged) {
+    packIndexLogged = true;
+    console.error(`Pack index: ${loaded.reason}`);
+  }
+}
+/** Remote packs that are not already on disk, so the gallery can offer them for download. */
+function remotePacks(names: string[]): Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade">[] {
+  const have = new Set(names);
+  return (packInstaller.index()?.packs ?? [])
+    .filter((pack) => !have.has(pack.id))
+    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade }));
+}
+/** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
+const packsMessage = async () => {
+  const names = await listPacks(...packDirs);
+  return { type: "packs", names, active: settings.framePack, remote: remotePacks(names) };
+};
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
@@ -340,6 +367,10 @@ const server = createServer(
     packDirs,
     emotionNames: () => Object.keys(emotions),
     activePack: () => activePack,
+    packThumb: async (name) => {
+      const body = await packInstaller.thumbnail(name);
+      return body ? { body, mime: "image/webp" } : null;
+    },
   }),
 );
 
@@ -574,8 +605,18 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     return say("Back to the drawn avatar.");
   }
   if (!isPackName(name)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-  const result = await readPack(packDirs, name, Object.keys(emotions));
-  if (!result.ok) return say(result.reason);
+  let result = await readPack(packDirs, name, Object.keys(emotions));
+  if (!result.ok) {
+    const offered = await packInstaller.find(name);
+    if (!offered) {
+      const note = packInstaller.indexNote();
+      return say(note ? `${result.reason} ${note}` : result.reason);
+    }
+    const installed = await packInstaller.install(name);
+    if (!installed.ok) return say(installed.reason);
+    result = await readPack(packDirs, name, Object.keys(emotions));
+    if (!result.ok) return say(result.reason);
+  }
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
@@ -752,16 +793,20 @@ const slashCommands: Record<
       ),
   },
   frames: {
-    help: "show her with your own pictures instead of the drawn avatar: /frames lists the packs in data/frames, /frames <name> uses one, /frames off goes back",
+    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (downloading it first when the pack list has it and it is not installed), /frames off goes back",
     run: async ({ args, say }) => {
       const wanted = args.trim();
       if (!wanted) {
+        await refreshPackIndex(false);
         const packs = await listPacks(...packDirs);
+        const remote = remotePacks(packs).map((pack) => pack.id);
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
-        return say(
-          `${using} ` +
-            (packs.length ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
-        );
+        const installed = packs.length
+          ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}.`
+          : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one.";
+        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> downloads one.` : "";
+        const hint = packs.length || remote.length ? " Use /frames <name> or /frames off." : "";
+        return say(`${using} ${installed}${available}${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
@@ -1289,6 +1334,25 @@ wss.on("connection", (ws) => {
       if (line) console.error(line);
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "pack-catalog") {
+      // The gallery is opening: ask the index so a pack that is not installed can still be shown and downloaded.
+      await refreshPackIndex(false);
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(await packsMessage()));
+    } else if (msg.type === "pack-install" && typeof msg.name === "string") {
+      const id = msg.name;
+      const installed = await packInstaller.install(id, (event) => {
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "pack-progress", ...event }));
+      });
+      if (!installed.ok) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: "pack-progress", id, phase: "error", message: installed.reason }));
+          ws.send(JSON.stringify({ type: "notice", text: installed.reason }));
+        }
+      } else {
+        await choosePack(id, (text) => {
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
+        });
+      }
     } else if (msg.type === "preset-thumbs") {
       try {
         ws.send(JSON.stringify({ type: "preset-thumbs", svgs: await avatar.presetThumbnails() }));

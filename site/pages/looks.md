@@ -33,8 +33,8 @@ one back. The characters come from [anime-character-creator](https://github.com/
 
 ## Picture packs
 
-**Looks → Packs…** shows each set of your own pictures next to the drawn character. See
-[Picture packs](picture-packs.html).
+**Looks → Packs…** shows each set of your own pictures next to the drawn character. A pack that is not installed
+yet shows its preview and **Download**. See [Picture packs](picture-packs.html).
 
 ![The packs gallery](assets/packs.png)
 
