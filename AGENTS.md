@@ -106,6 +106,10 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
   model) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen). Ship lossless WebP.
+- **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
+  frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
+  restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
+  sha256, https URL of a GitHub Release asset). The app does not download packs yet, and the plain frames in `packs/` stay as they are.
 - `../anime-character-creator` is a dependency, not a fork. Drawing changes belong in that repo.
 - `data/` and `workspace/` (except `workspace/.gitkeep`) are the user's machine. Do not commit
   them, and do not put API keys, sessions, or account details in the repo.
