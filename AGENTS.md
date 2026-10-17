@@ -235,6 +235,13 @@ tool calls. Ollama only runs the model, so the tools and the call loop are ours:
   sent yet (no model, Ollama not running) is neither sent nor kept in the log (`notReady` in `src/turn-service.ts`).
 - Tests fake the Ollama server (`test/ollama-work.test.ts`, `test/server.test.ts`); no real model or install in CI.
 
+**Basic mode** (`src/providers/scripted.ts`) is what runs when the chosen command-line brain is not installed (or, on a first start, none is):
+the browser demo's rule-based reader (`public/script.js`, shared with `demo/`) answers with the same tags a model writes. It has no tools, so
+no work mode and nothing to approve; it opens with a greeting that says it is a script and how to get a brain (opencode first), and never
+passes for a model. It is a state of the server (`basicMode`, in `mode.basic`), not a saved provider: nothing is written to settings for it,
+its transcript is saved as `"basic"` and dropped once a real brain runs, and choosing a real brain in the menu ends it. On a first start another
+installed brain is used instead, in memory only; a brain the user chose that has since gone missing is not swapped.
+
 Switching brains starts a new conversation. The brains do not share memory.
 
 ### Branches and releases
