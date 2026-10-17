@@ -2,7 +2,7 @@
  * `anaico --doctor`: looks at what the app needs and says what is missing, in plain words. It only looks: nothing is installed,
  * started or signed in. Every check goes through a `Probe`, so the checks can be tested without this machine's real setup.
  */
-import { spawnSync } from "node:child_process";
+import { spawnCliSync } from "./spawn-cli.ts";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
@@ -42,7 +42,7 @@ export function realProbe(root: string, port: number): Probe {
     home: homedir(),
     port,
     run(command, args) {
-      const result = spawnSync(command, args, { encoding: "utf8", timeout: 8000 });
+      const result = spawnCliSync(command, args, { encoding: "utf8", timeout: 8000 });
       if (result.error || result.status !== 0) return null;
       return `${result.stdout}${result.stderr}`.trim();
     },

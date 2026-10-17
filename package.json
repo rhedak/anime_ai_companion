@@ -41,10 +41,12 @@
     "demo": "node bin/check-node.js && node demo/stage.mjs --serve"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "marked": "^18.1.0",

@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnCli } from "../spawn-cli.ts";
 import { createInterface } from "node:readline";
 import type { ImageInput } from "../images.ts";
 import {
@@ -449,7 +450,7 @@ export class OpenCodeProvider implements Provider {
 }
 
 function defaultSpawn(args: string[], cwd: string, env: NodeJS.ProcessEnv): ChildProcessWithoutNullStreams {
-  return spawn(process.env.OPENCODE_BIN ?? "opencode", args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+  return spawnCli(process.env.OPENCODE_BIN ?? "opencode", args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 function loginHint(message: string): string {

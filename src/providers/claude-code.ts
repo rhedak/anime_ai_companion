@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnCli } from "../spawn-cli.ts";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { parseAutocompact } from "../cache-guard.ts";
@@ -258,7 +259,7 @@ export class ClaudeCodeProvider implements Provider {
   private ensureProcess(): ChildProcessWithoutNullStreams {
     if (this.proc) return this.proc;
     const cwd = this.config.mode === "work" ? this.config.cwd : this.opts.chatCwd;
-    const proc = spawn("claude", this.args(), { cwd, env: { ...process.env, ...this.trimmedEnv() } });
+    const proc = spawnCli("claude", this.args(), { cwd, env: { ...process.env, ...this.trimmedEnv() } });
     this.proc = proc;
 
     createInterface({ input: proc.stdout }).on("line", (line) => {

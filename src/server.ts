@@ -1271,7 +1271,7 @@ function openBrowser(url: string): void {
     process.platform === "darwin" ? ["open", url]
     : process.platform === "win32" ? ["cmd", "/c", "start", "", url]
     : ["xdg-open", url];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+  spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
 }
 
 const shutdown = () => {

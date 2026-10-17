@@ -35,10 +35,14 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
   const maxBytes = opts.maxBytes ?? 100_000;
   return new Promise((resolve) => {
     // detached: its own process group, so a timeout can end the whole pipeline it started.
-    const child = spawn(process.env.SHELL || "/bin/sh", ["-c", command], {
+    // Windows has no /bin/sh: cmd.exe runs the line as typed (verbatim, so its quotes are not rewritten).
+    const win = process.platform === "win32";
+    const child = spawn(win ? process.env.ComSpec || "cmd.exe" : process.env.SHELL || "/bin/sh", win ? ["/d", "/s", "/c", `"${command}"`] : ["-c", command], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
+      windowsVerbatimArguments: win,
       env: { ...process.env, TERM: "dumb", NO_COLOR: "1", GIT_PAGER: "cat", PAGER: "cat" },
     });
     const chunks: Buffer[] = [];
@@ -59,7 +63,8 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
     child.stderr.on("data", take);
     const killGroup = () => {
       try {
-        process.kill(-child.pid!, "SIGKILL");
+        if (win) spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
+        else process.kill(-child.pid!, "SIGKILL");
       } catch {
         // already gone
       }

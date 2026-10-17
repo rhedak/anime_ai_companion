@@ -112,7 +112,7 @@ export type FolderCheck = { ok: true; dir: string } | { ok: false; reason: strin
  * so the user should pick a project, not everything.
  */
 export async function checkProjectDir(input: string): Promise<FolderCheck> {
-  const wanted = input.trim().replace(/^~(?=$|\/)/, homedir());
+  const wanted = input.trim().replace(/^~(?=$|[\\/])/, homedir());
   if (!wanted) return { ok: false, reason: "Please enter a folder." };
   let dir: string;
   try {

@@ -53,7 +53,7 @@ export function createCardService(deps: CardDeps) {
 
   async function importFile(input: string, say: Say): Promise<void> {
     if (!parts) return say("persona.md has been reshaped (no Style: and Expression protocol sections), so a card cannot be fitted in. Restore those headings first.");
-    const wanted = input.trim().replace(/^["']|["']$/g, "").replace(/^~(?=$|\/)/, homedir());
+    const wanted = input.trim().replace(/^["']|["']$/g, "").replace(/^~(?=$|[\\/])/, homedir());
     if (!wanted) return say("Use /card import <path to a card .png or .json>");
     const info = await stat(wanted).catch(() => null);
     if (!info?.isFile()) return say(`There is no file at ${wanted}.`);

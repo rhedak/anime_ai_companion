@@ -101,7 +101,12 @@ function readDaemon(): Daemon | null {
 function isOurServer(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).includes("src/server.ts");
+    // Windows has no ps: ask PowerShell for the process's command line.
+    const [cmd, args] =
+      process.platform === "win32"
+        ? ["powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`]]
+        : ["ps", ["-p", String(pid), "-o", "command="]];
+    return execFileSync(cmd as string, args as string[], { encoding: "utf8", windowsHide: true }).includes("src/server.ts");
   } catch {
     return false;
   }
@@ -132,6 +137,7 @@ function startDaemon(): number {
   // detached: its own session, so closing this terminal does not signal it.
   const child = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], {
     detached: true,
+    windowsHide: true,
     stdio: ["ignore", log, log],
   });
   closeSync(log);

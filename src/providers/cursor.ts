@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnCli } from "../spawn-cli.ts";
 import { createInterface } from "node:readline";
 import type { ImageInput } from "../images.ts";
 import {
@@ -435,7 +436,7 @@ export class CursorProvider implements Provider {
 }
 
 function defaultSpawn(args: string[], cwd: string): ChildProcessWithoutNullStreams {
-  return spawn(process.env.CURSOR_AGENT ?? "cursor-agent", args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+  return spawnCli(process.env.CURSOR_AGENT ?? "cursor-agent", args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 function loginHint(err: unknown): string {
