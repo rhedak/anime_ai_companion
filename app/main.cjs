@@ -1,7 +1,7 @@
 // The desktop shell. It does not contain the app: it starts the app's own server (src/server.ts, run by Electron's bundled Node) and shows the
 // page it serves in a window, like the Mac stub (scripts/mac) does with a native one. The server stays what it is everywhere else: listening on
 // 127.0.0.1 only, with the user's files in a folder of their own (ANAICO_DATA, ANAICO_WORKSPACE), never inside the program.
-const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -20,16 +20,13 @@ let server = null; // the child we started (null when we are showing a server th
 let origin = "";
 let quitting = false;
 let win = null;
+let tray = null; // kept in a variable so it is not garbage collected, which would remove the icon
+const iconPath = path.join(__dirname, "build", "icon.png");
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
+  app.on("second-instance", showWindow);
   app.whenReady().then(main).catch((err) => fail(String(err && err.stack ? err.stack : err)));
 }
 
@@ -102,6 +99,38 @@ async function startServer() {
   return url;
 }
 
+function showWindow() {
+  if (!win) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// Closing the window hides it: she and her server keep running, and the tray icon brings the window back. Quit in the tray menu (or the File menu)
+// really quits and stops the server. The first time, a notice says where she went.
+function hideToTray() {
+  win.hide();
+  const flag = path.join(app.getPath("userData"), ".tray-notice-shown");
+  if (process.platform === "win32" && tray && !fs.existsSync(flag)) {
+    fs.writeFileSync(flag, "");
+    tray.displayBalloon({ iconType: "info", title: "Anaico is still running", content: "She is in the tray. Click the icon to bring the window back, or right-click it to quit." });
+  }
+}
+
+function createTray() {
+  tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32, quality: "best" }));
+  tray.setToolTip("Anaico");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show Anaico", click: showWindow },
+      { label: "Open in Browser", click: () => shell.openExternal(origin + "/") },
+      { type: "separator" },
+      { label: "Quit", click: () => app.quit() },
+    ]),
+  );
+  tray.on("click", showWindow);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1180,
@@ -109,7 +138,7 @@ function createWindow() {
     minWidth: 480,
     minHeight: 520,
     title: "Anaico",
-    icon: path.join(__dirname, "build", "icon.png"),
+    icon: iconPath,
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
@@ -133,6 +162,11 @@ function createWindow() {
   win.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
     callback(["clipboard-sanitized-write", "fullscreen"].includes(permission) && ours(wc.getURL()));
   });
+  win.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    hideToTray();
+  });
   win.on("closed", () => {
     win = null;
   });
@@ -154,10 +188,9 @@ function buildMenu() {
 async function main() {
   buildMenu();
   origin = await startServer();
+  createTray();
   createWindow();
-  app.on("activate", () => {
-    if (!win) createWindow();
-  });
+  app.on("activate", showWindow);
 }
 
 function fail(message) {

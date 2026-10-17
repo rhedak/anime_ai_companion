@@ -21,4 +21,6 @@ npm run dist    # stages the app and the creator, builds dist/Anime AI Companion
 - **The icon** (`build/icon.png`) is Risa, the default character, cropped to her face on a rounded plate. It is committed; `scripts/make-icon.cjs` makes it
   again from a render of her (the command is at the top of that file).
 - **Choosing a folder** uses the server's own dialog (`src/folder-picker.ts`: PowerShell on Windows, osascript on a Mac), so the shell needs nothing extra.
-- **Not done yet:** a tray icon, signing, auto-update, and moving the Mac app onto this shell.
+- **The tray icon** (Risa) brings the window back on a click; its menu has Show, Open in Browser and Quit. Closing the window only hides it: she and her
+  server keep running until Quit, and the first time Windows says so in a notice. Quit stops the server too.
+- **Not done yet:** signing, auto-update, and moving the Mac app onto this shell.
