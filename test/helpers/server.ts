@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { symlinkDir } from "./platform.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -175,7 +176,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const app = join(dir, "app");
   mkdirSync(app);
   for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
-  symlinkSync(join(repo, "node_modules"), join(app, "node_modules"));
+  symlinkDir(join(repo, "node_modules"), join(app, "node_modules"));
   mkdirSync(join(app, "data"));
   if (!options.firstStart) writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
