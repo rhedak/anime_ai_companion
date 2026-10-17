@@ -19,13 +19,13 @@
     "appId": "io.github.rhedak.anaico",
     "productName": "Anime AI Companion",
     "directories": { "output": "dist" },
-    "files": ["main.cjs", "package.json"],
+    "files": ["main.cjs", "package.json", "build/icon.png"],
     "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
       { "from": "stage/anaico-app", "to": "anaico-app" },
       { "from": "stage/creator", "to": "creator" }
     ],
-    "win": { "target": "nsis" },
+    "win": { "target": "nsis", "icon": "build/icon.png" },
     "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
   }
 }

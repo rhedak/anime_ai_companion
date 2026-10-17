@@ -109,6 +109,7 @@ function createWindow() {
     minWidth: 480,
     minHeight: 520,
     title: "Anaico",
+    icon: path.join(__dirname, "build", "icon.png"),
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
