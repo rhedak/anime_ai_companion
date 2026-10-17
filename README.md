@@ -85,6 +85,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PORT` | `3737` | |
 | `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box (see Security model) |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
+| `COMPANION_PACK_INDEX` | a placeholder GitHub Pages URL | https address of `packs/index.json` for packs that can be downloaded; `off` skips it. See `docs/pack-archives.md` |
 
 ## Voice
 
@@ -128,6 +129,11 @@ A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/fr
 unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
 screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
 yourself: this project cannot grant you the right to use the character.
+
+A pack that is not on this computer yet can be downloaded from **Looks → Packs…** (a small preview and **Download**)
+or with `/frames <name>`. It is saved in `data/frames/` and afterwards works like any other pack, including offline.
+The list is fetched from `COMPANION_PACK_INDEX`. Until that packs site is published, the built-in address is a
+placeholder and only packs already on disk are offered. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
 
 ## Local models with Ollama
 

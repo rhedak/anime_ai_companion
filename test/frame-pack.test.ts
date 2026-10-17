@@ -124,8 +124,12 @@ test("pack names are plain folder names", async () => {
     await mkdir(join(dir, "b"));
     await mkdir(join(dir, "a"));
     await mkdir(join(dir, ".hidden"));
+    await mkdir(join(dir, "thumbs"));
+    await writeFile(join(dir, "thumbs", "a.webp"), "x");
     await writeFile(join(dir, "file.png"), "x");
     assert.deepEqual(await listPacks(dir), ["a", "b"]);
+    await writeFile(join(dir, "thumbs", "neutral.png"), png(4, 4));
+    assert.deepEqual(await listPacks(dir), ["a", "b", "thumbs"]);
     assert.deepEqual(await listPacks(join(dir, "nope")), []);
   } finally {
     await rm(dir, { recursive: true, force: true });

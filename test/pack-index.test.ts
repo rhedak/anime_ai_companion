@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { PACK_INDEX_ENTRY_KEYS, PACK_INDEX_ENTRY_REQUIRED, parsePackIndex } from "../src/pack-index.ts";
+import { PACK_INDEX_ENTRY_KEYS, PACK_INDEX_ENTRY_REQUIRED, parsePackIndex, resolveThumbnail } from "../src/pack-index.ts";
 
 const root = join(import.meta.dirname, "..");
 
@@ -51,6 +51,28 @@ test("the example in the docs is a valid pack index", () => {
   assert.equal(parsed.ok, true, !parsed.ok ? parsed.reason : "");
 });
 
+test("a thumbnail may be a path next to the index", () => {
+  const parsed = parsePackIndex({ format: 1, packs: [{ ...sample.packs[0], thumbnail: "thumbs/franzi-pajamas.webp" }] });
+  assert.equal(parsed.ok, true, !parsed.ok ? parsed.reason : "");
+  if (!parsed.ok) return;
+  assert.equal(parsed.index.packs[0].thumbnail, "thumbs/franzi-pajamas.webp");
+  const indexUrl = "https://rhedak.github.io/anime_ai_companion-packs/index.json";
+  assert.equal(resolveThumbnail(indexUrl, "thumbs/franzi-pajamas.webp"), "https://rhedak.github.io/anime_ai_companion-packs/thumbs/franzi-pajamas.webp");
+  assert.equal(
+    resolveThumbnail(indexUrl, "https://github.com/rhedak/anime_ai_companion/releases/download/pack-1/thumb.webp"),
+    "https://github.com/rhedak/anime_ai_companion/releases/download/pack-1/thumb.webp",
+  );
+  assert.equal(resolveThumbnail(indexUrl, "thumbs/../x.webp"), null);
+
+  const loopback = "http://127.0.0.1:9/index.json";
+  const local = parsePackIndex(
+    { format: 1, packs: [{ ...sample.packs[0], url: "http://127.0.0.1:9/mina.tar", thumbnail: "thumbs/mina.webp" }] },
+    { allowLoopbackHttp: true },
+  );
+  assert.equal(local.ok, true, !local.ok ? local.reason : "");
+  assert.equal(resolveThumbnail(loopback, "thumbs/mina.webp"), "http://127.0.0.1:9/thumbs/mina.webp");
+});
+
 test("a pack index refuses a broken entry", () => {
   const cases: [unknown, RegExp][] = [
     [null, /JSON object/],
@@ -69,6 +91,9 @@ test("a pack index refuses a broken entry", () => {
     [{ format: 1, packs: [{ ...sample.packs[0], sizes: { width: 940, height: 1070 } }] }, /archiveBytes/],
     [{ format: 1, packs: [sample.packs[0], sample.packs[0]] }, /twice/],
     [{ format: 1, packs: [{ ...sample.packs[0], thumbnail: "not a url" }] }, /thumbnail/],
+    [{ format: 1, packs: [{ ...sample.packs[0], thumbnail: "thumbs/../x.webp" }] }, /thumbnail/],
+    [{ format: 1, packs: [{ ...sample.packs[0], thumbnail: "/thumbs/a.webp" }] }, /thumbnail/],
+    [{ format: 1, packs: [{ ...sample.packs[0], url: "http://127.0.0.1/a.tar" }] }, /https/],
     [{ format: 1, packs: [{ ...sample.packs[0], aiMade: "yes" }] }, /aiMade/],
     [{ format: 1, packs: [{ ...sample.packs[0], note: "hi" }] }, /note is not a field/],
   ];

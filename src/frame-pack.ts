@@ -66,12 +66,25 @@ export const isPackName = (name: string): boolean => PACK_NAME.test(name) && !na
 export const frameMime = (file: string): string =>
   /\.png$/i.test(file) ? "image/png" : /\.webp$/i.test(file) ? "image/webp" : "image/jpeg";
 
+/** Gallery previews live here, next to the shipped packs (`packs/thumbs/<id>.webp`). It is not itself a pack. */
+export const PACK_THUMBS_DIR = "thumbs";
+
+async function hasNeutralFrame(folder: string): Promise<boolean> {
+  for (const name of ["neutral.png", "neutral.webp", "neutral.jpg", "neutral.jpeg"]) {
+    if (await stat(join(folder, name)).then(() => true).catch(() => false)) return true;
+  }
+  return false;
+}
+
 /** The packs in these folders (the user's own first, then the ones shipped with the app), by name. */
 export async function listPacks(...dirs: string[]): Promise<string[]> {
   const names = new Set<string>();
   for (const dir of dirs) {
     for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
-      if (e.isDirectory() && isPackName(e.name)) names.add(e.name);
+      if (!e.isDirectory() || !isPackName(e.name)) continue;
+      // `packs/thumbs` holds one small preview per pack. A real pack of that name (it has a neutral picture) still counts.
+      if (e.name === PACK_THUMBS_DIR && !(await hasNeutralFrame(join(dir, e.name)))) continue;
+      names.add(e.name);
     }
   }
   return [...names].sort((a, b) => a.localeCompare(b));

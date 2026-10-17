@@ -134,6 +134,11 @@ chosen pack's name is in `data/settings.json` as `framePack`. It is a look, not 
 
 ## Packs hosted outside the repository
 
-The folders in `packs/` are still the pictures the app reads. A downloadable archive of the same pictures, and the
-`packs/index.json` list that will point at one, are described in [pack archives](pack-archives.md). The app does not
-download anything yet.
+The folders in `packs/` are still the pictures the app reads, and a pack you put in `data/frames/<name>/` wins over
+one of the same name. A pack that is not on this computer can be downloaded from **Looks → Packs…** (its preview is
+shown, with **Download**) or with `/frames <name>`. It is restored into `data/frames/<name>/` and from then on it is
+an ordinary pack. If the list cannot be reached, packs that are already installed keep working.
+
+The list's address is `COMPANION_PACK_INDEX`. Until the packs site is published, the built-in address is a placeholder
+and nothing extra is offered. The archive, the preview pictures (`packs/thumbs/<id>.webp`) and the installer are
+described in [pack archives](pack-archives.md).

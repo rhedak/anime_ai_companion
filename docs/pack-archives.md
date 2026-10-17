@@ -1,9 +1,8 @@
 # Picture-pack archives
 
-The app still shows a pack from a folder of pictures (`docs/frame-packs.md`). Nothing here changes that.
-This is the download format for later, when a pack can live outside the repository and be fetched the first time
-someone uses it (issue #8). The running app does not read an index or an archive yet, and the packs in `packs/`
-stay as plain frames.
+The app still shows a pack from a folder of pictures (`docs/frame-packs.md`). A pack that is already in
+`data/frames/` or `packs/` is read exactly as before. A pack that is only in the index can be downloaded
+into `data/frames/<id>/` the first time it is chosen (issue #8). The folders in `packs/` stay as plain frames.
 
 ## The index
 
@@ -31,7 +30,7 @@ of the fields; the measured size of the pajamas pack is in the next section but 
         "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       },
       "url": "https://github.com/rhedak/anime_ai_companion/releases/download/pack-franzi-pajamas-1/franzi-pajamas-1.tar",
-      "thumbnail": "https://github.com/rhedak/anime_ai_companion/releases/download/pack-franzi-pajamas-1/franzi-pajamas-thumb.webp",
+      "thumbnail": "thumbs/franzi-pajamas.webp",
       "credit": "Franzi (pajamas): an original character, pictures made with AI.",
       "aiMade": true
     }
@@ -51,7 +50,7 @@ of the fields; the measured size of the pajamas pack is in the next section but 
 | `sizes.framesBytes` | The plain WebP frames it was built from, in bytes. Text files are not counted. |
 | `hashes.sha256` | SHA-256 of the archive file, 64 lowercase hex characters. |
 | `url` | Where to download the archive. https, with no password in it. |
-| `description`, `thumbnail`, `credit`, `aiMade` | Optional. What a gallery can show before the pictures are on disk. `thumbnail` is an https URL. |
+| `description`, `thumbnail`, `credit`, `aiMade` | Optional. What a gallery can show before the pictures are on disk. `thumbnail` is `thumbs/<id>.webp` next to the index, or an https URL of that picture. |
 
 A field the schema does not know is refused, so a typo does not pass.
 
@@ -97,8 +96,7 @@ A lossy WebP, a frame of a different size, a blink with no rest frame, and a fil
 refused at build time, so an archive is never a silent subset of the folder. Dotfiles are skipped, as they are when
 a pack is shown.
 
-The tool uses `sharp` (a devDependency) to read and write the WebP. The server does not load it. The later installer
-will need this same codec at runtime.
+The tool uses `sharp` to read and write the WebP. The installer uses the same codec when it restores a pack, so `sharp` is a dependency of the app.
 
 ```bash
 node src/pack-archive-cli.ts build packs/franzi-pajamas -o franzi-pajamas.tar
@@ -128,16 +126,58 @@ comes back with the same pixels. The sizes from that run:
 
 A blink's rectangle is about 145×60 pixels. Most of the archive is the frames that were stored whole.
 
-## Not in this step
+## Thumbnails
 
-The app still does not download anything. Left for later:
+Each pack has a preview, about 200 px wide, made from its neutral frame:
 
-- A server-side installer: fetch the index, download the archive, verify `hashes.sha256`, extract only allowed file
-  names, require `NOTICE.md` and `credit.txt`, stage into a temporary directory, then rename into `data/frames/<id>/`.
-  Downloads have to run in Node. A GitHub Release asset sends no CORS header, so the browser cannot fetch it.
-- Offering a remote pack from `/frames <name>` and the gallery, and downloading it the first time it is chosen.
-  Installed packs keep working offline. A remote one that is not installed shows as unavailable.
-- Publishing the archives as GitHub Release assets (or, once there are many, from a sister repository) and publishing
-  `packs/index.json` for real.
-- Moving the plain frame files out of this repository, which is a separate decision from the format, and would include
-  what to do about the copies already in git history.
+```bash
+npm run pack-thumbs
+# node src/pack-thumb-cli.ts packs -o packs/thumbs
+```
+
+The files are `packs/thumbs/<id>.webp`. They are previews (a small lossy WebP), not the frames the pack shows.
+An index entry points at the same file with `"thumbnail": "thumbs/<id>.webp"`, which is resolved against the
+index URL, so a list published at `https://example.github.io/anime_ai_companion-packs/index.json` loads
+`https://example.github.io/anime_ai_companion-packs/thumbs/<id>.webp`. An https URL in `thumbnail` is also accepted.
+
+`/pack-thumb/<id>` serves that preview. The gallery uses it even when the pack's frames are not on disk. A folder
+that has no preview file still shows its neutral picture, as before. `packs/thumbs` is not itself a pack: it is
+skipped unless it contains a `neutral` picture.
+
+## Installing
+
+`src/pack-install.ts` runs in the server. The browser never fetches the archive: a GitHub Release asset sends no
+CORS header, and the page's images stay on this origin.
+
+The index address is `COMPANION_PACK_INDEX`. When that variable is unset, the address is
+
+`https://rhedak.github.io/anime_ai_companion-packs/index.json`
+
+That is a **placeholder**. The sister repository's GitHub Pages site is not published yet, so the request fails and
+the gallery only lists packs that are already on disk. Set the variable to another https URL to point somewhere
+else, or to `off` to skip the request.
+
+Choosing a pack that is not installed (Looks → Packs… shows its preview and **Download**, or `/frames <name>`) does this:
+
+1. Fetch the index and find the entry. A network failure, a missing list, or a list that does not parse is reported
+   and nothing is written. Packs already on disk keep working.
+2. Download `url`. The size must be `sizes.archiveBytes` and the sha256 must be `hashes.sha256`. A mismatch is
+   thrown away.
+3. Restore into a temporary folder next to the destination. `credit.txt` and `NOTICE.md` have to be present and
+   non-empty. Names that leave the folder are refused by the restore itself.
+4. Rename that folder to `data/frames/<id>/`. A second install of the same sha256 does nothing. A folder that is
+   already there and was not installed by this module (no `.pack-install.json`) is left as it is.
+
+Progress is a `pack-progress` message (`index`, `download` with bytes, `verify`, `restore`, `done`). The archive is
+not kept after the check.
+
+## Still to publish
+
+The format and the installer are in the app. Nothing is hosted yet:
+
+- Create the sister repository and turn on GitHub Pages so the placeholder URL above serves `index.json`, with
+  `thumbs/<id>.webp` beside it (or set `thumbnail` to an https URL).
+- Publish each archive as a GitHub Release asset and fill `url`, `sizes.archiveBytes` and `hashes.sha256` from
+  `node src/pack-archive-cli.ts index`.
+- Moving the plain frame files out of this repository is a separate decision, including what to do about the copies
+  already in git history. The previews in `packs/thumbs/` can stay.

@@ -1077,8 +1077,14 @@ function handle(msg) {
       break;
     case "packs":
       packNames = msg.names ?? [];
+      remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
       activePackName = msg.active ?? null;
       renderLooksMenu();
+      const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
+      if (openGallery?.dataset.kind === "packs") galleryFill?.();
+      break;
+    case "pack-progress":
+      showPackProgress(msg);
       break;
     case "meter":
       meter = msg;
@@ -1620,7 +1626,9 @@ setInterval(() => meter && renderMeter(), 60_000);
 // --- looks menu and its galleries (presets, packs) --------------------------------------
 let lastLooks = { names: [], presets: [] };
 let packNames = [];
+let remotePacks = []; // { id, name, description?, credit? } for packs the index lists that are not on disk
 let activePackName = null; // the picture pack in use, or null for the drawn avatar
+let galleryFill = null; // redraws the open packs gallery when the index arrives
 
 function renderLooksMenu() {
   const select = $("looks");
@@ -1634,7 +1642,7 @@ function renderLooksMenu() {
     new Option("Looks…", ""),
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
-    ...(packNames.length ? [new Option("Packs…", "packs")] : []),
+    ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
   );
   select.disabled = select.options.length === 1;
 }
@@ -1655,15 +1663,40 @@ function uniqueIds(svg, prefix) {
 
 function closeGallery() {
   document.querySelector(".gallery")?.remove();
+  galleryFill = null;
 }
 
-/** One choice in the packs gallery: a pack's neutral picture, or null for the drawn avatar. */
-function packItem(name) {
+/** Download progress on a gallery tile, from a `pack-progress` message. */
+function showPackProgress(msg) {
+  const id = typeof msg.id === "string" ? msg.id : "";
+  const state = id ? document.querySelector(`.gallery [data-pack="${CSS.escape(id)}"] .preset-state`) : null;
+  if (!state) return;
+  if (msg.phase === "error") {
+    state.textContent = "Download";
+    const button = state.closest("button");
+    if (button) button.disabled = false;
+  } else if (msg.phase === "done") {
+    state.textContent = "Installed";
+    closeGallery();
+  } else if (msg.phase === "restore") state.textContent = "Installing…";
+  else if (msg.phase === "download" && msg.total) state.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%`;
+  else state.textContent = "Downloading…";
+}
+
+/** One choice in the packs gallery: a pack's preview, null for the drawn avatar, or a remote pack that is not installed yet. */
+function packItem(name, remote) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "preset";
-  item.title = name ?? "The avatar drawn by code";
-  if (name === activePackName) item.setAttribute("aria-current", "true");
+  if (name) item.dataset.pack = name;
+  const label = remote?.name || name || "Drawn avatar";
+  if (remote) {
+    item.classList.add("is-remote");
+    item.title = [label, remote.credit, "Not on this computer yet."].filter(Boolean).join(" — ");
+  } else {
+    item.title = name ?? "The avatar drawn by code";
+  }
+  if (name && name === activePackName) item.setAttribute("aria-current", "true");
   const pic = document.createElement("span");
   pic.className = "preset-pic";
   if (name === null) {
@@ -1676,8 +1709,16 @@ function packItem(name) {
     img.src = `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder
     pic.append(img);
   }
-  item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name ?? "Drawn avatar" }));
+  item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));
+  if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
   item.onclick = () => {
+    if (remote) {
+      item.disabled = true;
+      const state = item.querySelector(".preset-state");
+      if (state) state.textContent = "Downloading…";
+      ws?.send(JSON.stringify({ type: "pack-install", name }));
+      return;
+    }
     closeGallery();
     if (name !== activePackName) ws?.send(JSON.stringify({ type: "pack-select", name }));
   };
@@ -1713,7 +1754,10 @@ function openGallery(kind = "presets") {
   );
   document.querySelector(".stage").append(box);
   const fill = () => {
-    if (packs) return grid.replaceChildren(...[null, ...packNames].map(packItem));
+    if (packs) {
+      const offered = remotePacks.filter((pack) => !packNames.includes(pack.id));
+      return grid.replaceChildren(...[null, ...packNames].map((name) => packItem(name, null)), ...offered.map((pack) => packItem(pack.id, pack)));
+    }
     grid.replaceChildren(
       ...presetNames.map((name) => {
         const item = document.createElement("button");
@@ -1741,6 +1785,8 @@ function openGallery(kind = "presets") {
     grid.querySelector("button")?.focus(); // so arrow keys and Escape work from the start
   };
   fillAndFocus();
+  galleryFill = packs ? fill : null;
+  if (packs) ws?.send(JSON.stringify({ type: "pack-catalog" })); // so a pack that is not downloaded still has a preview
   if (!packs && !presetThumbs) {
     gallerySlot = fillAndFocus;
     ws?.send(JSON.stringify({ type: "preset-thumbs" }));
