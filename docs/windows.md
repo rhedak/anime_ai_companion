@@ -26,7 +26,8 @@ Claude Code, Cursor or Ollama if you have one of them.
   works for opencode and Cursor but is not a good fit for Claude's long launch arguments.
 - **Work mode.** Letting her edit files and run commands works the same way as elsewhere (every change asks first). `!command` in
   the chat runs through `cmd.exe`.
-- **No folder dialog.** The "choose a folder" button has no Windows dialog yet; type or paste the folder's path instead.
+- **Choosing a folder.** The "choose a folder" button opens the standard Windows folder dialog (a small PowerShell script, fixed text, with the
+  start folder passed in the environment). You can also type or paste the folder's path.
 - **Port in use.** If 3737 is taken, open a terminal in the app folder and run `set PORT=3800 && node src/server.ts --open`.
 
 ## If it does not start

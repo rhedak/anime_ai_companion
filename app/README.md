@@ -20,5 +20,5 @@ npm run dist    # stages the app and the creator, builds dist/Anime AI Companion
 - **The installer** is per user (no administrator needed), lets the user pick the folder, and is not signed, so Windows SmartScreen warns on first run.
 - **The icon** (`build/icon.png`) is Risa, the default character, cropped to her face on a rounded plate. It is committed; `scripts/make-icon.cjs` makes it
   again from a render of her (the command is at the top of that file).
-- **Not done yet:** a native folder dialog for "choose a folder" (`src/folder-picker.ts` has no
-  Windows branch), a tray icon, signing, auto-update, and moving the Mac app onto this shell.
+- **Choosing a folder** uses the server's own dialog (`src/folder-picker.ts`: PowerShell on Windows, osascript on a Mac), so the shell needs nothing extra.
+- **Not done yet:** a tray icon, signing, auto-update, and moving the Mac app onto this shell.
