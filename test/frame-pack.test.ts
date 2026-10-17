@@ -1,4 +1,3 @@
-import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -158,7 +157,7 @@ test("served types follow the extension", () => {
   assert.equal(frameMime("a.jpeg"), "image/jpeg");
 });
 
-test("a pack can carry its credit and its terms, and packs are found in the user's folder first", { skip: winSkip }, async () => {
+test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {
   const img = png(10, 10);
   const mine = await mkdtemp(join(tmpdir(), "frames-"));
   const shipped = await mkdtemp(join(tmpdir(), "frames-"));
@@ -185,7 +184,7 @@ test("a pack can carry its credit and its terms, and packs are found in the user
     await writeFile(join(mine, "only-shipped", "base.png"), img);
     const shadowed = await readPack([mine, shipped], "only-shipped", emotions);
     assert.ok(shadowed.ok);
-    assert.match([...shadowed.pack.files.values()][0].path, new RegExp(`${shipped}`));
+    assert.ok([...shadowed.pack.files.values()][0].path.startsWith(shipped), "its pictures come from the shipped folder");
     assert.deepEqual(await listPacks(mine, shipped), ["fan", "only-shipped"]);
     // when no folder works, the user's own folder's problem is the one reported
     await rm(join(shipped, "only-shipped"), { recursive: true });

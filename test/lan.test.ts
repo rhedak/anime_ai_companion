@@ -1,4 +1,3 @@
-import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,20 +23,22 @@ test("tokens are long, unique, and compared exactly", () => {
   assert.equal(tokenMatches("", token), false);
 });
 
-test("the token file is created private, reused, and replaced on request", { skip: winSkip }, async () => {
+test("the token file is created private, reused, and replaced on request", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lan-"));
   try {
     const path = join(dir, "data/lan-token");
     const first = await loadToken(path);
     assert.equal(await loadToken(path), first);
-    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    // Windows has no permission bits (the file takes the folder's access list, which in a user's own folders is that user's), so this is for the others.
+    const private_ = async () => process.platform === "win32" || ((await stat(path)).mode & 0o777) === 0o600;
+    assert.ok(await private_(), "created with owner-only permissions");
     const second = await saveToken(path, newToken());
     assert.notEqual(second, first);
     assert.equal(await loadToken(path), second);
     await writeFile(path, "short\n", { mode: 0o644 });
     const repaired = await loadToken(path); // a damaged file is replaced, never trusted
     assert.match(repaired, /^[A-Za-z0-9_-]{32}$/);
-    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.ok(await private_(), "the repaired file is owner-only again");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

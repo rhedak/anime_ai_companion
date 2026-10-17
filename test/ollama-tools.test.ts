@@ -1,4 +1,4 @@
-import { symlinkDir, winSkip } from "./helpers/platform.ts";
+import { symlinkDir } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,7 +53,7 @@ test("read_file reads text, starts at a line, and refuses binary, missing, big a
   }
 });
 
-test("grep finds matches with file and line, skips node_modules and binaries, and says when nothing matched", { skip: winSkip }, async () => {
+test("grep finds matches with file and line, skips node_modules and binaries, and says when nothing matched", async () => {
   const p = project();
   try {
     const hit = await runTool("grep", { pattern: "const \\w+ = \\d" }, { cwd: p.dir });
@@ -85,7 +85,7 @@ test("write_file writes inside the project, makes folders, and refuses outside, 
   }
 });
 
-test("edit_file replaces text that matches exactly once, and says how to fix it when it does not", { skip: winSkip }, async () => {
+test("edit_file replaces text that matches exactly once, and says how to fix it when it does not", async () => {
   const p = project();
   try {
     const path = join(p.dir, "src", "a.ts");
@@ -141,16 +141,18 @@ test("edit_file keeps Windows line endings working, and refuses empty, identical
   }
 });
 
-test("bash runs in the project folder and reports failures and silence", { skip: winSkip }, async () => {
+test("bash runs in the project folder and reports failures and silence", async () => {
   const p = project();
   try {
-    const ok = await runTool("bash", { command: "pwd && echo hi" }, { cwd: p.dir });
+    // The same things in the words of the shell the tool runs: sh, or cmd.exe on Windows.
+    const win = process.platform === "win32";
+    const ok = await runTool("bash", { command: win ? "cd && echo hi" : "pwd && echo hi" }, { cwd: p.dir });
     assert.equal(ok.ok, true);
     assert.match(ok.output, /hi/);
-    const failed = await runTool("bash", { command: "echo oops; exit 3" }, { cwd: p.dir });
+    const failed = await runTool("bash", { command: win ? "echo oops & exit 3" : "echo oops; exit 3" }, { cwd: p.dir });
     assert.equal(failed.ok, false);
     assert.match(failed.output, /oops[^]*exit code 3/);
-    assert.equal((await runTool("bash", { command: "true" }, { cwd: p.dir })).output, "(no output)");
+    assert.equal((await runTool("bash", { command: win ? "cd ." : "true" }, { cwd: p.dir })).output, "(no output)");
     assert.equal((await runTool("bash", { command: "" }, { cwd: p.dir })).ok, false);
   } finally {
     p.done();

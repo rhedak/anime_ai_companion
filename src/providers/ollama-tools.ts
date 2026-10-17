@@ -51,7 +51,9 @@ export const TOOLS: ToolSpec[] = [
     name: "bash",
     card: "Bash",
     readOnly: false,
-    description: "Run one shell command in the project folder (no terminal, no input; stops after 60 seconds). The user approves each command.",
+    description:
+      "Run one shell command in the project folder (no terminal, no input; stops after 60 seconds). The user approves each command." +
+      (process.platform === "win32" ? " This is Windows: the command runs in cmd.exe, so use its commands (dir, type, findstr), not bash's." : ""),
     parameters: { type: "object", properties: { command: { type: "string", description: "The command line." } }, required: ["command"] },
   },
   {
@@ -193,7 +195,7 @@ async function grepTool(cwd: string, args: Record<string, unknown>, signal?: Abo
     if (!bytes || bytes.subarray(0, 8000).includes(0)) continue;
     const lines = bytes.toString("utf8").split("\n");
     for (let i = 0; i < lines.length && found.length < GREP_MATCHES; i++) {
-      if (regex.test(lines[i])) found.push(`${relative(root, file)}:${i + 1}:${lines[i].slice(0, 300)}`);
+      if (regex.test(lines[i])) found.push(`${shown(relative(root, file))}:${i + 1}:${lines[i].slice(0, 300)}`);
     }
   }
   return found.length ? found.join("\n") + (found.length >= GREP_MATCHES ? `\n[stopped at ${GREP_MATCHES} matches]` : "") : "No matches.";
@@ -208,8 +210,11 @@ async function writeTool(cwd: string, args: Record<string, unknown>): Promise<st
   if (rel.split(sep).includes(".git")) throw new Error("Files inside .git are not written.");
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, args.content);
-  return `Wrote ${rel} (${Buffer.byteLength(args.content)} bytes).`;
+  return `Wrote ${shown(rel)} (${Buffer.byteLength(args.content)} bytes).`;
 }
+
+/** A path as the model is shown it: always with `/`, so what she reads is the same on every system (Windows accepts `/` when it is given back). */
+const shown = (path: string): string => path.split(sep).join("/");
 
 /** How many times `needle` occurs in `text`, without overlaps. */
 function countOccurrences(text: string, needle: string): number {
@@ -247,7 +252,7 @@ async function editTool(cwd: string, args: Record<string, unknown>): Promise<str
   const after = args.replace_all === true ? before.split(oldText).join(newText) : before.replace(oldText, () => newText);
   if (Buffer.byteLength(after) > WRITE_BYTES) throw new Error("The edited file would be too big (over 200 KB).");
   await writeFile(file, after);
-  return `Edited ${rel}: ${args.replace_all === true ? `${found} replacement${found === 1 ? "" : "s"}` : "1 replacement"}.`;
+  return `Edited ${shown(rel)}: ${args.replace_all === true ? `${found} replacement${found === 1 ? "" : "s"}` : "1 replacement"}.`;
 }
 
 export interface ToolContext {
