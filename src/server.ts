@@ -36,18 +36,19 @@ import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
+import { dataDir, workspaceDir } from "./paths.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
-const workspace = join(root, "workspace");
-const customCssPath = join(root, "data/custom.css");
+const workspace = workspaceDir;
+const customCssPath = join(dataDir, "custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only unless `--lan` is passed: this server can run Claude Code, so reaching it from the network is an
 // opt-in made again at every start, and every request from the network needs the token (src/lan.ts).
 const host = "127.0.0.1";
 const lan = process.argv.includes("--lan");
 const bindHost = lan ? "0.0.0.0" : host;
-const lanTokenPath = join(root, "data/lan-token");
+const lanTokenPath = join(dataDir, "lan-token");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
 
 await mkdir(workspace, { recursive: true });
@@ -57,8 +58,8 @@ const emotions = JSON.parse(await readFile(join(root, "emotions.json"), "utf8"))
 const creatorSrc = await resolveCreatorSrc();
 const avatar = new AvatarService({
   creatorSrc,
-  statePath: join(root, "data/avatar.json"),
-  looksDir: join(root, "data/looks"),
+  statePath: join(dataDir, "avatar.json"),
+  looksDir: join(dataDir, "looks"),
   emotions,
   defaultPreset: process.env.COMPANION_PRESET ?? "risa",
 });
@@ -66,11 +67,11 @@ await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
-const settingsPath = join(root, "data/settings.json");
+const settingsPath = join(dataDir, "settings.json");
 const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
-const framesDir = join(root, "data/frames");
+const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
@@ -148,7 +149,7 @@ const persona = (config: SessionConfig) =>
   avatar.promptSection();
 
 // What the chat log shows, and which Claude Code session it belongs to, survive a restart.
-const transcript = new Transcript(join(root, "data/transcript.json"));
+const transcript = new Transcript(join(dataDir, "transcript.json"));
 const savedLog = await transcript.load();
 const claudeResumable =
   savedLog?.provider === "claude" && savedLog.sessionId && (await claudeSessionExists(savedLog.sessionId))
@@ -351,7 +352,7 @@ const broadcast = (msg: unknown) => {
 ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
 if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
-await mkdir(join(root, "data"), { recursive: true });
+await mkdir(dataDir, { recursive: true });
 
 /** Save the visible log and the session it belongs to (debounced a little: turns end often). */
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -440,7 +441,7 @@ function changeClaudeSetup(on: boolean, say: Say): void {
 
 // --- her notes about the user (data/memory.md): see memory-service.ts ---
 const memory = createMemoryService({
-  file: join(root, "data/memory.md"),
+  file: join(dataDir, "memory.md"),
   mode: () => mode,
   broadcast: (msg) => broadcast(msg),
   openFile: (path) => openBrowser(path),
@@ -452,7 +453,7 @@ const memory = createMemoryService({
 
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
-  file: join(root, "data/character.json"),
+  file: join(dataDir, "character.json"),
   personaBase,
   settings,
   saveSettings: () => saveSettings(settingsPath, settings),
@@ -1262,7 +1263,7 @@ server.listen(port, bindHost, () => {
       { name: "anime_ai_companion", dir: root, url: "https://github.com/rhedak/anime_ai_companion" },
       { name: "anime-character-creator", dir: resolve(creatorSrc, "../.."), url: "https://github.com/rhedak/anime-character-creator" },
     ],
-    join(root, "data/nudge.json"),
+    join(dataDir, "nudge.json"),
   );
 });
 

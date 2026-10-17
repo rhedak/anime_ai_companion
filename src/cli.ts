@@ -14,6 +14,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dataDir } from "./paths.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT ?? 3737);
@@ -80,8 +81,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---- the background server: data/server.pid says which process it is ----
 
-const pidFile = join(root, "data/server.pid");
-const logFile = join(root, "data/server.log");
+const pidFile = join(dataDir, "server.pid");
+const logFile = join(dataDir, "server.log");
 
 interface Daemon {
   pid: number;

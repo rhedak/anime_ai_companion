@@ -55,6 +55,8 @@ The first line takes the creator release this version was made for (`--branch`);
 the app draws her with the creator's TypeScript, so there is no Python to set up. (Python is only for the optional picture-pack tools under
 `python/`, which `docs/frame-packs.md` describes.)
 
+**On a Mac**, `scripts/build-mac-app.sh` builds a double-clickable `Anaico.app` with everything inside ([docs/mac-app.md](docs/mac-app.md)).
+
 **On Windows**, download the repository as a ZIP (or clone it), unpack it and double-click `windows-start.bat`: it installs Node.js and the
 free opencode brain if you say yes, fetches the character creator, and opens the page. [docs/windows.md](docs/windows.md) has the steps.
 Windows support is new and has had little testing; please report what breaks.

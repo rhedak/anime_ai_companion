@@ -23,3 +23,6 @@ trailer/.sample-pack/
 
 # editor settings (PyCharm / JetBrains)
 .idea/
+
+# built Mac app
+/dist/

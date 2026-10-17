@@ -163,7 +163,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   else add("warn", `Port ${p.port} is in use by something that is not answering as a web page`, "Set PORT=<another number> to use a different one.");
 
   // Where her data lives
-  const data = join(p.root, "data");
+  const data = p.env.ANAICO_DATA ? resolve(p.env.ANAICO_DATA) : join(p.root, "data");
   if (p.exists(data) ? p.writable(data) : p.writable(p.root)) add("ok", "data/ is writable (settings, chat log, her look)");
   else add("fail", "data/ is not writable", `Fix the permissions on ${p.exists(data) ? data : p.root}.`);
 
