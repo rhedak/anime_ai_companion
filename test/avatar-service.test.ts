@@ -179,15 +179,18 @@ async function stubbed(mode: "hang" | "exit" | "throw", timeoutMs = 15_000) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-// Skipped on Windows for now: its short timeout is flaky on a slow runner. To be made robust.
+
+// The timeout applies to every call, including the one that a fresh renderer thread answers after the hung one is cut off. Starting a thread and
+// loading the creator takes a second on a loaded Windows machine, so a timeout of 700 ms made the second call fail now and then: this one has room.
+const HANG_TIMEOUT = 2500;
 
 test("a render that never ends is cut off at the timeout, the thread is really stopped, and the next call gets a fresh renderer", { skip }, async () => {
-  const { s, lines } = await stubbed("hang", 700);
+  const { s, lines } = await stubbed("hang", HANG_TIMEOUT);
   try {
     const started = Date.now();
     await assert.rejects(s.frames("neutral"), /avatar renderer timed out on 'frames'/);
     const waited = Date.now() - started;
-    assert.ok(waited >= 650 && waited < 5000, `cut off at the timeout, not before or long after (${waited} ms)`);
+    assert.ok(waited >= HANG_TIMEOUT - 50 && waited < HANG_TIMEOUT + 4000, `cut off at the timeout, not before or long after (${waited} ms)`);
     assert.ok(lines().some((l) => l.startsWith("spin")), "it was really hung");
     await sleep(300); // the thread is being terminated; once it is, nothing more is written
     const settled = lines().length;
