@@ -1,6 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { symlinkDir } from "./platform.ts";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { removeDir, symlinkDir } from "./platform.ts";
+import { baseEnv, pathOf, systemPathDirs, writeStandIn } from "./standin.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -182,9 +183,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
   const bin = join(dir, "bin");
   mkdirSync(bin);
-  const standIn = join(bin, "claude");
-  writeFileSync(standIn, STAND_IN);
-  chmodSync(standIn, 0o755);
+  writeStandIn(bin, "claude", STAND_IN);
   const config = join(dir, "claude-config");
   for (const skill of options.userSkills ?? []) {
     mkdirSync(join(config, "skills", skill), { recursive: true });
@@ -223,8 +222,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     cwd: app,
     env: {
       // Only the stand-in `claude` is reachable: a real one cannot start from a test.
-      PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
-      HOME: join(dir, "home"),
+      PATH: pathOf(bin, dirname(process.execPath), ...systemPathDirs()),
+      ...baseEnv(join(dir, "home")),
       PORT: String(port),
       CLAUDE_CONFIG_DIR: config,
       CREATOR_SRC: creatorSrcForServer(),
@@ -284,7 +283,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     },
     async stop() {
       clients.forEach((c) => c.close());
-      child.kill("SIGTERM");
+      // Windows has no signals and `kill` ends only the server: its brain (the stand-in and the Node it runs) would go on holding the folder.
+      if (process.platform === "win32" && child.pid && child.exitCode === null) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+      else child.kill("SIGTERM");
       await new Promise<void>((r) => {
         if (child.exitCode !== null) return r();
         child.once("exit", () => r());
@@ -293,7 +294,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           r();
         }, 3000);
       });
-      rmSync(dir, { recursive: true, force: true });
+      removeDir(dir);
     },
   };
 }

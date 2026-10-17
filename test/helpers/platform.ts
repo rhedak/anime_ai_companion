@@ -1,4 +1,4 @@
-import { symlinkSync } from "node:fs";
+import { rmSync, symlinkSync } from "node:fs";
 
 /**
  * The tests that assume a POSIX machine (stand-in programs written as shell scripts, `ls`, `/`-separated fake paths, file permission bits)
@@ -13,6 +13,24 @@ export const winSkip: string | false = process.platform === "win32" ? "assumes a
  */
 export function symlinkDir(target: string, path: string): void {
   symlinkSync(target, path, "junction");
+}
+
+/**
+ * Deletes a test's scratch folder. On Windows a folder whose programs have only just ended can stay held for a while (the virus scanner and the
+ * indexer open new files), so it is tried again for several seconds, and a folder that is still held then is left in the temp folder with a note
+ * instead of failing a test that already passed. Elsewhere it is a plain `rmSync` and any error is real.
+ */
+export function removeDir(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (process.platform === "win32" && (code === "EPERM" || code === "EBUSY" || code === "EACCES")) {
+      console.warn(`note: could not delete ${dir} (${code}); it is left in the temp folder`);
+      return;
+    }
+    throw err;
+  }
 }
 
 /** A link to a file, or null when Windows will not make one without privileges (the test that needs it should then skip). */

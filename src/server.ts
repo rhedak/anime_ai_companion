@@ -833,7 +833,8 @@ void cleanInstallLeftovers(); // a scratch folder from an install that was cut s
  */
 function opencodeOffer(): Record<string, unknown> | null {
   const asset = opencodeAsset();
-  if (!asset || isInstalled(brainProgram("opencode") ?? "opencode")) return null;
+  // OPENCODE_BIN is the user's own choice and wins over a copy we install, so installing one would not make it start: no offer then.
+  if (!asset || process.env.OPENCODE_BIN || isInstalled(brainProgram("opencode") ?? "opencode")) return null;
   return {
     type: "install-offer",
     brain: "opencode",
