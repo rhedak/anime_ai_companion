@@ -16,6 +16,8 @@ import type { ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
+import { ScriptedProvider } from "./providers/scripted.ts";
+import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
@@ -68,6 +70,7 @@ await avatar.start();
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
 const settingsPath = join(dataDir, "settings.json");
+const firstStart = !existsSync(settingsPath);
 const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
@@ -114,6 +117,24 @@ let permissionMode: PermissionMode = "manual";
 let claudeSetup = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
+
+/**
+ * Basic mode: the chosen brain's program is not installed (or, on a first start, no brain is). She then runs the built-in script and says so
+ * (src/providers/scripted.ts) instead of failing at the first message. On a first start another brain that is installed is used instead (in
+ * memory; nothing is saved until the user changes something). A brain the user chose that has gone missing is not swapped for another one.
+ */
+const brainThere = (name: ProviderName): boolean => {
+  const program = brainProgram(name);
+  return program === null || isInstalled(program);
+};
+let basicMode = false;
+if (settings.provider !== "ollama" && !brainThere(settings.provider)) {
+  const other = firstStart ? (["claude", "opencode", "cursor"] as const).find(brainThere) : undefined;
+  if (other) settings.provider = other;
+  else if (firstStart && ((await listOllamaModels(ollamaHost)) ?? []).length > 0) settings.provider = "ollama";
+  else basicMode = true;
+}
+if (basicMode) mode = "chat"; // no tools to work with
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
 
@@ -156,6 +177,7 @@ const claudeResumable =
     ? savedLog.sessionId
     : undefined;
 if (!claudeResumable && savedLog?.provider === "claude") transcript.clear(); // its session is gone: start clean
+if (savedLog?.provider === "basic" && !basicMode) transcript.clear(); // a conversation with the built-in script has nothing to give a real brain
 /** How big her memory is and when she last answered: a cold prompt cache makes the next message expensive. */
 const convo: ConversationState = {
   contextTokens: claudeResumable ? savedLog?.contextTokens ?? null : null,
@@ -210,7 +232,8 @@ const providers: Record<ProviderName, Provider> = {
     resumeSessionId: opencodeResumable,
   }),
 };
-let provider: Provider = providers[settings.provider];
+const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null });
+let provider: Provider = basicMode ? scripted : providers[settings.provider];
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
 const OLLAMA_WORK_WARNING =
@@ -254,7 +277,9 @@ const modeInfo = () => ({
   type: "mode",
   name: settings.name,
   mode,
-  provider: settings.provider,
+  // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
+  provider: basicMode ? "basic" : settings.provider,
+  basic: basicMode,
   canUseTools: provider.canUseTools,
   // Only a local model that Ollama says cannot see pictures: everything else may attach (the page hides nothing otherwise).
   cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePictures,
@@ -360,7 +385,7 @@ function persistTranscript(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     transcript
-      .save({ provider: settings.provider, sessionId: provider.sessionId, ...convo })
+      .save({ provider: basicMode ? "basic" : settings.provider, sessionId: provider.sessionId, ...convo })
       .catch((err) => console.error("could not save the transcript:", err));
   }, 300);
 }
@@ -386,7 +411,9 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
       return say(
         settings.provider === "ollama"
           ? `Ollama does not report that ${settings.ollamaModel || "this model"} can use tools, so work mode is off for it. Pick a tool-capable model (a recent Qwen or Llama, for example), or, if you know this one works, start the server with COMPANION_OLLAMA_TOOLS=${settings.ollamaModel || "<model>"}.`
-          : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
+          : basicMode
+            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): npm install -g opencode-ai, then restart this app."
+            : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
       );
     }
     const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
@@ -939,6 +966,17 @@ function forgetConversationSize(): void {
   turns.dropHeld();
 }
 
+/** In basic mode an empty conversation opens by saying what she is and how to get a real brain: shown like a reply, nothing was asked of anything. */
+function greetBasic(): void {
+  if (!basicMode || provider.busy || transcript.items.length > 0) return;
+  const said = basicGreeting(settings.name);
+  transcript.delta(said);
+  transcript.flush();
+  persistTranscript();
+  broadcast({ type: "delta", text: said });
+  broadcast({ type: "done" });
+}
+
 function resetConversation(): void {
   queue.drop();
   provider.reset();
@@ -950,6 +988,7 @@ function resetConversation(): void {
   broadcast({ type: "reset" });
   broadcast(modeInfo());
   cards.greet();
+  greetBasic();
 }
 
 // --- messages typed while she is still answering: see queue-service.ts ---
@@ -1019,6 +1058,7 @@ wss.on("connection", (ws) => {
   void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
+  greetBasic();
   const acp = acpBrain();
   if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
   if (acp?.replacedSession) {
@@ -1130,7 +1170,8 @@ wss.on("connection", (ws) => {
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
       if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
       if (msg.provider !== "cursor" && msg.provider !== "opencode" && permissionMode === "everything") permissionMode = "manual";
-      const switching = settings.provider !== msg.provider;
+      const switching = settings.provider !== msg.provider || basicMode;
+      basicMode = false;
       settings.provider = msg.provider;
       await saveSettings(settingsPath, settings);
       if (switching) {

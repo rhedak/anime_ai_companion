@@ -12,7 +12,8 @@ what to send.
    - **Node.js 22.18 or newer**, installed with `winget` (included in current Windows 10 and 11). Without winget it opens nodejs.org.
    - **The app's packages** (`npm install`, once).
    - **The character creator** (the drawing code), downloaded from GitHub as a ZIP; no git needed.
-   - **opencode**, the free brain, installed with `npm install -g opencode-ai`. Its free models need no account.
+   - **opencode**, the free brain, installed with `npm install -g opencode-ai`. Its free models need no account. If you skip it, she runs a small
+     built-in script instead (hair, eyes, moods and gestures, but no real conversation) and tells you in her first message how to get a brain.
 4. Your browser opens at <http://127.0.0.1:3737>. Leave the black window open while you use her; closing it stops her.
 
 Next time, double-click `windows-start.bat` again; it skips what is already there. Under *Brain* in the page you can switch to

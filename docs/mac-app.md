@@ -17,7 +17,8 @@ creator from GitHub).
 - The app is **not signed with a developer certificate** (that needs an Apple Developer account), so macOS blocks it the first time:
   right-click → **Open**, then **Open** again; or System Settings → Privacy & Security → **Open Anyway**.
 - It still needs **a brain** installed: Claude Code, opencode, Cursor or Ollama. The first time, it picks one it finds; after that the
-  choice is made in the page.
+  choice is made in the page. With none installed she runs a small built-in script (looks, moods and gestures, no real conversation) and says
+  so in her first message, with the way to install opencode, the easiest.
 - Her settings, chat and look are in `~/Library/Application Support/Anaico/` (`data/`, `workspace/`, `server.log`), so replacing
   the app with a newer one keeps them.
 

@@ -7,7 +7,7 @@ import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { buildMessages, emotionFix } from "./model-prompt.js";
-import { DRAWN_AGAIN, PACK_INTRO } from "./script.js";
+import { DRAWN_AGAIN, PACK_INTRO } from "../public/script.js";
 
 const OPEN = 1;
 

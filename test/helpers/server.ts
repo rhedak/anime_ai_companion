@@ -166,6 +166,8 @@ export interface ServerOptions {
   userSkills?: string[];
   /** Start with a big conversation that has been idle for two hours, so Claude's prompt cache is cold. */
   coldConversation?: boolean;
+  /** Start as a brand-new install: no data/settings.json yet. */
+  firstStart?: boolean;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -175,7 +177,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
   symlinkSync(join(repo, "node_modules"), join(app, "node_modules"));
   mkdirSync(join(app, "data"));
-  writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
+  if (!options.firstStart) writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
   const bin = join(dir, "bin");
   mkdirSync(bin);

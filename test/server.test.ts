@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { Client, cannotRunServer, startServer, type RunningServer } from "./helpers/server.ts";
 
@@ -962,6 +962,97 @@ describe("switching to a brain whose program is missing", { skip }, () => {
       assert.equal(JSON.parse(server.data("settings.json") ?? "{}").provider, "claude");
     } finally {
       await server.stop();
+    }
+  });
+});
+
+describe("basic mode: no brain installed", { skip: skipWin }, () => {
+  /** No `claude` (or any other brain) on the server's PATH: only Node and the system. */
+  const noBrains = () => ({ PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" });
+
+  test("she opens by saying she is a script and how to get a brain, answers from the script, and has no work mode", async () => {
+    const server = await startServer({ env: noBrains() });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.basic, true);
+      assert.equal(mode.provider, "basic");
+      assert.equal(mode.canUseTools, false);
+      await c.done(0);
+      const greeting = c.since(0).filter((e) => e.type === "delta").map((e) => e.text).join("");
+      assert.match(greeting, /no brain is installed yet, so right now I only follow a small script/);
+      assert.match(greeting, /opencode/);
+      assert.match(greeting, /npm install -g opencode-ai/);
+      assert.match(greeting, /brains\.html/);
+
+      const said = await ask(c, "make your hair blue and put on glasses");
+      assert.match(said, /Okay! Blue hair and glasses\./);
+      assert.ok(c.since(0).some((e) => e.type === "avatar" && e.applied?.some((a: string) => a.includes("hair_color"))), "the look changed");
+
+      const joke = await ask(c, "tell me a joke");
+      assert.match(joke, /no language model connected[^]*opencode/);
+
+      const from = c.mark;
+      c.send({ type: "mode", mode: "work" });
+      const notice = await c.next((e) => e.type === "notice", 5000, from);
+      assert.match(notice.text, /Work mode needs a brain/);
+      assert.equal(server.data("settings.json") && JSON.parse(server.data("settings.json")!).provider, "claude", "nothing was saved about it");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a conversation with the script is saved as one, so a real brain installed later starts a clean log", async () => {
+    const first = await startServer({ env: noBrains() });
+    try {
+      const c = await first.client();
+      await c.done(0);
+      await new Promise((r) => setTimeout(r, 500)); // the log is saved a moment after
+      assert.equal(JSON.parse(first.data("transcript.json") ?? "{}").provider, "basic");
+    } finally {
+      await first.stop();
+    }
+  });
+
+  test("a first start with no settings uses a reachable Ollama before falling back to the script, and saves nothing", async () => {
+    const fake = createServer((req, res) => {
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "llama3.2:3b" }] }));
+      res.end(JSON.stringify({ capabilities: ["completion"] }));
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const server = await startServer({ firstStart: true, env: { ...noBrains(), OLLAMA_HOST: `http://127.0.0.1:${(fake.address() as AddressInfo).port}` } });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.provider, "ollama");
+      assert.equal(mode.basic, false);
+      assert.equal(server.data("settings.json"), null, "nothing is saved until the user changes something");
+    } finally {
+      await server.stop();
+      fake.close();
+    }
+  });
+
+  test("a first start with nothing at all runs the script; installing a brain the user then picks ends it with a new conversation", async () => {
+    const fake = createServer((req, res) => res.end(JSON.stringify(req.url === "/api/tags" ? { models: [] } : { capabilities: ["completion"] })));
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const host = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
+    const server = await startServer({ firstStart: true, env: { ...noBrains(), OLLAMA_HOST: host } });
+    try {
+      const c = await server.client();
+      assert.equal((await c.next("mode")).basic, true);
+      await c.done(0);
+      // Ollama now has a model: choosing it leaves basic mode.
+      (fake as any).removeAllListeners("request");
+      fake.on("request", (req, res) => res.end(JSON.stringify(req.url === "/api/tags" ? { models: [{ name: "llama3.2:3b" }] } : { capabilities: ["completion"] })));
+      const from = c.mark;
+      c.send({ type: "provider", provider: "ollama" });
+      const mode = await c.next((e) => e.type === "mode" && e.provider === "ollama", 5000, from);
+      assert.equal(mode.basic, false);
+      assert.ok(c.since(from).some((e) => e.type === "reset"), "a new conversation");
+    } finally {
+      await server.stop();
+      fake.close();
     }
   });
 });

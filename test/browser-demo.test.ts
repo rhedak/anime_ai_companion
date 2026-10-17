@@ -10,7 +10,7 @@ import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
 import { repeatsItself } from "../demo/model.js";
 import { MODEL, buildMessages, emotionFix, guessEmotion, modelId, systemPrompt } from "../demo/model-prompt.js";
-import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../demo/script.js";
+import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../public/script.js";
 import { DEMO_PACKS, stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
 import { demoMessage } from "../src/demo.ts";

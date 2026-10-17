@@ -93,11 +93,13 @@ try {
                 Update-Path
             }
             if (-not (Has "opencode")) {
-                Write-Host "Without a brain she cannot answer. Install opencode (https://opencode.ai), or Ollama or Claude Code, and choose it in the page."
+                Write-Host "Without a brain she runs a small built-in script and says so in her first message. Install opencode (https://opencode.ai) later and start again."
             }
         }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $settings) -Force | Out-Null
-        [IO.File]::WriteAllText($settings, '{ "provider": "opencode" }')
+        if (Has "opencode") {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $settings) -Force | Out-Null
+            [IO.File]::WriteAllText($settings, '{ "provider": "opencode" }')
+        }
     }
     if (Has "opencode") { Write-Host "opencode - ok" }
 

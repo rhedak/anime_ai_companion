@@ -28,7 +28,7 @@ What is here, and how the pieces fit:
   `creatorFromModules` and runs `createRenderOps`, the same request handling the server's worker thread runs (`src/render-worker.ts`, which
   gets the creator from `src/creator-load.ts` instead). It answers `call(request)` with the reply, so a request gets the same bytes here as
   there (`test/demo-stage.test.ts` checks the SHA-256 of the SVGs).
-- `script.js` is what she says: a small rule-based reader that turns a message into a reply with the same tags a model would write. It
+- `script.js` (in `public/`, shared with the app's basic mode) is what she says: a small rule-based reader that turns a message into a reply with the same tags a model would write. It
   understands several requests in one message (hair, eyes, glasses, hats, a coat, a skirt, hairstyles, presets, moods, gestures, taking things
   off) and answers honestly about anything else. `GREETING` is her first message.
 - Asked to chat, or for anything only a model could do (a joke, a poem, "who are you?"), or for anything the script does not know, she says plainly

@@ -16,6 +16,16 @@ persona and the same tags drive her face whichever brain you choose.
 | Approval modes | Ask, Plan, Accept edits, Auto | Ask, Plan, Run everything | Ask, Plan, Run everything | Ask, Plan |
 | Sign in once with | `claude` | `cursor-agent login` | `opencode auth login` | nothing |
 
+## With no brain installed
+
+If none of the brains is installed, she does not fail at your first message: she runs a small built-in script (the same one the
+[browser demo](demo/) uses) and says so when you open the page. It can change her hair, eyes and clothes, become one of the starting
+characters, show a mood, wave and run through her animations (`/show`), but it cannot hold a conversation or use work mode. Her first message
+tells you how to get a real brain; [opencode](https://opencode.ai) is the easiest, free and without an account
+(`npm install -g opencode-ai`, then restart the app). Installing one is enough: choose it in the **Brain** menu or restart, and the next
+conversation is a real one. On a first start the app uses whichever brain it finds, in the order Claude Code, opencode, Cursor, a running
+Ollama; a brain you chose yourself that has gone missing is not swapped for another one.
+
 ## Claude Code
 
 The default. A long-lived `claude -p` process on your machine, using your own login. Chat uses a small, quick model

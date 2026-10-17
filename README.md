@@ -34,7 +34,8 @@ button, the recording your browser's speech recognition sends to the browser mak
 
 - **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step). Many systems ship an older one, and `npm install` itself
   refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`
-- **One brain**, installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
+- **One brain** (without one she runs a small built-in script: she can change her look, show moods and wave, but not really talk, and says so
+  when you open the page), installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
   or [Ollama](https://ollama.com) for a local model
 - A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (the drawing code) next to this repo,
   at the release this version pins (the Quick start does that), or point `CREATOR_SRC` at its `ts/src` folder (the creator's TypeScript draws her, in the app's own process: no Python is involved). Without either, the app downloads
