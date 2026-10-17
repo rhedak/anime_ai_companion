@@ -38,7 +38,8 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "site": "node site/build.mjs",
     "site:preview": "node bin/check-node.js && node site/preview.mjs",
-    "demo": "node bin/check-node.js && node demo/stage.mjs --serve"
+    "demo": "node bin/check-node.js && node demo/stage.mjs --serve",
+    "pack-archive": "node src/pack-archive-cli.ts"
   },
   "dependencies": {
     "cross-spawn": "^7.0.6",
@@ -50,6 +51,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "marked": "^18.1.0",
+    "sharp": "^0.35.5",
     "typescript": "^5.6.0"
   }
 }
