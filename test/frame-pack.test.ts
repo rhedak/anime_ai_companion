@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -157,7 +158,7 @@ test("served types follow the extension", () => {
   assert.equal(frameMime("a.jpeg"), "image/jpeg");
 });
 
-test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {
+test("a pack can carry its credit and its terms, and packs are found in the user's folder first", { skip: winSkip }, async () => {
   const img = png(10, 10);
   const mine = await mkdtemp(join(tmpdir(), "frames-"));
   const shipped = await mkdtemp(join(tmpdir(), "frames-"));

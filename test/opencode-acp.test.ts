@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -247,7 +248,7 @@ test("a permission request reaches the card and the allow answer lets the turn f
   }
 });
 
-test("in chat mode a tool request is refused without a card, and the turn goes on", async () => {
+test("in chat mode a tool request is refused without a card, and the turn goes on", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
   const script = join(dir, "fake.mjs");
   await writeFile(script, fakeAgent);

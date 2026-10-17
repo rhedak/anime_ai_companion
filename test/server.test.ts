@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -9,6 +10,8 @@ import { Client, cannotRunServer, startServer, type RunningServer } from "./help
 // These start a throwaway copy of the whole app (its own data/, a random port) with a stand-in `claude`: no login, no real brain.
 // They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
 const skip = cannotRunServer() ?? false;
+// The Windows port of the stand-in programs is not done: these groups run on macOS and Linux only.
+const skipWin = skip || winSkip;
 
 /** A new conversation, so a test does not depend on the one before it. */
 async function fresh(c: Client): Promise<void> {
@@ -36,7 +39,7 @@ async function waitFor(condition: () => boolean, ms = 5000): Promise<void> {
 
 const inputs = (server: RunningServer) => server.claudeLog().filter((e) => e.kind === "in").map((e) => e.text!);
 
-describe("chatting", { skip }, () => {
+describe("chatting", { skip: skipWin }, () => {
   let server: RunningServer;
   before(async () => {
     server = await startServer({ delay: 100 });
@@ -55,7 +58,7 @@ describe("chatting", { skip }, () => {
     assert.equal(mode.permissionMode, "manual");
   });
 
-  test("a message gets a reply with its tags, which is saved and shown to a page that connects later", async () => {
+  test("a message gets a reply with its tags, which is saved and shown to a page that connects later", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     const said = await ask(c, "hello there");
@@ -64,7 +67,7 @@ describe("chatting", { skip }, () => {
     assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
   });
 
-  test("Reset look only restores the look: the conversation stays, and she is told on her next message", async () => {
+  test("Reset look only restores the look: the conversation stays, and she is told on her next message", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -89,7 +92,7 @@ describe("chatting", { skip }, () => {
     await assert.rejects(server.client("http://127.0.0.1:1"), /socket hang up|refused/);
   });
 
-  test("a reply that starts without being asked (a finished helper) is shown, and the helper line follows it", async () => {
+  test("a reply that starts without being asked (a finished helper) is shown, and the helper line follows it", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -181,12 +184,12 @@ describe("chatting", { skip }, () => {
   });
 });
 
-describe("a long conversation that went cold", { skip }, () => {
+describe("a long conversation that went cold", { skip: skipWin }, () => {
   async function startCold(): Promise<RunningServer> {
     return startServer({ delay: 50, coldConversation: true });
   }
 
-  test("the message is held back and the question asked (to every page); a second message waits for the answer; 'send' sends it", async () => {
+  test("the message is held back and the question asked (to every page); a second message waits for the answer; 'send' sends it", { skip: winSkip }, async () => {
     const server = await startCold();
     try {
       const c = await server.client();
@@ -225,7 +228,7 @@ describe("a long conversation that went cold", { skip }, () => {
     }
   });
 
-  test("'summarise' runs /compact first and sends the message after it; the summary is shown in the log", async () => {
+  test("'summarise' runs /compact first and sends the message after it; the summary is shown in the log", { skip: winSkip }, async () => {
     const server = await startCold();
     try {
       const c = await server.client();
@@ -265,7 +268,7 @@ describe("a long conversation that went cold", { skip }, () => {
   });
 });
 
-describe("typing while she answers", { skip }, () => {
+describe("typing while she answers", { skip: skipWin }, () => {
   let server: RunningServer;
   before(async () => {
     server = await startServer({ delay: 700 });
@@ -274,7 +277,7 @@ describe("typing while she answers", { skip }, () => {
     await server?.stop();
   });
 
-  test("messages queue, go out in order one reply at a time, and one can be taken back out", async () => {
+  test("messages queue, go out in order one reply at a time, and one can be taken back out", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -293,7 +296,7 @@ describe("typing while she answers", { skip }, () => {
     assert.deepEqual(inputs(server).slice(-3).map((t) => t.replace(/^[^]*\n\n/, "")), ["A", "B", "D"]);
   });
 
-  test("stopping her puts the waiting messages back in the box instead of sending them", async () => {
+  test("stopping her puts the waiting messages back in the box instead of sending them", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -311,7 +314,7 @@ describe("typing while she answers", { skip }, () => {
   });
 });
 
-describe("her notes about you", { skip }, () => {
+describe("her notes about you", { skip: skipWin }, () => {
   let server: RunningServer;
   before(async () => {
     server = await startServer({ delay: 50 });
@@ -320,7 +323,7 @@ describe("her notes about you", { skip }, () => {
     await server?.stop();
   });
 
-  test("she asks first: nothing is saved until the user keeps it, then it is told to her in the next conversation, and forgetting removes it", async () => {
+  test("she asks first: nothing is saved until the user keeps it, then it is told to her in the next conversation, and forgetting removes it", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     const from = c.mark;
@@ -348,7 +351,7 @@ describe("her notes about you", { skip }, () => {
     assert.doesNotMatch(server.data("memory.md") ?? "", /Momo/);
   });
 
-  test("a note the user turns down is not saved and not offered again in that conversation, only in a new one", async () => {
+  test("a note the user turns down is not saved and not offered again in that conversation, only in a new one", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -374,7 +377,7 @@ describe("her notes about you", { skip }, () => {
     await c.next((e) => e.type === "memory-resolved", 5000, from);
   });
 
-  test("a note still waiting for an answer is reported to her once as not saved, so she does not say she saved it", async () => {
+  test("a note still waiting for an answer is reported to her once as not saved, so she does not say she saved it", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -388,7 +391,7 @@ describe("her notes about you", { skip }, () => {
     await fresh(c);
   });
 
-  test("a card that waits is shown again to a page that reloads, and answering a stale one does nothing", async () => {
+  test("a card that waits is shown again to a page that reloads, and answering a stale one does nothing", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -407,7 +410,7 @@ describe("her notes about you", { skip }, () => {
     await fresh(c);
   });
 
-  test("with asking turned off she saves it by herself and shows an Undo that takes it out again; the choice is kept", async () => {
+  test("with asking turned off she saves it by herself and shows an Undo that takes it out again; the choice is kept", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -437,7 +440,7 @@ describe("her notes about you", { skip }, () => {
     assert.equal(JSON.parse(server.data("settings.json") ?? "{}").memorySaving, "ask");
   });
 
-  test("with notes switched off nothing is offered or saved, and she is told", async () => {
+  test("with notes switched off nothing is offered or saved, and she is told", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await fresh(c);
@@ -458,7 +461,7 @@ describe("her notes about you", { skip }, () => {
     await c.next((e) => e.type === "notice" && /ask before/.test(e.text), 5000, c.mark);
   });
 
-  test("an edit by hand is picked up with her next message, as a change", async () => {
+  test("an edit by hand is picked up with her next message, as a change", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await ask(c, "settle");
@@ -469,7 +472,7 @@ describe("her notes about you", { skip }, () => {
   });
 });
 
-describe("character cards", { skip }, () => {
+describe("character cards", { skip: skipWin }, () => {
   let server: RunningServer;
   let file: string;
   before(async () => {
@@ -514,7 +517,7 @@ describe("character cards", { skip }, () => {
     assert.equal(server.data("character.json"), null);
   });
 
-  test("applied with her greeting and the lorebook: new chats open with the greeting, lore arrives once, the orders stay out", async () => {
+  test("applied with her greeting and the lorebook: new chats open with the greeting, lore arrives once, the orders stay out", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     const imported = c.mark;
@@ -541,7 +544,7 @@ describe("character cards", { skip }, () => {
     assert.match(server.systemPrompt(), /Expression protocol \(important\):/);
   });
 
-  test("with the author's own instructions chosen they are in her prompt, before the protocol; resetting brings persona.md back", async () => {
+  test("with the author's own instructions chosen they are in her prompt, before the protocol; resetting brings persona.md back", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     const from = c.mark;
@@ -564,7 +567,7 @@ describe("character cards", { skip }, () => {
     assert.doesNotMatch(server.systemPrompt(), /shy bookworm|ALWAYS-END/);
   });
 
-  test("a file that is not a card is refused with a reason", async () => {
+  test("a file that is not a card is refused with a reason", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     const from = c.mark;
@@ -575,7 +578,7 @@ describe("character cards", { skip }, () => {
   });
 });
 
-describe("work mode", { skip }, () => {
+describe("work mode", { skip: skipWin }, () => {
   let server: RunningServer;
   before(async () => {
     server = await startServer({ delay: 50, userSkills: ["pinecone"] });
@@ -602,7 +605,7 @@ describe("work mode", { skip }, () => {
     assert.match(notice.text, /You have 1 skill in ~\/\.claude\/skills[^]*\/skills on/);
   });
 
-  test("when she reaches for a skill that is not loaded the user is asked once, and 'load' restarts her with their skills and no hooks", async () => {
+  test("when she reaches for a skill that is not loaded the user is asked once, and 'load' restarts her with their skills and no hooks", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await enterWork(c);
@@ -623,7 +626,7 @@ describe("work mode", { skip }, () => {
     assert.equal(asked, 1, "asked once, not on every failure");
   });
 
-  test("she cannot save a note in work mode, and the user can add one by hand", async () => {
+  test("she cannot save a note in work mode, and the user can add one by hand", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await enterWork(c);
@@ -638,7 +641,7 @@ describe("work mode", { skip }, () => {
     assert.match(server.data("memory.md") ?? "", /Likes green tea/);
   });
 
-  test("asked to remember something in work mode, the user is told once that notes are chat only and not Claude's memory, and she is told to say so", async () => {
+  test("asked to remember something in work mode, the user is told once that notes are chat only and not Claude's memory, and she is told to say so", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await enterWork(c);
@@ -673,7 +676,7 @@ describe("work mode", { skip }, () => {
     assert.doesNotMatch(inputs(server).at(-1)!, /do not promise to remember/, "a code task is not a request for a note");
   });
 
-  test("!command runs in the project folder, without a card, and shows its output", async () => {
+  test("!command runs in the project folder, without a card, and shows its output", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
     await enterWork(c);
@@ -722,7 +725,7 @@ describe("the shell opt-out", { skip }, () => {
   });
 });
 
-describe("a local model with tools (Ollama)", { skip }, () => {
+describe("a local model with tools (Ollama)", { skip: skipWin }, () => {
   let server: RunningServer;
   let fake: ReturnType<typeof createServer>;
   const chats: any[] = [];
@@ -752,7 +755,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     fake?.close();
   });
 
-  test("work mode is offered only for a model that reports tools; reads run, a command waits for the card", async () => {
+  test("work mode is offered only for a model that reports tools; reads run, a command waits for the card", { skip: winSkip }, async () => {
     const c = await server.client();
     await c.next("history");
 

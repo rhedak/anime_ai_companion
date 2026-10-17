@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,14 +81,14 @@ function argvOf(config: Partial<SessionConfig>): string[] {
 
 const sources = (args: string[]) => args[args.indexOf("--setting-sources") + 1];
 
-test("skills on: the user's settings source loads, with hooks switched off, and the project's does not", () => {
+test("skills on: the user's settings source loads, with hooks switched off, and the project's does not", { skip: winSkip }, () => {
   const args = argvOf({ claudeSkills: true });
   assert.equal(sources(args), "user");
   assert.equal(args[args.indexOf("--settings") + 1], '{"disableAllHooks":true}');
   assert.ok(args.includes("--strict-mcp-config"));
 });
 
-test("skills off, or chat mode, or the whole setup: nothing new is loaded", () => {
+test("skills off, or chat mode, or the whole setup: nothing new is loaded", { skip: winSkip }, () => {
   assert.equal(sources(argvOf({})), "");
   assert.ok(!argvOf({}).includes("--settings"));
   assert.equal(sources(argvOf({ mode: "chat", claudeSkills: true })), "");

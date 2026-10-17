@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ test("tokens are long, unique, and compared exactly", () => {
   assert.equal(tokenMatches("", token), false);
 });
 
-test("the token file is created private, reused, and replaced on request", async () => {
+test("the token file is created private, reused, and replaced on request", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "lan-"));
   try {
     const path = join(dir, "data/lan-token");

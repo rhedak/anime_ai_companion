@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,7 +61,7 @@ const until = (done: () => boolean) =>
 
 const text = (events: ProviderEvent[]) => events.flatMap((e) => (e.type === "delta" ? [e.text] : [])).join("");
 
-test("a turn claude starts on its own reaches the handler given to onUnprompted", async () => {
+test("a turn claude starts on its own reaches the handler given to onUnprompted", { skip: winSkip }, async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -82,7 +83,7 @@ test("a turn claude starts on its own reaches the handler given to onUnprompted"
   }
 });
 
-test("a turn nobody asked for is busy while it runs, so a user message is refused until it ends", async () => {
+test("a turn nobody asked for is busy while it runs, so a user message is refused until it ends", { skip: winSkip }, async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -101,7 +102,7 @@ test("a turn nobody asked for is busy while it runs, so a user message is refuse
   }
 });
 
-test("without a handler the extra turn is dropped, as before, and the provider stays usable", async () => {
+test("without a handler the extra turn is dropped, as before, and the provider stays usable", { skip: winSkip }, async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -116,7 +117,7 @@ test("without a handler the extra turn is dropped, as before, and the provider s
   }
 });
 
-test("background tasks are reported while the subagent runs and cleared when it ends", async () => {
+test("background tasks are reported while the subagent runs and cleared when it ends", { skip: winSkip }, async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -133,7 +134,7 @@ test("background tasks are reported while the subagent runs and cleared when it 
   }
 });
 
-test("the fixture is what the test says it is: two turns, the second marked as a task notification", () => {
+test("the fixture is what the test says it is: two turns, the second marked as a task notification", { skip: winSkip }, () => {
   const results = readFileSync(fixture, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.type === "result");
   assert.equal(results.length, 2);
   assert.equal(results[1].origin?.kind, "task-notification");

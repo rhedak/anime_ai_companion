@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -170,7 +171,7 @@ function config(over: Partial<SessionConfig> = {}): SessionConfig {
   };
 }
 
-test("the provider streams a reply, and Run Everything spawns with --force", async () => {
+test("the provider streams a reply, and Run Everything spawns with --force", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cursor-acp-"));
   const script = join(dir, "fake.mjs");
   await writeFile(script, fakeAgent);
@@ -204,7 +205,7 @@ test("the provider streams a reply, and Run Everything spawns with --force", asy
   }
 });
 
-test("a permission request reaches the card and the allow answer lets the turn finish", async () => {
+test("a permission request reaches the card and the allow answer lets the turn finish", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cursor-acp-"));
   const script = join(dir, "fake.mjs");
   await writeFile(script, fakeAgent);

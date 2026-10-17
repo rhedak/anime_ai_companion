@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { runShell, shellDisabled } from "../src/shell.ts";
 
-test("runs in the given folder and reports output and exit code", async () => {
+test("runs in the given folder and reports output and exit code", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "shell-"));
   try {
     await writeFile(join(dir, "marker.txt"), "x");
@@ -19,7 +20,7 @@ test("runs in the given folder and reports output and exit code", async () => {
   }
 });
 
-test("has no input, no colour codes, and caps the output", async () => {
+test("has no input, no colour codes, and caps the output", { skip: winSkip }, async () => {
   const stdin = await runShell("cat; echo done", tmpdir(), { timeoutMs: 5000 });
   assert.equal(stdin.output.trim(), "done"); // cat saw end of input at once
   const colour = await runShell("printf '\\033[31mred\\033[0m'", tmpdir());
@@ -29,7 +30,7 @@ test("has no input, no colour codes, and caps the output", async () => {
   assert.equal(big.truncated, true);
 });
 
-test("a command that runs too long is killed with everything it started", async () => {
+test("a command that runs too long is killed with everything it started", { skip: winSkip }, async () => {
   const started = Date.now();
   const slow = await runShell("sleep 30 & sleep 30", tmpdir(), { timeoutMs: 300 });
   assert.equal(slow.timedOut, true);

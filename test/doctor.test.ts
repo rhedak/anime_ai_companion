@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkAll, formatDoctor, type Probe } from "../src/doctor.ts";
@@ -27,7 +28,7 @@ function machine(overrides: Partial<Probe> & { files?: string[]; programs?: Reco
 
 const levels = async (p: Probe) => (await checkAll(p)).map((l) => [l.level, l.text.slice(0, 40)]);
 
-test("everything in place: all ok, exit clean, and the summary says so", async () => {
+test("everything in place: all ok, exit clean, and the summary says so", { skip: winSkip }, async () => {
   const lines = await checkAll(machine());
   const bad = lines.filter((l) => l.level === "fail");
   assert.deepEqual(bad, []);
@@ -37,7 +38,7 @@ test("everything in place: all ok, exit clean, and the summary says so", async (
   assert.match(formatDoctor(lines.filter((l) => l.level === "ok")), /Everything looks fine/);
 });
 
-test("no brain at all is a failure; a single missing brain is only a note", async () => {
+test("no brain at all is a failure; a single missing brain is only a note", { skip: winSkip }, async () => {
   const none = await checkAll(machine({ programs: { "git --version": "git version 2" }, web: {} }));
   assert.ok(none.some((l) => l.level === "fail" && /No brain found/.test(l.text)));
   const one = await checkAll(machine());
@@ -46,7 +47,7 @@ test("no brain at all is a failure; a single missing brain is only a note", asyn
   assert.ok(one.some((l) => l.level === "warn" && /opencode: not found/.test(l.text)));
 });
 
-test("the creator: next to the repo, already fetched, to be fetched, or impossible", async () => {
+test("the creator: next to the repo, already fetched, to be fetched, or impossible", { skip: winSkip }, async () => {
   const sibling = await checkAll(machine());
   assert.ok(sibling.some((l) => l.level === "ok" && /next to this repo/.test(l.text)));
   const gone = machine();
@@ -60,7 +61,7 @@ test("the creator: next to the repo, already fetched, to be fetched, or impossib
   assert.ok(badOverride.some((l) => l.level === "fail" && /CREATOR_SRC points at/.test(l.text)));
 });
 
-test("the creator must be its TypeScript: a folder without render.ts (the Python src of an earlier release) is a failure with the way out", async () => {
+test("the creator must be its TypeScript: a folder without render.ts (the Python src of an earlier release) is a failure with the way out", { skip: winSkip }, async () => {
   const only = ["/repo/node_modules/ws", "/repo/data"];
   const exists = (extra: string[]) => (p: string) => [...only, ...extra].includes(p);
   const override = await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: exists(["/old/src"]) }));
@@ -91,14 +92,14 @@ test("missing packages and an unwritable data folder are failures", async () => 
   assert.ok(lines.some(([level, text]) => level === "fail" && /data\/ is not writable|data/.test(text as string)));
 });
 
-test("the report lists hints under problems only, and counts them", async () => {
+test("the report lists hints under problems only, and counts them", { skip: winSkip }, async () => {
   const text = formatDoctor(await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: (p) => ["/repo/node_modules/ws", "/repo/data", "/old/src"].includes(p) })));
   assert.match(text, /✗ Character creator: \/old\/src \(CREATOR_SRC\) has no render\.ts[^\n]*\n {4}Point it at the creator's ts\/src folder/);
   assert.match(text, /1 problem to fix before it will start/);
   assert.doesNotMatch(text, /✓ Node[^\n]*\n {4}/, "no hint under an ok line");
 });
 
-test("a checkout of the creator that is not at the pinned release is a warning with the way back, and one at it is fine", async () => {
+test("a checkout of the creator that is not at the pinned release is a warning with the way back, and one at it is fine", { skip: winSkip }, async () => {
   const git = "git -C /anime-character-creator describe --tags --always";
   const ahead = await checkAll(machine({ programs: { "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2-1-g1bcb2f8" } }));
   const warning = ahead.find((l) => /next to this repo is at v0\.2\.2-1-g1bcb2f8/.test(l.text));

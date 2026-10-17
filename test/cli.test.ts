@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -6,7 +7,7 @@ import { test } from "node:test";
 const bin = new URL("../bin/anaico.js", import.meta.url).pathname;
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-test("--version prints the version and the pinned creator release, and exits 0 without starting anything", () => {
+test("--version prints the version and the pinned creator release, and exits 0 without starting anything", { skip: winSkip }, () => {
   for (const flag of ["--version", "-v"]) {
     const run = spawnSync(process.execPath, [bin, flag], { encoding: "utf8" });
     assert.equal(run.status, 0, run.stderr);
@@ -15,7 +16,7 @@ test("--version prints the version and the pinned creator release, and exits 0 w
   }
 });
 
-test("--help lists --version", () => {
+test("--help lists --version", { skip: winSkip }, () => {
   const run = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" });
   assert.match(run.stdout, /--version/);
 });

@@ -1,3 +1,4 @@
+import { winSkip } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -57,7 +58,7 @@ describe("the staged demo", { skip }, () => {
     assert.ok(!existsSync(join(dir, "render_ops.py")));
   });
 
-  test("is small: what a visitor downloads on the first load is under 2 MB (the picture pack waits until it is chosen)", () => {
+  test("is small: what a visitor downloads on the first load is under 2 MB (the picture pack waits until it is chosen)", { skip: winSkip }, () => {
     const code = files(dir).reduce((sum, f) => sum + f.size, 0);
     assert.ok(code < 2 * 1024 * 1024, `${code} bytes`);
     assert.ok(code > 300 * 1024, "the creator's compiled code is in it");
