@@ -1,22 +1,24 @@
-import { winSkip } from "./helpers/platform.ts";
+﻿import { removeDir } from "./helpers/platform.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { ClaudeCodeProvider } from "../src/providers/claude-code.ts";
 import type { ProviderEvent } from "../src/providers/types.ts";
 
 // A real `claude` capture: she answers, the turn ends, then a finished background subagent makes the CLI
 // start a second turn on its own. The stand-in below replays it; a real claude is never started, because
 // PATH holds only the stand-in while these tests run.
-const fixture = new URL("./fixtures/claude-background-subagent.jsonl", import.meta.url).pathname;
+const fixture = fileURLToPath(new URL("./fixtures/claude-background-subagent.jsonl", import.meta.url));
 
 function standIn(): { dir: string; restore: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "anaico-claude-"));
-  const script = join(dir, "claude");
-  writeFileSync(
-    script,
+  writeStandIn(
+    dir,
+    "claude",
     `#!${process.execPath}
 const lines = require("fs").readFileSync(${JSON.stringify(fixture)}, "utf8").split("\\n").filter(Boolean);
 // Split the recording after each result: the first turn answers the user, the second starts on its own.
@@ -32,14 +34,13 @@ require("readline").createInterface({ input: process.stdin }).on("line", () => {
 });
 `,
   );
-  chmodSync(script, 0o755);
   const saved = process.env.PATH;
   process.env.PATH = dir;
   return {
     dir,
     restore: () => {
       process.env.PATH = saved;
-      rmSync(dir, { recursive: true, force: true });
+      removeDir(dir);
     },
   };
 }
@@ -61,7 +62,7 @@ const until = (done: () => boolean) =>
 
 const text = (events: ProviderEvent[]) => events.flatMap((e) => (e.type === "delta" ? [e.text] : [])).join("");
 
-test("a turn claude starts on its own reaches the handler given to onUnprompted", { skip: winSkip }, async () => {
+test("a turn claude starts on its own reaches the handler given to onUnprompted", async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -83,7 +84,7 @@ test("a turn claude starts on its own reaches the handler given to onUnprompted"
   }
 });
 
-test("a turn nobody asked for is busy while it runs, so a user message is refused until it ends", { skip: winSkip }, async () => {
+test("a turn nobody asked for is busy while it runs, so a user message is refused until it ends", async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -102,7 +103,7 @@ test("a turn nobody asked for is busy while it runs, so a user message is refuse
   }
 });
 
-test("without a handler the extra turn is dropped, as before, and the provider stays usable", { skip: winSkip }, async () => {
+test("without a handler the extra turn is dropped, as before, and the provider stays usable", async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -117,7 +118,7 @@ test("without a handler the extra turn is dropped, as before, and the provider s
   }
 });
 
-test("background tasks are reported while the subagent runs and cleared when it ends", { skip: winSkip }, async () => {
+test("background tasks are reported while the subagent runs and cleared when it ends", async () => {
   const { restore } = standIn();
   const claude = provider();
   try {
@@ -134,7 +135,7 @@ test("background tasks are reported while the subagent runs and cleared when it 
   }
 });
 
-test("the fixture is what the test says it is: two turns, the second marked as a task notification", { skip: winSkip }, () => {
+test("the fixture is what the test says it is: two turns, the second marked as a task notification", () => {
   const results = readFileSync(fixture, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.type === "result");
   assert.equal(results.length, 2);
   assert.equal(results[1].origin?.kind, "task-notification");

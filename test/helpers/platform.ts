@@ -1,4 +1,6 @@
-import { rmSync, symlinkSync } from "node:fs";
+import { readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * The tests that assume a POSIX machine (stand-in programs written as shell scripts, `ls`, `/`-separated fake paths, file permission bits)
@@ -30,6 +32,20 @@ export function removeDir(dir: string): void {
       return;
     }
     throw err;
+  }
+}
+
+/** Deletes scratch folders that an earlier run could not (see removeDir): anything in the temp folder with this prefix that is older than ten minutes. */
+export function sweepStale(prefix: string, keep: string[] = []): void {
+  const root = tmpdir();
+  for (const name of readdirSync(root)) {
+    if (!name.startsWith(prefix) || keep.includes(name)) continue;
+    const path = join(root, name);
+    try {
+      if (Date.now() - statSync(path).mtimeMs > 10 * 60_000) removeDir(path);
+    } catch {
+      // gone already, or still held: the next run tries again
+    }
   }
 }
 

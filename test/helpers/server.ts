@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { removeDir, symlinkDir } from "./platform.ts";
+import { removeDir, symlinkDir, sweepStale } from "./platform.ts";
 import { baseEnv, pathOf, systemPathDirs, writeStandIn } from "./standin.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -173,6 +173,7 @@ export interface ServerOptions {
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
+  sweepStale("anaico-test-", ["anaico-test-launcher"]); // folders an earlier run could not delete (Windows holds them for a while)
   const dir = mkdtempSync(join(tmpdir(), "anaico-test-"));
   const app = join(dir, "app");
   mkdirSync(app);

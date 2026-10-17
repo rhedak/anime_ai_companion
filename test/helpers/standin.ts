@@ -18,9 +18,39 @@ const LAUNCHER_SOURCE = `
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 static class Launcher {
+  // The program it starts is put in a job that Windows ends when this launcher ends, however that happens (the app kills it, as it kills a real
+  // claude.exe), so a stand-in never lives on as an orphan holding files and pipes.
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+  [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint size);
+  [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+  [StructLayout(LayoutKind.Sequential)] struct BasicLimits {
+    public long PerProcessUserTimeLimit, PerJobUserTimeLimit; public uint LimitFlags;
+    public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize; public uint ActiveProcessLimit;
+    public UIntPtr Affinity; public uint PriorityClass, SchedulingClass;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong A, B, C, D, E, F; }
+  [StructLayout(LayoutKind.Sequential)] struct ExtendedLimits {
+    public BasicLimits Basic; public IoCounters Io;
+    public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+  }
+
+  static IntPtr KillOnCloseJob() {
+    IntPtr job = CreateJobObject(IntPtr.Zero, null);
+    var limits = new ExtendedLimits();
+    limits.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    int size = Marshal.SizeOf(typeof(ExtendedLimits));
+    IntPtr memory = Marshal.AllocHGlobal(size);
+    Marshal.StructureToPtr(limits, memory, false);
+    SetInformationJobObject(job, 9, memory, (uint)size); // JobObjectExtendedLimitInformation
+    Marshal.FreeHGlobal(memory);
+    return job;
+  }
+
   static string Quote(string s) {
     if (s.Length > 0 && s.IndexOfAny(new[] { ' ', '\\t', '\\n', '\\v', '"' }) < 0) return s;
     var sb = new StringBuilder("\\"");
@@ -41,7 +71,12 @@ static class Launcher {
     var line = new StringBuilder(Quote(target[1]));
     foreach (string a in args) { line.Append(' '); line.Append(Quote(a)); }
     var info = new ProcessStartInfo(target[0], line.ToString()) { UseShellExecute = false };
-    using (var p = Process.Start(info)) { p.WaitForExit(); return p.ExitCode; }
+    IntPtr job = KillOnCloseJob();
+    using (var p = Process.Start(info)) {
+      AssignProcessToJobObject(job, p.Handle);
+      p.WaitForExit();
+      return p.ExitCode;
+    }
   }
 }
 `;

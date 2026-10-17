@@ -1,6 +1,7 @@
-import { winSkip } from "./helpers/platform.ts";
+﻿import { removeDir } from "./helpers/platform.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { test } from "node:test";
@@ -20,7 +21,7 @@ test("countSkills counts folders that hold a SKILL.md, and tolerates a missing f
     assert.equal(await countSkills(dir), 2);
     assert.equal(await countSkills(join(dir, "nope")), 0);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
   }
 });
 
@@ -51,9 +52,7 @@ test("reaching for a skill: a failed Skill call, or reading one of the user's SK
 function argvOf(config: Partial<SessionConfig>): string[] {
   const dir = mkdtempSync(join(tmpdir(), "anaico-argv-"));
   const log = join(dir, "argv.json");
-  const script = join(dir, "claude");
-  writeFileSync(script, `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)));\nsetInterval(() => {}, 1000);\n`);
-  chmodSync(script, 0o755);
+  writeStandIn(dir, "claude", `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)));\nsetInterval(() => {}, 1000);\n`);
   const saved = process.env.PATH;
   process.env.PATH = dir; // only the stand-in: a real claude cannot start here
   const claude = new ClaudeCodeProvider({
@@ -75,20 +74,20 @@ function argvOf(config: Partial<SessionConfig>): string[] {
   } finally {
     claude.close();
     process.env.PATH = saved;
-    rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
   }
 }
 
 const sources = (args: string[]) => args[args.indexOf("--setting-sources") + 1];
 
-test("skills on: the user's settings source loads, with hooks switched off, and the project's does not", { skip: winSkip }, () => {
+test("skills on: the user's settings source loads, with hooks switched off, and the project's does not", () => {
   const args = argvOf({ claudeSkills: true });
   assert.equal(sources(args), "user");
   assert.equal(args[args.indexOf("--settings") + 1], '{"disableAllHooks":true}');
   assert.ok(args.includes("--strict-mcp-config"));
 });
 
-test("skills off, or chat mode, or the whole setup: nothing new is loaded", { skip: winSkip }, () => {
+test("skills off, or chat mode, or the whole setup: nothing new is loaded", () => {
   assert.equal(sources(argvOf({})), "");
   assert.ok(!argvOf({}).includes("--settings"));
   assert.equal(sources(argvOf({ mode: "chat", claudeSkills: true })), "");
