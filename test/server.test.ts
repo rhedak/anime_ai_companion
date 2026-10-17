@@ -702,7 +702,7 @@ describe("work mode", { skip: skipWin }, () => {
   });
 });
 
-describe("the shell opt-out", { skip }, () => {
+describe("the shell opt-out", { skip: skipWin }, () => {
   let server: RunningServer;
   before(async () => {
     server = await startServer({ delay: 50, env: { COMPANION_NO_SHELL: "1" } });
@@ -946,7 +946,7 @@ describe("Ollama answering the tool check before the server is ready", { skip },
   });
 });
 
-describe("switching to a brain whose program is missing", { skip }, () => {
+describe("switching to a brain whose program is missing", { skip: skipWin }, () => {
   test("she stays on the current brain and is told, for every command-line brain", async () => {
     const server = await startServer({ env: { CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" } });
     try {

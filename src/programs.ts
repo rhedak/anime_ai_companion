@@ -1,15 +1,21 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 
-/** True when `program` can be started: an executable path, or a name found on the PATH. */
-export function isInstalled(program: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  const dirs = isAbsolute(program) || program.includes("/") ? [""] : (env.PATH ?? "").split(delimiter).filter(Boolean);
+/**
+ * True when `program` can be started: an executable path, or a name found on the PATH. On Windows a program has an extension (claude.exe,
+ * opencode.cmd), so each of PATHEXT is tried as well.
+ */
+export function isInstalled(program: string, env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): boolean {
+  const dirs = isAbsolute(program) || program.includes("/") || program.includes("\\") ? [""] : (env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean);
+  const extensions = platform === "win32" ? ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)] : [""];
   for (const dir of dirs) {
-    try {
-      accessSync(dir ? join(dir, program) : program, constants.X_OK);
-      return true;
-    } catch {
-      // not here
+    for (const extension of extensions) {
+      try {
+        accessSync(dir ? join(dir, program + extension) : program + extension, constants.X_OK);
+        return true;
+      } catch {
+        // not here
+      }
     }
   }
   return false;
