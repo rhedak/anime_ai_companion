@@ -126,6 +126,8 @@ comes back with the same pixels. The sizes from that run:
 | 28 blink and talk patches | 96,274 |
 | `credit.txt`, `NOTICE.md`, `PROCESS.md` | 5,281 |
 
+The text size is the LF copy git stores. A Windows checkout writes those files with CRLF (5,337 bytes). The archive keeps the bytes it was given. For these three files the extra CR bytes fit in the tar's padding, so the archive is still 4,464,640 bytes. The pictures are unchanged.
+
 A blink's rectangle is about 145×60 pixels. Most of the archive is the frames that were stored whole.
 
 ## Not in this step

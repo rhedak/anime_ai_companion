@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import sharp from "sharp";
@@ -226,10 +226,28 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
   assert.equal(report.baseCount, 11);
   assert.equal(report.patchCount, 28);
   assert.equal(report.framesBytes, 15_142_742);
-  assert.equal(report.archiveBytes, 4_464_640);
   assert.equal(report.baseBytes, 4_320_020);
   assert.equal(report.patchBytes, 96_274);
-  assert.equal(report.textBytes, 5_281);
+  // Git stores the text as LF (5,281 bytes). A Windows checkout adds one CR per line (5,337). For these
+  // three files the extra bytes fit in the tar's existing padding, so the archive length does not change.
+  const textOnDisk = await textFileBytes(folder);
+  assert.equal(report.textBytes, textOnDisk);
+  assert.ok(textOnDisk === 5_281 || textOnDisk === 5_337, `text files are ${textOnDisk} bytes`);
+  assert.equal(report.archiveBytes, 4_464_640);
+  const other = await packWithLineEndings(folder, textOnDisk !== 5_281);
+  try {
+    const again = await buildPackArchive(other, { id: "franzi-pajamas", emotions });
+    assert.equal(again.ok, true, !again.ok ? again.reason : "");
+    if (again.ok) {
+      assert.equal(again.report.framesBytes, report.framesBytes);
+      assert.equal(again.report.baseBytes, report.baseBytes);
+      assert.equal(again.report.patchBytes, report.patchBytes);
+      assert.equal(again.report.archiveBytes, 4_464_640);
+      assert.equal(again.report.textBytes, textOnDisk === 5_281 ? 5_337 : 5_281);
+    }
+  } finally {
+    await rm(dirname(other), { recursive: true, force: true });
+  }
 
   const destParent = await mkdtemp(join(tmpdir(), "pack-out-"));
   try {
@@ -262,7 +280,28 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
   }
 });
 
-/** The pajamas pack is added on `add-franzi-pajamas` (PR #9). Use it from this tree when it is here, otherwise from that branch. */
+const TEXT_FILES = ["credit.txt", "NOTICE.md", "PROCESS.md"];
+
+async function textFileBytes(folder: string): Promise<number> {
+  let total = 0;
+  for (const name of TEXT_FILES) total += (await readFile(join(folder, name))).length;
+  return total;
+}
+
+/** A copy of the pack whose text files use LF, or CRLF. The pictures are copied unchanged. */
+async function packWithLineEndings(folder: string, lf: boolean): Promise<string> {
+  const parent = await mkdtemp(join(tmpdir(), "pack-eol-"));
+  const out = join(parent, "franzi-pajamas");
+  await mkdir(out);
+  for (const name of await readdir(folder)) {
+    const bytes = await readFile(join(folder, name));
+    const body = name.endsWith(".webp") ? bytes : Buffer.from(bytes.toString("utf8").replace(/\r\n/g, "\n").replace(/\n/g, lf ? "\n" : "\r\n"));
+    await writeFile(join(out, name), body);
+  }
+  return out;
+}
+
+/** The pajamas pack ships in `packs/` (since it landed on dev). Otherwise take it from the branch that added it. */
 async function franziPajamas(): Promise<string> {
   const shipped = join(root, "packs", "franzi-pajamas");
   if (await isPack(shipped)) return shipped;

@@ -45,7 +45,7 @@ test("a pack index accepts the documented fields and nothing else", () => {
 
 test("the example in the docs is a valid pack index", () => {
   const doc = readFileSync(join(root, "docs/pack-archives.md"), "utf8");
-  const block = /```json\n([\s\S]*?)\n```/.exec(doc);
+  const block = /```json\r?\n([\s\S]*?)\r?\n```/.exec(doc);
   assert.ok(block, "docs/pack-archives.md should show a JSON index");
   const parsed = parsePackIndex(JSON.parse(block[1]));
   assert.equal(parsed.ok, true, !parsed.ok ? parsed.reason : "");
