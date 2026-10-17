@@ -181,7 +181,7 @@ function config(over: Partial<SessionConfig> = {}): SessionConfig {
   };
 }
 
-test("the provider streams a reply, starts with plain ACP, and forces Ask in the env", async () => {
+test("the provider streams a reply, starts with plain ACP, and forces Ask in the env", { skip: winSkip }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
   const script = join(dir, "fake.mjs");
   await writeFile(script, fakeAgent);
