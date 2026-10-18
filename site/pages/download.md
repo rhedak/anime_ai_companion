@@ -27,8 +27,13 @@ you can read in this repository.
 - **macOS:** open the `.dmg`, drag the app into *Applications*, then **right-click it → Open**, and **Open** again. (Or System Settings →
   Privacy & Security → **Open Anyway**.)
 - **Linux:** make the file executable and run it: `chmod +x Anime.AI.Companion-<version>.AppImage` and double-click it, or start it in a terminal.
-  On Ubuntu 24.04 and newer the browser sandbox can be refused for an AppImage; start it with `--no-sandbox` if you see that error. The folder
-  picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one.
+  An AppImage needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and newer); without it the start fails with `error loading libfuse.so.2`.
+  Install that package, or unpack the file and run it from the folder: `./Anime.AI.Companion-<version>.AppImage --appimage-extract`, then
+  `squashfs-root/AppRun`. The launcher entry the AppImage makes starts the app with `--no-sandbox` (an AppImage cannot carry the setuid helper
+  Chromium's sandbox wants); started by hand, add it yourself if you see an "unprivileged user namespaces" or `chrome-sandbox` error. The folder
+  picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one. `--version` prints the version and `--help` the options.
+
+The release also has a `SHA256SUMS` file; `sha256sum -c SHA256SUMS --ignore-missing` checks what you downloaded.
 
 ## What you need besides the app
 

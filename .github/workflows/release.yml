@@ -69,3 +69,19 @@ jobs:
         run: |
           ls -l ${{ matrix.files }}
           gh release upload "$GITHUB_REF_NAME" ${{ matrix.files }} --clobber
+
+  # One checksum file for everything on the release, made after all three builds (the Download page names it).
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$GITHUB_REF_NAME" --pattern '*.exe' --pattern '*.dmg' --pattern '*.zip' --pattern '*.AppImage'
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber

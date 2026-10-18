@@ -39,6 +39,24 @@ function macPath() {
   return [fromShell, ...usual, process.env.PATH || ""].filter(Boolean).join(":");
 }
 
+// --version and --help answer on the terminal and leave, before a window, the single-instance lock or the server.
+const cliAnswer = process.argv.slice(1).find((a) => a === "--version" || a === "-v" || a === "--help" || a === "-h");
+if (cliAnswer) {
+  const version = (() => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8")).version;
+    } catch {
+      return "unknown";
+    }
+  })();
+  process.stdout.write(
+    cliAnswer === "--version" || cliAnswer === "-v"
+      ? `Anime AI Companion ${version}\n`
+      : `Anime AI Companion ${version}\n\nStarts the desktop app. Its settings are in the app's user-data folder; the page is served on http://127.0.0.1:${DEFAULT_PORT}.\n  --version, -v   print the version and exit\n  --help, -h      print this and exit\n  --no-sandbox    start without Chromium's sandbox (Linux, when it is refused)\n`,
+  );
+  process.exit(0);
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
