@@ -59,6 +59,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
       out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } });
       delta("[emotion:thinking] I will read it by hand.");
       result();
+    } else if (/OUTFIT [a-z]+/.test(text)) {
+      delta("[emotion:happy] One moment, I will change. [outfit " + /OUTFIT ([a-z]+)/.exec(text)[1] + "] There.");
+      result();
     } else if (text.includes("REMEMBER")) {
       delta("[emotion:happy] Noted! [remember Their cat is called Momo]");
       result();

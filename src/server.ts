@@ -23,7 +23,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { gestureNote, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -112,6 +112,22 @@ const packOffer = (entry: PackIndexEntry) => ({
   host: new URL(entry.url).hostname,
   credit: entry.credit,
 });
+/** The outfits of the character the active pack belongs to (installed ones, and ones the pack list offers), for her note and for `[outfit …]`. */
+async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
+  const id = activePack?.character?.id;
+  if (!id) return [];
+  const names = await listPacks(...packDirs);
+  const chars = await packCharacters(packDirs, names);
+  const here = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id), here: true }));
+  const offered = remotePacks(names)
+    .filter((pack) => pack.character?.id === id)
+    .map((pack) => ({ pack: pack.id, name: outfitName(pack.id, id), here: false }));
+  return [...here, ...offered];
+}
+let outfitCache: Outfit[] = [];
+const refreshOutfits = async () => {
+  outfitCache = await outfitsOfActiveCharacter();
+};
 const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
 /** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
@@ -138,6 +154,7 @@ function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "de
 }
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
 const packsMessage = async () => {
+  await refreshOutfits();
   const names = await listPacks(...packDirs);
   return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names) };
 };
@@ -451,7 +468,7 @@ function renewNotes(): void {
   notes.clear();
   lookPictureDue = false;
   if (activePack) {
-    notes.push(packNote(activePack));
+    notes.push(packNote(activePack, outfitCache));
     lookPictureDue = true;
   }
 }
@@ -653,7 +670,8 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
   await loadLookPicture();
-  notes.push(packNote(result.pack));
+  await refreshOutfits();
+  notes.push(packNote(result.pack, outfitCache));
   lookPictureDue = true;
   broadcast(packMessage());
   broadcast(await packsMessage());
@@ -664,6 +682,29 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
       ...result.pack.notes,
     ].join("\n"),
   );
+}
+
+/**
+ * She changes into another outfit of her character (`[outfit casual]` in a reply). Only outfits of the character of the pack that is on: the tag cannot
+ * name any other pack. An outfit that is on this computer is shown at once; one that is not raises the same question the gallery asks (size and host),
+ * and nothing is fetched until the user says yes, after which it is shown.
+ */
+async function wearOutfit(wanted: string): Promise<void> {
+  if (!activePack?.character) return notes.push("You have no other outfits: [outfit …] changes nothing.");
+  const outfits = await outfitsOfActiveCharacter();
+  const choice = outfits.find((o) => o.name === wanted || o.pack.toLowerCase() === wanted);
+  const list = outfits.map((o) => o.name).join(", ");
+  if (!choice) return notes.push(`You have no outfit called "${wanted}". Your outfits: ${list}.`);
+  if (choice.pack === activePack.name) return notes.push(`You already wear ${choice.name}.`);
+  if (choice.here) {
+    await choosePack(choice.pack, () => {});
+    if (activePack?.name !== choice.pack) notes.push(`You could not change into ${choice.name}.`);
+    return;
+  }
+  const entry = await packInstaller.find(choice.pack);
+  if (!entry) return notes.push(`${choice.name} is not available right now (the pack list could not be reached), so you stay in ${outfitName(activePack.name, activePack.character.id)}.`);
+  broadcast(packOffer(entry));
+  notes.push(`${choice.name} is not on this computer yet. The user was asked whether to download it (${formatMegabytes(entry.sizes.archiveBytes)}); you stay in your current outfit until they agree, and then you wear it.`);
 }
 
 /**
@@ -1130,6 +1171,7 @@ const turns = createTurnService({
   avatar,
   transcript,
   activePack: () => activePack,
+  wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
   takeLookPicture: () => {
     const picture = lookPictureDue && lookPicture ? lookPicture : null;
     lookPictureDue = false;

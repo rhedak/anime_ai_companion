@@ -295,15 +295,35 @@ export function gestureNote(pack: FramePack | null): string {
  * What she is told when a pack comes on, and at the start of a new conversation while one is on: that her look is fixed, what it is (look.txt),
  * and which gestures work. Without the description she would go on describing the drawn character.
  */
-export function packNote(pack: FramePack): string {
+/** An outfit of the character a pack belongs to, as she is told about it: its short name, and whether its pictures are on this computer. */
+export interface Outfit {
+  pack: string;
+  name: string;
+  here: boolean;
+}
+
+/** A pack's outfit name as she writes it in `[outfit …]`: its folder name without the character in front ("franzi-casual" is "casual"). */
+export function outfitName(pack: string, characterId: string): string {
+  const lower = pack.toLowerCase();
+  return lower.startsWith(`${characterId}-`) ? lower.slice(characterId.length + 1) : lower;
+}
+
+export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
   const who = pack.character ? `You are ${pack.character.name}. ${pack.character.text} ` : "";
   const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
+  const wear =
+    outfits.length > 1
+      ? ` You can change into another of your outfits by writing [outfit <name>] in a reply when you decide to (or the user asks you to): ${outfits
+          .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? o.name : `${o.name} (not on this computer yet, so the user is asked before it is downloaded; you stay in your current outfit until they agree)`))
+          .join(", ")}. The tag is invisible to the user; change only when it fits the conversation, not in every reply.`
+      : "";
   return (
     "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +
     look +
     " " +
     gestureNote(pack) +
-    " Your emotions and talking still drive which picture is shown."
+    " Your emotions and talking still drive which picture is shown." +
+    wear
   );
 }
 

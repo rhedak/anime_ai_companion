@@ -373,6 +373,21 @@ test("the gallery can download a pack that is not installed", { skip: cannotRunS
     assert.equal(offer.bytes, archive.length);
     assert.equal(offer.host, "127.0.0.1");
     assert.equal(existsSync(join(app.dir, "data", "frames", "mina")), false, "nothing was downloaded yet");
+
+    // She can ask for it herself with [outfit …]: an outfit of her character that is not here raises the same question, and fetches nothing.
+    const frames = join(app.dir, "data", "frames");
+    await mkdir(join(frames, "characters"), { recursive: true });
+    await mkdir(join(frames, "mina-day"), { recursive: true });
+    await writeFile(join(frames, "characters", "mina.txt"), "Mina\nA small cheerful girl.\n");
+    await writeFile(join(frames, "mina-day", "neutral.webp"), neutral);
+    await writeFile(join(frames, "mina-day", "look.txt"), "character: mina\nYou wear a yellow raincoat.\n");
+    client.send({ type: "user", text: "/frames mina-day" });
+    await client.next((event) => event.type === "notice" && /Showing the pack "mina-day"/.test(event.text), 10_000, asking);
+    const wearing = client.mark;
+    client.send({ type: "user", text: "please OUTFIT mina" });
+    const wishes = await client.next((event) => event.type === "pack-offer" && event.id === "mina", 10_000, wearing);
+    assert.equal(wishes.bytes, archive.length);
+    assert.equal(existsSync(join(frames, "mina")), false, "still nothing downloaded: only the user's yes does that");
     const preview = await fetch(`http://127.0.0.1:${app.port}/pack-thumb/mina`);
     assert.equal(preview.status, 200);
     assert.equal(preview.headers.get("content-type"), "image/webp");

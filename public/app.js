@@ -78,6 +78,7 @@ function parseReply(text) {
     .replace(/\[demo\]/g, "")
     .replace(/ *\[remember\s[^\]]*\]/g, "")
     .replace(/ *\[image\s[^\]]*\]/g, "")
+    .replace(/ *\[outfit\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };

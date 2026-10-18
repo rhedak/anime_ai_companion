@@ -114,6 +114,46 @@ describe("chatting", { skip }, () => {
     assert.ok(!packs.names.includes("characters"), "the characters folder is not a pack");
   });
 
+  test("she can change into another outfit of her character with [outfit name]; an outfit that is not there changes nothing", async () => {
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(join(frames, "characters"), { recursive: true });
+    writeFileSync(join(frames, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair.\n");
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    for (const [pack, wear] of [["ann-coat", "You wear a coat."], ["ann-swim", "You wear a swimsuit."]]) {
+      mkdirSync(join(frames, pack), { recursive: true });
+      writeFileSync(join(frames, pack, "neutral.png"), tiny);
+      writeFileSync(join(frames, pack, "look.txt"), `character: ann\n${wear}\n`);
+    }
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "user", text: "/frames ann-coat" });
+    await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000);
+    await ask(c, "hello");
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /\[outfit <name>\]/);
+    assert.match(told.text!, /coat \(you wear this now\), swim/, "she is told which outfits she has");
+
+    // she changes: the page is told the new pack, and she is told what she wears now
+    const from = c.mark;
+    await ask(c, "please OUTFIT swim");
+    const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+    assert.equal(packMsg.pack.name, "ann-swim");
+    await ask(c, "and now?");
+    const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(after.text!, /You wear a swimsuit/, "the new outfit's description reaches her");
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "ann-swim");
+
+    // an outfit she does not have: nothing changes, and she is told her outfits
+    await ask(c, "please OUTFIT tuxedo");
+    await new Promise((r) => setTimeout(r, 300));
+    await ask(c, "again");
+    const nope = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(nope.text!, /no outfit called "tuxedo"/);
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "ann-swim");
+    c.send({ type: "user", text: "/frames off" });
+    await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

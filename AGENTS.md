@@ -78,7 +78,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - `src/providers/types.ts` is the brain interface. A new brain implements `Provider` and nothing
   in the page should need to know how that process speaks.
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
-  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`). The server strips them. Keep that
+  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`). The server strips them. Keep that
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
   server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by the creator's TypeScript
