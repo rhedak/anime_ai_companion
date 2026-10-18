@@ -103,6 +103,16 @@ async function refreshPack(): Promise<string[]> {
   await loadLookPicture();
   return result.ok ? result.pack.notes : [result.reason];
 }
+/** What the page needs to ask before a pack is downloaded: its size, and which server is contacted. */
+const packOffer = (entry: PackIndexEntry) => ({
+  type: "pack-offer",
+  id: entry.id,
+  name: entry.name,
+  bytes: entry.sizes.archiveBytes,
+  host: new URL(entry.url).hostname,
+  credit: entry.credit,
+});
+const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
 /** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
 const packInstaller = createPackInstaller({
@@ -120,11 +130,11 @@ async function refreshPackIndex(force = false): Promise<void> {
   }
 }
 /** Remote packs that are not already on disk, so the gallery can offer them for download. */
-function remotePacks(names: string[]): Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade">[] {
+function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade" | "character" | "sizes"> & { host: string })[] {
   const have = new Set(names);
   return (packInstaller.index()?.packs ?? [])
     .filter((pack) => !have.has(pack.id))
-    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade }));
+    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade, character: pack.character, sizes: pack.sizes, host: new URL(pack.url).hostname }));
 }
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
 const packsMessage = async () => {
@@ -628,17 +638,16 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     return say("Back to the drawn avatar.");
   }
   if (!isPackName(name)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-  let result = await readPack(packDirs, name, Object.keys(emotions));
+  const result = await readPack(packDirs, name, Object.keys(emotions));
   if (!result.ok) {
     const offered = await packInstaller.find(name);
     if (!offered) {
       const note = packInstaller.indexNote();
       return say(note ? `${result.reason} ${note}` : result.reason);
     }
-    const installed = await packInstaller.install(name);
-    if (!installed.ok) return say(installed.reason);
-    result = await readPack(packDirs, name, Object.keys(emotions));
-    if (!result.ok) return say(result.reason);
+    // Nothing is fetched until the user says yes to the question the page shows (the size and who is contacted).
+    broadcast(packOffer(offered));
+    return say(`"${name}" is not on this computer yet. The page asks whether to download it (${formatMegabytes(offered.sizes.archiveBytes)}).`);
   }
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
@@ -818,7 +827,7 @@ const slashCommands: Record<
       ),
   },
   frames: {
-    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (downloading it first when the pack list has it and it is not installed), /frames off goes back",
+    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (when the pack list has it and it is not installed, the page asks first, with the size, before downloading it), /frames off goes back",
     run: async ({ args, say }) => {
       const wanted = args.trim();
       if (!wanted) {
@@ -1170,6 +1179,11 @@ wss.on("connection", (ws) => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
       ws.send(JSON.stringify(await packsMessage()));
+      // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
+      if (settings.framePack && !activePack) {
+        const offered = await packInstaller.find(settings.framePack);
+        if (offered && ws.readyState === ws.OPEN) ws.send(JSON.stringify(packOffer(offered)));
+      }
     })
     .catch((err) => console.error("could not send the packs:", err));
   ws.send(JSON.stringify(modeInfo()));

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -230,8 +231,9 @@ test("every shipped pack has a 200 px thumbnail, and that folder is not a pack",
   const names = (await readdir(packsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   assert.ok(names.includes("thumbs"));
   assert.equal((await listPacks(packsDir)).includes("thumbs"), false);
+  assert.equal((await listPacks(packsDir)).includes("characters"), false, "characters/ holds the shared character texts, not pictures");
   for (const name of names) {
-    if (name === "thumbs") continue;
+    if (name === "thumbs" || name === "characters") continue;
     const thumb = await readFile(join(packsDir, "thumbs", `${name}.webp`));
     const meta = await sharp(thumb).metadata();
     assert.equal(meta.format, "webp", name);
@@ -352,7 +354,7 @@ test("the gallery can download a pack that is not installed", { skip: cannotRunS
   });
   assert.equal(made.ok, true, !made.ok ? made.reason : "");
   if (!made.ok) return;
-  indexBody = Buffer.from(JSON.stringify({ format: 1, packs: [{ ...made.entry, url: `${origin}/mina.tar` }] }));
+  indexBody = Buffer.from(JSON.stringify({ format: 1, packs: [{ ...made.entry, character: { id: "mina", name: "Mina" }, url: `${origin}/mina.tar` }] }));
   const app = await startServer({ env: { COMPANION_PACK_INDEX: `${origin}/index.json` } });
   try {
     const client = await app.client();
@@ -360,6 +362,17 @@ test("the gallery can download a pack that is not installed", { skip: cannotRunS
     client.send({ type: "pack-catalog" });
     const listed = await client.next((event) => event.type === "packs" && event.remote?.some((pack: { id: string }) => pack.id === "mina"), 10_000, from);
     assert.equal(listed.names.includes("mina"), false);
+    assert.deepEqual(listed.remote.find((pack: { id: string }) => pack.id === "mina").character, { id: "mina", name: "Mina" }, "the gallery can group it under its character");
+    assert.equal(listed.remote.find((pack: { id: string }) => pack.id === "mina").sizes.archiveBytes, archive.length, "and say how big it is");
+
+    // Choosing it by name asks first: nothing is fetched until the page says yes.
+    const asking = client.mark;
+    client.send({ type: "user", text: "/frames mina" });
+    const offer = await client.next((event) => event.type === "pack-offer", 10_000, asking);
+    assert.equal(offer.id, "mina");
+    assert.equal(offer.bytes, archive.length);
+    assert.equal(offer.host, "127.0.0.1");
+    assert.equal(existsSync(join(app.dir, "data", "frames", "mina")), false, "nothing was downloaded yet");
     const preview = await fetch(`http://127.0.0.1:${app.port}/pack-thumb/mina`);
     assert.equal(preview.status, 200);
     assert.equal(preview.headers.get("content-type"), "image/webp");

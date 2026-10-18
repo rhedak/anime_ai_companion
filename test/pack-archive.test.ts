@@ -232,8 +232,10 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
   // three files the extra bytes fit in the tar's existing padding, so the archive length does not change.
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
-  assert.ok(textOnDisk === 5_281 || textOnDisk === 5_337, `text files are ${textOnDisk} bytes`);
-  assert.equal(report.archiveBytes, 4_464_640);
+  // look.txt (what she wears, added after this pack was measured) is a text file now too: count the original three.
+  const lookBytes = (await readFile(join(folder, "look.txt")).catch(() => Buffer.alloc(0))).length;
+  assert.ok(textOnDisk - lookBytes === 5_281 || textOnDisk - lookBytes === 5_337, `text files are ${textOnDisk - lookBytes} bytes`);
+  assert.equal(report.archiveBytes, 4_465_664 /* 4,464,640 for the three text files it was measured with, plus the tar block pair of look.txt */);
   const other = await packWithLineEndings(folder, textOnDisk !== 5_281);
   try {
     const again = await buildPackArchive(other, { id: "franzi-pajamas", emotions });
@@ -242,8 +244,8 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
       assert.equal(again.report.framesBytes, report.framesBytes);
       assert.equal(again.report.baseBytes, report.baseBytes);
       assert.equal(again.report.patchBytes, report.patchBytes);
-      assert.equal(again.report.archiveBytes, 4_464_640);
-      assert.equal(again.report.textBytes, textOnDisk === 5_281 ? 5_337 : 5_281);
+      assert.equal(again.report.archiveBytes, 4_465_664 /* 4,464,640 for the three text files it was measured with, plus the tar block pair of look.txt */);
+      assert.equal(again.report.textBytes, await textFileBytes(other)); // the same text with the other line endings
     }
   } finally {
     await rm(dirname(other), { recursive: true, force: true });
@@ -280,11 +282,11 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
   }
 });
 
-const TEXT_FILES = ["credit.txt", "NOTICE.md", "PROCESS.md"];
+const TEXT_FILES = ["credit.txt", "NOTICE.md", "PROCESS.md", "look.txt"];
 
 async function textFileBytes(folder: string): Promise<number> {
   let total = 0;
-  for (const name of TEXT_FILES) total += (await readFile(join(folder, name))).length;
+  for (const name of TEXT_FILES) total += (await readFile(join(folder, name)).catch(() => Buffer.alloc(0))).length;
   return total;
 }
 

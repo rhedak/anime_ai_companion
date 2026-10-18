@@ -55,6 +55,10 @@ select.looks-pop:disabled { box-shadow: none; font-weight: inherit; }
 .looks-hint { position: absolute; top: 56px; right: 14px; z-index: 3; display: flex; gap: 10px; align-items: center; max-width: min(340px, calc(100% - 28px)); padding: 8px 10px 8px 12px; background: var(--popover); color: var(--text); border: 1px solid var(--accent); border-radius: var(--radius-md); font-size: var(--font-size-small); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
 .looks-hint[hidden] { display: none; }
 .looks-hint button { flex: none; }
+.pack-confirm { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: var(--fill-2); font-size: var(--font-size-small); }
+.pack-confirm p { margin: 0 0 8px; }
+.pack-confirm-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.stage > .pack-confirm { position: absolute; top: 56px; right: 14px; z-index: 5; width: min(360px, calc(100% - 28px)); margin: 0; background: var(--popover); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
 select.ghost option { color: var(--text); background: var(--popover); }
 input[type="text"], input:not([type]), textarea {
   font: inherit; color: var(--text); background: var(--fill-1); border: 1px solid var(--line); border-radius: var(--radius-md);

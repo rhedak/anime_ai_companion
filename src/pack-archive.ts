@@ -7,7 +7,7 @@
  * Stored whole, byte for byte:
  *   the emotion rest frames (`neutral.webp`, `happy.webp`, ...),
  *   the pose frames (`wave-1.webp`, `cheer-2.webp`, ...),
- *   `credit.txt`, `NOTICE.md`, and `PROCESS.md` when the folder has them.
+ *   `credit.txt`, `NOTICE.md`, `PROCESS.md` and `look.txt` when the folder has them.
  * Stored as a patch, over that emotion's rest frame:
  *   `<emotion>-blink.webp` and `<emotion>-talkN.webp`.
  * A patch is the smallest rectangle that differs, cut from the variant as RGBA, encoded as a lossless WebP
@@ -26,7 +26,7 @@ import { readTar, writeTar } from "./tar-store.ts";
 import { decodeRgba, encodeRgba, isLosslessWebp, type RgbaImage } from "./webp-rgba.ts";
 
 export const ARCHIVE_FORMAT = 1;
-const TEXT_FILES = ["NOTICE.md", "PROCESS.md", "credit.txt"] as const;
+const TEXT_FILES = ["NOTICE.md", "PROCESS.md", "credit.txt", "look.txt"] as const;
 const TEXT_SET = new Set<string>(TEXT_FILES);
 const MAX_TEXT_BYTES = 64 * 1024;
 
@@ -173,7 +173,7 @@ function classify(names: { name: string; bytes: Buffer }[], emotions: string[]):
     const frame = FRAME_FILE.exec(file.name);
     const emotion = frame?.[1].toLowerCase();
     if (!frame || !emotion || !emotionSet.has(emotion)) {
-      return `${file.name} is not a frame (<emotion>[-blink|-talkN].webp), a pose (<gesture>-N.webp), or credit.txt / NOTICE.md / PROCESS.md.`;
+      return `${file.name} is not a frame (<emotion>[-blink|-talkN].webp), a pose (<gesture>-N.webp), or credit.txt / NOTICE.md / PROCESS.md / look.txt.`;
     }
     if (frame[2] || frame[3]) out.push({ name: file.name, bytes: file.bytes, role: "patch", base: `${emotion}.webp` });
     else out.push({ name: file.name, bytes: file.bytes, role: "base" });

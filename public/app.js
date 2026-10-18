@@ -1169,6 +1169,9 @@ function handle(msg) {
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
       if (openGallery?.dataset.kind === "packs") galleryFill?.();
       break;
+    case "pack-offer":
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host });
+      break;
     case "pack-progress":
       showPackProgress(msg);
       break;
@@ -1763,8 +1766,44 @@ function closeGallery() {
 }
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
+/** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string }} */ offer) {
+  document.querySelector(".pack-confirm")?.remove();
+  const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
+  const box = document.createElement("div");
+  box.className = "pack-confirm";
+  box.dataset.pack = offer.id;
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", `Download ${offer.name}?`);
+  const text = document.createElement("p");
+  text.textContent = `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. It is saved on this computer and checked before it is used.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Download ${size}` });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  no.onclick = () => box.remove();
+  yes.onclick = () => {
+    yes.disabled = true;
+    no.disabled = true;
+    text.textContent = `Downloading ${offer.name}…`;
+    ws?.send(JSON.stringify({ type: "pack-install", name: offer.id }));
+  };
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  (document.querySelector(".gallery") ?? document.querySelector(".stage")).append(box);
+  yes.focus();
+}
+
 function showPackProgress(msg) {
   const id = typeof msg.id === "string" ? msg.id : "";
+  const asking = id ? document.querySelector(`.pack-confirm[data-pack="${CSS.escape(id)}"]`) : null;
+  if (asking) {
+    const line = asking.querySelector("p");
+    if (msg.phase === "done") asking.remove();
+    else if (msg.phase === "error") {
+      if (line) line.textContent = typeof msg.message === "string" ? msg.message : "The download failed.";
+      asking.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = false));
+    } else if (line && msg.phase === "download" && msg.total) line.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%…`;
+  }
   const state = id ? document.querySelector(`.gallery [data-pack="${CSS.escape(id)}"] .preset-state`) : null;
   if (!state) return;
   if (msg.phase === "error") {
@@ -1809,10 +1848,7 @@ function packItem(name, remote, shown) {
   if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
   item.onclick = () => {
     if (remote) {
-      item.disabled = true;
-      const state = item.querySelector(".preset-state");
-      if (state) state.textContent = "Downloading…";
-      ws?.send(JSON.stringify({ type: "pack-install", name }));
+      askPackDownload({ id: name, name: remote.name, bytes: remote.sizes?.archiveBytes, host: remote.host });
       return;
     }
     closeGallery();
@@ -1839,22 +1875,29 @@ function outfitLabel(pack, character) {
 function packTiles() {
   /** @type {HTMLElement[]} */
   const tiles = [packItem(null, null)];
+  const offered = new Map(remotePacks.filter((pack) => !packNames.includes(pack.id)).map((pack) => [pack.id, pack]));
+  // Packs on this computer first, then the ones that can be downloaded, each in its character's group (the index says which character).
   const groups = new Map();
-  for (const name of packNames) {
-    const who = packCharacters[name];
+  const add = (name, who) => {
     const key = who ? `c:${who.id}` : `p:${name}`;
     if (!groups.has(key)) groups.set(key, { who, names: [] });
-    groups.get(key).names.push(name);
-  }
+    const group = groups.get(key);
+    group.who ??= who;
+    group.names.push(name);
+  };
+  for (const name of packNames) add(name, packCharacters[name]);
+  for (const [name, pack] of offered) add(name, pack.character);
   for (const { who, names } of groups.values()) {
     if (!who) {
-      tiles.push(packItem(names[0], null));
+      tiles.push(packItem(names[0], offered.get(names[0]) ?? null));
     } else if (names.length === 1) {
-      tiles.push(packItem(names[0], null, who.name));
+      tiles.push(packItem(names[0], offered.get(names[0]) ?? null, who.name));
     } else {
-      const shown = names.includes(activePackName) ? activePackName : names.includes(who.default) ? who.default : names[0]; // the outfit she wears, else the one the character file names, else the first
+      // The outfit she wears, else the one the character file names, else one that is on this computer, else the first.
+      const here = names.filter((name) => !offered.has(name));
+      const shown = names.includes(activePackName) ? activePackName : names.includes(who.default) ? who.default : (here[0] ?? names[0]);
       const open = openCharacter === who.id;
-      const tile = packItem(shown, null, who.name);
+      const tile = packItem(shown, null, who.name); // the tile itself only opens the row, so it is never a download
       tile.dataset.character = who.id;
       tile.title = `${who.name}: ${names.length} outfits`;
       tile.setAttribute("aria-expanded", String(open));
@@ -1871,7 +1914,7 @@ function packTiles() {
         row.className = "outfit-row";
         row.setAttribute("role", "group");
         row.setAttribute("aria-label", `${who.name}'s outfits`);
-        row.append(...names.map((name) => packItem(name, null, outfitLabel(name, who))));
+        row.append(...names.map((name) => packItem(name, offered.get(name) ?? null, outfitLabel(name, who))));
         tiles.push(row);
       }
     }
@@ -1907,8 +1950,7 @@ function openGallery(kind = "presets") {
   document.querySelector(".stage").append(box);
   const fill = () => {
     if (packs) {
-      const offered = remotePacks.filter((pack) => !packNames.includes(pack.id));
-      return grid.replaceChildren(...packTiles(), ...offered.map((pack) => packItem(pack.id, pack)));
+      return grid.replaceChildren(...packTiles());
     }
     grid.replaceChildren(
       ...presetNames.map((name) => {

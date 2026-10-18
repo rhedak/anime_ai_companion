@@ -17,7 +17,7 @@ export const PACK_INDEX_FORMAT = 1;
 
 /** Every field a pack entry may have, required ones first. The schema test keeps `packs/index.schema.json` in step. */
 export const PACK_INDEX_ENTRY_REQUIRED = ["id", "name", "version", "frameCount", "sizes", "hashes", "url"] as const;
-export const PACK_INDEX_ENTRY_OPTIONAL = ["description", "thumbnail", "credit", "aiMade"] as const;
+export const PACK_INDEX_ENTRY_OPTIONAL = ["description", "thumbnail", "credit", "aiMade", "character"] as const;
 export const PACK_INDEX_ENTRY_KEYS = [...PACK_INDEX_ENTRY_REQUIRED, ...PACK_INDEX_ENTRY_OPTIONAL] as const;
 
 const SIZE_REQUIRED = ["width", "height", "archiveBytes"] as const;
@@ -26,6 +26,7 @@ const HASH_KEYS = ["sha256"] as const;
 
 const VERSION = /^[0-9]+(\.[0-9]+){0,2}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
+const CHARACTER_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /** A frame is at most this wide or tall, and an archive at most this big (GitHub's own asset limit is 2 GiB). */
 const MAX_EDGE = 8192;
 const MAX_BYTES = 2 * 1024 * 1024 * 1024;
@@ -62,6 +63,8 @@ export interface PackIndexEntry {
   credit?: string;
   /** True when the pictures were made with an image model. */
   aiMade?: boolean;
+  /** The character this outfit belongs to, so the gallery can show it in that character's row before it is downloaded. */
+  character?: { id: string; name: string };
 }
 
 export interface PackIndex {
@@ -190,6 +193,12 @@ function parseEntry(value: unknown, index: number, options?: PackIndexOptions): 
   }
   if ("credit" in value && !plainText(value.credit, MAX_CREDIT)) return `${where}.credit must be 1 to ${MAX_CREDIT} characters.`;
   if ("aiMade" in value && typeof value.aiMade !== "boolean") return `${where}.aiMade must be true or false.`;
+  if ("character" in value) {
+    const c = value.character;
+    if (!isRecord(c) || unknownKey(c, ["id", "name"]) || typeof c.id !== "string" || !CHARACTER_ID.test(c.id) || !plainText(c.name, 60)) {
+      return `${where}.character must be { "id": "franzi", "name": "Franzi" } (a lowercase id of letters, digits and dashes, and a name).`;
+    }
+  }
 
   const sizes: PackIndexSizes = { width: value.sizes.width, height: value.sizes.height, archiveBytes: value.sizes.archiveBytes };
   if ("framesBytes" in value.sizes && typeof value.sizes.framesBytes === "number") sizes.framesBytes = value.sizes.framesBytes;
@@ -206,6 +215,7 @@ function parseEntry(value: unknown, index: number, options?: PackIndexOptions): 
   if (typeof value.thumbnail === "string") entry.thumbnail = value.thumbnail;
   if (typeof value.credit === "string") entry.credit = value.credit;
   if (typeof value.aiMade === "boolean") entry.aiMade = value.aiMade;
+  if (isRecord(value.character)) entry.character = { id: String(value.character.id), name: String(value.character.name) };
   return entry;
 }
 
