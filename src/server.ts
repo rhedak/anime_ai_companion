@@ -23,7 +23,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, packNote, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { gestureNote, isPackName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -129,7 +129,7 @@ function remotePacks(names: string[]): Pick<PackIndexEntry, "id" | "name" | "des
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
 const packsMessage = async () => {
   const names = await listPacks(...packDirs);
-  return { type: "packs", names, active: settings.framePack, remote: remotePacks(names) };
+  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names) };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.

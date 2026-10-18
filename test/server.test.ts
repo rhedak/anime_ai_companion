@@ -95,6 +95,25 @@ describe("chatting", { skip }, () => {
     await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
   });
 
+  test("the packs message says which character each pack belongs to, so the gallery can group outfits", async () => {
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(join(frames, "characters"), { recursive: true });
+    writeFileSync(join(frames, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair.\n");
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    for (const pack of ["ann-coat", "ann-swim", "solo"]) {
+      mkdirSync(join(frames, pack), { recursive: true });
+      writeFileSync(join(frames, pack, "neutral.png"), tiny);
+    }
+    writeFileSync(join(frames, "ann-coat", "look.txt"), "character: ann\nYou wear a coat.\n");
+    writeFileSync(join(frames, "ann-swim", "look.txt"), "character: ann\nYou wear a swimsuit.\n");
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "pack-catalog" });
+    const packs = await c.next((e) => e.type === "packs" && e.names.includes("ann-coat"), 8000);
+    assert.deepEqual(packs.characters, { "ann-coat": { id: "ann", name: "Ann" }, "ann-swim": { id: "ann", name: "Ann" } });
+    assert.ok(!packs.names.includes("characters"), "the characters folder is not a pack");
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

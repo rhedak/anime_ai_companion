@@ -1162,6 +1162,7 @@ function handle(msg) {
       break;
     case "packs":
       packNames = msg.names ?? [];
+      packCharacters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
       remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
       activePackName = msg.active ?? null;
       renderLooksMenu();
@@ -1779,17 +1780,17 @@ function showPackProgress(msg) {
 }
 
 /** One choice in the packs gallery: a pack's preview, null for the drawn avatar, or a remote pack that is not installed yet. */
-function packItem(name, remote) {
+function packItem(name, remote, shown) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "preset";
   if (name) item.dataset.pack = name;
-  const label = remote?.name || name || "Drawn avatar";
+  const label = shown || remote?.name || name || "Drawn avatar";
   if (remote) {
     item.classList.add("is-remote");
     item.title = [label, remote.credit, "Not on this computer yet."].filter(Boolean).join(" — ");
   } else {
-    item.title = name ?? "The avatar drawn by code";
+    item.title = shown && name ? `${shown} (${name})` : (name ?? "The avatar drawn by code");
   }
   if (name && name === activePackName) item.setAttribute("aria-current", "true");
   const pic = document.createElement("span");
@@ -1823,6 +1824,61 @@ function packItem(name, remote) {
 /** A preset's id as people read it ("lindita" is "Lindita"): the tile's label and tooltip say what its text shows, not the lowercase id. */
 const displayName = (/** @type {string} */ name) => name.replace(/(^|\s)(\S)/g, (_, gap, c) => gap + c.toUpperCase());
 
+/** Which character each pack belongs to ({ pack folder: { id, name } }, from the server), so outfits of one character share a tile. */
+let packCharacters = {};
+/** The character whose outfits the packs gallery is showing. */
+let openCharacter = null;
+
+/** A pack's outfit as a label: its folder name without the character's name in front ("franzi-casual" is "casual"). */
+function outfitLabel(pack, character) {
+  const rest = pack.toLowerCase().startsWith(`${character.id}-`) ? pack.slice(character.id.length + 1) : pack;
+  return rest.replace(/[-_]+/g, " ");
+}
+
+/** The packs as tiles: the drawn avatar, then one tile per character (a character with several outfits opens a row of them) and one per pack without a character. */
+function packTiles() {
+  /** @type {HTMLElement[]} */
+  const tiles = [packItem(null, null)];
+  const groups = new Map();
+  for (const name of packNames) {
+    const who = packCharacters[name];
+    const key = who ? `c:${who.id}` : `p:${name}`;
+    if (!groups.has(key)) groups.set(key, { who, names: [] });
+    groups.get(key).names.push(name);
+  }
+  for (const { who, names } of groups.values()) {
+    if (!who) {
+      tiles.push(packItem(names[0], null));
+    } else if (names.length === 1) {
+      tiles.push(packItem(names[0], null, who.name));
+    } else {
+      const shown = names.includes(activePackName) ? activePackName : names[0];
+      const open = openCharacter === who.id;
+      const tile = packItem(shown, null, who.name);
+      tile.dataset.character = who.id;
+      tile.title = `${who.name}: ${names.length} outfits`;
+      tile.setAttribute("aria-expanded", String(open));
+      tile.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: open ? `${names.length} outfits ▴` : `${names.length} outfits ▾` }));
+      tile.onclick = (ev) => {
+        ev.stopPropagation(); // the tile is replaced below, and a click on a node that has left the gallery would be read as a click outside it
+        openCharacter = open ? null : who.id;
+        galleryFill?.();
+        /** @type {HTMLElement | null} */ (document.querySelector(`.gallery [data-character="${who.id}"]`))?.focus();
+      };
+      tiles.push(tile);
+      if (open) {
+        const row = document.createElement("div");
+        row.className = "outfit-row";
+        row.setAttribute("role", "group");
+        row.setAttribute("aria-label", `${who.name}'s outfits`);
+        row.append(...names.map((name) => packItem(name, null, outfitLabel(name, who))));
+        tiles.push(row);
+      }
+    }
+  }
+  return tiles;
+}
+
 /** The built-in character she is drawn from just now (the server says), so the gallery can mark it. */
 let currentPreset = null;
 
@@ -1833,6 +1889,7 @@ function openGallery(kind = "presets") {
     if (open.dataset.kind === kind) return; // the same menu entry again closes it; the other one switches to its own
   }
   const packs = kind === "packs";
+  if (packs) openCharacter = packCharacters[activePackName]?.id ?? null; // opens on the outfits of the character she is wearing now
   const box = document.createElement("div");
   box.className = "gallery";
   box.dataset.kind = kind;
@@ -1851,7 +1908,7 @@ function openGallery(kind = "presets") {
   const fill = () => {
     if (packs) {
       const offered = remotePacks.filter((pack) => !packNames.includes(pack.id));
-      return grid.replaceChildren(...[null, ...packNames].map((name) => packItem(name, null)), ...offered.map((pack) => packItem(pack.id, pack)));
+      return grid.replaceChildren(...packTiles(), ...offered.map((pack) => packItem(pack.id, pack)));
     }
     grid.replaceChildren(
       ...presetNames.map((name) => {

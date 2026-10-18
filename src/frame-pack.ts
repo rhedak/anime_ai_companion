@@ -117,6 +117,25 @@ async function readCharacter(dirs: string[], id: string): Promise<{ id: string; 
   return undefined;
 }
 
+/** Which character each pack belongs to (the `character:` line of its look.txt), for the gallery to group outfits. Packs without one are left out. */
+export async function packCharacters(dirs: string[], names: string[]): Promise<Record<string, { id: string; name: string }>> {
+  const out: Record<string, { id: string; name: string }> = {};
+  for (const name of names) {
+    if (!isPackName(name)) continue;
+    for (const dir of dirs) {
+      const raw = await readFile(join(dir, name, "look.txt"), "utf8").catch(() => null);
+      if (raw === null) continue;
+      const id = /^character:\s*(\S+)\s*$/i.exec(raw.split(/\r?\n/, 1)[0] ?? "")?.[1]?.toLowerCase();
+      if (id && CHARACTER_ID.test(id)) {
+        const who = await readCharacter(dirs, id);
+        if (who) out[name] = { id, name: who.name };
+      }
+      break;
+    }
+  }
+  return out;
+}
+
 /** Text for her prompt from a file the pack author wrote: control characters (except line ends) and her own tag brackets and markup are dropped. */
 const clean = (raw: string): string => raw.replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g, " ").replace(/[\[\]<>]/g, "");
 

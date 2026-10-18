@@ -39,7 +39,7 @@ The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`
   packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters). Outfits of one character share
   that file, so they cannot drift apart. Both are told to her when the pack is chosen and at the start of every new conversation while it is on, as a
   note with her next message (never in the system prompt). Brackets are dropped, so a text cannot carry one of her tags. A brain that reads pictures
-  (Claude Code, and an Ollama model that reports vision) also gets the resting picture with that message, once. Neither text is shown on the page or served.
+  (Claude Code, and an Ollama model that reports vision) also gets the resting picture with that message, once. Neither text is shown on the page or served. The `character:` line also groups the packs gallery: a character with one pack is a single tile, and one with several outfits is a tile that opens a row of them.
 - `NOTICE.md`: terms of use. `/frames <name>` points to it. A pack of someone else's character needs one, and
   anyone who shares such a pack should read the licence of that character first.
 
