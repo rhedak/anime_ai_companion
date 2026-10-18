@@ -18,6 +18,12 @@ script so that only the face changes between pictures. It is MIT-licensed like t
 caveat said openly in its [NOTICE](../../packs/risa-dress/NOTICE.md): whether AI-made pictures can be copyrighted is not
 settled everywhere, and the image tool's own terms apply too.
 
+## The Franzi pack
+
+**Franzi** is another original character, with three outfits (dirndl, casual, pajamas). Her pictures were made with Grok Imagine from a design by the
+repository's owner and are MIT-licensed like the rest, with the same caveat about AI-made pictures in each pack's NOTICE. The dirndl comes with the
+app; the other two are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
+
 ## The Hatsune Miku pack
 
 A picture pack of Hatsune Miku comes with the app. It is **unofficial fan art**, used under the

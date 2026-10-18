@@ -86,7 +86,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PORT` | `3737` | |
 | `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box (see Security model) |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
-| `COMPANION_PACK_INDEX` | a placeholder GitHub Pages URL | https address of `packs/index.json` for packs that can be downloaded; `off` skips it. See `docs/pack-archives.md` |
+| `COMPANION_PACK_INDEX` | the packs repository's list on GitHub Pages | https address of `packs/index.json` for packs that can be downloaded; `off` skips it. See `docs/pack-archives.md` |
 
 ## Voice
 
@@ -126,15 +126,22 @@ and how to get a consistent set out of an image tool.
 A pack of **Risa in a dress** comes with the app too (Looks → Packs… → risa-dress, or `/frames risa-dress`): an original character,
 same as the drawn Risa preset, with the pictures made with Grok Imagine and MIT-licensed like the rest ([`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)).
 
+**Franzi**, an original character (made with AI, MIT-licensed like the rest), has three outfits: the dirndl comes with the app, and the casual and pajama
+outfits are downloaded when you want them. Pictures are grouped by character in **Looks → Packs…**: a character with several outfits is one tile that opens a row of them.
+While a pack is on, she is told what the pictures show (each pack's `look.txt`, and the character's shared description), and with a brain that can read pictures she is
+also shown her resting picture. She can change outfit herself: ask her to, or let her decide, and she writes `[outfit casual]` (only outfits of her own character; one that
+has to be downloaded makes the page ask you first).
+
 A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/frames miku`). She is Crypton's character, so that pack is
 unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
 screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
 yourself: this project cannot grant you the right to use the character.
 
 A pack that is not on this computer yet can be downloaded from **Looks → Packs…** (a small preview and **Download**)
-or with `/frames <name>`. It is saved in `data/frames/` and afterwards works like any other pack, including offline.
-The list is fetched from `COMPANION_PACK_INDEX`. Until that packs site is published, the built-in address is a
-placeholder and only packs already on disk are offered. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
+or with `/frames <name>`. The page asks first and says how big it is (about 4 to 5 MB) and which server is contacted (GitHub, which sees your IP address); nothing is
+fetched until you say yes. It is saved in `data/frames/` and afterwards works like any other pack, including offline.
+The list is fetched from `COMPANION_PACK_INDEX` (by default the list of the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)); if it cannot be reached,
+the packs already on this computer still work. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
 
 ## Local models with Ollama
 
