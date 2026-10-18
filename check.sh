@@ -66,7 +66,7 @@ step() {
 
 # Runs a test command quietly; shows what failed. Skipped tests count as a failure: a skip means something was not tested.
 run_tests() {
-  local log rc=0 skipped
+  local log rc=0 skipped platform
   log=$(mktemp)
   "$@" >"$log" 2>&1 || rc=$?
   grep -E '^# (tests|pass|fail|cancelled|skipped) ' "$log" | tr '\n' ' '; echo
@@ -76,6 +76,9 @@ run_tests() {
     return 1
   fi
   skipped=$(sed -n 's/^# skipped \([0-9]*\)$/\1/p' "$log")
+  # A test that says "(platform only)" in its skip reason is for another system, not a gap in what was tested here.
+  platform=$(grep -c '# SKIP .*(platform only)' "$log" || true)
+  skipped=$(( ${skipped:-0} - ${platform:-0} ))
   if [ "${skipped:-0}" != 0 ] && [ "${CHECK_ALLOW_SKIPS:-0}" != 1 ]; then
     echo "$skipped test(s) skipped (listed below: a missing creator, or a test for another platform, such as the opencode install, which only runs on Windows). Set CHECK_ALLOW_SKIPS=1 to accept."
     grep -E '^ *ok .*# SKIP' "$log" | head -10 || true

@@ -134,6 +134,9 @@ async function startServer() {
   return url;
 }
 
+/** A question or notice that belongs to the app's window: modal to it while it is showing, so it cannot end up behind it (a separate dialog window is easy to lose). */
+const askUser = (options) => (win && !win.isDestroyed() && win.isVisible() ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+
 // --- Update notices: notify only. Off until the user agrees (the one request this shell makes on its own, so it says who is contacted first). ---
 const updateFile = () => path.join(app.getPath("userData"), "updates.json");
 function readUpdateSettings() {
@@ -182,7 +185,7 @@ async function checkForUpdates(manual) {
     writeUpdateSettings({ lastCheck: Date.now() });
     const current = runningVersion();
     if (latest && isNewer(latest, current)) {
-      const { response } = await dialog.showMessageBox({
+      const { response } = await askUser({
         type: "info",
         message: `Anaico ${latest.replace(/^v/, "")} is available`,
         detail: `You have ${current}. Nothing is downloaded or installed for you: the button opens the releases page in your browser.`,
@@ -192,7 +195,7 @@ async function checkForUpdates(manual) {
       });
       if (response === 0) shell.openExternal(RELEASES_URL);
     } else if (manual) {
-      await dialog.showMessageBox({ type: "info", message: "Anaico is up to date", detail: `You have ${current}.`, buttons: ["OK"] });
+      await askUser({ type: "info", message: "Anaico is up to date", detail: `You have ${current}.`, buttons: ["OK"] });
     }
   } catch (err) {
     if (manual) dialog.showErrorBox("Could not check for updates", String(err && err.message ? err.message : err));
@@ -200,10 +203,17 @@ async function checkForUpdates(manual) {
 }
 async function offerUpdateChecks() {
   const settings = readUpdateSettings();
+  // Ask once the window has its page, so the question opens over a finished window (and modal to it) instead of beside an empty one.
+  if (win && !win.isDestroyed() && win.webContents.isLoading()) {
+    await new Promise((resolve) => {
+      win.webContents.once("did-finish-load", resolve);
+      setTimeout(resolve, 8000);
+    });
+  }
   // Asked once: the question is marked as asked before it is shown, so closing the app with it open does not bring it back at every start.
   if (typeof settings.auto !== "boolean" && !settings.asked) {
     writeUpdateSettings({ asked: true });
-    const { response } = await dialog.showMessageBox({
+    const { response } = await askUser({
       type: "question",
       message: "Tell me when a new version is out?",
       detail:
@@ -258,7 +268,7 @@ function createWindow() {
     minWidth: 480,
     minHeight: 520,
     title: "Anaico",
-    icon: iconPath,
+    icon: nativeImage.createFromPath(iconPath),
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });

@@ -62,6 +62,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
     } else if (/OUTFIT [a-z]+/.test(text)) {
       delta("[emotion:happy] One moment, I will change. [outfit " + /OUTFIT ([a-z]+)/.exec(text)[1] + "] There.");
       result();
+    } else if (text.includes("LOOSEREMEMBER")) {
+      delta("[emotion:happy] Noted! [remember]Their cat is called Momo[/remember] Anything else?");
+      result();
     } else if (text.includes("REMEMBER")) {
       delta("[emotion:happy] Noted! [remember Their cat is called Momo]");
       result();

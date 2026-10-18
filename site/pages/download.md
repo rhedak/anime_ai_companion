@@ -6,16 +6,16 @@ description: Download the desktop app for Windows, macOS or Linux. One install, 
 
 **[Download the latest version](https://github.com/rhedak/anime_ai_companion/releases/latest)** (free, MIT licensed)
 
-One file for your system, from the *Assets* list of the release. Nothing else to install: Node.js and the character creator are inside.
+One file for your system, from the table below or the *Assets* list of the release. Nothing else to install: Node.js and the character creator are inside.
 You still need **a brain** (below); without one she runs a small built-in script and tells you how to get one.
 
 | System | File | Size |
 | --- | --- | --- |
-| **Windows** 10 or newer | `Anime.AI.Companion.Setup.<version>.exe` | about 145 MB |
-| **macOS** 11 or newer, Apple Silicon | `Anime.AI.Companion-<version>-arm64.dmg` | about 210 MB |
-| **macOS**, Intel | `Anime.AI.Companion-<version>.dmg` | about 210 MB |
-| **Linux**, x64 | `Anime.AI.Companion-<version>.AppImage` | about 210 MB |
-| **Linux**, arm64 | `Anime.AI.Companion-<version>-arm64.AppImage` | about 210 MB |
+| **Windows** 10 or newer | [`Anime.AI.Companion.Setup.<version>.exe`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion.Setup.<version>.exe) | about 165 MB |
+| **macOS** 11 or newer, Apple Silicon | [`Anime.AI.Companion-<version>-arm64.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.dmg) | about 180 MB |
+| **macOS**, Intel | [`Anime.AI.Companion-<version>.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.dmg) | about 190 MB |
+| **Linux**, x64 | [`Anime.AI.Companion-<version>.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.AppImage) | about 190 MB |
+| **Linux**, arm64 | [`Anime.AI.Companion-<version>-arm64.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.AppImage) | about 190 MB |
 
 ## The first start
 
@@ -27,8 +27,8 @@ you can read in this repository.
 - **macOS:** open the `.dmg`, drag the app into *Applications*, then **right-click it → Open**, and **Open** again. (Or System Settings →
   Privacy & Security → **Open Anyway**.)
 - **Linux:** make the file executable and run it: `chmod +x Anime.AI.Companion-<version>.AppImage` and double-click it, or start it in a terminal.
-  An AppImage needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and newer); without it the start fails with `error loading libfuse.so.2`.
-  Install that package, or unpack the file and run it from the folder: `./Anime.AI.Companion-<version>.AppImage --appimage-extract`, then
+  An AppImage uses FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and newer). Without it, newer AppImages unpack themselves into a folder in `/tmp` and start
+  from there (this prints a long file listing and leaves that folder behind); an older one fails with `error loading libfuse.so.2`. Installing that package avoids both, or unpack the file yourself and run it from a folder of your own: `./Anime.AI.Companion-<version>.AppImage --appimage-extract`, then
   `squashfs-root/AppRun`. The launcher entry the AppImage makes starts the app with `--no-sandbox` (an AppImage cannot carry the setuid helper
   Chromium's sandbox wants); started by hand, add it yourself if you see an "unprivileged user namespaces" or `chrome-sandbox` error. The folder
   picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one. `--version` prints the version and `--help` the options.

@@ -225,9 +225,9 @@ command named `agent` is not necessarily that binary.
   do not start an `authenticate` login flow.
 - Tests must not need an opencode login or a live agent. Fake the ACP process, as
   `test/opencode-acp.test.ts` does.
-- **One-click install** (`src/install-opencode.ts`, Windows only so far): when opencode is missing the page shows a card (from the Brain menu, and
+- **One-click install** (`src/install-opencode.ts`: Windows, macOS and Linux, x64 and arm64; the Linux build is the glibc one, so musl systems fall back to the manual install): when opencode is missing the page shows a card (from the Brain menu, and
   on connect in basic mode). It names GitHub, the size and the folder, and fetches nothing until the button is pressed. The install downloads the
-  **pinned** release, checks its SHA-256, unpacks it with Windows' own `tar`, runs it to see the pinned version, and moves it into
+  **pinned** release, checks its SHA-256, unpacks it with the system's `tar` (zip on Windows and macOS, tar.gz on Linux), runs it to see the pinned version, and moves it into
   `data/tools/opencode-<version>/`. It never touches the PATH or a copy the user installed; `brainProgram("opencode")` is `OPENCODE_BIN`, then
   that copy, then the plain name. The `install-brain` message is refused from a phone (it fetches and runs a program). Keep it opt-in, keep the
   checksum, and keep the pin out of reach of `latest` (see "Before a release" below). Tests fake the network and the unpacker; nothing is downloaded.
@@ -280,7 +280,7 @@ Switching brains starts a new conversation. The brains do not share memory.
   `gh api repos/anomalyco/opencode/releases/tags/v<pinned> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'` with the table), the newest release's notes
   (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to move the pin), and that the pinned
   program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick opencode, send a message). To move the
-  pin: change the version and, for each `win32-*` asset, the name, `bytes` and `sha256` (the digest GitHub shows for the asset), run
+  pin: change the version and, for each asset (`win32-*`, `darwin-*`, `linux-*`), the name, `bytes` and `sha256` (the digest GitHub shows for the asset), run
   `node --test test/install-opencode.test.ts`, and do the install by hand once. Never point it at `latest`. A new platform is a new row in the table,
   tried on that platform.
 - **The documentation site and the README describe released behaviour.** The site (`site/`) is built from

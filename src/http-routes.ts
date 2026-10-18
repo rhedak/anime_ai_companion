@@ -142,7 +142,8 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       res.end(css);
       return;
     }
-    const file = normalize(join(deps.publicDir, path === "/" ? "index.html" : path));
+    // Browsers ask for /favicon.ico whatever the page says: the same picture, as PNG (they take either), instead of a 404.
+    const file = normalize(join(deps.publicDir, path === "/" ? "index.html" : path === "/favicon.ico" ? "favicon.png" : path));
     if (file !== deps.publicDir && !file.startsWith(deps.publicDir + sep)) {
       res.writeHead(403).end();
       return;
