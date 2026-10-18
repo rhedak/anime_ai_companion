@@ -36,8 +36,9 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
   dictation would only fail with a network error. When the user agent says Electron, the button opens a card (`askOpenInBrowser` in `public/app.js`)
   offering the page in the user's browser, where it works. A local recogniser would make it work in the window itself.
 - **Update notices (notify only).** The first start asks, in a native dialog that names GitHub (`api.github.com`) and what it sees, whether to look for a
-  newer version about once a day; the answer is `updates.json` in the user-data folder, and the Help menu has "Check for Updates…" (always asks, whatever
-  was chosen), the automatic switch and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
+  newer version about once a day, and only once (it is marked as asked before it is shown, so an unanswered dialog does not return); the answer is `updates.json` in
+  the user-data folder. The switch can be changed any time under File, Options; the Help menu has "Check for Updates…" (always asks, whatever was chosen)
+  and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
   page in the browser. Nothing is downloaded or installed (`update-check.cjs`, tested in `test/update-check.test.ts`). The check is unauthenticated, so a
   shared network can hit GitHub's rate limit; the manual check then says so. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds the Windows, Mac and Linux installers on GitHub runners and attaches them to that tag's release (a draft if none exists; a hyphenated tag such as `v0.9.1-rc1` makes a pre-release for trying it). `app/package.json` must carry the tag's version or the workflow stops.
 - **On Linux** the files are in `~/.config/Anime AI Companion/`. Make the AppImage executable and run it (`chmod +x`). **Tested on a headless x64 box** (issue 12): the server, chat, looks, packs and work mode work; the tray, folder picker and window menus were not tried. On Ubuntu 24.04 and newer, Chromium's sandbox can be refused for an AppImage (an "unprivileged user namespaces" /

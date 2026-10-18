@@ -200,13 +200,15 @@ async function checkForUpdates(manual) {
 }
 async function offerUpdateChecks() {
   const settings = readUpdateSettings();
-  if (typeof settings.auto !== "boolean") {
+  // Asked once: the question is marked as asked before it is shown, so closing the app with it open does not bring it back at every start.
+  if (typeof settings.auto !== "boolean" && !settings.asked) {
+    writeUpdateSettings({ asked: true });
     const { response } = await dialog.showMessageBox({
       type: "question",
       message: "Tell me when a new version is out?",
       detail:
         "About once a day Anaico would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
-        "Nothing is downloaded or installed for you. You can change this in the Help menu.",
+        "Nothing is downloaded or installed for you. You can change this later under File, Options.",
       buttons: ["Check for updates", "No thanks"],
       defaultId: 1,
       cancelId: 1,
@@ -294,7 +296,28 @@ function createWindow() {
 function buildMenu() {
   const template = [
     ...(isMac ? [{ role: "appMenu" }] : []),
-    { label: "File", submenu: [{ label: "Open in Browser", click: () => shell.openExternal(origin + "/") }, ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }])] },
+    {
+      label: "File",
+      submenu: [
+        { label: "Open in Browser", click: () => shell.openExternal(origin + "/") },
+        { type: "separator" },
+        {
+          label: "Options",
+          submenu: [
+            {
+              label: "Check for Updates Automatically (asks GitHub once a day)",
+              type: "checkbox",
+              checked: readUpdateSettings().auto === true,
+              click: (item) => {
+                writeUpdateSettings({ auto: item.checked, asked: true });
+                if (item.checked) checkForUpdates(false);
+              },
+            },
+          ],
+        },
+        ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
+      ],
+    },
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
     {
       label: "View",
@@ -304,12 +327,6 @@ function buildMenu() {
       label: "Help",
       submenu: [
         { label: "Check for Updates…", click: () => checkForUpdates(true) },
-        {
-          label: "Check Automatically (asks GitHub once a day)",
-          type: "checkbox",
-          checked: readUpdateSettings().auto === true,
-          click: (item) => writeUpdateSettings({ auto: item.checked }),
-        },
         { label: "Releases Page", click: () => shell.openExternal(RELEASES_URL) },
       ],
     },

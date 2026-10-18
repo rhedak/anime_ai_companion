@@ -55,7 +55,7 @@ Closing the window hides her to the tray or menu bar; she and her server keep ru
 
 Nothing is installed behind your back. The first time, the app asks whether to look for a newer version about once a day; if you say yes it
 asks GitHub for the newest version number (GitHub sees your IP address and that the app asked, nothing else), and tells you when there is one,
-with a button to this page. The **Help** menu has *Check for Updates…* and the switch.
+with a button to this page. The app asks only once; the switch is under **File → Options**, and the **Help** menu has *Check for Updates…*.
 
 ## Speaking to her
 
