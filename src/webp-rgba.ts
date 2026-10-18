@@ -12,7 +12,10 @@ export interface RgbaImage {
   data: Buffer;
 }
 
-const encodeOptions = { lossless: true, exact: true, nearLossless: false, alphaQuality: 100, effort: 6 } as const;
+const encodeOptions = { lossless: true, exact: true, nearLossless: false, alphaQuality: 100 } as const;
+/** What the archive tool uses: the smallest file, however long it takes. Installing a pack uses a lower effort (the pixels are the same, the file is about as big, and it is several times quicker). */
+export const BUILD_EFFORT = 6;
+export const RESTORE_EFFORT = 4;
 
 /** True when the bytes are a lossless WebP (a VP8L bitstream, not a lossy VP8 one). */
 export function isLosslessWebp(bytes: Buffer): boolean {
@@ -42,9 +45,9 @@ export async function decodeRgba(bytes: Buffer): Promise<RgbaImage | null> {
   }
 }
 
-export async function encodeRgba(image: RgbaImage): Promise<Buffer | null> {
+export async function encodeRgba(image: RgbaImage, effort: number = BUILD_EFFORT): Promise<Buffer | null> {
   try {
-    const out = await sharp(image.data, { raw: { width: image.width, height: image.height, channels: 4 } }).webp(encodeOptions).toBuffer();
+    const out = await sharp(image.data, { raw: { width: image.width, height: image.height, channels: 4 } }).webp({ ...encodeOptions, effort }).toBuffer();
     return out;
   } catch {
     return null;

@@ -23,7 +23,10 @@ import { GESTURES } from "../public/frames.js";
 import { isPackName, MAX_FRAME_BYTES } from "./frame-pack.ts";
 import { type PackIndexEntry, parsePackIndex } from "./pack-index.ts";
 import { readTar, writeTar } from "./tar-store.ts";
-import { decodeRgba, encodeRgba, isLosslessWebp, type RgbaImage } from "./webp-rgba.ts";
+import { RESTORE_EFFORT, decodeRgba, encodeRgba, isLosslessWebp, type RgbaImage } from "./webp-rgba.ts";
+
+/** How many patched frames are rebuilt at once when a pack is installed. */
+const RESTORE_PARALLEL = 4;
 
 export const ARCHIVE_FORMAT = 1;
 const TEXT_FILES = ["NOTICE.md", "PROCESS.md", "credit.txt", "look.txt"] as const;
@@ -444,28 +447,52 @@ export async function restorePackArchive(archive: Buffer, dest: string): Promise
     basePixels.set(name, image);
   }
 
-  for (const file of manifest.files) {
-    if (file.kind !== "patch") continue;
-    const base = basePixels.get(file.base);
-    if (!base) return { ok: false, reason: `${file.name} patches ${file.base}, which is not a base frame.` };
-    if (file.width < 0 || file.height < 0 || file.x < 0 || file.y < 0 || file.x + file.width > manifest.width || file.y + file.height > manifest.height) {
-      return { ok: false, reason: `${file.name} names a rectangle outside ${file.base}.` };
-    }
-    let pixels = base.data;
-    if (file.width > 0) {
-      const stored = tar.files.get(storedName(file));
-      if (!stored || !file.sha256 || sha256(stored) !== file.sha256) return { ok: false, reason: `${file.name} does not match the hash in the manifest.` };
-      const patch = await decodeRgba(stored);
-      if (!patch || patch.width !== file.width || patch.height !== file.height) {
-        return { ok: false, reason: `${file.name} is not the ${file.width}×${file.height} patch the manifest describes.` };
+  // Each patched frame is the base with a small rectangle replaced, then written out as a lossless WebP again. That encode is what takes the time, and
+  // frames do not depend on each other, so a few run at once (the encoder uses one core per picture).
+  const patched = manifest.files.filter((file) => file.kind === "patch");
+  let failure: { ok: false; reason: string } | null = null;
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (!failure && next < patched.length) {
+      const file = patched[next++];
+      if (file.kind !== "patch") continue;
+      const base = basePixels.get(file.base);
+      if (!base) {
+        failure = { ok: false, reason: `${file.name} patches ${file.base}, which is not a base frame.` };
+        return;
       }
-      pixels = blit(base.data, manifest.width, patch.data, file);
+      if (file.width < 0 || file.height < 0 || file.x < 0 || file.y < 0 || file.x + file.width > manifest.width || file.y + file.height > manifest.height) {
+        failure = { ok: false, reason: `${file.name} names a rectangle outside ${file.base}.` };
+        return;
+      }
+      let pixels = base.data;
+      if (file.width > 0) {
+        const stored = tar.files.get(storedName(file));
+        if (!stored || !file.sha256 || sha256(stored) !== file.sha256) {
+          failure = { ok: false, reason: `${file.name} does not match the hash in the manifest.` };
+          return;
+        }
+        const patch = await decodeRgba(stored);
+        if (!patch || patch.width !== file.width || patch.height !== file.height) {
+          failure = { ok: false, reason: `${file.name} is not the ${file.width}×${file.height} patch the manifest describes.` };
+          return;
+        }
+        pixels = blit(base.data, manifest.width, patch.data, file);
+      }
+      const encoded = await encodeRgba({ width: manifest.width, height: manifest.height, data: pixels }, RESTORE_EFFORT);
+      if (!encoded) {
+        failure = { ok: false, reason: `${file.name} could not be restored as a lossless WebP.` };
+        return;
+      }
+      if (encoded.length > MAX_FRAME_BYTES) {
+        failure = { ok: false, reason: `${file.name} restored larger than ${MAX_FRAME_BYTES / 1024 / 1024} MB.` };
+        return;
+      }
+      outputs.set(file.name, encoded);
     }
-    const encoded = await encodeRgba({ width: manifest.width, height: manifest.height, data: pixels });
-    if (!encoded) return { ok: false, reason: `${file.name} could not be restored as a lossless WebP.` };
-    if (encoded.length > MAX_FRAME_BYTES) return { ok: false, reason: `${file.name} restored larger than ${MAX_FRAME_BYTES / 1024 / 1024} MB.` };
-    outputs.set(file.name, encoded);
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(RESTORE_PARALLEL, Math.max(1, patched.length)) }, worker));
+  if (failure) return failure;
 
   await mkdir(dest, { recursive: true });
   const written: string[] = [];
