@@ -31,4 +31,7 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
 - **Signing:** the Mac build is signed ad hoc (`identity: "-"`), not with a developer certificate (that needs an Apple Developer account), so Apple Silicon
   accepts it but macOS still blocks the first launch of a downloaded copy: right-click → **Open**, then **Open** again (or System Settings → Privacy &
   Security → **Open Anyway**). The Windows installer is unsigned too.
+- **No microphone button here.** Electron has the browser's speech API but no speech service behind it (that needs a Google key of the app's own), so
+  dictation would only fail with a network error; `public/dictation.js` hides the button when the user agent says Electron. Use the browser (Open in
+  Browser) for it, or the system's own dictation key. A local recogniser would be the way to bring it back.
 - **Not done yet:** a developer certificate and notarisation, and auto-update.

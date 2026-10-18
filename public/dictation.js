@@ -43,7 +43,9 @@ export function dictationVendor(userAgent = "") {
 export function createDictation({ onText, onState, onProblem, language = () => "en", env = globalThis }) {
   const Recognition = env.SpeechRecognition ?? env.webkitSpeechRecognition;
   // Insecure pages (a phone over plain http) are refused by browsers anyway; do not offer a button that cannot work.
-  const supported = Boolean(Recognition) && env.isSecureContext !== false;
+  // The desktop shell (Electron) has the API but no speech service behind it (that needs a Google key of its own), so it only ever fails with "network".
+  const inElectron = /Electron\//.test(env.navigator?.userAgent ?? "");
+  const supported = Boolean(Recognition) && env.isSecureContext !== false && !inElectron;
   let listening = false;
   let current = null;
   const stored = () => {
