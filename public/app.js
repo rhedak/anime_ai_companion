@@ -1852,7 +1852,7 @@ function packTiles() {
     } else if (names.length === 1) {
       tiles.push(packItem(names[0], null, who.name));
     } else {
-      const shown = names.includes(activePackName) ? activePackName : names[0];
+      const shown = names.includes(activePackName) ? activePackName : names.includes(who.default) ? who.default : names[0]; // the outfit she wears, else the one the character file names, else the first
       const open = openCharacter === who.id;
       const tile = packItem(shown, null, who.name);
       tile.dataset.character = who.id;

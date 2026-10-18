@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, isPackName, listPacks, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, isPackName, listPacks, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -188,7 +188,7 @@ test("a character's shared description joins each outfit's look.txt, and the cha
   const dir = await mkdtemp(join(tmpdir(), "frames-"));
   try {
     await mkdir(join(dir, "characters"));
-    await writeFile(join(dir, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair [and a tag].\n");
+    await writeFile(join(dir, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair [and a tag].\ndefault: ann-swim\n");
     for (const [pack, outfit] of [["ann-coat", "You wear a long grey coat."], ["ann-swim", "You wear a blue swimsuit."]]) {
       await mkdir(join(dir, pack));
       await writeFile(join(dir, pack, "neutral.png"), png(10, 10));
@@ -203,6 +203,8 @@ test("a character's shared description joins each outfit's look.txt, and the cha
     const note = packNote(coat.pack);
     assert.match(note, /You are Ann\. A tall young woman with short red hair and a tag\. You wear a long grey coat\./);
     assert.match(packNote(swim.pack), /You are Ann\..*blue swimsuit/);
+    assert.doesNotMatch(packNote(coat.pack), /default/, "the gallery's default outfit is not part of what she is told");
+    assert.equal((await packCharacters([dir], ["ann-coat", "ann-swim"]))["ann-coat"].default, "ann-swim", "the gallery shows this outfit for the character");
     // a character that is named but has no file (or a bad one) leaves just the outfit
     await writeFile(join(dir, "ann-swim", "look.txt"), "character: nobody\nYou wear a blue swimsuit.");
     const alone = await readPack([dir], "ann-swim", emotions);

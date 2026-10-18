@@ -14,7 +14,7 @@
  * said in the chat when the pack is chosen or the page opens with it) and `NOTICE.md` (terms of use,
  * which `/frames` points to). A third, `look.txt`, says in plain words what she wears in these pictures, so she can describe herself: the pictures are
  * not hers to see otherwise. Its optional first line `character: <id>` names the character, whose shared description (build, age, face, hair colour)
- * is `characters/<id>.txt` beside the packs (first line the name, the rest the description), so several outfits of one character say the same things.
+ * is `characters/<id>.txt` beside the packs (first line the name, the rest the description; a line `default: <pack>` picks the outfit that stands for the character in the gallery), so several outfits of one character say the same things.
  * A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
  * server hands out must never be able to run script.
  */
@@ -46,7 +46,7 @@ export interface FramePack {
   /** look.txt: what she wears in these pictures, in the pack author's words. Told to her when the pack comes on. */
   look?: string;
   /** The `character: <id>` line of look.txt, and that character's name and shared description (characters/<id>.txt), when there is one. */
-  character?: { id: string; name: string; text: string };
+  character?: { id: string; name: string; text: string; defaultPack?: string };
   /** What look.txt's `character:` line asked for, before the character file has been looked up. */
   characterId?: string;
 }
@@ -104,22 +104,25 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
 }
 
 /** A character's shared description from `characters/<id>.txt` in the first folder that has it: first line the name, the rest the text. Null when missing or too long. */
-async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string } | undefined> {
+async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string; defaultPack?: string } | undefined> {
   for (const dir of dirs) {
     const raw = await readFile(join(dir, CHARACTERS_DIR, `${id}.txt`), "utf8").catch(() => null);
     if (raw === null) continue;
     const lines = clean(raw).split(/\n/).map((l) => l.trim()).filter(Boolean);
     const [name, ...rest] = lines;
-    const text = rest.join(" ");
-    if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) return { id, name, text };
+    // An optional line `default: <pack>` says which outfit stands for the character in the gallery; it is not part of her description.
+    const defaultLine = rest.find((l) => /^default:\s*\S+$/i.test(l));
+    const text = rest.filter((l) => l !== defaultLine).join(" ");
+    const defaultPack = defaultLine?.replace(/^default:\s*/i, "");
+    if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) return { id, name, text, defaultPack: defaultPack && isPackName(defaultPack) ? defaultPack : undefined };
     return undefined;
   }
   return undefined;
 }
 
 /** Which character each pack belongs to (the `character:` line of its look.txt), for the gallery to group outfits. Packs without one are left out. */
-export async function packCharacters(dirs: string[], names: string[]): Promise<Record<string, { id: string; name: string }>> {
-  const out: Record<string, { id: string; name: string }> = {};
+export async function packCharacters(dirs: string[], names: string[]): Promise<Record<string, { id: string; name: string; default?: string }>> {
+  const out: Record<string, { id: string; name: string; default?: string }> = {};
   for (const name of names) {
     if (!isPackName(name)) continue;
     for (const dir of dirs) {
@@ -128,7 +131,7 @@ export async function packCharacters(dirs: string[], names: string[]): Promise<R
       const id = /^character:\s*(\S+)\s*$/i.exec(raw.split(/\r?\n/, 1)[0] ?? "")?.[1]?.toLowerCase();
       if (id && CHARACTER_ID.test(id)) {
         const who = await readCharacter(dirs, id);
-        if (who) out[name] = { id, name: who.name };
+        if (who) out[name] = { id, name: who.name, ...(who.defaultPack ? { default: who.defaultPack } : {}) };
       }
       break;
     }

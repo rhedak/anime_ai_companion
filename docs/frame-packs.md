@@ -36,7 +36,7 @@ The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`
 - `look.txt`: what she wears in these pictures, in a few plain sentences (up to 600 characters), in the second person ("You wear…", "Your hair is up…").
   She cannot see the pictures, and her prompt describes the drawn character, so without this she keeps describing the wrong look. Its first line may be
   `character: <id>`: the shared description of that character (build, apparent age, face, hair colour, eyes) is then `characters/<id>.txt` beside the
-  packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters). Outfits of one character share
+  packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters), and an optional line `default: <pack>` names the outfit whose picture stands for the character in the gallery (the one she wears, once she wears one of them). Outfits of one character share
   that file, so they cannot drift apart. Both are told to her when the pack is chosen and at the start of every new conversation while it is on, as a
   note with her next message (never in the system prompt). Brackets are dropped, so a text cannot carry one of her tags. A brain that reads pictures
   (Claude Code, and an Ollama model that reports vision) also gets the resting picture with that message, once. Neither text is shown on the page or served. The `character:` line also groups the packs gallery: a character with one pack is a single tile, and one with several outfits is a tile that opens a row of them.
