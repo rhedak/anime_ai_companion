@@ -28,7 +28,8 @@ browser ──ws── Node server ──┬─ a brain: Claude Code, Cursor, op
 
 It is free to use, change and share (MIT). Everything runs on your machine; the only thing that leaves it is the
 conversation your own brain sends to its provider (nothing at all with Ollama), and, if you turn on the microphone
-button, the recording your browser's speech recognition sends to the browser maker.
+button, the recording your browser's speech recognition sends to the browser maker. The desktop app can, only if you say yes, ask GitHub once a
+day whether a newer version exists (it never installs anything).
 
 ## Requirements
 

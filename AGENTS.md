@@ -155,6 +155,8 @@ The server can run an agent that edits files and runs commands. These are not op
   Keep it a single append-only file the user can see, edit and clear. A note is a proposal: by default (`memorySaving: "ask"`, in
   `data/settings.json`) the page shows a card and nothing is written until the user keeps it. `auto` saves it with an Undo and
   `off` ignores it; `/memory auto` is refused from a phone, like any loosening.
+- The desktop shell's update notice (`app/update-check.cjs`) is the one request the shell makes on its own: off until the user says yes in a dialog that names
+  GitHub, notify only (never download or run anything), once a day at most. Keep it that way; installing updates would need signing first.
 - Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
   maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
   sends the text by itself.

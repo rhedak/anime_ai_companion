@@ -34,4 +34,9 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
 - **Microphone.** Electron has the browser's speech API but no speech service behind it (that needs a Google key of the app's own), so
   dictation would only fail with a network error. When the user agent says Electron, the button opens a card (`askOpenInBrowser` in `public/app.js`)
   offering the page in the user's browser, where it works. A local recogniser would make it work in the window itself.
-- **Not done yet:** a developer certificate and notarisation, and auto-update.
+- **Update notices (notify only).** The first start asks, in a native dialog that names GitHub (`api.github.com`) and what it sees, whether to look for a
+  newer version about once a day; the answer is `updates.json` in the user-data folder, and the Help menu has "Check for Updates…" (always asks, whatever
+  was chosen), the automatic switch and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
+  page in the browser. Nothing is downloaded or installed (`update-check.cjs`, tested in `test/update-check.test.ts`). The check is unauthenticated, so a
+  shared network can hit GitHub's rate limit; the manual check then says so. The installers are built by hand today and attached to the release by hand.
+- **Not done yet:** a developer certificate and notarisation, and installing updates for the user.

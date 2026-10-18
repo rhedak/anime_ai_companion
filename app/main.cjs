@@ -6,7 +6,9 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
+const https = require("node:https");
 const path = require("node:path");
+const { TAGS_URL, RELEASES_URL, isNewer, newestTag, dueNow } = require("./update-check.cjs");
 
 const DEFAULT_PORT = Number(process.env.PORT ?? 3737);
 const HOST = "127.0.0.1";
@@ -114,6 +116,89 @@ async function startServer() {
   return url;
 }
 
+// --- Update notices: notify only. Off until the user agrees (the one request this shell makes on its own, so it says who is contacted first). ---
+const updateFile = () => path.join(app.getPath("userData"), "updates.json");
+function readUpdateSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(updateFile(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writeUpdateSettings(patch) {
+  const next = { ...readUpdateSettings(), ...patch };
+  fs.writeFileSync(updateFile(), JSON.stringify(next));
+  return next;
+}
+const runningVersion = () => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8")).version;
+  } catch {
+    return app.getVersion();
+  }
+};
+function fetchTags() {
+  return new Promise((resolve, reject) => {
+    const req = https.get(TAGS_URL, { headers: { "User-Agent": "anaico-desktop", Accept: "application/vnd.github+json" }, timeout: 10000 }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        if (res.statusCode === 403 || res.statusCode === 429) return reject(new Error("GitHub is limiting requests from this network right now. Try again later."));
+        if (res.statusCode !== 200) return reject(new Error("GitHub answered " + res.statusCode));
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("no answer from GitHub")));
+  });
+}
+// manual: the user asked, so say the result either way. Automatic: speak only when there is something new.
+async function checkForUpdates(manual) {
+  try {
+    const latest = newestTag(await fetchTags());
+    writeUpdateSettings({ lastCheck: Date.now() });
+    const current = runningVersion();
+    if (latest && isNewer(latest, current)) {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        message: `Anaico ${latest.replace(/^v/, "")} is available`,
+        detail: `You have ${current}. Nothing is downloaded or installed for you: the button opens the releases page in your browser.`,
+        buttons: ["Open releases page", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response === 0) shell.openExternal(RELEASES_URL);
+    } else if (manual) {
+      await dialog.showMessageBox({ type: "info", message: "Anaico is up to date", detail: `You have ${current}.`, buttons: ["OK"] });
+    }
+  } catch (err) {
+    if (manual) dialog.showErrorBox("Could not check for updates", String(err && err.message ? err.message : err));
+  }
+}
+async function offerUpdateChecks() {
+  const settings = readUpdateSettings();
+  if (typeof settings.auto !== "boolean") {
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      message: "Tell me when a new version is out?",
+      detail:
+        "About once a day Anaico would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
+        "Nothing is downloaded or installed for you. You can change this in the Help menu.",
+      buttons: ["Check for updates", "No thanks"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    writeUpdateSettings({ auto: response === 0 });
+    buildMenu(); // so the Help menu's tick matches
+  }
+  if (dueNow(readUpdateSettings())) checkForUpdates(false);
+}
+
 function showWindow() {
   if (!win) return createWindow();
   if (win.isMinimized()) win.restore();
@@ -197,6 +282,19 @@ function buildMenu() {
       label: "View",
       submenu: [{ role: "reload" }, { role: "togglefullscreen" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, ...(app.isPackaged ? [] : [{ role: "toggleDevTools" }])],
     },
+    {
+      label: "Help",
+      submenu: [
+        { label: "Check for Updates…", click: () => checkForUpdates(true) },
+        {
+          label: "Check Automatically (asks GitHub once a day)",
+          type: "checkbox",
+          checked: readUpdateSettings().auto === true,
+          click: (item) => writeUpdateSettings({ auto: item.checked }),
+        },
+        { label: "Releases Page", click: () => shell.openExternal(RELEASES_URL) },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -207,6 +305,7 @@ async function main() {
   origin = await startServer();
   createTray();
   createWindow();
+  offerUpdateChecks();
   app.on("activate", showWindow);
 }
 
