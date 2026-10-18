@@ -47,6 +47,14 @@ describe("chatting", { skip }, () => {
     await server?.stop();
   });
 
+  test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
+    const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
+    assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);
+    const icon = await fetch(`http://127.0.0.1:${server.port}/favicon.png`);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get("content-type"), "image/png");
+  });
+
   test("a new page gets the hello, the mode and an empty history", async () => {
     const c = await server.client();
     await c.next("hello");

@@ -117,6 +117,8 @@ function layout({ page, index, html, headings, description }) {
 <meta property="og:title" content="${escape(title)}">
 <meta property="og:description" content="${escape(description)}">
 <meta name="theme-color" content="#1b1535">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <style>${css}</style>
 </head>
 <body>
