@@ -308,9 +308,9 @@ const modeInfo = () => ({
   // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
   provider: basicMode ? "basic" : settings.provider,
   basic: basicMode,
-  canUseTools: provider.canUseTools,
+  canUseTools: settings.provider === "ollama" ? ollamaBrain.canUseToolsFor(settings.ollamaModel) : provider.canUseTools,
   // Only a local model that Ollama says cannot see pictures: everything else may attach (the page hides nothing otherwise).
-  cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePictures,
+  cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePicturesFor(settings.ollamaModel),
   ollamaModels,
   ollamaModel: settings.ollamaModel,
   cursorModels: cursorBrain()?.availableModels ?? [],

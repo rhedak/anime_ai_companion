@@ -39,6 +39,24 @@ function macPath() {
   return [fromShell, ...usual, process.env.PATH || ""].filter(Boolean).join(":");
 }
 
+// --version and --help answer on the terminal and leave, before a window, the single-instance lock or the server.
+const cliAnswer = process.argv.slice(1).find((a) => a === "--version" || a === "-v" || a === "--help" || a === "-h");
+if (cliAnswer) {
+  const version = (() => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8")).version;
+    } catch {
+      return "unknown";
+    }
+  })();
+  process.stdout.write(
+    cliAnswer === "--version" || cliAnswer === "-v"
+      ? `Anime AI Companion ${version}\n`
+      : `Anime AI Companion ${version}\n\nStarts the desktop app. Its settings are in the app's user-data folder; the page is served on http://127.0.0.1:${DEFAULT_PORT}.\n  --version, -v   print the version and exit\n  --help, -h      print this and exit\n  --no-sandbox    start without Chromium's sandbox (Linux, when it is refused)\n`,
+  );
+  process.exit(0);
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -182,13 +200,15 @@ async function checkForUpdates(manual) {
 }
 async function offerUpdateChecks() {
   const settings = readUpdateSettings();
-  if (typeof settings.auto !== "boolean") {
+  // Asked once: the question is marked as asked before it is shown, so closing the app with it open does not bring it back at every start.
+  if (typeof settings.auto !== "boolean" && !settings.asked) {
+    writeUpdateSettings({ asked: true });
     const { response } = await dialog.showMessageBox({
       type: "question",
       message: "Tell me when a new version is out?",
       detail:
         "About once a day Anaico would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
-        "Nothing is downloaded or installed for you. You can change this in the Help menu.",
+        "Nothing is downloaded or installed for you. You can change this later under File, Options.",
       buttons: ["Check for updates", "No thanks"],
       defaultId: 1,
       cancelId: 1,
@@ -276,7 +296,28 @@ function createWindow() {
 function buildMenu() {
   const template = [
     ...(isMac ? [{ role: "appMenu" }] : []),
-    { label: "File", submenu: [{ label: "Open in Browser", click: () => shell.openExternal(origin + "/") }, ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }])] },
+    {
+      label: "File",
+      submenu: [
+        { label: "Open in Browser", click: () => shell.openExternal(origin + "/") },
+        { type: "separator" },
+        {
+          label: "Options",
+          submenu: [
+            {
+              label: "Check for Updates Automatically (asks GitHub once a day)",
+              type: "checkbox",
+              checked: readUpdateSettings().auto === true,
+              click: (item) => {
+                writeUpdateSettings({ auto: item.checked, asked: true });
+                if (item.checked) checkForUpdates(false);
+              },
+            },
+          ],
+        },
+        ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
+      ],
+    },
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
     {
       label: "View",
@@ -286,12 +327,6 @@ function buildMenu() {
       label: "Help",
       submenu: [
         { label: "Check for Updates…", click: () => checkForUpdates(true) },
-        {
-          label: "Check Automatically (asks GitHub once a day)",
-          type: "checkbox",
-          checked: readUpdateSettings().auto === true,
-          click: (item) => writeUpdateSettings({ auto: item.checked }),
-        },
         { label: "Releases Page", click: () => shell.openExternal(RELEASES_URL) },
       ],
     },

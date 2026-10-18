@@ -77,7 +77,7 @@ run_tests() {
   fi
   skipped=$(sed -n 's/^# skipped \([0-9]*\)$/\1/p' "$log")
   if [ "${skipped:-0}" != 0 ] && [ "${CHECK_ALLOW_SKIPS:-0}" != 1 ]; then
-    echo "$skipped test(s) skipped (a missing creator?). Set CHECK_ALLOW_SKIPS=1 to accept."
+    echo "$skipped test(s) skipped (listed below: a missing creator, or a test for another platform, such as the opencode install, which only runs on Windows). Set CHECK_ALLOW_SKIPS=1 to accept."
     grep -E '^ *ok .*# SKIP' "$log" | head -10 || true
     return 1
   fi

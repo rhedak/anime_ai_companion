@@ -11,11 +11,11 @@ You still need **a brain** (below); without one she runs a small built-in script
 
 | System | File | Size |
 | --- | --- | --- |
-| **Windows** 10 or newer | `Anime AI Companion Setup <version>.exe` | about 145 MB |
-| **macOS** 11 or newer, Apple Silicon | `Anime AI Companion-<version>-arm64.dmg` | about 210 MB |
-| **macOS**, Intel | `Anime AI Companion-<version>.dmg` | about 210 MB |
-| **Linux**, x64 | `Anime AI Companion-<version>.AppImage` | about 210 MB |
-| **Linux**, arm64 | `Anime AI Companion-<version>-arm64.AppImage` | about 210 MB |
+| **Windows** 10 or newer | `Anime.AI.Companion.Setup.<version>.exe` | about 145 MB |
+| **macOS** 11 or newer, Apple Silicon | `Anime.AI.Companion-<version>-arm64.dmg` | about 210 MB |
+| **macOS**, Intel | `Anime.AI.Companion-<version>.dmg` | about 210 MB |
+| **Linux**, x64 | `Anime.AI.Companion-<version>.AppImage` | about 210 MB |
+| **Linux**, arm64 | `Anime.AI.Companion-<version>-arm64.AppImage` | about 210 MB |
 
 ## The first start
 
@@ -26,9 +26,14 @@ you can read in this repository.
   no administrator.
 - **macOS:** open the `.dmg`, drag the app into *Applications*, then **right-click it → Open**, and **Open** again. (Or System Settings →
   Privacy & Security → **Open Anyway**.)
-- **Linux:** make the file executable and run it: `chmod +x "Anime AI Companion-<version>.AppImage"` and double-click it, or start it in a terminal.
-  On Ubuntu 24.04 and newer the browser sandbox can be refused for an AppImage; start it with `--no-sandbox` if you see that error. The folder
-  picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one.
+- **Linux:** make the file executable and run it: `chmod +x Anime.AI.Companion-<version>.AppImage` and double-click it, or start it in a terminal.
+  An AppImage needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and newer); without it the start fails with `error loading libfuse.so.2`.
+  Install that package, or unpack the file and run it from the folder: `./Anime.AI.Companion-<version>.AppImage --appimage-extract`, then
+  `squashfs-root/AppRun`. The launcher entry the AppImage makes starts the app with `--no-sandbox` (an AppImage cannot carry the setuid helper
+  Chromium's sandbox wants); started by hand, add it yourself if you see an "unprivileged user namespaces" or `chrome-sandbox` error. The folder
+  picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one. `--version` prints the version and `--help` the options.
+
+The release also has a `SHA256SUMS` file; `sha256sum -c SHA256SUMS --ignore-missing` checks what you downloaded.
 
 ## What you need besides the app
 
@@ -50,7 +55,7 @@ Closing the window hides her to the tray or menu bar; she and her server keep ru
 
 Nothing is installed behind your back. The first time, the app asks whether to look for a newer version about once a day; if you say yes it
 asks GitHub for the newest version number (GitHub sees your IP address and that the app asked, nothing else), and tells you when there is one,
-with a button to this page. The **Help** menu has *Check for Updates…* and the switch.
+with a button to this page. The app asks only once; the switch is under **File → Options**, and the **Help** menu has *Check for Updates…*.
 
 ## Speaking to her
 

@@ -1,0 +1,87 @@
+name: Release
+
+# Builds the desktop installers when a version tag is pushed (git tag -a vX.Y.Z; see "Branches and releases" in AGENTS.md) and attaches them to that
+# tag's GitHub release. The release is made as a draft if it does not exist, so nothing goes public until the owner publishes it.
+# A tag with a hyphen (v0.9.1-rc1) makes a pre-release, which the app's update notice ignores: use one to try this workflow.
+# The installers are not signed (no certificates yet), the same as the ones built by hand.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The tag, the app's version and the shell's version must be one number, or the installers would be named for the wrong release.
+      - name: Tag matches the versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app="$(node -p "require('./package.json').version")"
+          shell="$(node -p "require('./app/package.json').version")"
+          echo "tag=$tag package.json=$app app/package.json=$shell"
+          [ "$tag" = "$app" ] && [ "$tag" = "$shell" ]
+      - name: Draft release, if there is none yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            flags="--draft"
+            case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease";; esac
+            gh release create "$GITHUB_REF_NAME" $flags --verify-tag --title "$GITHUB_REF_NAME" --notes ""
+          fi
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist
+            files: "app/dist/*.exe"
+          - os: macos-latest
+            script: dist:mac
+            files: "app/dist/*.dmg app/dist/*.zip"
+          - os: ubuntu-latest
+            script: dist:linux
+            files: "app/dist/*.AppImage"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Electron brings its own Node; this one only runs electron-builder and the staging script.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+      # The staging script clones the creator at the release the root package.json pins (a public repo).
+      - run: npm ci
+        working-directory: app
+      - run: npm run ${{ matrix.script }}
+        working-directory: app
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l ${{ matrix.files }}
+          gh release upload "$GITHUB_REF_NAME" ${{ matrix.files }} --clobber
+
+  # One checksum file for everything on the release, made after all three builds (the Download page names it).
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$GITHUB_REF_NAME" --pattern '*.exe' --pattern '*.dmg' --pattern '*.zip' --pattern '*.AppImage'
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber
