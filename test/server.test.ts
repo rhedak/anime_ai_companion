@@ -36,6 +36,8 @@ async function waitFor(condition: () => boolean, ms = 5000): Promise<void> {
   }
 }
 
+/** A skip that is about the platform, not a missing piece: check.sh does not count it as something left untested. */
+const platformSkip = () => (opencodeAsset() === null ? "the opencode one-click install exists for Windows only so far (platform only)" : false);
 const inputs = (server: RunningServer) => server.claudeLog().filter((e) => e.kind === "in").map((e) => e.text!);
 
 describe("chatting", { skip }, () => {
@@ -166,6 +168,7 @@ describe("chatting", { skip }, () => {
     const icon = await fetch(`http://127.0.0.1:${server.port}/favicon.png`);
     assert.equal(icon.status, 200);
     assert.equal(icon.headers.get("content-type"), "image/png");
+    assert.equal((await fetch(`http://127.0.0.1:${server.port}/favicon.ico`)).status, 200, "browsers that ask for /favicon.ico get the picture, not a 404");
   });
 
   test("Reset look only restores the look: the conversation stays, and she is told on her next message", async () => {
@@ -422,6 +425,19 @@ describe("her notes about you", { skip }, () => {
   });
   after(async () => {
     await server?.stop();
+  });
+
+  test("a note written as [remember]…[/remember] by a small model is offered like the exact tag", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("LOOSEREMEMBER the cat");
+    const offer = await c.next("memory-offer", 8000, from);
+    assert.equal(offer.fact, "Their cat is called Momo");
+    c.send({ type: "memory-reply", id: offer.id, choice: "skip" });
+    await c.next("memory-resolved", 5000, from);
+    assert.ok(!(server.data("memory.md") ?? "").includes("Momo"), "declined: nothing saved");
+    await fresh(c); // a declined note is not offered again in that conversation: leave it so the next test starts clean
   });
 
   test("she asks first: nothing is saved until the user keeps it, then it is told to her in the next conversation, and forgetting removes it", async () => {
@@ -932,7 +948,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     assert.equal(modes.at(-1)!.canUseTools, false, "the settled state: no tools for llama2");
   });
 
-  test("switching between two models that both take tools: a page is never told the old answer for the new model, and hears the new one once", async () => {
+  test("switching between two models that both take tools: a page is never told the old answer for the new model, and hears the new answer first", async () => {
     const c = await server.client();
     await c.next("history");
     let from = c.mark;
@@ -945,8 +961,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     await new Promise((r) => setTimeout(r, 500));
     const tools = c.since(from).filter((e) => e.type === "mode" && e.ollamaModel === "qwen3-small:3b").map((e) => e.canUseTools);
     assert.equal(tools.at(-1), true, "settled: tools");
-    assert.equal(tools.indexOf(true), tools.length - 1, `true only once Ollama has answered for the new model, got ${JSON.stringify(tools)}`);
-    assert.ok(tools.filter((t) => t === false).length <= 1, `unknown is said once, not repeated: ${JSON.stringify(tools)}`);
+    assert.ok(!tools.includes(false), `the page hears the new model's answer, never "no tools" first: ${JSON.stringify(tools)}`);
   });
 
   test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
@@ -1085,7 +1100,7 @@ describe("switching to a brain whose program is missing", { skip }, () => {
   });
 
   // Where a pinned opencode build exists (Windows), a missing opencode comes with an offer to install it, shown to the person at the computer.
-  test("opencode missing and not chosen by the user: the page is offered the install, with what it will do", { skip: skip || opencodeAsset() === null }, async () => {
+  test("opencode missing and not chosen by the user: the page is offered the install, with what it will do", { skip: skip || platformSkip() }, async () => {
     const server = await startServer({});
     try {
       const c = await server.client();
@@ -1109,7 +1124,7 @@ describe("basic mode: no brain installed", { skip }, () => {
   const noBrains = () => ({ PATH: pathOf(dirname(process.execPath), ...systemPathDirs()), CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" });
 
   // With no brain at all, a machine that has a pinned opencode build gets the install offered as soon as the page connects; one who set OPENCODE_BIN does not.
-  test("a page that connects is offered the opencode install (where a build exists), unless OPENCODE_BIN was set", { skip: skip || opencodeAsset() === null }, async () => {
+  test("a page that connects is offered the opencode install (where a build exists), unless OPENCODE_BIN was set", { skip: skip || platformSkip() }, async () => {
     const { OPENCODE_BIN: _chosen, ...free } = noBrains();
     const open = await startServer({ env: free });
     try {

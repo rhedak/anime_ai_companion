@@ -4,6 +4,8 @@ import { createDictation, dictationVendor, joinDictation } from "./dictation.js"
 import { renderMarkdown } from "./markdown.js";
 import { BUBBLE_LINGER_MS, bubbleText } from "./bubble.js";
 import { createDemo } from "./demo.js";
+import { GESTURES } from "./frames.js";
+import { normalizeTags } from "./tags.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 
@@ -68,15 +70,24 @@ let calmTimer = null;
 let talkTimer = null;
 
 // Strips [emotion:x] tags (including a half-streamed one at the end) and returns the last emotion.
+const BARE_EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "shy", "thinking"];
 function parseReply(text) {
   let emotion = null;
   const gestures = [];
-  const clean = text
+  const clean = normalizeTags(text)
+    // a bare [wave] or [happy], as small models write them: the same as [gesture:wave] / [emotion:happy] (a markdown link [text](url) is not one)
+    .replace(/\[(\w+)\](?!\()/g, (all, name) => {
+      const word = name.toLowerCase();
+      if (Object.hasOwn(GESTURES, word)) return gestures.push(word), "";
+      if (BARE_EMOTIONS.includes(word)) return (emotion = word), "";
+      return all;
+    })
     .replace(/\[emotion:(\w+)\]/g, (_, e) => ((emotion = e.toLowerCase()), ""))
     .replace(/\[gesture:(\w+)\]/g, (_, g) => (gestures.push(g.toLowerCase()), ""))
     .replace(/\[avatar\b[^\]]*\]/g, "")
     .replace(/\[demo\]/g, "")
     .replace(/ *\[remember\s[^\]]*\]/g, "")
+    .replace(/ *\[remember\][^\[]*$/i, "") // a [remember]… that is still being written
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
@@ -2010,20 +2021,19 @@ document.addEventListener("click", (e) => {
   if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
 });
 
-// A one-time hint that Looks exists. Remembered per browser; any use of the menu, the button, or 20 seconds ends it.
-function hideLooksHint(remember = true) {
+// A one-time hint that Looks exists. It stays until it is dismissed ("Got it") or the Looks menu is used, so nobody misses it by being slow;
+// only then is it remembered per browser.
+function hideLooksHint() {
   $("looks-hint").hidden = true;
-  if (remember) try { localStorage.setItem("looksHintSeen", "1"); } catch {}
+  try { localStorage.setItem("looksHintSeen", "1"); } catch {}
 }
 function maybeShowLooksHint() {
   let seen = false;
   try { seen = localStorage.getItem("looksHintSeen") === "1"; } catch {}
   if (seen || !$("looks-hint").hidden || $("looks").disabled) return;
   $("looks-hint").hidden = false;
-  setTimeout(() => hideLooksHint(), 20000);
 }
 $("looks-hint-close").addEventListener("click", () => hideLooksHint());
-$("looks").addEventListener("focus", () => hideLooksHint());
 $("looks").addEventListener("pointerdown", () => hideLooksHint());
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {

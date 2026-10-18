@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GESTURE_NAMES, type AvatarService } from "./avatar.ts";
-import { findAvatarTags, findImageTags, findOutfitTags } from "./avatar-tags.ts";
+import { findAvatarTags, findImageTags, findOutfitTags, normalizeTags } from "./avatar-tags.ts";
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureNote, type FramePack } from "./frame-pack.ts";
@@ -135,8 +135,8 @@ export function createTurnService(deps: TurnDeps) {
       if (event.type === "delta") {
         reply += event.text;
         deps.transcript.delta(event.text);
-        applyNewTags(reply);
-        applyMemory(reply);
+        applyNewTags(normalizeTags(reply));
+        applyMemory(normalizeTags(reply));
         deps.broadcast(event);
       } else if (event.type === "tool") {
         deps.skills.noticeToolUse(event);

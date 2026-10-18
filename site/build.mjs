@@ -94,6 +94,8 @@ function split(text) {
   return { meta, body: text.slice(m[0].length) };
 }
 
+// The released version, written into the Download page where it says <version>, so the file names and links are the real ones.
+const version = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version;
 const css = readFileSync(join(here, "template", "site.css"), "utf8");
 const js = readFileSync(join(here, "template", "site.js"), "utf8");
 
@@ -161,12 +163,13 @@ pages.forEach((page, index) => {
     problems++;
     return;
   }
-  const { meta, body } = split(readFileSync(path, "utf8"));
+  const { meta, body } = split(readFileSync(path, "utf8").replaceAll("<version>", version));
   const { html, headings } = render(body, page.file);
   const description = meta.description ?? (/<p>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "").replace(/<[^>]+>/g, "").slice(0, 200);
   writeFileSync(join(dist, `${page.slug}.html`), layout({ page, index, html, headings, description }));
 });
 if (existsSync(join(here, "assets"))) cpSync(join(here, "assets"), join(dist, "assets"), { recursive: true });
+if (existsSync(join(here, "assets", "favicon.png"))) cpSync(join(here, "assets", "favicon.png"), join(dist, "favicon.ico")); // asked for at the root whatever the page says
 writeFileSync(join(dist, ".nojekyll"), "");
 writeFileSync(join(dist, "404.html"), readFileSync(join(dist, "index.html"), "utf8").replace(/<title>[^<]*<\/title>/, "<title>Page not found · Anime AI Companion</title>").replace(/<article class="doc">[\s\S]*<\/article>/, '<article class="doc"><h1>Page not found</h1><p>That page does not exist. <a href="index.html">Back to the start</a>.</p></article>'));
 console.log(`built ${pages.length} pages into ${relative(root, dist)}`);

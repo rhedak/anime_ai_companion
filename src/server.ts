@@ -887,7 +887,7 @@ const slashCommands: Record<
         const installed = packs.length
           ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}.`
           : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one.";
-        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> downloads one.` : "";
+        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> asks whether to download one.` : "";
         const hint = packs.length || remote.length ? " Use /frames <name> or /frames off." : "";
         return say(`${using} ${installed}${available}${hint}`);
       }
@@ -1387,7 +1387,7 @@ wss.on("connection", (ws) => {
         cards.greet();
       }
       provider.configure(sessionConfig());
-      if (settings.provider === "ollama") void ollamaBrain.checkTools();
+      if (settings.provider === "ollama") await ollamaBrain.checkTools(); // waited for, so the page hears the new model's answer once, not "no tools" first
       if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) {
         const label = provider instanceof CursorProvider ? "Cursor" : "opencode";
         try {
