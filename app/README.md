@@ -39,7 +39,7 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
   newer version about once a day; the answer is `updates.json` in the user-data folder, and the Help menu has "Check for Updates…" (always asks, whatever
   was chosen), the automatic switch and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
   page in the browser. Nothing is downloaded or installed (`update-check.cjs`, tested in `test/update-check.test.ts`). The check is unauthenticated, so a
-  shared network can hit GitHub's rate limit; the manual check then says so. The installers are built by hand today and attached to the release by hand.
+  shared network can hit GitHub's rate limit; the manual check then says so. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds the Windows, Mac and Linux installers on GitHub runners and attaches them to that tag's release (a draft if none exists; a hyphenated tag such as `v0.9.1-rc1` makes a pre-release for trying it). `app/package.json` must carry the tag's version or the workflow stops.
 - **On Linux** the files are in `~/.config/Anime AI Companion/`. Make the AppImage executable and run it (`chmod +x`). **Not run yet on a real Linux
   desktop**: only built (on a Mac). On Ubuntu 24.04 and newer, Chromium's sandbox can be refused for an AppImage (an "unprivileged user namespaces" /
   `chrome-sandbox` error); if so, `--no-sandbox` starts it, or the distribution's AppArmor setting can allow it. The folder picker needs `zenity` or
