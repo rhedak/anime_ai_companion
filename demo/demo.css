@@ -18,6 +18,7 @@ body.demo main { flex: 1; min-height: 0; height: auto !important; }
   border-bottom: 1px solid var(--line, #3a3350);
 }
 .demo-banner a { color: var(--accent, #ff8f6b); }
+.demo-banner a.demo-banner-cta { flex: none; padding: 2px 12px; font-weight: 600; text-decoration: none; color: var(--accent-text, #1b1535); background: var(--accent, #ff8f6b); border-radius: 999px; }
 .demo-banner-toggle { flex: none; padding: 0 8px; font: inherit; line-height: 1.4; color: inherit; background: transparent; border: 1px solid var(--line, #3a3350); border-radius: 999px; cursor: pointer; }
 .demo-banner-short { display: none; }
 .demo-banner.collapsed { flex-wrap: nowrap; justify-content: center; padding-top: 3px; padding-bottom: 3px; }

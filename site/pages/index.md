@@ -12,7 +12,7 @@ ask her to change her hair or put on glasses she **redraws herself**. In chat mo
 
 ![Work mode: she asks before an edit, and the card shows the diff](assets/work.png)
 
-**[Try the demo now](demo/)**: a live Risa in your browser, nothing to install and nothing sent anywhere. Or [watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about a minute).
+**[Download the app](download.html)** for Windows, macOS or Linux, **[try the demo](demo/)** (a live Risa in your browser, nothing to install and nothing sent anywhere), or [watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about a minute).
 
 ![The chat and the character side by side](assets/chat.png)
 
@@ -39,7 +39,7 @@ ask her to change her hair or put on glasses she **redraws herself**. In chat mo
 
 ## Start in a minute
 
-You need Node.js 22.18 or newer and one brain (for example a signed-in `claude`).
+**Easiest:** [download the app](download.html) (Windows, macOS, Linux) and open it. Or from source, which needs Node.js 22.18 or newer and one brain (for example a signed-in `claude`).
 
 ```bash
 git clone https://github.com/rhedak/anime-character-creator.git

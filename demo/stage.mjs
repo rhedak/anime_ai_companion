@@ -72,7 +72,7 @@ export async function stage(target = out) {
   html = html.replace(
     "<body>",
     `<body class="demo">
-  <div class="demo-banner" role="note"><span class="demo-banner-short">A demo: it runs in your browser, nothing is sent anywhere.</span><span class="demo-banner-full">This is a demo that runs entirely in your browser: nothing you type is sent anywhere. The real thing runs on your own computer, in front of your coding agent.</span><span class="demo-banner-links"><a href="https://github.com/rhedak/anime_ai_companion">Get it on GitHub</a> · <a href="https://rhedak.github.io/anime_ai_companion/">Documentation</a></span><button type="button" class="demo-banner-toggle" aria-expanded="true" aria-label="Hide most of this notice" title="Hide most of this notice">▴</button></div>`,
+  <div class="demo-banner" role="note"><span class="demo-banner-short">A demo: it runs in your browser, nothing is sent anywhere.</span><span class="demo-banner-full">This is a demo that runs entirely in your browser: nothing you type is sent anywhere. The real thing runs on your own computer, in front of your coding agent.</span><span class="demo-banner-links"><a href="https://github.com/rhedak/anime_ai_companion">Get it on GitHub</a> · <a href="https://rhedak.github.io/anime_ai_companion/">Documentation</a></span><a class="demo-banner-cta" href="https://rhedak.github.io/anime_ai_companion/download.html">Download the full version</a><button type="button" class="demo-banner-toggle" aria-expanded="true" aria-label="Hide most of this notice" title="Hide most of this notice">▴</button></div>`,
   );
   writeFileSync(join(target, "index.html"), html);
   writeFileSync(join(target, "custom.css"), "/* the demo has no user stylesheet */\n");

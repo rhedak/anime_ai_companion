@@ -24,7 +24,8 @@ a:hover { text-decoration-thickness: 2px; }
 .brand { font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: .2px; flex: 1; }
 .gh { text-decoration: none; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); font-size: 14px; }
 .gh { white-space: nowrap; }
-.gh.demo { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+.gh.cta { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+.gh.demo { font-weight: 600; }
 .menu { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--text); display: grid; place-items: center; cursor: pointer; }
 .menu span, .menu span::before, .menu span::after { display: block; width: 18px; height: 2px; background: currentColor; border-radius: 2px; content: ""; position: relative; }
 .menu span::before { position: absolute; top: -6px; }
@@ -99,10 +100,11 @@ li { margin: .25em 0; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
-/* A narrow phone: the brand takes two lines, and the plain GitHub pill makes room for "Try the demo" (GitHub is in the page footer). */
+/* A narrow phone: the brand takes two lines, and only "Download" stays in the bar (the demo and GitHub are in the page). */
 @media (max-width: 480px) {
   .top { gap: 8px; padding: 0 12px; }
   .brand { font-size: 15px; line-height: 1.2; }
   .gh { padding: 6px 10px; font-size: 13px; }
-  .gh:not(.demo) { display: none; }
+  .gh:not(.demo):not(.cta) { display: none; }
+  .gh.demo { display: none; }
 }

@@ -4,6 +4,8 @@ description: Requirements, installation, the anaico command, configuration, and 
 
 # Getting started
 
+This page is the route from source. For a ready-made app with its own window, [download it](download.html) instead.
+
 ## What you need
 
 - **Node.js 22.18 or newer.** It runs the TypeScript directly: there is no build step. Many systems ship an older Node, and
