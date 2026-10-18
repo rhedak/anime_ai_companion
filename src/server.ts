@@ -10,7 +10,7 @@ import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
 import { brainProgram, isInstalled, programLabel } from "./programs.ts";
-import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
+import { MAX_IMAGE_BYTES, MAX_MESSAGE_BYTES, parseImages, sniffImageType, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
@@ -23,7 +23,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { gestureNote, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -81,6 +81,17 @@ const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
+/** The pack's resting picture, kept ready to show her how she looks (brains that can read pictures), and whether the next message should carry it. */
+let lookPicture: ImageInput | null = null;
+let lookPictureDue = false;
+async function loadLookPicture(): Promise<void> {
+  lookPicture = null;
+  const file = activePack ? activePack.files.get(activePack.emotions.neutral?.idle ?? "") : undefined;
+  if (!file) return;
+  const bytes = await readFile(file.path).catch(() => null);
+  const mediaType = bytes && bytes.length <= MAX_IMAGE_BYTES ? sniffImageType(bytes) : null;
+  if (bytes && mediaType) lookPicture = { mediaType, data: bytes.toString("base64") };
+}
 /** Reads the chosen pack's folder again, so pictures replaced on disk show on the next page load. */
 async function refreshPack(): Promise<string[]> {
   if (!settings.framePack) {
@@ -89,8 +100,36 @@ async function refreshPack(): Promise<string[]> {
   }
   const result = await readPack(packDirs, settings.framePack, Object.keys(emotions));
   activePack = result.ok ? result.pack : null;
+  await loadLookPicture();
   return result.ok ? result.pack.notes : [result.reason];
 }
+/** What the page needs to ask before a pack is downloaded: its size, and which server is contacted. */
+const packOffer = (entry: PackIndexEntry) => ({
+  type: "pack-offer",
+  id: entry.id,
+  name: entry.name,
+  bytes: entry.sizes.archiveBytes,
+  host: new URL(entry.url).hostname,
+  credit: entry.credit,
+});
+/** The outfits of the character the active pack belongs to (installed ones, and ones the pack list offers), for her note and for `[outfit …]`. */
+async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
+  const id = activePack?.character?.id;
+  if (!id) return [];
+  const names = await listPacks(...packDirs);
+  const chars = await packCharacters(packDirs, names);
+  const here = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id), here: true }));
+  const offered = remotePacks(names)
+    .filter((pack) => pack.character?.id === id)
+    .map((pack) => ({ pack: pack.id, name: outfitName(pack.id, id), here: false }));
+  return [...here, ...offered];
+}
+let outfitCache: Outfit[] = [];
+const refreshOutfits = async () => {
+  if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
+  outfitCache = await outfitsOfActiveCharacter();
+};
+const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
 /** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
 const packInstaller = createPackInstaller({
@@ -108,16 +147,17 @@ async function refreshPackIndex(force = false): Promise<void> {
   }
 }
 /** Remote packs that are not already on disk, so the gallery can offer them for download. */
-function remotePacks(names: string[]): Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade">[] {
+function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade" | "character" | "sizes"> & { host: string })[] {
   const have = new Set(names);
   return (packInstaller.index()?.packs ?? [])
     .filter((pack) => !have.has(pack.id))
-    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade }));
+    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade, character: pack.character, sizes: pack.sizes, host: new URL(pack.url).hostname }));
 }
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
 const packsMessage = async () => {
+  await refreshOutfits();
   const names = await listPacks(...packDirs);
-  return { type: "packs", names, active: settings.framePack, remote: remotePacks(names) };
+  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names) };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
@@ -424,6 +464,20 @@ function persistTranscript(): void {
 
 // Problems with the model's avatar tags, passed back to it with the next user message.
 const notes = createNotes();
+/** A new conversation starts with nothing waiting, except what she must know about her pictures while a pack is on (they replace the look her prompt describes). */
+function renewNotes(): void {
+  notes.clear();
+  lookPictureDue = false;
+  if (activePack) {
+    // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
+    const pack = activePack;
+    notes.pushLazy(() => packNote(pack, outfitCache));
+    lookPictureDue = true;
+  }
+}
+// A pack was chosen in an earlier run: read her outfits (the pack list included, for at most a moment) so her first message already tells her about them.
+await Promise.race([refreshOutfits().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 1500))]);
+renewNotes();
 
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();
@@ -599,30 +653,36 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
+    lookPictureDue = false;
     notes.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
   }
   if (!isPackName(name)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-  let result = await readPack(packDirs, name, Object.keys(emotions));
+  const result = await readPack(packDirs, name, Object.keys(emotions));
   if (!result.ok) {
     const offered = await packInstaller.find(name);
     if (!offered) {
       const note = packInstaller.indexNote();
       return say(note ? `${result.reason} ${note}` : result.reason);
     }
-    const installed = await packInstaller.install(name);
-    if (!installed.ok) return say(installed.reason);
-    result = await readPack(packDirs, name, Object.keys(emotions));
-    if (!result.ok) return say(result.reason);
+    // Nothing is fetched until the user says yes to the question the page shows (the size and who is contacted).
+    broadcast(packOffer(offered));
+    return say(`"${name}" is not on this computer yet. The page asks whether to download it (${formatMegabytes(offered.sizes.archiveBytes)}).`);
   }
+  const sameCharacter = Boolean(result.pack.character && result.pack.character.id === activePack?.character?.id);
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
-  notes.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing. " + gestureNote(result.pack) + " Your emotions and talking still drive which picture is shown.");
+  await loadLookPicture();
+  await refreshOutfits();
+  notes.push(packNote(result.pack, outfitCache));
+  lookPictureDue = true;
   broadcast(packMessage());
   broadcast(await packsMessage());
+  // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
+  if (sameCharacter) return say(`Showing the pack "${name}".`);
   say(
     [
       `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
@@ -630,6 +690,29 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
       ...result.pack.notes,
     ].join("\n"),
   );
+}
+
+/**
+ * She changes into another outfit of her character (`[outfit casual]` in a reply). Only outfits of the character of the pack that is on: the tag cannot
+ * name any other pack. An outfit that is on this computer is shown at once; one that is not raises the same question the gallery asks (size and host),
+ * and nothing is fetched until the user says yes, after which it is shown.
+ */
+async function wearOutfit(wanted: string): Promise<void> {
+  if (!activePack?.character) return notes.push("You have no other outfits: [outfit …] changes nothing.");
+  const outfits = await outfitsOfActiveCharacter();
+  const choice = outfits.find((o) => o.name === wanted || o.pack.toLowerCase() === wanted);
+  const list = outfits.map((o) => o.name).join(", ");
+  if (!choice) return notes.push(`You have no outfit called "${wanted}". Your outfits: ${list}.`);
+  if (choice.pack === activePack.name) return notes.push(`You already wear ${choice.name}.`);
+  if (choice.here) {
+    await choosePack(choice.pack, () => {});
+    if (activePack?.name !== choice.pack) notes.push(`You could not change into ${choice.name}.`);
+    return;
+  }
+  const entry = await packInstaller.find(choice.pack);
+  if (!entry) return notes.push(`${choice.name} is not available right now (the pack list could not be reached), so you stay in ${outfitName(activePack.name, activePack.character.id)}.`);
+  broadcast(packOffer(entry));
+  notes.push(`${choice.name} is not on this computer yet. The user was asked whether to download it (${formatMegabytes(entry.sizes.archiveBytes)}); you stay in your current outfit until they agree, and then you wear it.`);
 }
 
 /**
@@ -793,7 +876,7 @@ const slashCommands: Record<
       ),
   },
   frames: {
-    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (downloading it first when the pack list has it and it is not installed), /frames off goes back",
+    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (when the pack list has it and it is not installed, the page asks first, with the size, before downloading it), /frames off goes back",
     run: async ({ args, say }) => {
       const wanted = args.trim();
       if (!wanted) {
@@ -994,7 +1077,7 @@ async function resumeAcp(args: string, say: Say): Promise<void> {
   if (chosen.id === acp.sessionId) return say("That is the current conversation.");
   acp.resume(chosen.id);
   transcript.clear();
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -1034,7 +1117,7 @@ async function resumeCommand(args: string, say: Say): Promise<void> {
   convo.lastReplyAt = size ? size.modified.getTime() : null;
   transcript.clear();
   transcript.items = items;
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -1073,7 +1156,7 @@ function resetConversation(): void {
   forgetConversationSize();
   transcript.clear();
   persistTranscript();
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   broadcast({ type: "reset" });
   broadcast(modeInfo());
@@ -1096,6 +1179,14 @@ const turns = createTurnService({
   avatar,
   transcript,
   activePack: () => activePack,
+  wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
+  takeLookPicture: () => {
+    const picture = lookPictureDue && lookPicture ? lookPicture : null;
+    lookPictureDue = false;
+    // Only brains that read pictures get it: Claude, and an Ollama model that says it can. Everyone else has the description.
+    const sees = !basicMode && (settings.provider === "claude" || (settings.provider === "ollama" && ollamaBrain.canSeePicturesFor(settings.ollamaModel)));
+    return picture && sees ? [picture] : [];
+  },
   notReady: () => (settings.provider === "ollama" && !settings.ollamaModel ? ollamaNotReady() : null),
   emotionNames: () => Object.keys(emotions),
   folder: () => sessionConfig().cwd,
@@ -1138,6 +1229,11 @@ wss.on("connection", (ws) => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
       ws.send(JSON.stringify(await packsMessage()));
+      // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
+      if (settings.framePack && !activePack) {
+        const offered = await packInstaller.find(settings.framePack);
+        if (offered && ws.readyState === ws.OPEN) ws.send(JSON.stringify(packOffer(offered)));
+      }
     })
     .catch((err) => console.error("could not send the packs:", err));
   ws.send(JSON.stringify(modeInfo()));
@@ -1284,7 +1380,7 @@ wss.on("connection", (ws) => {
         forgetConversationSize();
         transcript.clear();
         persistTranscript();
-        notes.clear();
+        renewNotes();
         pendingPermissions.clear();
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());

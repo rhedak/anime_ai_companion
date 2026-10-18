@@ -78,6 +78,7 @@ function parseReply(text) {
     .replace(/\[demo\]/g, "")
     .replace(/ *\[remember\s[^\]]*\]/g, "")
     .replace(/ *\[image\s[^\]]*\]/g, "")
+    .replace(/ *\[outfit\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };
@@ -88,6 +89,7 @@ let gesturesDone = 0; // gestures of the current reply already played
 // picture pack's terms. Said when the page opens, when the look changes, and after "New chat" empties the log.
 let announcedLook; // undefined until said once; then the pack's name, or null for the drawn character
 let currentLook = null; // the pack info, or null for the drawn character
+let announcedCharacter = null; // the character whose terms the chat last said: another outfit of the same character does not say them again
 function sayLook() {
   if (currentLook?.terms) addMsg("sys", currentLook.terms);
   else if (!currentLook) {
@@ -1162,11 +1164,15 @@ function handle(msg) {
       break;
     case "packs":
       packNames = msg.names ?? [];
+      packCharacters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
       remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
       activePackName = msg.active ?? null;
       renderLooksMenu();
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
       if (openGallery?.dataset.kind === "packs") galleryFill?.();
+      break;
+    case "pack-offer":
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host });
       break;
     case "pack-progress":
       showPackProgress(msg);
@@ -1269,6 +1275,7 @@ function handle(msg) {
       $("dot").classList.add("on");
       avatar.setVersion(msg.version);
       setBusy(busy);
+      setTimeout(maybeShowLooksHint, 1500); // after the menu has been filled in
       break;
     case "demo":
       if (busy) addMsg("sys", "She is still answering: ask again when she is done.");
@@ -1323,8 +1330,10 @@ function handle(msg) {
       $("pack-credit").textContent = msg.pack?.credit ?? "";
       $("pack-credit").hidden = !msg.pack?.credit;
       currentLook = msg.pack ?? null;
-      if ((msg.pack?.name ?? null) !== announcedLook) sayLook(); // not again on every reconnect
+      // Not again on every reconnect, and not for another outfit of the character already announced (the terms were seen then).
+      if ((msg.pack?.name ?? null) !== announcedLook && !(msg.pack?.character && msg.pack.character === announcedCharacter)) sayLook();
       announcedLook = msg.pack?.name ?? null;
+      announcedCharacter = msg.pack?.character ?? null;
       break;
     case "frames":
       avatar.receiveFrames(msg);
@@ -1761,8 +1770,45 @@ function closeGallery() {
 }
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
+/** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string }} */ offer) {
+  document.querySelector(".pack-confirm")?.remove();
+  const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
+  const box = document.createElement("div");
+  box.className = "pack-confirm";
+  box.dataset.pack = offer.id;
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", `Download ${offer.name}?`);
+  const text = document.createElement("p");
+  text.textContent = `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. It is saved on this computer and checked before it is used.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Download ${size}` });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  no.onclick = () => box.remove();
+  yes.onclick = () => {
+    yes.disabled = true;
+    no.disabled = true;
+    text.textContent = `Downloading ${offer.name}…`;
+    ws?.send(JSON.stringify({ type: "pack-install", name: offer.id }));
+  };
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  (document.querySelector(".gallery") ?? document.querySelector(".stage")).append(box);
+  yes.focus();
+}
+
 function showPackProgress(msg) {
   const id = typeof msg.id === "string" ? msg.id : "";
+  const asking = id ? document.querySelector(`.pack-confirm[data-pack="${CSS.escape(id)}"]`) : null;
+  if (asking) {
+    const line = asking.querySelector("p");
+    if (msg.phase === "done") asking.remove();
+    else if (msg.phase === "error") {
+      if (line) line.textContent = typeof msg.message === "string" ? msg.message : "The download failed.";
+      asking.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = false));
+    } else if (line && msg.phase === "restore") line.textContent = "Installing… this takes a little while (the pictures are rebuilt from the download).";
+    else if (line && msg.phase === "download" && msg.total) line.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%…`;
+  }
   const state = id ? document.querySelector(`.gallery [data-pack="${CSS.escape(id)}"] .preset-state`) : null;
   if (!state) return;
   if (msg.phase === "error") {
@@ -1778,17 +1824,17 @@ function showPackProgress(msg) {
 }
 
 /** One choice in the packs gallery: a pack's preview, null for the drawn avatar, or a remote pack that is not installed yet. */
-function packItem(name, remote) {
+function packItem(name, remote, shown) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "preset";
   if (name) item.dataset.pack = name;
-  const label = remote?.name || name || "Drawn avatar";
+  const label = shown || remote?.name || name || "Drawn avatar";
   if (remote) {
     item.classList.add("is-remote");
     item.title = [label, remote.credit, "Not on this computer yet."].filter(Boolean).join(" — ");
   } else {
-    item.title = name ?? "The avatar drawn by code";
+    item.title = shown && name ? `${shown} (${name})` : (name ?? "The avatar drawn by code");
   }
   if (name && name === activePackName) item.setAttribute("aria-current", "true");
   const pic = document.createElement("span");
@@ -1807,10 +1853,7 @@ function packItem(name, remote) {
   if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
   item.onclick = () => {
     if (remote) {
-      item.disabled = true;
-      const state = item.querySelector(".preset-state");
-      if (state) state.textContent = "Downloading…";
-      ws?.send(JSON.stringify({ type: "pack-install", name }));
+      askPackDownload({ id: name, name: remote.name, bytes: remote.sizes?.archiveBytes, host: remote.host });
       return;
     }
     closeGallery();
@@ -1822,6 +1865,68 @@ function packItem(name, remote) {
 /** A preset's id as people read it ("lindita" is "Lindita"): the tile's label and tooltip say what its text shows, not the lowercase id. */
 const displayName = (/** @type {string} */ name) => name.replace(/(^|\s)(\S)/g, (_, gap, c) => gap + c.toUpperCase());
 
+/** Which character each pack belongs to ({ pack folder: { id, name } }, from the server), so outfits of one character share a tile. */
+let packCharacters = {};
+/** The character whose outfits the packs gallery is showing. */
+let openCharacter = null;
+
+/** A pack's outfit as a label: its folder name without the character's name in front ("franzi-casual" is "casual"). */
+function outfitLabel(pack, character) {
+  const rest = pack.toLowerCase().startsWith(`${character.id}-`) ? pack.slice(character.id.length + 1) : pack;
+  return rest.replace(/[-_]+/g, " ");
+}
+
+/** The packs as tiles: the drawn avatar, then one tile per character (a character with several outfits opens a row of them) and one per pack without a character. */
+function packTiles() {
+  /** @type {HTMLElement[]} */
+  const tiles = [packItem(null, null)];
+  const offered = new Map(remotePacks.filter((pack) => !packNames.includes(pack.id)).map((pack) => [pack.id, pack]));
+  // Packs on this computer first, then the ones that can be downloaded, each in its character's group (the index says which character).
+  const groups = new Map();
+  const add = (name, who) => {
+    const key = who ? `c:${who.id}` : `p:${name}`;
+    if (!groups.has(key)) groups.set(key, { who, names: [] });
+    const group = groups.get(key);
+    group.who ??= who;
+    group.names.push(name);
+  };
+  for (const name of packNames) add(name, packCharacters[name]);
+  for (const [name, pack] of offered) add(name, pack.character);
+  for (const { who, names } of groups.values()) {
+    if (!who) {
+      tiles.push(packItem(names[0], offered.get(names[0]) ?? null));
+    } else if (names.length === 1) {
+      tiles.push(packItem(names[0], offered.get(names[0]) ?? null, who.name));
+    } else {
+      // The outfit she wears, else the one the character file names, else one that is on this computer, else the first.
+      const here = names.filter((name) => !offered.has(name));
+      const shown = names.includes(activePackName) ? activePackName : names.includes(who.default) ? who.default : (here[0] ?? names[0]);
+      const open = openCharacter === who.id;
+      const tile = packItem(shown, null, who.name); // the tile itself only opens the row, so it is never a download
+      tile.dataset.character = who.id;
+      tile.title = `${who.name}: ${names.length} outfits`;
+      tile.setAttribute("aria-expanded", String(open));
+      tile.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: open ? `${names.length} outfits ▴` : `${names.length} outfits ▾` }));
+      tile.onclick = (ev) => {
+        ev.stopPropagation(); // the tile is replaced below, and a click on a node that has left the gallery would be read as a click outside it
+        openCharacter = open ? null : who.id;
+        galleryFill?.();
+        /** @type {HTMLElement | null} */ (document.querySelector(`.gallery [data-character="${who.id}"]`))?.focus();
+      };
+      tiles.push(tile);
+      if (open) {
+        const row = document.createElement("div");
+        row.className = "outfit-row";
+        row.setAttribute("role", "group");
+        row.setAttribute("aria-label", `${who.name}'s outfits`);
+        row.append(...names.map((name) => packItem(name, offered.get(name) ?? null, outfitLabel(name, who))));
+        tiles.push(row);
+      }
+    }
+  }
+  return tiles;
+}
+
 /** The built-in character she is drawn from just now (the server says), so the gallery can mark it. */
 let currentPreset = null;
 
@@ -1832,6 +1937,7 @@ function openGallery(kind = "presets") {
     if (open.dataset.kind === kind) return; // the same menu entry again closes it; the other one switches to its own
   }
   const packs = kind === "packs";
+  if (packs) openCharacter = packCharacters[activePackName]?.id ?? null; // opens on the outfits of the character she is wearing now
   const box = document.createElement("div");
   box.className = "gallery";
   box.dataset.kind = kind;
@@ -1849,8 +1955,7 @@ function openGallery(kind = "presets") {
   document.querySelector(".stage").append(box);
   const fill = () => {
     if (packs) {
-      const offered = remotePacks.filter((pack) => !packNames.includes(pack.id));
-      return grid.replaceChildren(...[null, ...packNames].map((name) => packItem(name, null)), ...offered.map((pack) => packItem(pack.id, pack)));
+      return grid.replaceChildren(...packTiles());
     }
     grid.replaceChildren(
       ...presetNames.map((name) => {
@@ -1905,6 +2010,21 @@ document.addEventListener("click", (e) => {
   if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
 });
 
+// A one-time hint that Looks exists. Remembered per browser; any use of the menu, the button, or 20 seconds ends it.
+function hideLooksHint(remember = true) {
+  $("looks-hint").hidden = true;
+  if (remember) try { localStorage.setItem("looksHintSeen", "1"); } catch {}
+}
+function maybeShowLooksHint() {
+  let seen = false;
+  try { seen = localStorage.getItem("looksHintSeen") === "1"; } catch {}
+  if (seen || !$("looks-hint").hidden || $("looks").disabled) return;
+  $("looks-hint").hidden = false;
+  setTimeout(() => hideLooksHint(), 20000);
+}
+$("looks-hint-close").addEventListener("click", () => hideLooksHint());
+$("looks").addEventListener("focus", () => hideLooksHint());
+$("looks").addEventListener("pointerdown", () => hideLooksHint());
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {
   const value = $("looks").value;

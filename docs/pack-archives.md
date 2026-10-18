@@ -50,6 +50,7 @@ of the fields; the measured size of the pajamas pack is in the next section but 
 | `sizes.framesBytes` | The plain WebP frames it was built from, in bytes. Text files are not counted. |
 | `hashes.sha256` | SHA-256 of the archive file, 64 lowercase hex characters. |
 | `url` | Where to download the archive. https, with no password in it. |
+| `character` | Optional: `{ "id": "franzi", "name": "Franzi" }`, the character an outfit belongs to (the same id as the `character:` line of the pack's `look.txt`). The gallery puts a pack that is not downloaded yet into that character's row. |
 | `description`, `thumbnail`, `credit`, `aiMade` | Optional. What a gallery can show before the pictures are on disk. `thumbnail` is `thumbs/<id>.webp` next to the index, or an https URL of that picture. |
 
 A field the schema does not know is refused, so a typo does not pass.
@@ -70,7 +71,7 @@ Stored whole, byte for byte:
 
 - each emotion's rest frame (`neutral.webp`, `happy.webp`, and the rest of the keys in `emotions.json`)
 - each pose (`wave-1.webp`, `wave-2.webp`, `cheer-1.webp`, `cheer-2.webp`)
-- `credit.txt`, `NOTICE.md`, and `PROCESS.md` when the folder has them
+- `credit.txt`, `NOTICE.md`, `PROCESS.md` and `look.txt` when the folder has them
 
 `credit.txt` and `NOTICE.md` are required. The credit and the terms have to travel with the pictures.
 

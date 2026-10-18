@@ -16,13 +16,17 @@
       <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
       <div class="tools">
         <button id="undo-look" class="ghost" title="Undo her last look change" disabled>Undo</button>
-        <select id="looks" class="ghost" title="Your saved looks"><option value="">Looks…</option></select>
+        <select id="looks" class="ghost looks-pop" title="Change her look: your saved looks, presets and picture packs"><option value="">Looks…</option></select>
         <button id="save-look" class="ghost" title="Save the current look">Save look</button>
         <button id="voice" class="ghost" title="Let her read her replies aloud (uses your browser's own voices)" hidden>Voice: off</button>
         <select id="voice-pick" class="ghost" title="Which voice she speaks with. 'online' voices are made by a server, which receives the text" hidden></select>
         <select id="voice-rate" class="ghost" title="How fast she speaks" hidden></select>
         <button id="zoom" class="ghost" title="Switch between close-up and full body">Full body</button>
         <button id="reset-look" class="ghost" title="Restore the original look">Reset look</button>
+      </div>
+      <div id="looks-hint" class="looks-hint" role="status" hidden>
+        <span>Want a different look? Presets, your saved looks and picture packs are under <b>Looks…</b></span>
+        <button id="looks-hint-close" class="ghost" aria-label="Dismiss">Got it</button>
       </div>
       <form id="save-look-form" class="save-form" hidden>
         <input id="look-name" maxlength="40" placeholder="Name this look" autocomplete="off">

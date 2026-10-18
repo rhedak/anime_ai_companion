@@ -52,12 +52,15 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
   if (msg.type !== "user") return;
   const content = msg.message.content;
   const text = typeof content === "string" ? content : content.map((c) => c.text || "").join(" ");
-  log({ kind: "in", text });
+  log({ kind: "in", text, images: typeof content === "string" ? 0 : content.filter((c) => c.type === "image").length });
   later(delay, () => {
     if (text.includes("TOOLFAIL")) {
       out({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Skill", input: { skill: "pinecone" } }] } });
       out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } });
       delta("[emotion:thinking] I will read it by hand.");
+      result();
+    } else if (/OUTFIT [a-z]+/.test(text)) {
+      delta("[emotion:happy] One moment, I will change. [outfit " + /OUTFIT ([a-z]+)/.exec(text)[1] + "] There.");
       result();
     } else if (text.includes("REMEMBER")) {
       delta("[emotion:happy] Noted! [remember Their cat is called Momo]");
@@ -150,7 +153,7 @@ export interface RunningServer {
   /** A folder to use as a project in work mode. */
   project: string;
   /** What the stand-in `claude` was started with and sent. */
-  claudeLog(): { kind: string; args?: string[]; text?: string }[];
+  claudeLog(): { kind: string; args?: string[]; text?: string; images?: number }[];
   /** The system prompt of the latest `claude` start. */
   systemPrompt(): string;
   data(name: string): string | null;
@@ -170,6 +173,8 @@ export interface ServerOptions {
   coldConversation?: boolean;
   /** Start as a brand-new install: no data/settings.json yet. */
   firstStart?: boolean;
+  /** Files to have in data/ before the server starts, by path relative to data/ (frames/<pack>/neutral.png, say). */
+  dataFiles?: Record<string, string | Buffer>;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -180,6 +185,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
   symlinkDir(join(repo, "node_modules"), join(app, "node_modules"));
   mkdirSync(join(app, "data"));
+  for (const [name, body] of Object.entries(options.dataFiles ?? {})) {
+    mkdirSync(dirname(join(app, "data", name)), { recursive: true });
+    writeFileSync(join(app, "data", name), body);
+  }
   if (!options.firstStart) writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
   const bin = join(dir, "bin");
@@ -231,6 +240,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       STANDIN_LOG: log,
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
+      COMPANION_PACK_INDEX: "off", // tests never fetch the real pack list; one that needs it points this at a local server
       ...options.env,
     },
     stdio: ["ignore", "pipe", "pipe"],

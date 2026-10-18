@@ -33,6 +33,13 @@ The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`
   pack is on) is the credit. Use it when the character belongs to someone who asks for credit. Any lines after the
   first are the terms (up to 600 characters): a short statement said once in the chat when the pack is chosen or
   the page opens with it.
+- `look.txt`: what she wears in these pictures, in a few plain sentences (up to 600 characters), in the second person ("You wear…", "Your hair is up…").
+  She cannot see the pictures, and her prompt describes the drawn character, so without this she keeps describing the wrong look. Its first line may be
+  `character: <id>`: the shared description of that character (build, apparent age, face, hair colour, eyes) is then `characters/<id>.txt` beside the
+  packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters), and an optional line `default: <pack>` names the outfit whose picture stands for the character in the gallery (the one she wears, once she wears one of them). Outfits of one character share
+  that file, so they cannot drift apart. Both are told to her when the pack is chosen and at the start of every new conversation while it is on, as a
+  note with her next message (never in the system prompt). Brackets are dropped, so a text cannot carry one of her tags. A brain that reads pictures
+  (Claude Code, and an Ollama model that reports vision) also gets the resting picture with that message, once. Neither text is shown on the page or served. She can change outfit herself: while a pack of a character that has several outfits is on, she is told the outfits and writes `[outfit casual]` (the name is the folder name without the character in front: `franzi-casual` is `casual`) when she decides to, or when the user asks her to. The tag can only name an outfit of the same character. An outfit that is on this computer is shown at once; one that is not raises the download question (size and server) and nothing is fetched until the user says yes, and then she wears it. Only the first `[outfit …]` of a reply counts. The `character:` line also groups the packs gallery: a character with one pack is a single tile, and one with several outfits is a tile that opens a row of them.
 - `NOTICE.md`: terms of use. `/frames <name>` points to it. A pack of someone else's character needs one, and
   anyone who shares such a pack should read the licence of that character first.
 

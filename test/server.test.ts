@@ -47,14 +47,6 @@ describe("chatting", { skip }, () => {
     await server?.stop();
   });
 
-  test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
-    const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
-    assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);
-    const icon = await fetch(`http://127.0.0.1:${server.port}/favicon.png`);
-    assert.equal(icon.status, 200);
-    assert.equal(icon.headers.get("content-type"), "image/png");
-  });
-
   test("a new page gets the hello, the mode and an empty history", async () => {
     const c = await server.client();
     await c.next("hello");
@@ -72,6 +64,108 @@ describe("chatting", { skip }, () => {
     assert.match(said, /\[emotion:happy\] echo: hello there/);
     const late = await server.client();
     assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
+  });
+
+  test("with a picture pack on she is told what the pictures show, and sees her resting picture once; a new chat tells her again", async () => {
+    const pack = join(server.dir, "data", "frames", "tester");
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(join(pack, "neutral.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+    writeFileSync(join(pack, "look.txt"), "Short silver hair and a green sleeveless dress.\n");
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "user", text: "/frames tester" });
+    const shown = await c.next((e) => e.type === "notice", 8000);
+    assert.match(shown.text, /Showing the pack "tester"/);
+    await ask(c, "how do you look?");
+    const first = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(first.text!, /fixed set of pictures/);
+    assert.match(first.text!, /green sleeveless dress/, "the pack's look.txt reaches her");
+    assert.equal(first.images, 1, "the resting picture rides on that first message");
+    await ask(c, "and now?");
+    const second = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.doesNotMatch(second.text!, /green sleeveless dress/);
+    assert.equal(second.images, 0, "only once");
+    c.send({ type: "reset" });
+    await c.next("reset");
+    await ask(c, "again");
+    const fresh = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(fresh.text!, /green sleeveless dress/, "a new conversation does not know her look either");
+    assert.equal(fresh.images, 1);
+    c.send({ type: "user", text: "/frames off" });
+    await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+  });
+
+  test("the packs message says which character each pack belongs to, so the gallery can group outfits", async () => {
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(join(frames, "characters"), { recursive: true });
+    writeFileSync(join(frames, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair.\n");
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    for (const pack of ["ann-coat", "ann-swim", "solo"]) {
+      mkdirSync(join(frames, pack), { recursive: true });
+      writeFileSync(join(frames, pack, "neutral.png"), tiny);
+    }
+    writeFileSync(join(frames, "ann-coat", "look.txt"), "character: ann\nYou wear a coat.\n");
+    writeFileSync(join(frames, "ann-swim", "look.txt"), "character: ann\nYou wear a swimsuit.\n");
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "pack-catalog" });
+    const packs = await c.next((e) => e.type === "packs" && e.names.includes("ann-coat"), 8000);
+    assert.deepEqual(packs.characters, { "ann-coat": { id: "ann", name: "Ann" }, "ann-swim": { id: "ann", name: "Ann" } });
+    assert.ok(!packs.names.includes("characters"), "the characters folder is not a pack");
+  });
+
+  test("she can change into another outfit of her character with [outfit name]; an outfit that is not there changes nothing", async () => {
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(join(frames, "characters"), { recursive: true });
+    writeFileSync(join(frames, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair.\n");
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    for (const [pack, wear] of [["ann-coat", "You wear a coat."], ["ann-swim", "You wear a swimsuit."]]) {
+      mkdirSync(join(frames, pack), { recursive: true });
+      writeFileSync(join(frames, pack, "neutral.png"), tiny);
+      writeFileSync(join(frames, pack, "look.txt"), `character: ann\n${wear}\n`);
+    }
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "user", text: "/frames ann-coat" });
+    await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000);
+    await ask(c, "hello");
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /\[outfit <name>\]/);
+    assert.match(told.text!, /coat \(you wear this now\), swim/, "she is told which outfits she has");
+
+    // she changes: the page is told the new pack, and she is told what she wears now
+    const from = c.mark;
+    await ask(c, "please OUTFIT swim");
+    const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+    assert.equal(packMsg.pack.name, "ann-swim");
+    assert.equal(packMsg.pack.character, "ann", "the page can tell an outfit change from a change of character");
+    await ask(c, "and now?");
+    const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(after.text!, /You wear a swimsuit/, "the new outfit's description reaches her");
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "ann-swim");
+
+    // an outfit she does not have: nothing changes, and she is told her outfits
+    await ask(c, "please OUTFIT tuxedo");
+    await new Promise((r) => setTimeout(r, 300));
+    await ask(c, "again");
+    const nope = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(nope.text!, /no outfit called "tuxedo"/);
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "ann-swim");
+    // a manual switch to another outfit of the same character says only the change; the credit and terms were said at the first one
+    const manual = c.mark;
+    c.send({ type: "user", text: "/frames ann-coat" });
+    const again = await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000, manual);
+    assert.equal(again.text, 'Showing the pack "ann-coat".');
+    c.send({ type: "user", text: "/frames off" });
+    await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+  });
+
+  test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
+    const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
+    assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);
+    const icon = await fetch(`http://127.0.0.1:${server.port}/favicon.png`);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get("content-type"), "image/png");
   });
 
   test("Reset look only restores the look: the conversation stays, and she is told on her next message", async () => {
@@ -1118,5 +1212,38 @@ describe("basic mode: no brain installed", { skip }, () => {
       await server.stop();
       fake.close();
     }
+  });
+});
+
+describe("a picture pack chosen in an earlier run", { skip }, () => {
+  let server: RunningServer;
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  before(async () => {
+    server = await startServer({
+      settings: { framePack: "ann-coat" },
+      dataFiles: {
+        "frames/characters/ann.txt": "Ann\nA tall young woman with short red hair.\n",
+        "frames/ann-coat/neutral.png": tiny,
+        "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n",
+        "frames/ann-swim/neutral.png": tiny,
+        "frames/ann-swim/look.txt": "character: ann\nYou wear a swimsuit.\n",
+      },
+    });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("at a server start she is still told her outfits with her first message, and can change into one", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await ask(c, "hello");
+    const first = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(first.text!, /You wear a coat/);
+    assert.match(first.text!, /\[outfit <name>\]/, "the instructions are there even though the pack list was not read when the server started");
+    assert.match(first.text!, /coat \(you wear this now\), swim/);
+    const from = c.mark;
+    await ask(c, "please OUTFIT swim");
+    await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
   });
 });

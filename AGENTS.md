@@ -78,7 +78,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - `src/providers/types.ts` is the brain interface. A new brain implements `Provider` and nothing
   in the page should need to know how that process speaks.
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
-  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`). The server strips them. Keep that
+  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`). The server strips them. Keep that
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
   server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by the creator's TypeScript
@@ -105,14 +105,16 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   `<emotion>[-blink|-talkN]` a pack can have `<gesture>-<n>` pictures (`wave-1.webp`, `cheer-2.webp`) that alternate while she makes that
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
-  model) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen). Ship lossless WebP.
+  model), `franzi-dress` (an original character, made with AI) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen): one outfit per character,
+  so each works offline. The other outfits (`franzi-casual`, `franzi-pajamas`) are in the sister repository `anime_ai_companion-packs` and are downloaded on request (see Pack archives). Ship lossless WebP.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
   sha256, https URL of a GitHub Release asset, thumbnail). `packs/thumbs/<id>.webp` is a 200 px preview (`npm run pack-thumbs`); the gallery
   shows it even when the pack is not installed. The installer fetches the index (`COMPANION_PACK_INDEX`, or a placeholder GitHub Pages URL
   until the sister repo is published), checks size and sha256, and renames a restored folder into `data/frames/<id>/`. Packs already on disk
-  are not replaced. `sharp` is a runtime dependency because restoring a pack decodes WebP.
+  are not replaced. Nothing is downloaded until the page has asked and the user said yes: the question (`pack-offer`, `askPackDownload` in `public/app.js`) gives the size and the host,
+  and a pack named by `/frames` that is not on disk only raises that question. Each character's default outfit (the `default:` line of `characters/<id>.txt`) is the one that stays bundled; the other outfits can be download-only. `sharp` is a runtime dependency because restoring a pack decodes WebP.
 - `../anime-character-creator` is a dependency, not a fork. Drawing changes belong in that repo.
 - `data/` and `workspace/` (except `workspace/.gitkeep`) are the user's machine. Do not commit
   them, and do not put API keys, sessions, or account details in the repo.

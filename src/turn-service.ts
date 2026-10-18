@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GESTURE_NAMES, type AvatarService } from "./avatar.ts";
-import { findAvatarTags, findImageTags } from "./avatar-tags.ts";
+import { findAvatarTags, findImageTags, findOutfitTags } from "./avatar-tags.ts";
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureNote, type FramePack } from "./frame-pack.ts";
@@ -25,6 +25,10 @@ export interface TurnDeps {
   transcript: Transcript;
   /** The picture pack in use, if any. */
   activePack(): FramePack | null;
+  /** She wrote `[outfit name]`: change into that outfit of her character, or ask to download it. */
+  wearOutfit(name: string): void;
+  /** Her resting picture, once after a pack comes on or a conversation starts, for a brain that can read it; otherwise nothing. */
+  takeLookPicture(): ImageInput[];
   /** Why a message cannot be sent right now (no model chosen for Ollama, say), or null. Such a message is not kept in the log. */
   notReady(): string | null;
   emotionNames(): string[];
@@ -66,7 +70,16 @@ export function createTurnService(deps: TurnDeps) {
   /** Applies each new complete [avatar ...] tag of a reply as it arrives. */
   function makeTagApplier(): (reply: string) => void {
     let seen = 0;
+    let outfitDone = false;
     return (reply) => {
+      // One outfit change per reply: the first complete tag counts, so a reply cannot flip between outfits or pile up download questions.
+      if (!outfitDone) {
+        const wanted = findOutfitTags(reply)[0];
+        if (wanted) {
+          outfitDone = true;
+          deps.wearOutfit(wanted);
+        }
+      }
       const tags = findAvatarTags(reply);
       for (; seen < tags.length; seen++) {
         if (deps.activePack()) {
@@ -183,7 +196,8 @@ export function createTurnService(deps: TurnDeps) {
   function run(userText: string, opts: { raw?: boolean; images?: ImageInput[]; onFinish?: (event: ProviderEvent) => void } = {}): void {
     // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
     const toModel = opts.raw ? userText : withNotes(userText);
-    deps.provider().send(toModel, turnHandler(userText, opts), opts.images);
+    const look = opts.raw ? [] : deps.takeLookPicture();
+    deps.provider().send(toModel, turnHandler(userText, opts), look.length ? [...look, ...(opts.images ?? [])] : opts.images);
   }
 
   /** Shows the user's message in the log and sends it to the brain. */

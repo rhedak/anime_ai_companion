@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, isPackName, listPacks, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -161,6 +161,61 @@ test("served types follow the extension", () => {
   assert.equal(frameMime("a.jpeg"), "image/jpeg");
 });
 
+test("look.txt says what the pictures show: cleaned, capped, never served, and told to her in the pack note", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "lk"));
+    await writeFile(join(dir, "lk", "neutral.png"), png(10, 10));
+    await writeFile(join(dir, "lk", "look.txt"), "Blue hair, a [avatar hair=red] red scarf.\x07\n");
+    const ok = await readPack([dir], "lk", emotions);
+    assert.ok(ok.ok);
+    assert.equal(ok.pack.look, "Blue hair, a avatar hair=red red scarf."); // brackets (her tags) and control characters are dropped
+    assert.ok(!ok.pack.files.has("look.txt"), "it is text for her, not a file the server hands out");
+    assert.doesNotMatch(ok.pack.notes.join("\n"), /look\.txt/);
+    assert.match(packNote(ok.pack), /fixed set of pictures[^]*You wear|Blue hair/);
+    await writeFile(join(dir, "lk", "look.txt"), "x".repeat(601));
+    const long = await readPack([dir], "lk", emotions);
+    assert.ok(long.ok);
+    assert.equal(long.pack.look, undefined);
+    assert.match(long.pack.notes.join("\n"), /look\.txt is longer/);
+    assert.doesNotMatch(packNote(long.pack), /like this/, "no description, no claim about one");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a character's shared description joins each outfit's look.txt, and the characters folder is not a pack", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "characters"));
+    await writeFile(join(dir, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair [and a tag].\ndefault: ann-swim\n");
+    for (const [pack, outfit] of [["ann-coat", "You wear a long grey coat."], ["ann-swim", "You wear a blue swimsuit."]]) {
+      await mkdir(join(dir, pack));
+      await writeFile(join(dir, pack, "neutral.png"), png(10, 10));
+      await writeFile(join(dir, pack, "look.txt"), `character: Ann\n${outfit}\n`);
+    }
+    assert.deepEqual(await listPacks(dir), ["ann-coat", "ann-swim"], "characters/ has no neutral picture, so it is not a pack");
+    const coat = await readPack([dir], "ann-coat", emotions);
+    const swim = await readPack([dir], "ann-swim", emotions);
+    assert.ok(coat.ok && swim.ok);
+    assert.equal(coat.pack.character?.name, "Ann");
+    assert.equal(coat.pack.look, "You wear a long grey coat.", "the outfit line is the pack's own; the character line is not part of it");
+    const note = packNote(coat.pack);
+    assert.match(note, /You are Ann\. A tall young woman with short red hair and a tag\. You wear a long grey coat\./);
+    assert.match(packNote(swim.pack), /You are Ann\..*blue swimsuit/);
+    assert.doesNotMatch(packNote(coat.pack), /default/, "the gallery's default outfit is not part of what she is told");
+    assert.equal((await packCharacters([dir], ["ann-coat", "ann-swim"]))["ann-coat"].default, "ann-swim", "the gallery shows this outfit for the character");
+    // a character that is named but has no file (or a bad one) leaves just the outfit
+    await writeFile(join(dir, "ann-swim", "look.txt"), "character: nobody\nYou wear a blue swimsuit.");
+    const alone = await readPack([dir], "ann-swim", emotions);
+    assert.ok(alone.ok);
+    assert.equal(alone.pack.character, undefined);
+    assert.doesNotMatch(packNote(alone.pack), /You are /);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {
   const img = png(10, 10);
   const mine = await mkdtemp(join(tmpdir(), "frames-"));
@@ -276,38 +331,17 @@ test("the Franzi (dirndl) pack that ships with the app is complete, with a wave 
   assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
 });
 
-test("the Franzi (casual) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+test("each character's default outfit is a pack that ships with the app; the other outfits may be download-only", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
-  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
-  const r = await readPack(join(root, "packs"), "franzi-casual", names);
-  assert.ok(r.ok);
-  for (const emotion of names) {
-    const e = r.pack.emotions[emotion];
-    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  const folder = join(root, "packs", "characters");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".txt"));
+  assert.ok(files.length >= 3);
+  for (const file of files) {
+    const text = await readFile(join(folder, file), "utf8");
+    const def = /^default:\s*(\S+)\s*$/im.exec(text)?.[1];
+    const id = file.replace(/\.txt$/, "");
+    const shipped = (await listPacks(join(root, "packs"))).filter((name) => name === id || name.startsWith(`${id}-`));
+    assert.ok(shipped.length >= 1, `${id} has at least one pack that ships with the app, so she works offline`);
+    if (def) assert.ok(shipped.includes(def), `${id}: default ${def} must ship with the app`);
   }
-  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
-  assert.match(r.pack.credit ?? "", /original character/);
-  assert.match(r.pack.terms ?? "", /Made with AI/);
-  const notes = r.pack.notes.join("\n");
-  assert.match(notes, /NOTICE\.md/);
-  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
-});
-
-test("the Franzi (pajamas) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
-  const root = fileURLToPath(new URL("..", import.meta.url));
-  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
-  const r = await readPack(join(root, "packs"), "franzi-pajamas", names);
-  assert.ok(r.ok);
-  for (const emotion of names) {
-    const e = r.pack.emotions[emotion];
-    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
-  }
-  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
-  assert.match(r.pack.credit ?? "", /original character/);
-  assert.match(r.pack.terms ?? "", /Made with AI/);
-  const notes = r.pack.notes.join("\n");
-  assert.match(notes, /NOTICE\.md/);
-  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
 });

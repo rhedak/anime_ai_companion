@@ -213,37 +213,37 @@ test("the build command writes an archive the restore command reads back", async
   }
 });
 
-test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about 4.4 MB", { timeout: 180_000 }, async () => {
-  const folder = await franziPajamas();
-  const built = await buildPackArchive(folder, { id: "franzi-pajamas", emotions });
+test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4.2 MB", { timeout: 180_000 }, async () => {
+  const folder = await franziPack();
+  const built = await buildPackArchive(folder, { id: "franzi-dress", emotions });
   assert.equal(built.ok, true, !built.ok ? built.reason : "");
   if (!built.ok) return;
   const { report } = built;
-  assert.equal(report.id, "franzi-pajamas");
+  assert.equal(report.id, "franzi-dress");
   assert.equal(report.width, 940);
   assert.equal(report.height, 1070);
   assert.equal(report.frameCount, 39);
   assert.equal(report.baseCount, 11);
   assert.equal(report.patchCount, 28);
-  assert.equal(report.framesBytes, 15_142_742);
-  assert.equal(report.baseBytes, 4_320_020);
-  assert.equal(report.patchBytes, 96_274);
-  // Git stores the text as LF (5,281 bytes). A Windows checkout adds one CR per line (5,337). For these
-  // three files the extra bytes fit in the tar's existing padding, so the archive length does not change.
+  assert.equal(report.framesBytes, 14_049_032);
+  assert.equal(report.baseBytes, 4_071_740);
+  assert.equal(report.patchBytes, 101_078);
+  // The text files are 4,211 bytes with LF line endings; a Windows checkout adds one CR per line, which at most moves the tar's padding.
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
-  assert.ok(textOnDisk === 5_281 || textOnDisk === 5_337, `text files are ${textOnDisk} bytes`);
-  assert.equal(report.archiveBytes, 4_464_640);
-  const other = await packWithLineEndings(folder, textOnDisk !== 5_281);
+  assert.ok(textOnDisk >= 4_211 && textOnDisk <= 4_211 + 40, `text files are ${textOnDisk} bytes`);
+  const archiveBytes = 4_221_440;
+  assert.ok(report.archiveBytes >= archiveBytes && report.archiveBytes <= archiveBytes + 2048, `the archive is ${report.archiveBytes} bytes`);
+  const other = await packWithLineEndings(folder, textOnDisk !== 4_211);
   try {
-    const again = await buildPackArchive(other, { id: "franzi-pajamas", emotions });
+    const again = await buildPackArchive(other, { id: "franzi-dress", emotions });
     assert.equal(again.ok, true, !again.ok ? again.reason : "");
     if (again.ok) {
       assert.equal(again.report.framesBytes, report.framesBytes);
       assert.equal(again.report.baseBytes, report.baseBytes);
       assert.equal(again.report.patchBytes, report.patchBytes);
-      assert.equal(again.report.archiveBytes, 4_464_640);
-      assert.equal(again.report.textBytes, textOnDisk === 5_281 ? 5_337 : 5_281);
+      assert.ok(Math.abs(again.report.archiveBytes - report.archiveBytes) <= 2048);
+      assert.equal(again.report.textBytes, await textFileBytes(other)); // the same text with the other line endings
     }
   } finally {
     await rm(dirname(other), { recursive: true, force: true });
@@ -251,7 +251,7 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
 
   const destParent = await mkdtemp(join(tmpdir(), "pack-out-"));
   try {
-    const dest = join(destParent, "franzi-pajamas");
+    const dest = join(destParent, "franzi-dress");
     const restored = await restorePackArchive(built.archive, dest);
     assert.equal(restored.ok, true, !restored.ok ? restored.reason : "");
     const names = (await readdir(folder)).filter((name) => !name.startsWith(".")).sort((a, b) => a.localeCompare(b));
@@ -268,7 +268,7 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
         assert.ok(original.equals(back), `${name} bytes differ`);
       }
     }
-    const pack = await readPack(destParent, "franzi-pajamas", emotions);
+    const pack = await readPack(destParent, "franzi-dress", emotions);
     assert.equal(pack.ok, true, !pack.ok ? pack.reason : "");
     if (!pack.ok) return;
     for (const emotion of emotions) assert.ok(pack.pack.emotions[emotion]?.blink && pack.pack.emotions[emotion].talk.length === 3, emotion);
@@ -280,18 +280,18 @@ test("franzi-pajamas round-trips pixel for pixel, and the patch archive is about
   }
 });
 
-const TEXT_FILES = ["credit.txt", "NOTICE.md", "PROCESS.md"];
+const TEXT_FILES = ["credit.txt", "NOTICE.md", "PROCESS.md", "look.txt"];
 
 async function textFileBytes(folder: string): Promise<number> {
   let total = 0;
-  for (const name of TEXT_FILES) total += (await readFile(join(folder, name))).length;
+  for (const name of TEXT_FILES) total += (await readFile(join(folder, name)).catch(() => Buffer.alloc(0))).length;
   return total;
 }
 
 /** A copy of the pack whose text files use LF, or CRLF. The pictures are copied unchanged. */
 async function packWithLineEndings(folder: string, lf: boolean): Promise<string> {
   const parent = await mkdtemp(join(tmpdir(), "pack-eol-"));
-  const out = join(parent, "franzi-pajamas");
+  const out = join(parent, "franzi-dress");
   await mkdir(out);
   for (const name of await readdir(folder)) {
     const bytes = await readFile(join(folder, name));
@@ -301,28 +301,11 @@ async function packWithLineEndings(folder: string, lf: boolean): Promise<string>
   return out;
 }
 
-/** The pajamas pack ships in `packs/` (since it landed on dev). Otherwise take it from the branch that added it. */
-async function franziPajamas(): Promise<string> {
-  const shipped = join(root, "packs", "franzi-pajamas");
-  if (await isPack(shipped)) return shipped;
-  const cached = join(tmpdir(), "anaico-franzi-pajamas");
-  if (await isPack(cached)) return cached;
-  await exec("git", ["-C", root, "fetch", "--depth", "1", "origin", "add-franzi-pajamas"], { timeout: 120_000 });
-  const tarPath = join(tmpdir(), "anaico-franzi-pajamas-src.tar");
-  await exec("git", ["-C", root, "archive", "-o", tarPath, "FETCH_HEAD", "packs/franzi-pajamas"], { timeout: 60_000 });
-  const archive = readTar(await readFile(tarPath));
-  assert.equal(archive.ok, true, !archive.ok ? archive.reason : "");
-  if (!archive.ok) throw new Error("no archive");
-  await mkdir(cached, { recursive: true });
-  const prefix = "packs/franzi-pajamas/";
-  for (const [name, data] of archive.files) {
-    if (!name.startsWith(prefix)) continue;
-    const base = name.slice(prefix.length);
-    if (!base || base.includes("/")) continue;
-    await writeFile(join(cached, base), data);
-  }
-  assert.equal(await isPack(cached), true, "the add-franzi-pajamas branch did not contain packs/franzi-pajamas");
-  return cached;
+/** The Franzi dirndl pack ships in `packs/` (the one outfit of Franzi that stays bundled), so it is the real-pack fixture. */
+async function franziPack(): Promise<string> {
+  const shipped = join(root, "packs", "franzi-dress");
+  assert.equal(await isPack(shipped), true, "packs/franzi-dress ships with the app");
+  return shipped;
 }
 
 async function isPack(folder: string): Promise<boolean> {

@@ -12,6 +12,14 @@ export function parseAvatarTag(body) {
   return out;
 }
 
+/** `[outfit casual]` in a reply: she changes into another outfit of the picture pack she is shown with. */
+export const OUTFIT_TAG = /\[outfit\s+([^\]]*)\]/g;
+
+/** The outfit named by every complete outfit tag in `text` (its first word, lower case), in order. */
+export function findOutfitTags(text) {
+  return [...text.matchAll(OUTFIT_TAG)].map((m) => (m[1].trim().split(/\s+/)[0] ?? "").toLowerCase()).filter(Boolean);
+}
+
 /** Every complete avatar tag in `text`, in order. */
 export function findAvatarTags(text) {
   return [...text.matchAll(AVATAR_TAG)].map((m) => parseAvatarTag(m[1]));
