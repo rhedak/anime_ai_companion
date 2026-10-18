@@ -110,6 +110,8 @@ export class OllamaProvider implements Provider {
   };
   /** Whether the current model takes tool calls; null until checked (or when Ollama cannot say). */
   private toolCapable: boolean | null = null;
+  /** The model the two answers (tools, pictures) were asked for, so a page told about another model never gets them. */
+  private checkedModel = "";
   private onCapability: (() => void) | null = null;
   private readonly pending = new Map<string, (decision: Decision) => void>();
   /** Exact calls the user allowed for the rest of this conversation. */
@@ -136,6 +138,15 @@ export class OllamaProvider implements Provider {
     return this.toolCapable === true;
   }
 
+  /** The same answers for a model the page has just been told about: nothing is known until Ollama has been asked about that very model. */
+  canUseToolsFor(model: string | null | undefined): boolean {
+    return this.toolCapable === true && this.checkedModel === (model ?? "");
+  }
+
+  cannotSeePicturesFor(model: string | null | undefined): boolean {
+    return this.visionCapable === false && this.checkedModel === (model ?? "");
+  }
+
   /** Asks Ollama whether the current model takes tool calls, and tells the listener if the answer changed. */
   async checkTools(): Promise<boolean | null> {
     const model = this.model;
@@ -143,6 +154,7 @@ export class OllamaProvider implements Provider {
     if (model === this.model && (result !== this.toolCapable || vision !== this.visionCapable)) {
       this.toolCapable = result;
       this.visionCapable = vision;
+      this.checkedModel = model;
       this.onCapability?.();
     }
     return result;
@@ -183,9 +195,10 @@ export class OllamaProvider implements Provider {
     if (config.model !== this.model) {
       this.model = config.model; // the conversation continues with the new model
       if (this.toolCapable !== null || this.visionCapable !== null) {
+        // Forgotten, not announced: the page is sent the new model's answer once Ollama has given it (checkTools), not an empty one in between.
         this.toolCapable = null;
         this.visionCapable = null;
-        this.onCapability?.();
+        this.checkedModel = "";
       }
     }
     if (this.config && config.cwd !== this.config.cwd) this.allowedCalls.clear(); // a grant is for the folder it was given in

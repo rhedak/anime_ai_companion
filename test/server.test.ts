@@ -741,7 +741,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
       let raw = "";
       for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : {};
-      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-coder:30b" }, { name: "llama2:7b" }] }));
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-coder:30b" }, { name: "qwen3-small:3b" }, { name: "llama2:7b" }] }));
       if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: body.model.startsWith("qwen3") ? ["completion", "tools", "vision"] : ["completion"] }));
       chats.push(body);
       const last = body.messages.at(-1);
@@ -836,6 +836,23 @@ describe("a local model with tools (Ollama)", { skip }, () => {
       assert.ok(!(m.ollamaModel === "qwen3-coder:30b" && m.provider === "ollama" && m.canUseTools === false), "the old model was reported as having lost its tools");
     }
     assert.equal(modes.at(-1)!.canUseTools, false, "the settled state: no tools for llama2");
+  });
+
+  test("switching between two models that both take tools: a page is never told the old answer for the new model, and hears the new one once", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-coder:30b" });
+    await c.next((e) => e.type === "mode" && e.ollamaModel === "qwen3-coder:30b" && e.canUseTools === true, 8000, from);
+    await new Promise((r) => setTimeout(r, 300));
+    from = c.mark;
+    c.send({ type: "provider", provider: "ollama", model: "qwen3-small:3b" });
+    await c.next((e) => e.type === "mode" && e.ollamaModel === "qwen3-small:3b" && e.canUseTools === true, 8000, from);
+    await new Promise((r) => setTimeout(r, 500));
+    const tools = c.since(from).filter((e) => e.type === "mode" && e.ollamaModel === "qwen3-small:3b").map((e) => e.canUseTools);
+    assert.equal(tools.at(-1), true, "settled: tools");
+    assert.equal(tools.indexOf(true), tools.length - 1, `true only once Ollama has answered for the new model, got ${JSON.stringify(tools)}`);
+    assert.ok(tools.filter((t) => t === false).length <= 1, `unknown is said once, not repeated: ${JSON.stringify(tools)}`);
   });
 
   test("the experimental warning is said once on entering work mode, not again when the folder is set", async () => {
