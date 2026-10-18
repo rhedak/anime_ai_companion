@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -331,38 +331,17 @@ test("the Franzi (dirndl) pack that ships with the app is complete, with a wave 
   assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
 });
 
-test("the Franzi (casual) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+test("each character's default outfit is a pack that ships with the app; the other outfits may be download-only", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
-  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
-  const r = await readPack(join(root, "packs"), "franzi-casual", names);
-  assert.ok(r.ok);
-  for (const emotion of names) {
-    const e = r.pack.emotions[emotion];
-    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  const folder = join(root, "packs", "characters");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".txt"));
+  assert.ok(files.length >= 3);
+  for (const file of files) {
+    const text = await readFile(join(folder, file), "utf8");
+    const def = /^default:\s*(\S+)\s*$/im.exec(text)?.[1];
+    const id = file.replace(/\.txt$/, "");
+    const shipped = (await listPacks(join(root, "packs"))).filter((name) => name === id || name.startsWith(`${id}-`));
+    assert.ok(shipped.length >= 1, `${id} has at least one pack that ships with the app, so she works offline`);
+    if (def) assert.ok(shipped.includes(def), `${id}: default ${def} must ship with the app`);
   }
-  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
-  assert.match(r.pack.credit ?? "", /original character/);
-  assert.match(r.pack.terms ?? "", /Made with AI/);
-  const notes = r.pack.notes.join("\n");
-  assert.match(notes, /NOTICE\.md/);
-  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
-});
-
-test("the Franzi (pajamas) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
-  const root = fileURLToPath(new URL("..", import.meta.url));
-  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
-  const r = await readPack(join(root, "packs"), "franzi-pajamas", names);
-  assert.ok(r.ok);
-  for (const emotion of names) {
-    const e = r.pack.emotions[emotion];
-    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
-  }
-  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
-  assert.match(r.pack.credit ?? "", /original character/);
-  assert.match(r.pack.terms ?? "", /Made with AI/);
-  const notes = r.pack.notes.join("\n");
-  assert.match(notes, /NOTICE\.md/);
-  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
 });

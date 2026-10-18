@@ -1802,7 +1802,8 @@ function showPackProgress(msg) {
     else if (msg.phase === "error") {
       if (line) line.textContent = typeof msg.message === "string" ? msg.message : "The download failed.";
       asking.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = false));
-    } else if (line && msg.phase === "download" && msg.total) line.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%…`;
+    } else if (line && msg.phase === "restore") line.textContent = "Installing… this takes a little while (the pictures are rebuilt from the download).";
+    else if (line && msg.phase === "download" && msg.total) line.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%…`;
   }
   const state = id ? document.querySelector(`.gallery [data-pack="${CSS.escape(id)}"] .preset-state`) : null;
   if (!state) return;

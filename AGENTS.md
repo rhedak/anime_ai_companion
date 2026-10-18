@@ -105,7 +105,8 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   `<emotion>[-blink|-talkN]` a pack can have `<gesture>-<n>` pictures (`wave-1.webp`, `cheer-2.webp`) that alternate while she makes that
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
-  model) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen). Ship lossless WebP.
+  model), `franzi-dress` (an original character, made with AI) and `miku` (Crypton's character, not MIT, non-commercial, with its own NOTICE and credit shown on screen): one outfit per character,
+  so each works offline. The other outfits (`franzi-casual`, `franzi-pajamas`) are in the sister repository `anime_ai_companion-packs` and are downloaded on request (see Pack archives). Ship lossless WebP.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
