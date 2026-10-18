@@ -2041,10 +2041,50 @@ function askDictationConsent() {
   log.scrollTop = log.scrollHeight;
   consentEl = card;
 }
-if (dictation.supported) {
+// The desktop app has no speech service of its own: the button is there, and offers the page in a browser, where it works.
+function askOpenInBrowser() {
+  if (consentEl) return;
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Speaking works in your browser";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    "This window cannot turn speech into text. Open the same page in your browser (Chrome, Edge or Safari) and the microphone button works there: " +
+    "she and her server stay the same, and your chat is shared.";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const close = (text) => {
+    const done = document.createElement("div");
+    done.className = "perm-done";
+    done.textContent = text;
+    actions.replaceWith(done);
+    consentEl = null;
+  };
+  const open = document.createElement("button");
+  open.textContent = "Open in browser";
+  open.className = "allow";
+  open.onclick = () => {
+    window.open(location.href); // the desktop shell hands any address it does not show itself to the user's browser
+    close("Opened in your browser");
+  };
+  const no = document.createElement("button");
+  no.textContent = "Not now";
+  no.className = "deny";
+  no.onclick = () => close("Staying here");
+  actions.append(open, no);
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  consentEl = card;
+}
+if (dictation.supported || dictation.needsBrowser) {
   $("mic").hidden = false;
   $("mic").addEventListener("click", () => {
-    if (dictation.listening) dictation.stop();
+    if (dictation.needsBrowser) askOpenInBrowser();
+    else if (dictation.listening) dictation.stop();
     else if (!dictation.consented) askDictationConsent();
     else beginDictation();
   });

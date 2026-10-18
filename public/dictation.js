@@ -100,6 +100,8 @@ export function createDictation({ onText, onState, onProblem, language = () => "
 
   return {
     supported,
+    /** In the desktop shell: show the button, but send the user to a real browser instead of listening. */
+    needsBrowser: inElectron,
     get listening() {
       return listening;
     },
