@@ -46,7 +46,7 @@ jobs:
             files: "app/dist/*.exe"
           - os: macos-latest
             script: dist:mac
-            files: "app/dist/*.dmg"
+            files: "app/dist/*.dmg app/dist/*.zip"
           - os: ubuntu-latest
             script: dist:linux
             files: "app/dist/*.AppImage"
