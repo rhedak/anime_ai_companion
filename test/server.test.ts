@@ -1208,3 +1208,36 @@ describe("basic mode: no brain installed", { skip }, () => {
     }
   });
 });
+
+describe("a picture pack chosen in an earlier run", { skip }, () => {
+  let server: RunningServer;
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  before(async () => {
+    server = await startServer({
+      settings: { framePack: "ann-coat" },
+      dataFiles: {
+        "frames/characters/ann.txt": "Ann\nA tall young woman with short red hair.\n",
+        "frames/ann-coat/neutral.png": tiny,
+        "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n",
+        "frames/ann-swim/neutral.png": tiny,
+        "frames/ann-swim/look.txt": "character: ann\nYou wear a swimsuit.\n",
+      },
+    });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("at a server start she is still told her outfits with her first message, and can change into one", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await ask(c, "hello");
+    const first = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(first.text!, /You wear a coat/);
+    assert.match(first.text!, /\[outfit <name>\]/, "the instructions are there even though the pack list was not read when the server started");
+    assert.match(first.text!, /coat \(you wear this now\), swim/);
+    const from = c.mark;
+    await ask(c, "please OUTFIT swim");
+    await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+  });
+});

@@ -126,6 +126,7 @@ async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
 }
 let outfitCache: Outfit[] = [];
 const refreshOutfits = async () => {
+  if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
   outfitCache = await outfitsOfActiveCharacter();
 };
 const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
@@ -468,11 +469,15 @@ function renewNotes(): void {
   notes.clear();
   lookPictureDue = false;
   if (activePack) {
-    notes.push(packNote(activePack, outfitCache));
+    // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
+    const pack = activePack;
+    notes.pushLazy(() => packNote(pack, outfitCache));
     lookPictureDue = true;
   }
 }
-renewNotes(); // a pack was chosen in an earlier run
+// A pack was chosen in an earlier run: read her outfits (the pack list included, for at most a moment) so her first message already tells her about them.
+await Promise.race([refreshOutfits().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 1500))]);
+renewNotes();
 
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();

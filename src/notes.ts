@@ -3,9 +3,13 @@
  * The running conversation keeps the prompt it began with (changing it would break Claude's prompt cache), so changes travel here.
  */
 export function createNotes() {
-  let waiting: string[] = [];
+  let waiting: (string | (() => string))[] = [];
   return {
     push(text: string): void {
+      waiting.push(text);
+    },
+    /** A note whose text is worked out when it is sent, from what is true by then (her outfits, once the pack list has been read). */
+    pushLazy(text: () => string): void {
       waiting.push(text);
     },
     /** Like push, but not twice before the next message. */
@@ -14,7 +18,7 @@ export function createNotes() {
     },
     /** Everything waiting, and forgets it: it goes out with the next message. */
     take(): string[] {
-      const out = waiting;
+      const out = waiting.map((note) => (typeof note === "function" ? note() : note));
       waiting = [];
       return out;
     },

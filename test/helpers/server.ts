@@ -173,6 +173,8 @@ export interface ServerOptions {
   coldConversation?: boolean;
   /** Start as a brand-new install: no data/settings.json yet. */
   firstStart?: boolean;
+  /** Files to have in data/ before the server starts, by path relative to data/ (frames/<pack>/neutral.png, say). */
+  dataFiles?: Record<string, string | Buffer>;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -183,6 +185,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
   symlinkDir(join(repo, "node_modules"), join(app, "node_modules"));
   mkdirSync(join(app, "data"));
+  for (const [name, body] of Object.entries(options.dataFiles ?? {})) {
+    mkdirSync(dirname(join(app, "data", name)), { recursive: true });
+    writeFileSync(join(app, "data", name), body);
+  }
   if (!options.firstStart) writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
   const bin = join(dir, "bin");
@@ -234,6 +240,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       STANDIN_LOG: log,
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
+      COMPANION_PACK_INDEX: "off", // tests never fetch the real pack list; one that needs it points this at a local server
       ...options.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
