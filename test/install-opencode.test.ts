@@ -26,18 +26,24 @@ describe("the pin", () => {
   test("is one release, with a checksum and a size for every file", () => {
     assert.match(OPENCODE_PIN.version, /^\d+\.\d+\.\d+$/);
     for (const [key, a] of Object.entries(OPENCODE_PIN.assets)) {
-      assert.match(key, /^(win32)-(x64|arm64)$/);
+      assert.match(key, /^(win32|darwin|linux)-(x64|arm64)$/);
       assert.match(a.sha256, /^[0-9a-f]{64}$/, key);
       assert.ok(a.bytes > 1_000_000 && a.bytes < 500_000_000, key);
-      assert.ok(a.name.endsWith(".zip"), key);
+      assert.ok(a.name.endsWith(key.startsWith("linux") ? ".tar.gz" : ".zip"), key);
+      assert.equal(a.program, key.startsWith("win32") ? "opencode.exe" : "opencode", key);
+      assert.ok(!/musl/.test(a.name), `${key}: the glibc build, which runs on the common distributions`);
     }
   });
 
-  test("Windows x64 gets the baseline build (it needs no AVX2); machines with no pinned build get null", () => {
+  test("Windows x64 gets the baseline build (it needs no AVX2); machines with no pinned build (another system, or a 32-bit one) get null", () => {
     assert.equal(opencodeAsset("win32", "x64")?.name, "opencode-windows-x64-baseline.zip");
     assert.equal(opencodeAsset("win32", "arm64")?.name, "opencode-windows-arm64.zip");
-    assert.equal(opencodeAsset("linux", "x64"), null);
-    assert.equal(opencodeAsset("darwin", "arm64"), null);
+    assert.equal(opencodeAsset("linux", "x64")?.name, "opencode-linux-x64-baseline.tar.gz");
+    assert.equal(opencodeAsset("linux", "arm64")?.name, "opencode-linux-arm64.tar.gz");
+    assert.equal(opencodeAsset("darwin", "arm64")?.name, "opencode-darwin-arm64.zip");
+    assert.equal(opencodeAsset("darwin", "x64")?.name, "opencode-darwin-x64-baseline.zip");
+    assert.equal(opencodeAsset("freebsd", "x64"), null);
+    assert.equal(opencodeAsset("linux", "ia32"), null);
   });
 
   test("the download address is the pinned tag on GitHub, never 'latest'", () => {
@@ -136,7 +142,7 @@ describe("installing", () => {
 
     test("a machine with no pinned build says how to install it by hand", async () => {
       const r = fresh();
-      await assert.rejects(installOpencode({ root: r, platform: "linux", arch: "x64" }), /opencode\.ai/);
+      await assert.rejects(installOpencode({ root: r, platform: "freebsd", arch: "x64" }), /opencode\.ai/);
       rmSync(r, { recursive: true, force: true });
     });
   });

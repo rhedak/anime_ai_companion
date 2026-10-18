@@ -21,7 +21,7 @@ Claude Code, Cursor or Ollama if you have one of them.
 
 ## Installing opencode from the page
 
-With no brain installed, the page shows a card, **Install opencode for her?** (it also appears when you pick opencode in the *Brain* menu and it is not
+With no brain installed, the page shows a card (macOS and Linux get the same card), **Install opencode for her?** (it also appears when you pick opencode in the *Brain* menu and it is not
 there). It says what it will do and fetches nothing until you press **Install opencode**: it downloads a fixed version of opencode from GitHub (about
 60 MB), checks it against a checksum the app already knows, keeps it in `data\tools\` (for the desktop app that is `%APPDATA%\Anime AI Companion`),
 runs it once to see that it starts, and switches her to it. There is no administrator prompt and nothing is added to your PATH. The copy has its own

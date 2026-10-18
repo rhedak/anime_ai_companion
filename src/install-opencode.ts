@@ -19,6 +19,11 @@ export const OPENCODE_PIN = {
   assets: {
     "win32-x64": { name: "opencode-windows-x64-baseline.zip", sha256: "0d59113484bfe8d6dc146fc981f5c33faa8318303c183711b7a9387060b289e8", bytes: 62204138, program: "opencode.exe" },
     "win32-arm64": { name: "opencode-windows-arm64.zip", sha256: "c1b9daf18c97564b2d171703279621f7edc3613e70750d796ef78db87257ad89", bytes: 60695316, program: "opencode.exe" },
+    // macOS (zip) and Linux (tar.gz, the glibc build: Alpine and other musl systems fall back to installing by hand). The system `tar` reads both.
+    "darwin-arm64": { name: "opencode-darwin-arm64.zip", sha256: "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64", bytes: 45587801, program: "opencode" },
+    "darwin-x64": { name: "opencode-darwin-x64-baseline.zip", sha256: "03f8c32f81a2c35429afedfb8f63978af32329febcebf800d52486f6ba568151", bytes: 49218661, program: "opencode" },
+    "linux-arm64": { name: "opencode-linux-arm64.tar.gz", sha256: "7900818a6a98881edbbadab4b7525940eff3b9750040c200481f9f56cacee405", bytes: 60519745, program: "opencode" },
+    "linux-x64": { name: "opencode-linux-x64-baseline.tar.gz", sha256: "531cff2441129c30f0edd5878af494108ad07f5feb46d7ee29a2a5b830a5765d", bytes: 60716645, program: "opencode" },
   },
 } as const;
 
@@ -97,7 +102,7 @@ export async function renameWithRetry(from: string, to: string, rename_: (a: str
   }
 }
 
-/** `tar` ships with Windows 10 (1803) and later and reads zip files. */
+/** `tar` ships with Windows 10 (1803) and later (it reads zip files), with macOS (zip and tar.gz) and with Linux (tar.gz). */
 function defaultExtract(archive: string, into: string): Promise<void> {
   const tar = process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
   return new Promise((resolve, reject) => {
