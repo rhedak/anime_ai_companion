@@ -184,6 +184,36 @@ test("look.txt says what the pictures show: cleaned, capped, never served, and t
   }
 });
 
+test("a character's shared description joins each outfit's look.txt, and the characters folder is not a pack", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "characters"));
+    await writeFile(join(dir, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair [and a tag].\n");
+    for (const [pack, outfit] of [["ann-coat", "You wear a long grey coat."], ["ann-swim", "You wear a blue swimsuit."]]) {
+      await mkdir(join(dir, pack));
+      await writeFile(join(dir, pack, "neutral.png"), png(10, 10));
+      await writeFile(join(dir, pack, "look.txt"), `character: Ann\n${outfit}\n`);
+    }
+    assert.deepEqual(await listPacks(dir), ["ann-coat", "ann-swim"], "characters/ has no neutral picture, so it is not a pack");
+    const coat = await readPack([dir], "ann-coat", emotions);
+    const swim = await readPack([dir], "ann-swim", emotions);
+    assert.ok(coat.ok && swim.ok);
+    assert.equal(coat.pack.character?.name, "Ann");
+    assert.equal(coat.pack.look, "You wear a long grey coat.", "the outfit line is the pack's own; the character line is not part of it");
+    const note = packNote(coat.pack);
+    assert.match(note, /You are Ann\. A tall young woman with short red hair and a tag\. You wear a long grey coat\./);
+    assert.match(packNote(swim.pack), /You are Ann\..*blue swimsuit/);
+    // a character that is named but has no file (or a bad one) leaves just the outfit
+    await writeFile(join(dir, "ann-swim", "look.txt"), "character: nobody\nYou wear a blue swimsuit.");
+    const alone = await readPack([dir], "ann-swim", emotions);
+    assert.ok(alone.ok);
+    assert.equal(alone.pack.character, undefined);
+    assert.doesNotMatch(packNote(alone.pack), /You are /);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {
   const img = png(10, 10);
   const mine = await mkdtemp(join(tmpdir(), "frames-"));

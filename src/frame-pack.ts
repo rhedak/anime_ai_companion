@@ -12,8 +12,10 @@
  * frames mean the page only bobs her. Two optional text files describe where the pictures come from:
  * `credit.txt` (its first line is shown on the page the whole time the pack is on; any lines after it are the terms,
  * said in the chat when the pack is chosen or the page opens with it) and `NOTICE.md` (terms of use,
- * which `/frames` points to). A third, `look.txt`, says in plain words what the pictures show (hair, eyes, clothes), so she can describe herself: the pictures are
- * not hers to see otherwise. A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
+ * which `/frames` points to). A third, `look.txt`, says in plain words what she wears in these pictures, so she can describe herself: the pictures are
+ * not hers to see otherwise. Its optional first line `character: <id>` names the character, whose shared description (build, age, face, hair colour)
+ * is `characters/<id>.txt` beside the packs (first line the name, the rest the description), so several outfits of one character say the same things.
+ * A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
  * server hands out must never be able to run script.
  */
 import type { Dirent } from "node:fs";
@@ -41,8 +43,12 @@ export interface FramePack {
   credit?: string;
   /** The rest of credit.txt: a short statement of the terms, said in the chat when the pack comes on. */
   terms?: string;
-  /** look.txt: what the pictures show, in the pack author's words. Told to her when the pack comes on. */
+  /** look.txt: what she wears in these pictures, in the pack author's words. Told to her when the pack comes on. */
   look?: string;
+  /** The `character: <id>` line of look.txt, and that character's name and shared description (characters/<id>.txt), when there is one. */
+  character?: { id: string; name: string; text: string };
+  /** What look.txt's `character:` line asked for, before the character file has been looked up. */
+  characterId?: string;
 }
 
 export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: string };
@@ -60,6 +66,9 @@ export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_CREDIT = 300;
 const MAX_TERMS = 600;
 const MAX_LOOK = 600;
+const MAX_CHARACTER = 600;
+const CHARACTER_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+export const CHARACTERS_DIR = "characters";
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.(png|webp|jpe?g)$/i;
@@ -87,12 +96,29 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
     for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
       if (!e.isDirectory() || !isPackName(e.name)) continue;
       // `packs/thumbs` holds one small preview per pack. A real pack of that name (it has a neutral picture) still counts.
-      if (e.name === PACK_THUMBS_DIR && !(await hasNeutralFrame(join(dir, e.name)))) continue;
+      if ((e.name === PACK_THUMBS_DIR || e.name === CHARACTERS_DIR) && !(await hasNeutralFrame(join(dir, e.name)))) continue;
       names.add(e.name);
     }
   }
   return [...names].sort((a, b) => a.localeCompare(b));
 }
+
+/** A character's shared description from `characters/<id>.txt` in the first folder that has it: first line the name, the rest the text. Null when missing or too long. */
+async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string } | undefined> {
+  for (const dir of dirs) {
+    const raw = await readFile(join(dir, CHARACTERS_DIR, `${id}.txt`), "utf8").catch(() => null);
+    if (raw === null) continue;
+    const lines = clean(raw).split(/\n/).map((l) => l.trim()).filter(Boolean);
+    const [name, ...rest] = lines;
+    const text = rest.join(" ");
+    if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) return { id, name, text };
+    return undefined;
+  }
+  return undefined;
+}
+
+/** Text for her prompt from a file the pack author wrote: control characters (except line ends) and her own tag brackets and markup are dropped. */
+const clean = (raw: string): string => raw.replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g, " ").replace(/[\[\]<>]/g, "");
 
 /** Reads a pack's folder and works out which picture is which. Never throws for a bad folder. */
 export async function readPack(dirs: string | string[], name: string, emotions: string[]): Promise<PackResult> {
@@ -102,7 +128,11 @@ export async function readPack(dirs: string | string[], name: string, emotions: 
   let failure: PackResult | null = null;
   for (const dir of [dirs].flat()) {
     const result = await readPackIn(dir, name, emotions);
-    if (result.ok) return result;
+    if (result.ok) {
+      const id = result.pack.characterId;
+      if (id) result.pack.character = await readCharacter([dirs].flat(), id);
+      return result;
+    }
     if (result.reason !== MISSING) failure ??= result;
   }
   return failure ?? { ok: false, reason: `There is no pack called "${name}" in data/frames.` };
@@ -197,10 +227,11 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   if (terms.length > MAX_TERMS) notes.push(`The terms in credit.txt (after its first line) are longer than ${MAX_TERMS} characters and were not used.`);
   if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read NOTICE.md in ${folder} before you use or share it.`);
   const usable = credit && credit.length <= MAX_CREDIT;
-  const lookText = (await readFile(join(folder, "look.txt"), "utf8").catch(() => ""))
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/[\[\]<>]/g, "") // her own tag brackets and markup are never passed on
-    .trim();
+  const lookRaw = clean(await readFile(join(folder, "look.txt"), "utf8").catch(() => ""));
+  const lookLines = lookRaw.split(/\n/).map((l) => l.trim());
+  const named = /^character:\s*(\S+)\s*$/i.exec(lookLines[0] ?? "");
+  const characterId = named && CHARACTER_ID.test(named[1].toLowerCase()) ? named[1].toLowerCase() : undefined;
+  const lookText = (named ? lookLines.slice(1) : lookLines).filter(Boolean).join(" ");
   if (lookText.length > MAX_LOOK) notes.push(`look.txt is longer than ${MAX_LOOK} characters and was not used.`);
   return {
     ok: true,
@@ -213,6 +244,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
       credit: usable ? credit : undefined,
       terms: usable && terms && terms.length <= MAX_TERMS ? terms : undefined,
       look: lookText && lookText.length <= MAX_LOOK ? lookText : undefined,
+      characterId,
     },
   };
 }
@@ -242,7 +274,8 @@ export function gestureNote(pack: FramePack | null): string {
  * and which gestures work. Without the description she would go on describing the drawn character.
  */
 export function packNote(pack: FramePack): string {
-  const look = pack.look ? ` The pictures show you like this: ${pack.look} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
+  const who = pack.character ? `You are ${pack.character.name}. ${pack.character.text} ` : "";
+  const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
   return (
     "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +
     look +
