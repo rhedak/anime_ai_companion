@@ -52,7 +52,7 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
   if (msg.type !== "user") return;
   const content = msg.message.content;
   const text = typeof content === "string" ? content : content.map((c) => c.text || "").join(" ");
-  log({ kind: "in", text });
+  log({ kind: "in", text, images: typeof content === "string" ? 0 : content.filter((c) => c.type === "image").length });
   later(delay, () => {
     if (text.includes("TOOLFAIL")) {
       out({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Skill", input: { skill: "pinecone" } }] } });
@@ -150,7 +150,7 @@ export interface RunningServer {
   /** A folder to use as a project in work mode. */
   project: string;
   /** What the stand-in `claude` was started with and sent. */
-  claudeLog(): { kind: string; args?: string[]; text?: string }[];
+  claudeLog(): { kind: string; args?: string[]; text?: string; images?: number }[];
   /** The system prompt of the latest `claude` start. */
   systemPrompt(): string;
   data(name: string): string | null;

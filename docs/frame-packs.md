@@ -33,6 +33,11 @@ The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`
   pack is on) is the credit. Use it when the character belongs to someone who asks for credit. Any lines after the
   first are the terms (up to 600 characters): a short statement said once in the chat when the pack is chosen or
   the page opens with it.
+- `look.txt`: what the pictures show, in a few plain sentences (up to 600 characters): hair, eyes, clothes, in the second person ("You wear…").
+  She cannot see the pictures, and her prompt describes the drawn character, so without this she keeps describing the wrong look. It is told to her
+  when the pack is chosen and at the start of every new conversation while it is on, as a note with her next message (never in the system prompt).
+  Brackets are dropped, so a description cannot carry one of her tags. A brain that reads pictures (Claude Code, and an Ollama model that reports
+  vision) also gets the resting picture with that message, once. It is not shown on the page and is never served.
 - `NOTICE.md`: terms of use. `/frames <name>` points to it. A pack of someone else's character needs one, and
   anyone who shares such a pack should read the licence of that character first.
 

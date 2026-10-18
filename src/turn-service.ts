@@ -25,6 +25,8 @@ export interface TurnDeps {
   transcript: Transcript;
   /** The picture pack in use, if any. */
   activePack(): FramePack | null;
+  /** Her resting picture, once after a pack comes on or a conversation starts, for a brain that can read it; otherwise nothing. */
+  takeLookPicture(): ImageInput[];
   /** Why a message cannot be sent right now (no model chosen for Ollama, say), or null. Such a message is not kept in the log. */
   notReady(): string | null;
   emotionNames(): string[];
@@ -183,7 +185,8 @@ export function createTurnService(deps: TurnDeps) {
   function run(userText: string, opts: { raw?: boolean; images?: ImageInput[]; onFinish?: (event: ProviderEvent) => void } = {}): void {
     // Slash commands go to Claude Code as they are: a note in front would stop it seeing the command.
     const toModel = opts.raw ? userText : withNotes(userText);
-    deps.provider().send(toModel, turnHandler(userText, opts), opts.images);
+    const look = opts.raw ? [] : deps.takeLookPicture();
+    deps.provider().send(toModel, turnHandler(userText, opts), look.length ? [...look, ...(opts.images ?? [])] : opts.images);
   }
 
   /** Shows the user's message in the log and sends it to the brain. */

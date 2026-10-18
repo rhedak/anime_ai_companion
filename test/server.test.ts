@@ -47,6 +47,35 @@ describe("chatting", { skip }, () => {
     await server?.stop();
   });
 
+  test("with a picture pack on she is told what the pictures show, and sees her resting picture once; a new chat tells her again", async () => {
+    const pack = join(server.dir, "data", "frames", "tester");
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(join(pack, "neutral.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+    writeFileSync(join(pack, "look.txt"), "Short silver hair and a green sleeveless dress.\n");
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "user", text: "/frames tester" });
+    const shown = await c.next((e) => e.type === "notice", 8000);
+    assert.match(shown.text, /Showing the pack "tester"/);
+    await ask(c, "how do you look?");
+    const first = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(first.text!, /fixed set of pictures/);
+    assert.match(first.text!, /green sleeveless dress/, "the pack's look.txt reaches her");
+    assert.equal(first.images, 1, "the resting picture rides on that first message");
+    await ask(c, "and now?");
+    const second = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.doesNotMatch(second.text!, /green sleeveless dress/);
+    assert.equal(second.images, 0, "only once");
+    c.send({ type: "reset" });
+    await c.next("reset");
+    await ask(c, "again");
+    const fresh = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(fresh.text!, /green sleeveless dress/, "a new conversation does not know her look either");
+    assert.equal(fresh.images, 1);
+    c.send({ type: "user", text: "/frames off" });
+    await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

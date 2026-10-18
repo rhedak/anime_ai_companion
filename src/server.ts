@@ -10,7 +10,7 @@ import { shareNudge } from "./share-nudge.ts";
 import { Transcript, claudeSessionExists } from "./transcript.ts";
 import { resolveCreatorSrc } from "./creator.ts";
 import { brainProgram, isInstalled, programLabel } from "./programs.ts";
-import { MAX_MESSAGE_BYTES, parseImages } from "./images.ts";
+import { MAX_IMAGE_BYTES, MAX_MESSAGE_BYTES, parseImages, sniffImageType, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
 import type { ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
@@ -23,7 +23,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { gestureNote, isPackName, packNote, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -81,6 +81,17 @@ const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
+/** The pack's resting picture, kept ready to show her how she looks (brains that can read pictures), and whether the next message should carry it. */
+let lookPicture: ImageInput | null = null;
+let lookPictureDue = false;
+async function loadLookPicture(): Promise<void> {
+  lookPicture = null;
+  const file = activePack ? activePack.files.get(activePack.emotions.neutral?.idle ?? "") : undefined;
+  if (!file) return;
+  const bytes = await readFile(file.path).catch(() => null);
+  const mediaType = bytes && bytes.length <= MAX_IMAGE_BYTES ? sniffImageType(bytes) : null;
+  if (bytes && mediaType) lookPicture = { mediaType, data: bytes.toString("base64") };
+}
 /** Reads the chosen pack's folder again, so pictures replaced on disk show on the next page load. */
 async function refreshPack(): Promise<string[]> {
   if (!settings.framePack) {
@@ -89,6 +100,7 @@ async function refreshPack(): Promise<string[]> {
   }
   const result = await readPack(packDirs, settings.framePack, Object.keys(emotions));
   activePack = result.ok ? result.pack : null;
+  await loadLookPicture();
   return result.ok ? result.pack.notes : [result.reason];
 }
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
@@ -424,6 +436,16 @@ function persistTranscript(): void {
 
 // Problems with the model's avatar tags, passed back to it with the next user message.
 const notes = createNotes();
+/** A new conversation starts with nothing waiting, except what she must know about her pictures while a pack is on (they replace the look her prompt describes). */
+function renewNotes(): void {
+  notes.clear();
+  lookPictureDue = false;
+  if (activePack) {
+    notes.push(packNote(activePack));
+    lookPictureDue = true;
+  }
+}
+renewNotes(); // a pack was chosen in an earlier run
 
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();
@@ -599,6 +621,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
+    lookPictureDue = false;
     notes.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
     broadcast(packMessage());
     broadcast(await packsMessage());
@@ -620,7 +643,9 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
-  notes.push("The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing. " + gestureNote(result.pack) + " Your emotions and talking still drive which picture is shown.");
+  await loadLookPicture();
+  notes.push(packNote(result.pack));
+  lookPictureDue = true;
   broadcast(packMessage());
   broadcast(await packsMessage());
   say(
@@ -994,7 +1019,7 @@ async function resumeAcp(args: string, say: Say): Promise<void> {
   if (chosen.id === acp.sessionId) return say("That is the current conversation.");
   acp.resume(chosen.id);
   transcript.clear();
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -1034,7 +1059,7 @@ async function resumeCommand(args: string, say: Say): Promise<void> {
   convo.lastReplyAt = size ? size.modified.getTime() : null;
   transcript.clear();
   transcript.items = items;
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   persistTranscript();
   broadcast({ type: "history", items: transcript.snapshot() });
@@ -1073,7 +1098,7 @@ function resetConversation(): void {
   forgetConversationSize();
   transcript.clear();
   persistTranscript();
-  notes.clear();
+  renewNotes();
   pendingPermissions.clear();
   broadcast({ type: "reset" });
   broadcast(modeInfo());
@@ -1096,6 +1121,13 @@ const turns = createTurnService({
   avatar,
   transcript,
   activePack: () => activePack,
+  takeLookPicture: () => {
+    const picture = lookPictureDue && lookPicture ? lookPicture : null;
+    lookPictureDue = false;
+    // Only brains that read pictures get it: Claude, and an Ollama model that says it can. Everyone else has the description.
+    const sees = !basicMode && (settings.provider === "claude" || (settings.provider === "ollama" && ollamaBrain.canSeePicturesFor(settings.ollamaModel)));
+    return picture && sees ? [picture] : [];
+  },
   notReady: () => (settings.provider === "ollama" && !settings.ollamaModel ? ollamaNotReady() : null),
   emotionNames: () => Object.keys(emotions),
   folder: () => sessionConfig().cwd,
@@ -1284,7 +1316,7 @@ wss.on("connection", (ws) => {
         forgetConversationSize();
         transcript.clear();
         persistTranscript();
-        notes.clear();
+        renewNotes();
         pendingPermissions.clear();
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());

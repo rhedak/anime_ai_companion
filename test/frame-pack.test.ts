@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, isPackName, listPacks, packInfo, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, isPackName, listPacks, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -159,6 +159,29 @@ test("served types follow the extension", () => {
   assert.equal(frameMime("a.png"), "image/png");
   assert.equal(frameMime("a.WEBP"), "image/webp");
   assert.equal(frameMime("a.jpeg"), "image/jpeg");
+});
+
+test("look.txt says what the pictures show: cleaned, capped, never served, and told to her in the pack note", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "lk"));
+    await writeFile(join(dir, "lk", "neutral.png"), png(10, 10));
+    await writeFile(join(dir, "lk", "look.txt"), "Blue hair, a [avatar hair=red] red scarf.\x07\n");
+    const ok = await readPack([dir], "lk", emotions);
+    assert.ok(ok.ok);
+    assert.equal(ok.pack.look, "Blue hair, a avatar hair=red red scarf."); // brackets (her tags) and control characters are dropped
+    assert.ok(!ok.pack.files.has("look.txt"), "it is text for her, not a file the server hands out");
+    assert.doesNotMatch(ok.pack.notes.join("\n"), /look\.txt/);
+    assert.match(packNote(ok.pack), /fixed set of pictures[^]*You wear|Blue hair/);
+    await writeFile(join(dir, "lk", "look.txt"), "x".repeat(601));
+    const long = await readPack([dir], "lk", emotions);
+    assert.ok(long.ok);
+    assert.equal(long.pack.look, undefined);
+    assert.match(long.pack.notes.join("\n"), /look\.txt is longer/);
+    assert.doesNotMatch(packNote(long.pack), /like this/, "no description, no claim about one");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("a pack can carry its credit and its terms, and packs are found in the user's folder first", async () => {

@@ -12,7 +12,8 @@
  * frames mean the page only bobs her. Two optional text files describe where the pictures come from:
  * `credit.txt` (its first line is shown on the page the whole time the pack is on; any lines after it are the terms,
  * said in the chat when the pack is chosen or the page opens with it) and `NOTICE.md` (terms of use,
- * which `/frames` points to). A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
+ * which `/frames` points to). A third, `look.txt`, says in plain words what the pictures show (hair, eyes, clothes), so she can describe herself: the pictures are
+ * not hers to see otherwise. A pack of characters that belong to someone else needs both. PNG, WebP and JPEG are accepted; SVG is not, because an image the
  * server hands out must never be able to run script.
  */
 import type { Dirent } from "node:fs";
@@ -40,6 +41,8 @@ export interface FramePack {
   credit?: string;
   /** The rest of credit.txt: a short statement of the terms, said in the chat when the pack comes on. */
   terms?: string;
+  /** look.txt: what the pictures show, in the pack author's words. Told to her when the pack comes on. */
+  look?: string;
 }
 
 export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: string };
@@ -56,6 +59,7 @@ export interface PackInfo {
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_CREDIT = 300;
 const MAX_TERMS = 600;
+const MAX_LOOK = 600;
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.(png|webp|jpe?g)$/i;
@@ -180,7 +184,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   for (const [gesture, list] of Object.entries(poses)) gestures[gesture] = list.sort((a, b) => a[0] - b[0]).map(([, f]) => f);
   const plain = emotions.filter((e) => !result[e]);
   if (plain.length) notes.push(`No pictures for ${plain.join(", ")}: she shows neutral for those.`);
-  const known = new Set(["credit.txt", "NOTICE.md"]);
+  const known = new Set(["credit.txt", "NOTICE.md", "look.txt"]);
   const unused = ignored.filter((f) => !known.has(f));
   if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN] or <gesture>-N, as .png/.webp/.jpg): ${unused.join(", ")}.`);
   const lines = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
@@ -193,6 +197,11 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   if (terms.length > MAX_TERMS) notes.push(`The terms in credit.txt (after its first line) are longer than ${MAX_TERMS} characters and were not used.`);
   if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read NOTICE.md in ${folder} before you use or share it.`);
   const usable = credit && credit.length <= MAX_CREDIT;
+  const lookText = (await readFile(join(folder, "look.txt"), "utf8").catch(() => ""))
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/[\[\]<>]/g, "") // her own tag brackets and markup are never passed on
+    .trim();
+  if (lookText.length > MAX_LOOK) notes.push(`look.txt is longer than ${MAX_LOOK} characters and was not used.`);
   return {
     ok: true,
     pack: {
@@ -203,6 +212,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
       notes,
       credit: usable ? credit : undefined,
       terms: usable && terms && terms.length <= MAX_TERMS ? terms : undefined,
+      look: lookText && lookText.length <= MAX_LOOK ? lookText : undefined,
     },
   };
 }
@@ -225,6 +235,21 @@ export function packInfo(pack: FramePack, staticBase?: string): PackInfo {
 export function gestureNote(pack: FramePack | null): string {
   const have = Object.keys(pack?.gestures ?? {});
   return have.length ? `Of the gestures, only ${have.join(" and ")} show a picture; the others change nothing.` : "Gestures change nothing either.";
+}
+
+/**
+ * What she is told when a pack comes on, and at the start of a new conversation while one is on: that her look is fixed, what it is (look.txt),
+ * and which gestures work. Without the description she would go on describing the drawn character.
+ */
+export function packNote(pack: FramePack): string {
+  const look = pack.look ? ` The pictures show you like this: ${pack.look} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
+  return (
+    "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +
+    look +
+    " " +
+    gestureNote(pack) +
+    " Your emotions and talking still drive which picture is shown."
+  );
 }
 
 /** Width and height from the first bytes of a PNG, WebP or JPEG; null for anything else. */

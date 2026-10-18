@@ -143,6 +143,10 @@ export class OllamaProvider implements Provider {
     return this.toolCapable === true && this.checkedModel === (model ?? "");
   }
 
+  canSeePicturesFor(model: string | null | undefined): boolean {
+    return this.visionCapable === true && this.checkedModel === (model ?? "");
+  }
+
   cannotSeePicturesFor(model: string | null | undefined): boolean {
     return this.visionCapable === false && this.checkedModel === (model ?? "");
   }
