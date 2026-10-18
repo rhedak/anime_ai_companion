@@ -138,6 +138,7 @@ describe("chatting", { skip }, () => {
     await ask(c, "please OUTFIT swim");
     const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
     assert.equal(packMsg.pack.name, "ann-swim");
+    assert.equal(packMsg.pack.character, "ann", "the page can tell an outfit change from a change of character");
     await ask(c, "and now?");
     const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
     assert.match(after.text!, /You wear a swimsuit/, "the new outfit's description reaches her");
@@ -150,6 +151,11 @@ describe("chatting", { skip }, () => {
     const nope = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
     assert.match(nope.text!, /no outfit called "tuxedo"/);
     assert.equal(JSON.parse(server.data("settings.json")!).framePack, "ann-swim");
+    // a manual switch to another outfit of the same character says only the change; the credit and terms were said at the first one
+    const manual = c.mark;
+    c.send({ type: "user", text: "/frames ann-coat" });
+    const again = await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000, manual);
+    assert.equal(again.text, 'Showing the pack "ann-coat".');
     c.send({ type: "user", text: "/frames off" });
     await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
   });

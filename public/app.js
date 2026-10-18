@@ -89,6 +89,7 @@ let gesturesDone = 0; // gestures of the current reply already played
 // picture pack's terms. Said when the page opens, when the look changes, and after "New chat" empties the log.
 let announcedLook; // undefined until said once; then the pack's name, or null for the drawn character
 let currentLook = null; // the pack info, or null for the drawn character
+let announcedCharacter = null; // the character whose terms the chat last said: another outfit of the same character does not say them again
 function sayLook() {
   if (currentLook?.terms) addMsg("sys", currentLook.terms);
   else if (!currentLook) {
@@ -1329,8 +1330,10 @@ function handle(msg) {
       $("pack-credit").textContent = msg.pack?.credit ?? "";
       $("pack-credit").hidden = !msg.pack?.credit;
       currentLook = msg.pack ?? null;
-      if ((msg.pack?.name ?? null) !== announcedLook) sayLook(); // not again on every reconnect
+      // Not again on every reconnect, and not for another outfit of the character already announced (the terms were seen then).
+      if ((msg.pack?.name ?? null) !== announcedLook && !(msg.pack?.character && msg.pack.character === announcedCharacter)) sayLook();
       announcedLook = msg.pack?.name ?? null;
+      announcedCharacter = msg.pack?.character ?? null;
       break;
     case "frames":
       avatar.receiveFrames(msg);

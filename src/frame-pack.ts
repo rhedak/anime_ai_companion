@@ -56,6 +56,8 @@ export type PackResult = { ok: true; pack: FramePack } | { ok: false; reason: st
 /** What the page needs to show a pack. The urls carry the file's change time so a replaced picture is refetched. */
 export interface PackInfo {
   name: string;
+  /** The id of the character this outfit belongs to (look.txt's `character:` line), so the page can tell an outfit change from a change of character. */
+  character?: string;
   credit?: string;
   terms?: string;
   emotions: Record<string, { idle: string; blink?: string; talk: string[] }>;
@@ -282,7 +284,7 @@ export function packInfo(pack: FramePack, staticBase?: string): PackInfo {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };
   }
   const gestures = Object.fromEntries(Object.entries(pack.gestures).map(([name, list]) => [name, list.map(url)]));
-  return { name: pack.name, credit: pack.credit, terms: pack.terms, emotions, gestures };
+  return { name: pack.name, character: pack.character?.id, credit: pack.credit, terms: pack.terms, emotions, gestures };
 }
 
 /** What to tell the model about gestures while this pack is on: which ones show a picture, and that the rest change nothing. */

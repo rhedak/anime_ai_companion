@@ -671,6 +671,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     broadcast(packOffer(offered));
     return say(`"${name}" is not on this computer yet. The page asks whether to download it (${formatMegabytes(offered.sizes.archiveBytes)}).`);
   }
+  const sameCharacter = Boolean(result.pack.character && result.pack.character.id === activePack?.character?.id);
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
@@ -680,6 +681,8 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   lookPictureDue = true;
   broadcast(packMessage());
   broadcast(await packsMessage());
+  // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
+  if (sameCharacter) return say(`Showing the pack "${name}".`);
   say(
     [
       `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
