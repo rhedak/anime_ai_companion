@@ -9,6 +9,7 @@ cd app
 npm install     # downloads Electron and electron-builder
 npm start       # a checkout: runs ../src/server.ts, creator from ../../anime-character-creator
 npm run dist    # stages the app and the creator, builds dist/Anime AI Companion Setup <version>.exe (about 145 MB)
+npm run dist:linux # AppImage for x64 and arm64 (about 210 MB each), buildable on any of the three systems
 npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -mac.zip, one per chip (about 210 MB each)
 ```
 
@@ -39,4 +40,8 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
   was chosen), the automatic switch and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
   page in the browser. Nothing is downloaded or installed (`update-check.cjs`, tested in `test/update-check.test.ts`). The check is unauthenticated, so a
   shared network can hit GitHub's rate limit; the manual check then says so. The installers are built by hand today and attached to the release by hand.
+- **On Linux** the files are in `~/.config/Anime AI Companion/`. Make the AppImage executable and run it (`chmod +x`). **Not run yet on a real Linux
+  desktop**: only built (on a Mac). On Ubuntu 24.04 and newer, Chromium's sandbox can be refused for an AppImage (an "unprivileged user namespaces" /
+  `chrome-sandbox` error); if so, `--no-sandbox` starts it, or the distribution's AppArmor setting can allow it. The folder picker needs `zenity` or
+  `kdialog`, and the tray icon needs a desktop that shows one (GNOME needs an extension).
 - **Not done yet:** a developer certificate and notarisation, and installing updates for the user.
