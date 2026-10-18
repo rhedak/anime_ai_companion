@@ -11,11 +11,11 @@ You still need **a brain** (below); without one she runs a small built-in script
 
 | System | File | Size |
 | --- | --- | --- |
-| **Windows** 10 or newer | `Anime AI Companion Setup <version>.exe` | about 145 MB |
-| **macOS** 11 or newer, Apple Silicon | `Anime AI Companion-<version>-arm64.dmg` | about 210 MB |
-| **macOS**, Intel | `Anime AI Companion-<version>.dmg` | about 210 MB |
-| **Linux**, x64 | `Anime AI Companion-<version>.AppImage` | about 210 MB |
-| **Linux**, arm64 | `Anime AI Companion-<version>-arm64.AppImage` | about 210 MB |
+| **Windows** 10 or newer | `Anime.AI.Companion.Setup.<version>.exe` | about 145 MB |
+| **macOS** 11 or newer, Apple Silicon | `Anime.AI.Companion-<version>-arm64.dmg` | about 210 MB |
+| **macOS**, Intel | `Anime.AI.Companion-<version>.dmg` | about 210 MB |
+| **Linux**, x64 | `Anime.AI.Companion-<version>.AppImage` | about 210 MB |
+| **Linux**, arm64 | `Anime.AI.Companion-<version>-arm64.AppImage` | about 210 MB |
 
 ## The first start
 
@@ -26,7 +26,7 @@ you can read in this repository.
   no administrator.
 - **macOS:** open the `.dmg`, drag the app into *Applications*, then **right-click it → Open**, and **Open** again. (Or System Settings →
   Privacy & Security → **Open Anyway**.)
-- **Linux:** make the file executable and run it: `chmod +x "Anime AI Companion-<version>.AppImage"` and double-click it, or start it in a terminal.
+- **Linux:** make the file executable and run it: `chmod +x Anime.AI.Companion-<version>.AppImage` and double-click it, or start it in a terminal.
   On Ubuntu 24.04 and newer the browser sandbox can be refused for an AppImage; start it with `--no-sandbox` if you see that error. The folder
   picker needs `zenity` or `kdialog`, and the tray icon needs a desktop that shows one.
 
