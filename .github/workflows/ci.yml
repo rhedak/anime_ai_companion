@@ -36,3 +36,29 @@ jobs:
         working-directory: anime_ai_companion
       - run: npm test
         working-directory: anime_ai_companion
+
+  # Windows support is new: this job shows how far typecheck and the tests get there. It does not block a merge yet.
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: anime_ai_companion
+      - id: creator
+        shell: bash
+        run: echo "ref=$(node -p "require('./anime_ai_companion/package.json').creator.ref")" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: rhedak/anime-character-creator
+          ref: ${{ steps.creator.outputs.ref }}
+          path: anime-character-creator
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+      - run: npm ci
+        working-directory: anime_ai_companion
+      - run: npm run typecheck
+        working-directory: anime_ai_companion
+      - run: npm test
+        working-directory: anime_ai_companion

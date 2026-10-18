@@ -217,7 +217,10 @@ form.composer:focus-within { border-color: var(--focus); }
 .preset-pic img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; } /* a pack's head and shoulders */
 .preset-pic.plain { display: grid; place-items: center; padding: 6px; box-sizing: border-box; text-align: center; font-size: 11px; color: var(--muted); }
 .preset[aria-current="true"] { outline: 2px solid var(--focus); }
+.preset:disabled { opacity: .75; }
 .preset-name { text-transform: capitalize; }
+.preset-name.as-written { text-transform: none; }
+.preset-state { font-size: 10px; color: var(--muted); }
 
 /* A phone: the companion above, the chat below, and a bar between them to drag up or down (`#divider`,
    the same control as the vertical line on a wide screen). The column is `minmax(0, 1fr)`, not `1fr`:

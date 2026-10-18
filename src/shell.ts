@@ -35,10 +35,16 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
   const maxBytes = opts.maxBytes ?? 100_000;
   return new Promise((resolve) => {
     // detached: its own process group, so a timeout can end the whole pipeline it started.
-    const child = spawn(process.env.SHELL || "/bin/sh", ["-c", command], {
+    // Windows has no /bin/sh: cmd.exe runs the line as typed (verbatim, so its quotes are not rewritten).
+    const win = process.platform === "win32";
+    const child = spawn(win ? process.env.ComSpec || "cmd.exe" : process.env.SHELL || "/bin/sh", win ? ["/d", "/s", "/c", `"${command}"`] : ["-c", command], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
+      // Not on Windows: there is no process group to make there (taskkill /T ends the tree), and a detached process gets a stdin that never reports the
+      // end of input, so a command that reads it would wait for the whole timeout.
+      detached: !win,
+      windowsHide: true,
+      windowsVerbatimArguments: win,
       env: { ...process.env, TERM: "dumb", NO_COLOR: "1", GIT_PAGER: "cat", PAGER: "cat" },
     });
     const chunks: Buffer[] = [];
@@ -57,9 +63,12 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
+    let killed = false;
     const killGroup = () => {
+      killed = true; // Windows reports a force-ended command as exit code 1; the result says null, as it does where a signal ends it
       try {
-        process.kill(-child.pid!, "SIGKILL");
+        if (win) spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
+        else process.kill(-child.pid!, "SIGKILL");
       } catch {
         // already gone
       }
@@ -74,6 +83,6 @@ export function runShell(command: string, cwd: string, opts: ShellOptions = {}):
       resolve({ output: Buffer.concat(chunks).toString("utf8").replace(ANSI, "") + extra, code, timedOut, truncated });
     };
     child.on("error", (err) => finish(127, `Could not start the shell: ${err.message}\n`));
-    child.on("close", (code) => finish(code));
+    child.on("close", (code) => finish(killed ? null : code));
   });
 }

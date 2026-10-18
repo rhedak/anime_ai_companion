@@ -42,6 +42,10 @@ test("it is offered only where the browser can do it, and only on a secure page"
   assert.equal(createDictation({ ...base, env: fakeEnv().env as any }).supported, true);
   assert.equal(createDictation({ ...base, env: fakeEnv({ secure: false }).env as any }).supported, false, "a phone on plain http");
   assert.equal(createDictation({ ...base, env: {} as any }).supported, false, "Firefox");
+  const shell = createDictation({ ...base, env: { ...fakeEnv().env, navigator: { userAgent: "Mozilla/5.0 Chrome/140 Electron/44.9.0 Safari/537.36" } } as any });
+  assert.equal(shell.supported, false, "the desktop shell has no speech service");
+  assert.equal(shell.needsBrowser, true, "but it shows the button and sends her to the browser");
+  assert.equal(createDictation({ ...base, env: fakeEnv().env as any }).needsBrowser, false);
 });
 
 test("listening starts with the page's language and shows words as they come, final or not", () => {

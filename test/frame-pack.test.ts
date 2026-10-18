@@ -123,8 +123,12 @@ test("pack names are plain folder names", async () => {
     await mkdir(join(dir, "b"));
     await mkdir(join(dir, "a"));
     await mkdir(join(dir, ".hidden"));
+    await mkdir(join(dir, "thumbs"));
+    await writeFile(join(dir, "thumbs", "a.webp"), "x");
     await writeFile(join(dir, "file.png"), "x");
     assert.deepEqual(await listPacks(dir), ["a", "b"]);
+    await writeFile(join(dir, "thumbs", "neutral.png"), png(4, 4));
+    assert.deepEqual(await listPacks(dir), ["a", "b", "thumbs"]);
     assert.deepEqual(await listPacks(join(dir, "nope")), []);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -184,7 +188,7 @@ test("a pack can carry its credit and its terms, and packs are found in the user
     await writeFile(join(mine, "only-shipped", "base.png"), img);
     const shadowed = await readPack([mine, shipped], "only-shipped", emotions);
     assert.ok(shadowed.ok);
-    assert.match([...shadowed.pack.files.values()][0].path, new RegExp(`${shipped}`));
+    assert.ok([...shadowed.pack.files.values()][0].path.startsWith(shipped), "its pictures come from the shipped folder");
     assert.deepEqual(await listPacks(mine, shipped), ["fan", "only-shipped"]);
     // when no folder works, the user's own folder's problem is the one reported
     await rm(join(shipped, "only-shipped"), { recursive: true });
@@ -258,6 +262,42 @@ test("the Franzi (dirndl) pack that ships with the app is complete, with a wave 
   const root = fileURLToPath(new URL("..", import.meta.url));
   const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
   const r = await readPack(join(root, "packs"), "franzi-dress", names);
+  assert.ok(r.ok);
+  for (const emotion of names) {
+    const e = r.pack.emotions[emotion];
+    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  }
+  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
+  assert.equal(r.pack.files.size, names.length * 5 + 4);
+  assert.match(r.pack.credit ?? "", /original character/);
+  assert.match(r.pack.terms ?? "", /Made with AI/);
+  const notes = r.pack.notes.join("\n");
+  assert.match(notes, /NOTICE\.md/);
+  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
+});
+
+test("the Franzi (casual) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
+  const r = await readPack(join(root, "packs"), "franzi-casual", names);
+  assert.ok(r.ok);
+  for (const emotion of names) {
+    const e = r.pack.emotions[emotion];
+    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
+  }
+  assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
+  assert.equal(r.pack.files.size, names.length * 5 + 4);
+  assert.match(r.pack.credit ?? "", /original character/);
+  assert.match(r.pack.terms ?? "", /Made with AI/);
+  const notes = r.pack.notes.join("\n");
+  assert.match(notes, /NOTICE\.md/);
+  assert.doesNotMatch(notes, /different size|No pictures for/); // PROCESS.md is an extra note, so "Not used" is fine here
+});
+
+test("the Franzi (pajamas) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
+  const r = await readPack(join(root, "packs"), "franzi-pajamas", names);
   assert.ok(r.ok);
   for (const emotion of names) {
     const e = r.pack.emotions[emotion];

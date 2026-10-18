@@ -1,6 +1,6 @@
 {
   "name": "anime-ai-companion",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "description": "A local browser-based anime AI companion, drawn by code and driven by a headless Claude Code session",
@@ -38,13 +38,18 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "site": "node site/build.mjs",
     "site:preview": "node bin/check-node.js && node site/preview.mjs",
-    "demo": "node bin/check-node.js && node demo/stage.mjs --serve"
+    "demo": "node bin/check-node.js && node demo/stage.mjs --serve",
+    "pack-archive": "node src/pack-archive-cli.ts",
+    "pack-thumbs": "node src/pack-thumb-cli.ts"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "qrcode-generator": "^2.0.4",
+    "sharp": "^0.35.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "marked": "^18.1.0",

@@ -2,7 +2,7 @@
 // suggested prompts above the message box.
 import { loadRenderer } from "./render-bridge.js";
 import { createLocalSocket } from "./local-socket.js";
-import { GREETING, reply } from "./script.js";
+import { GREETING, reply } from "../public/script.js";
 import { createModel } from "./model.js";
 import { createModelDialog } from "./model-dialog.js";
 

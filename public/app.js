@@ -866,6 +866,91 @@ function addColdCache(msg) {
   coldEl = { card, actions, text: msg.text };
 }
 
+// Installing opencode for her (src/install-opencode.ts). The card says who is contacted, how much is fetched and where it goes, and nothing happens
+// until the button is pressed. Afterwards the page picks the brain, as if from the Brain menu.
+let installEl = null; // { card, desc, actions, active }
+
+const INSTALL_STAGES = { unpack: "Unpacking…", check: "Checking that it starts…" };
+
+function addInstallOffer(msg) {
+  installEl?.card.remove();
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Install opencode for her?";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    `opencode is a free brain and needs no account. Pressing the button downloads opencode ${msg.version} (about ${msg.megabytes} MB) from ${msg.host}, ` +
+    `checks it against a checksum this app already knows, and keeps it in ${msg.folder}. ${msg.host} will see your IP address. ` +
+    "Nothing is installed anywhere else, and nothing is fetched until you press it.";
+  desc.style.whiteSpace = "pre-wrap";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  card.append(title, desc, actions);
+  installEl = { card, desc, actions, active: false };
+  showInstallChoices(msg);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+}
+
+function installButton(label, cls, onclick) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.className = cls;
+  b.onclick = onclick;
+  return b;
+}
+
+function showInstallChoices(msg) {
+  if (!installEl) return;
+  installEl.actions.replaceChildren(
+    installButton("Install opencode", "allow", () => {
+      if (!installEl) return;
+      installEl.active = true;
+      installEl.actions.replaceChildren(
+        Object.assign(document.createElement("span"), { id: "install-progress", textContent: "Starting…" }),
+        " ",
+        installButton("Stop", "deny", () => ws?.send(JSON.stringify({ type: "install-brain", brain: "opencode", choice: "stop" }))),
+      );
+      ws?.send(JSON.stringify({ type: "install-brain", brain: "opencode", choice: "yes" }));
+    }),
+    installButton("Not now", "deny", () => {
+      installEl?.card.remove();
+      installEl = null;
+    }),
+  );
+}
+
+function installProgress(msg) {
+  const el = installEl && $("install-progress");
+  if (!el) return;
+  el.textContent = msg.stage === "download" ? `Downloading… ${msg.percent ?? 0}%` : (INSTALL_STAGES[msg.stage] ?? "Working…");
+}
+
+function installDone(msg) {
+  if (!installEl?.active) return; // another page started it, or this card was closed
+  installEl.active = false;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  if (msg.ok) {
+    done.textContent = "✓ Installed. Switching her to opencode…";
+    installEl.actions.replaceWith(done);
+    ws?.send(JSON.stringify({ type: "provider", provider: "opencode" }));
+    installEl = null;
+    return;
+  }
+  installEl.desc.textContent = msg.text;
+  installEl.actions.replaceChildren(
+    installButton("Try again", "allow", () => showInstallChoices(msg)),
+    installButton("Close", "deny", () => {
+      installEl?.card.remove();
+      installEl = null;
+    }),
+  );
+}
+
 let skillsEl = null;
 let cardEl = null;
 
@@ -1077,8 +1162,14 @@ function handle(msg) {
       break;
     case "packs":
       packNames = msg.names ?? [];
+      remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
       activePackName = msg.active ?? null;
       renderLooksMenu();
+      const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
+      if (openGallery?.dataset.kind === "packs") galleryFill?.();
+      break;
+    case "pack-progress":
+      showPackProgress(msg);
       break;
     case "meter":
       meter = msg;
@@ -1135,6 +1226,15 @@ function handle(msg) {
       break;
     case "cold-cache":
       addColdCache(msg);
+      break;
+    case "install-offer":
+      addInstallOffer(msg);
+      break;
+    case "install-progress":
+      installProgress(msg);
+      break;
+    case "install-done":
+      installDone(msg);
       break;
     case "memory-offer":
       addMemoryOffer(msg);
@@ -1620,7 +1720,9 @@ setInterval(() => meter && renderMeter(), 60_000);
 // --- looks menu and its galleries (presets, packs) --------------------------------------
 let lastLooks = { names: [], presets: [] };
 let packNames = [];
+let remotePacks = []; // { id, name, description?, credit? } for packs the index lists that are not on disk
 let activePackName = null; // the picture pack in use, or null for the drawn avatar
+let galleryFill = null; // redraws the open packs gallery when the index arrives
 
 function renderLooksMenu() {
   const select = $("looks");
@@ -1634,7 +1736,7 @@ function renderLooksMenu() {
     new Option("Looks…", ""),
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
-    ...(packNames.length ? [new Option("Packs…", "packs")] : []),
+    ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
   );
   select.disabled = select.options.length === 1;
 }
@@ -1655,15 +1757,40 @@ function uniqueIds(svg, prefix) {
 
 function closeGallery() {
   document.querySelector(".gallery")?.remove();
+  galleryFill = null;
 }
 
-/** One choice in the packs gallery: a pack's neutral picture, or null for the drawn avatar. */
-function packItem(name) {
+/** Download progress on a gallery tile, from a `pack-progress` message. */
+function showPackProgress(msg) {
+  const id = typeof msg.id === "string" ? msg.id : "";
+  const state = id ? document.querySelector(`.gallery [data-pack="${CSS.escape(id)}"] .preset-state`) : null;
+  if (!state) return;
+  if (msg.phase === "error") {
+    state.textContent = "Download";
+    const button = state.closest("button");
+    if (button) button.disabled = false;
+  } else if (msg.phase === "done") {
+    state.textContent = "Installed";
+    closeGallery();
+  } else if (msg.phase === "restore") state.textContent = "Installing…";
+  else if (msg.phase === "download" && msg.total) state.textContent = `Downloading ${Math.min(100, Math.round((100 * (msg.received || 0)) / msg.total))}%`;
+  else state.textContent = "Downloading…";
+}
+
+/** One choice in the packs gallery: a pack's preview, null for the drawn avatar, or a remote pack that is not installed yet. */
+function packItem(name, remote) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "preset";
-  item.title = name ?? "The avatar drawn by code";
-  if (name === activePackName) item.setAttribute("aria-current", "true");
+  if (name) item.dataset.pack = name;
+  const label = remote?.name || name || "Drawn avatar";
+  if (remote) {
+    item.classList.add("is-remote");
+    item.title = [label, remote.credit, "Not on this computer yet."].filter(Boolean).join(" — ");
+  } else {
+    item.title = name ?? "The avatar drawn by code";
+  }
+  if (name && name === activePackName) item.setAttribute("aria-current", "true");
   const pic = document.createElement("span");
   pic.className = "preset-pic";
   if (name === null) {
@@ -1676,8 +1803,16 @@ function packItem(name) {
     img.src = `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder
     pic.append(img);
   }
-  item.append(pic, Object.assign(document.createElement("span"), { className: "preset-name", textContent: name ?? "Drawn avatar" }));
+  item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));
+  if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
   item.onclick = () => {
+    if (remote) {
+      item.disabled = true;
+      const state = item.querySelector(".preset-state");
+      if (state) state.textContent = "Downloading…";
+      ws?.send(JSON.stringify({ type: "pack-install", name }));
+      return;
+    }
     closeGallery();
     if (name !== activePackName) ws?.send(JSON.stringify({ type: "pack-select", name }));
   };
@@ -1713,7 +1848,10 @@ function openGallery(kind = "presets") {
   );
   document.querySelector(".stage").append(box);
   const fill = () => {
-    if (packs) return grid.replaceChildren(...[null, ...packNames].map(packItem));
+    if (packs) {
+      const offered = remotePacks.filter((pack) => !packNames.includes(pack.id));
+      return grid.replaceChildren(...[null, ...packNames].map((name) => packItem(name, null)), ...offered.map((pack) => packItem(pack.id, pack)));
+    }
     grid.replaceChildren(
       ...presetNames.map((name) => {
         const item = document.createElement("button");
@@ -1741,6 +1879,8 @@ function openGallery(kind = "presets") {
     grid.querySelector("button")?.focus(); // so arrow keys and Escape work from the start
   };
   fillAndFocus();
+  galleryFill = packs ? fill : null;
+  if (packs) ws?.send(JSON.stringify({ type: "pack-catalog" })); // so a pack that is not downloaded still has a preview
   if (!packs && !presetThumbs) {
     gallerySlot = fillAndFocus;
     ws?.send(JSON.stringify({ type: "preset-thumbs" }));
@@ -1901,10 +2041,50 @@ function askDictationConsent() {
   log.scrollTop = log.scrollHeight;
   consentEl = card;
 }
-if (dictation.supported) {
+// The desktop app has no speech service of its own: the button is there, and offers the page in a browser, where it works.
+function askOpenInBrowser() {
+  if (consentEl) return;
+  const card = document.createElement("div");
+  card.className = "msg perm";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Speaking works in your browser";
+  const desc = document.createElement("div");
+  desc.className = "perm-desc";
+  desc.textContent =
+    "This window cannot turn speech into text. Open the same page in your browser (Chrome, Edge or Safari) and the microphone button works there: " +
+    "she and her server stay the same, and your chat is shared.";
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const close = (text) => {
+    const done = document.createElement("div");
+    done.className = "perm-done";
+    done.textContent = text;
+    actions.replaceWith(done);
+    consentEl = null;
+  };
+  const open = document.createElement("button");
+  open.textContent = "Open in browser";
+  open.className = "allow";
+  open.onclick = () => {
+    window.open(location.href); // the desktop shell hands any address it does not show itself to the user's browser
+    close("Opened in your browser");
+  };
+  const no = document.createElement("button");
+  no.textContent = "Not now";
+  no.className = "deny";
+  no.onclick = () => close("Staying here");
+  actions.append(open, no);
+  card.append(title, desc, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  consentEl = card;
+}
+if (dictation.supported || dictation.needsBrowser) {
   $("mic").hidden = false;
   $("mic").addEventListener("click", () => {
-    if (dictation.listening) dictation.stop();
+    if (dictation.needsBrowser) askOpenInBrowser();
+    else if (dictation.listening) dictation.stop();
     else if (!dictation.consented) askDictationConsent();
     else beginDictation();
   });

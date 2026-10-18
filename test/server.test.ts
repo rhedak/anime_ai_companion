@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import { OPENCODE_PIN, opencodeAsset } from "../src/install-opencode.ts";
 import { Client, cannotRunServer, startServer, type RunningServer } from "./helpers/server.ts";
+import { pathOf, systemPathDirs } from "./helpers/standin.ts";
 
 // These start a throwaway copy of the whole app (its own data/, a random port) with a stand-in `claude`: no login, no real brain.
 // They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
@@ -957,8 +959,139 @@ describe("switching to a brain whose program is missing", { skip }, () => {
         assert.ok(!c.since(from).some((e) => e.type === "reset"), "no new conversation");
       }
       assert.equal(JSON.parse(server.data("settings.json") ?? "{}").provider, "claude");
+      assert.ok(!c.events.some((e) => e.type === "install-offer"), "OPENCODE_BIN is the user's own choice, so no install is offered");
     } finally {
       await server.stop();
+    }
+  });
+
+  // Where a pinned opencode build exists (Windows), a missing opencode comes with an offer to install it, shown to the person at the computer.
+  test("opencode missing and not chosen by the user: the page is offered the install, with what it will do", { skip: skip || opencodeAsset() === null }, async () => {
+    const server = await startServer({});
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      const from = c.mark;
+      c.send({ type: "provider", provider: "opencode" });
+      const notice = await c.next((e) => e.type === "notice" && e.text.includes("opencode"), 5000, from);
+      assert.match(notice.text, /not installed, so she stays on claude[^]*install it for you/);
+      const offer = await c.next("install-offer", 5000, from);
+      assert.deepEqual([offer.brain, offer.host, offer.version], ["opencode", "github.com", OPENCODE_PIN.version]);
+      assert.ok(offer.megabytes > 10 && String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
+      assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe("basic mode: no brain installed", { skip }, () => {
+  /** No `claude` (or any other brain) on the server's PATH: only Node and the system. */
+  const noBrains = () => ({ PATH: pathOf(dirname(process.execPath), ...systemPathDirs()), CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" });
+
+  // With no brain at all, a machine that has a pinned opencode build gets the install offered as soon as the page connects; one who set OPENCODE_BIN does not.
+  test("a page that connects is offered the opencode install (where a build exists), unless OPENCODE_BIN was set", { skip: skip || opencodeAsset() === null }, async () => {
+    const { OPENCODE_BIN: _chosen, ...free } = noBrains();
+    const open = await startServer({ env: free });
+    try {
+      const c = await open.client();
+      assert.equal((await c.next("install-offer")).brain, "opencode");
+    } finally {
+      await open.stop();
+    }
+    const chosen = await startServer({ env: noBrains() });
+    try {
+      const c = await chosen.client();
+      await c.done(0);
+      assert.ok(!c.events.some((e) => e.type === "install-offer"));
+    } finally {
+      await chosen.stop();
+    }
+  });
+
+  test("she opens by saying she is a script and how to get a brain, answers from the script, and has no work mode", async () => {
+    const server = await startServer({ env: noBrains() });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.basic, true);
+      assert.equal(mode.provider, "basic");
+      assert.equal(mode.canUseTools, false);
+      await c.done(0);
+      const greeting = c.since(0).filter((e) => e.type === "delta").map((e) => e.text).join("");
+      assert.match(greeting, /no brain is installed yet, so right now I only follow a small script/);
+      assert.match(greeting, /opencode/);
+      assert.match(greeting, /npm install -g opencode-ai/);
+      assert.match(greeting, /brains\.html/);
+
+      const said = await ask(c, "make your hair blue and put on glasses");
+      assert.match(said, /Okay! Blue hair and glasses\./);
+      assert.ok(c.since(0).some((e) => e.type === "avatar" && e.applied?.some((a: string) => a.includes("hair_color"))), "the look changed");
+
+      const joke = await ask(c, "tell me a joke");
+      assert.match(joke, /no language model connected[^]*opencode/);
+
+      const from = c.mark;
+      c.send({ type: "mode", mode: "work" });
+      const notice = await c.next((e) => e.type === "notice", 5000, from);
+      assert.match(notice.text, /Work mode needs a brain/);
+      assert.equal(server.data("settings.json") && JSON.parse(server.data("settings.json")!).provider, "claude", "nothing was saved about it");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a conversation with the script is saved as one, so a real brain installed later starts a clean log", async () => {
+    const first = await startServer({ env: noBrains() });
+    try {
+      const c = await first.client();
+      await c.done(0);
+      await new Promise((r) => setTimeout(r, 500)); // the log is saved a moment after
+      assert.equal(JSON.parse(first.data("transcript.json") ?? "{}").provider, "basic");
+    } finally {
+      await first.stop();
+    }
+  });
+
+  test("a first start with no settings uses a reachable Ollama before falling back to the script, and saves nothing", async () => {
+    const fake = createServer((req, res) => {
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "llama3.2:3b" }] }));
+      res.end(JSON.stringify({ capabilities: ["completion"] }));
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const server = await startServer({ firstStart: true, env: { ...noBrains(), OLLAMA_HOST: `http://127.0.0.1:${(fake.address() as AddressInfo).port}` } });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.provider, "ollama");
+      assert.equal(mode.basic, false);
+      assert.equal(server.data("settings.json"), null, "nothing is saved until the user changes something");
+    } finally {
+      await server.stop();
+      fake.close();
+    }
+  });
+
+  test("a first start with nothing at all runs the script; installing a brain the user then picks ends it with a new conversation", async () => {
+    const fake = createServer((req, res) => res.end(JSON.stringify(req.url === "/api/tags" ? { models: [] } : { capabilities: ["completion"] })));
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+    const host = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
+    const server = await startServer({ firstStart: true, env: { ...noBrains(), OLLAMA_HOST: host } });
+    try {
+      const c = await server.client();
+      assert.equal((await c.next("mode")).basic, true);
+      await c.done(0);
+      // Ollama now has a model: choosing it leaves basic mode.
+      (fake as any).removeAllListeners("request");
+      fake.on("request", (req, res) => res.end(JSON.stringify(req.url === "/api/tags" ? { models: [{ name: "llama3.2:3b" }] } : { capabilities: ["completion"] })));
+      const from = c.mark;
+      c.send({ type: "provider", provider: "ollama" });
+      const mode = await c.next((e) => e.type === "mode" && e.provider === "ollama", 5000, from);
+      assert.equal(mode.basic, false);
+      assert.ok(c.since(from).some((e) => e.type === "reset"), "a new conversation");
+    } finally {
+      await server.stop();
+      fake.close();
     }
   });
 });

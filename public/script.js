@@ -1,4 +1,4 @@
-// What she says in the demo, with no model. A small rule-based reader turns a message into a reply that has the same tags a model would
+// What she says with no model: in the browser demo, and in the app when no brain is installed (basic mode, src/providers/scripted.ts). A small rule-based reader turns a message into a reply that has the same tags a model would
 // write ([emotion:…], [gesture:…], [avatar key=value …]), so the stand-in server treats it exactly as it would a model's answer. It
 // understands several requests in one message ("blue eyes and glasses and a witch hat"); anything else gets an honest answer about what
 // the demo can do.
@@ -139,6 +139,25 @@ const NEEDS_MODEL =
   `that runs on your own computer through [Ollama](https://ollama.com) ([how to set that up](${DOCS}brains.html#ollama)): that is the way to chat properly. ` +
   'If you just want to try, the "Chat with a small model…" button below runs a tiny one right here in your browser.';
 
+/**
+ * In the app with no brain installed ("basic mode"): the same script, but nothing is said about a demo or a browser, and the way out is to
+ * install a brain. opencode comes first because it is free and needs no account.
+ */
+const NEEDS_BRAIN =
+  "To really talk I need a brain. The easiest is [opencode](https://opencode.ai): it is free and needs no account (install it with `npm install -g opencode-ai`, " +
+  `then restart this app). Claude Code, Cursor and Ollama work too: [how to set up each one](${DOCS}brains.html).`;
+
+/** Her first message when no brain is installed: what this is, and what to do about it. */
+export const basicGreeting = (name = "Risa") =>
+  `[emotion:happy] [gesture:wave] Hi, I'm ${name}! Before we start: **no brain is installed yet, so right now I only follow a small script.** ` +
+  "I can change my hair, eyes and clothes, show a mood, wave, and run through my animations (type /show), but I can't really talk with you. " +
+  `${NEEDS_BRAIN} You can keep trying the script in the meantime.`;
+
+const HELP_BASIC =
+  "[emotion:happy] Here is what I can do with just a script: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
+  'turn into one of the characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. Type /show and I run through ' +
+  `every emotion and gesture. I can't chat freely or work on files: that needs a brain. ${NEEDS_BRAIN}`;
+
 /** She is asked to chat (or something only a model could answer). */
 const CHAT_WORDS =
   /\b(chat|talk|converse|conversation|speak)\b.*\b(you|with|me)\b|\bcan (we|you|i) (chat|talk)\b|\b(let'?s|lets|i want to|i wanna) (chat|talk)\b|\bhow are you\b|\bwho are you\b|\byour name\b|\btell me (a|an|about|something)\b|\bjoke\b|\bwrite (me|a)\b|\bexplain\b|\bwhat do you (think|like)\b/;
@@ -155,21 +174,27 @@ const HELP_PACK =
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean, model?: boolean, recent?: string[] }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on; `recent`: the last lines of the conversation, newest last, for "that colour"
+ * @param {{ presets?: string[], pack?: boolean, model?: boolean, recent?: string[], basic?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `recent`: the last lines of the conversation, newest last, for "that colour"
  * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
   const t = ` ${String(input).toLowerCase().replace(/\s+/g, " ")} `;
   const presets = context.presets ?? [];
+  // Basic mode (the app with no brain installed) says "install a brain"; the browser demo says it is a demo and points to the real app.
+  const needs = context.basic ? NEEDS_BRAIN : NEEDS_MODEL;
+  const noModel = context.basic ? "I have no language model connected" : "this demo has no language model";
   /** The colour most recently named in the conversation (by either of them), for "that colour". */
   const lastColour = [...(context.recent ?? [])].reverse().map((line) => colourIn(String(line).toLowerCase())).find(Boolean) ?? null;
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
+  if (WORK_WORDS.test(t) && context.basic) {
+    return { needsModel: true, text: `[emotion:thinking] Work mode needs a brain: with only a script I can't read or change your files. ${NEEDS_BRAIN}` };
+  }
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
   if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become)\b/.test(t) && !LOOK_WORDS.test(t)) {
-    return { needsModel: true, text: `[emotion:happy] I'd love to chat, but this demo has no language model: I only follow a small script. ${NEEDS_MODEL}` };
+    return { needsModel: true, text: `[emotion:happy] I'd love to chat, but ${noModel}: I only follow a small script. ${needs}` };
   }
-  if (HELP_WORDS.test(t)) return { text: context.pack ? HELP_PACK : HELP };
+  if (HELP_WORDS.test(t)) return { text: context.basic && !context.pack ? HELP_BASIC : context.pack ? HELP_PACK : HELP };
   if (/\bundo\b/.test(t) && context.pack) return { text: "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
 
@@ -267,9 +292,9 @@ export function reply(input, context = {}) {
       needsModel: true,
       text:
         context.pack
-          ? `[emotion:thinking] That is beyond my script: this demo has no language model, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show" or "show me work mode". ${NEEDS_MODEL}`
-          : '[emotion:thinking] That is beyond my script: this demo has no language model, so I only know a few things. Try "make your hair mint green", ' +
-            `"put on glasses and a witch hat", "become Linnea", "be shy", "wave", "/show" or "show me work mode". ${NEEDS_MODEL}`,
+          ? `[emotion:thinking] That is beyond my script: ${noModel}, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show"${context.basic ? "" : ' or "show me work mode"'}. ${needs}`
+          : `[emotion:thinking] That is beyond my script: ${noModel}, so I only know a few things. Try "make your hair mint green", ` +
+            `"put on glasses and a witch hat", "become Linnea", "be shy", "wave", "/show"${context.basic ? "" : ' or "show me work mode"'}. ${needs}`,
     };
   }
 

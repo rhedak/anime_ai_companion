@@ -3,6 +3,7 @@ export function joinDictation(before: string, spoken: string): string;
 export function dictationVendor(userAgent?: string): string;
 export interface Dictation {
   readonly supported: boolean;
+  readonly needsBrowser: boolean;
   readonly listening: boolean;
   readonly consented: boolean;
   consent(): void;

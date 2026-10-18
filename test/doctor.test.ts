@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkAll, formatDoctor, type Probe } from "../src/doctor.ts";
 
+/** The tests name paths the POSIX way; on Windows the code under test builds them with backslashes and a drive letter, so a path is read back in the POSIX form. */
+const posix = (path: string): string => path.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/");
+/** The same for a command line, where a path can be anywhere in it. */
+const posixLine = (line: string): string => line.replace(/[A-Za-z]:(?=[\\/])/g, "").replace(/\\/g, "/");
+/** An `exists` that knows exactly these (POSIX-form) paths. */
+const has = (...paths: string[]) => (p: string) => paths.includes(posix(p));
+
 /** A machine where everything is fine; each test spoils one thing. */
 function machine(overrides: Partial<Probe> & { files?: string[]; programs?: Record<string, string>; web?: Record<string, string> } = {}): Probe {
   const files = new Set(["/repo/node_modules/ws", "/repo/data", "/anime-character-creator/ts/src", "/anime-character-creator/ts/src/render.ts", ...(overrides.files ?? [])]);
@@ -15,8 +22,8 @@ function machine(overrides: Partial<Probe> & { files?: string[]; programs?: Reco
     root: "/repo",
     home: "/home/me",
     port: 3737,
-    run: (command, args) => programs[[command, ...args].join(" ")] ?? null,
-    exists: (path) => files.has(path),
+    run: (command, args) => programs[posixLine([command, ...args].join(" "))] ?? null,
+    exists: (path) => files.has(posix(path)),
     readText: () => JSON.stringify({ creator: { ref: "v0.2.2" } }),
     writable: () => true,
     get: async (url) => web[url] ?? null,
@@ -50,11 +57,11 @@ test("the creator: next to the repo, already fetched, to be fetched, or impossib
   const sibling = await checkAll(machine());
   assert.ok(sibling.some((l) => l.level === "ok" && /next to this repo/.test(l.text)));
   const gone = machine();
-  const fetchedLater = await checkAll({ ...gone, exists: (p) => ["/repo/node_modules/ws", "/repo/data", "/home/me/.anaico/creator/v0.2.2", "/home/me/.anaico/creator/v0.2.2/ts/src/render.ts"].includes(p) });
+  const fetchedLater = await checkAll({ ...gone, exists: has("/repo/node_modules/ws", "/repo/data", "/home/me/.anaico/creator/v0.2.2", "/home/me/.anaico/creator/v0.2.2/ts/src/render.ts") });
   assert.ok(fetchedLater.some((l) => l.level === "ok" && /v0\.2\.2: already fetched/.test(l.text)));
-  const willFetch = await checkAll({ ...gone, exists: (p) => p === "/repo/node_modules/ws" || p === "/repo/data" });
+  const willFetch = await checkAll({ ...gone, exists: has("/repo/node_modules/ws", "/repo/data") });
   assert.ok(willFetch.some((l) => l.level === "warn" && /first start downloads it/.test(l.text)));
-  const noGit = await checkAll({ ...gone, exists: (p) => p === "/repo/node_modules/ws" || p === "/repo/data", run: (c, a) => (c === "git" ? null : gone.run(c, a)) });
+  const noGit = await checkAll({ ...gone, exists: has("/repo/node_modules/ws", "/repo/data"), run: (c, a) => (c === "git" ? null : gone.run(c, a)) });
   assert.ok(noGit.some((l) => l.level === "fail" && /git is not installed/.test(l.text)));
   const badOverride = await checkAll({ ...gone, env: { CREATOR_SRC: "/nowhere/src" } });
   assert.ok(badOverride.some((l) => l.level === "fail" && /CREATOR_SRC points at/.test(l.text)));
@@ -62,7 +69,7 @@ test("the creator: next to the repo, already fetched, to be fetched, or impossib
 
 test("the creator must be its TypeScript: a folder without render.ts (the Python src of an earlier release) is a failure with the way out", async () => {
   const only = ["/repo/node_modules/ws", "/repo/data"];
-  const exists = (extra: string[]) => (p: string) => [...only, ...extra].includes(p);
+  const exists = (extra: string[]) => has(...only, ...extra);
   const override = await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: exists(["/old/src"]) }));
   const bad = override.find((l) => l.level === "fail" && /has no render\.ts/.test(l.text));
   assert.ok(bad, "an override that is not the TypeScript");
@@ -86,13 +93,13 @@ test("a busy port is fine when it is the companion itself, and a warning when it
 });
 
 test("missing packages and an unwritable data folder are failures", async () => {
-  const lines = await levels(machine({ exists: (p) => p === "/anime-character-creator/src", writable: () => false }));
+  const lines = await levels(machine({ exists: has("/anime-character-creator/src"), writable: () => false }));
   assert.ok(lines.some(([level, text]) => level === "fail" && /npm packages/.test(text as string)));
   assert.ok(lines.some(([level, text]) => level === "fail" && /data\/ is not writable|data/.test(text as string)));
 });
 
 test("the report lists hints under problems only, and counts them", async () => {
-  const text = formatDoctor(await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: (p) => ["/repo/node_modules/ws", "/repo/data", "/old/src"].includes(p) })));
+  const text = formatDoctor(await checkAll(machine({ env: { CREATOR_SRC: "/old/src" }, exists: has("/repo/node_modules/ws", "/repo/data", "/old/src") })));
   assert.match(text, /✗ Character creator: \/old\/src \(CREATOR_SRC\) has no render\.ts[^\n]*\n {4}Point it at the creator's ts\/src folder/);
   assert.match(text, /1 problem to fix before it will start/);
   assert.doesNotMatch(text, /✓ Node[^\n]*\n {4}/, "no hint under an ok line");

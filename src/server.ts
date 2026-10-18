@@ -16,11 +16,16 @@ import type { ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
+import { ScriptedProvider } from "./providers/scripted.ts";
+import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
+import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
 import { gestureNote, isPackName, listPacks, packInfo, readPack, type FramePack } from "./frame-pack.ts";
+import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
+import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -36,18 +41,19 @@ import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
 import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
+import { dataDir, workspaceDir } from "./paths.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
-const workspace = join(root, "workspace");
-const customCssPath = join(root, "data/custom.css");
+const workspace = workspaceDir;
+const customCssPath = join(dataDir, "custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only unless `--lan` is passed: this server can run Claude Code, so reaching it from the network is an
 // opt-in made again at every start, and every request from the network needs the token (src/lan.ts).
 const host = "127.0.0.1";
 const lan = process.argv.includes("--lan");
 const bindHost = lan ? "0.0.0.0" : host;
-const lanTokenPath = join(root, "data/lan-token");
+const lanTokenPath = join(dataDir, "lan-token");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
 
 await mkdir(workspace, { recursive: true });
@@ -57,8 +63,8 @@ const emotions = JSON.parse(await readFile(join(root, "emotions.json"), "utf8"))
 const creatorSrc = await resolveCreatorSrc();
 const avatar = new AvatarService({
   creatorSrc,
-  statePath: join(root, "data/avatar.json"),
-  looksDir: join(root, "data/looks"),
+  statePath: join(dataDir, "avatar.json"),
+  looksDir: join(dataDir, "looks"),
   emotions,
   defaultPreset: process.env.COMPANION_PRESET ?? "risa",
 });
@@ -66,11 +72,12 @@ await avatar.start();
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
-const settingsPath = join(root, "data/settings.json");
+const settingsPath = join(dataDir, "settings.json");
+const firstStart = !existsSync(settingsPath);
 const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
-const framesDir = join(root, "data/frames");
+const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
@@ -85,8 +92,33 @@ async function refreshPack(): Promise<string[]> {
   return result.ok ? result.pack.notes : [result.reason];
 }
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
-/** The packs the Looks menu offers, and which one is on. */
-const packsMessage = async () => ({ type: "packs", names: await listPacks(...packDirs), active: settings.framePack });
+/** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
+const packInstaller = createPackInstaller({
+  destDir: framesDir,
+  indexUrl: packIndexUrl(),
+  thumbsDir: join(root, "packs", "thumbs"),
+});
+let packIndexLogged = false;
+/** Loads the remote list. A failure is remembered by the installer and said once here; packs on disk are unaffected. */
+async function refreshPackIndex(force = false): Promise<void> {
+  const loaded = await packInstaller.loadIndex(force);
+  if (!loaded.ok && !packIndexLogged) {
+    packIndexLogged = true;
+    console.error(`Pack index: ${loaded.reason}`);
+  }
+}
+/** Remote packs that are not already on disk, so the gallery can offer them for download. */
+function remotePacks(names: string[]): Pick<PackIndexEntry, "id" | "name" | "description" | "credit" | "aiMade">[] {
+  const have = new Set(names);
+  return (packInstaller.index()?.packs ?? [])
+    .filter((pack) => !have.has(pack.id))
+    .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade }));
+}
+/** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
+const packsMessage = async () => {
+  const names = await listPacks(...packDirs);
+  return { type: "packs", names, active: settings.framePack, remote: remotePacks(names) };
+};
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
@@ -113,6 +145,24 @@ let permissionMode: PermissionMode = "manual";
 let claudeSetup = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
+
+/**
+ * Basic mode: the chosen brain's program is not installed (or, on a first start, no brain is). She then runs the built-in script and says so
+ * (src/providers/scripted.ts) instead of failing at the first message. On a first start another brain that is installed is used instead (in
+ * memory; nothing is saved until the user changes something). A brain the user chose that has gone missing is not swapped for another one.
+ */
+const brainThere = (name: ProviderName): boolean => {
+  const program = brainProgram(name);
+  return program === null || isInstalled(program);
+};
+let basicMode = false;
+if (settings.provider !== "ollama" && !brainThere(settings.provider)) {
+  const other = firstStart ? (["claude", "opencode", "cursor"] as const).find(brainThere) : undefined;
+  if (other) settings.provider = other;
+  else if (firstStart && ((await listOllamaModels(ollamaHost)) ?? []).length > 0) settings.provider = "ollama";
+  else basicMode = true;
+}
+if (basicMode) mode = "chat"; // no tools to work with
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
 
@@ -148,13 +198,14 @@ const persona = (config: SessionConfig) =>
   avatar.promptSection();
 
 // What the chat log shows, and which Claude Code session it belongs to, survive a restart.
-const transcript = new Transcript(join(root, "data/transcript.json"));
+const transcript = new Transcript(join(dataDir, "transcript.json"));
 const savedLog = await transcript.load();
 const claudeResumable =
   savedLog?.provider === "claude" && savedLog.sessionId && (await claudeSessionExists(savedLog.sessionId))
     ? savedLog.sessionId
     : undefined;
 if (!claudeResumable && savedLog?.provider === "claude") transcript.clear(); // its session is gone: start clean
+if (savedLog?.provider === "basic" && !basicMode) transcript.clear(); // a conversation with the built-in script has nothing to give a real brain
 /** How big her memory is and when she last answered: a cold prompt cache makes the next message expensive. */
 const convo: ConversationState = {
   contextTokens: claudeResumable ? savedLog?.contextTokens ?? null : null,
@@ -209,7 +260,8 @@ const providers: Record<ProviderName, Provider> = {
     resumeSessionId: opencodeResumable,
   }),
 };
-let provider: Provider = providers[settings.provider];
+const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null });
+let provider: Provider = basicMode ? scripted : providers[settings.provider];
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
 const OLLAMA_WORK_WARNING =
@@ -253,7 +305,9 @@ const modeInfo = () => ({
   type: "mode",
   name: settings.name,
   mode,
-  provider: settings.provider,
+  // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
+  provider: basicMode ? "basic" : settings.provider,
+  basic: basicMode,
   canUseTools: provider.canUseTools,
   // Only a local model that Ollama says cannot see pictures: everything else may attach (the page hides nothing otherwise).
   cannotSeePictures: settings.provider === "ollama" && ollamaBrain.cannotSeePictures,
@@ -313,6 +367,10 @@ const server = createServer(
     packDirs,
     emotionNames: () => Object.keys(emotions),
     activePack: () => activePack,
+    packThumb: async (name) => {
+      const body = await packInstaller.thumbnail(name);
+      return body ? { body, mime: "image/webp" } : null;
+    },
   }),
 );
 
@@ -351,7 +409,7 @@ const broadcast = (msg: unknown) => {
 ollamaBrain.onToolSupport(() => broadcast(modeInfo()));
 if (settings.provider === "ollama") void ollamaBrain.checkTools();
 
-await mkdir(join(root, "data"), { recursive: true });
+await mkdir(dataDir, { recursive: true });
 
 /** Save the visible log and the session it belongs to (debounced a little: turns end often). */
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -359,7 +417,7 @@ function persistTranscript(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     transcript
-      .save({ provider: settings.provider, sessionId: provider.sessionId, ...convo })
+      .save({ provider: basicMode ? "basic" : settings.provider, sessionId: provider.sessionId, ...convo })
       .catch((err) => console.error("could not save the transcript:", err));
   }, 300);
 }
@@ -385,7 +443,9 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
       return say(
         settings.provider === "ollama"
           ? `Ollama does not report that ${settings.ollamaModel || "this model"} can use tools, so work mode is off for it. Pick a tool-capable model (a recent Qwen or Llama, for example), or, if you know this one works, start the server with COMPANION_OLLAMA_TOOLS=${settings.ollamaModel || "<model>"}.`
-          : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
+          : basicMode
+            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): npm install -g opencode-ai, then restart this app."
+            : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
       );
     }
     const folder = typeof dir === "string" && dir.trim() ? dir : settings.projectDir;
@@ -440,7 +500,7 @@ function changeClaudeSetup(on: boolean, say: Say): void {
 
 // --- her notes about the user (data/memory.md): see memory-service.ts ---
 const memory = createMemoryService({
-  file: join(root, "data/memory.md"),
+  file: join(dataDir, "memory.md"),
   mode: () => mode,
   broadcast: (msg) => broadcast(msg),
   openFile: (path) => openBrowser(path),
@@ -452,7 +512,7 @@ const memory = createMemoryService({
 
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
-  file: join(root, "data/character.json"),
+  file: join(dataDir, "character.json"),
   personaBase,
   settings,
   saveSettings: () => saveSettings(settingsPath, settings),
@@ -545,8 +605,18 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     return say("Back to the drawn avatar.");
   }
   if (!isPackName(name)) return say("A pack name is a folder in data/frames: letters, digits, spaces, . _ -");
-  const result = await readPack(packDirs, name, Object.keys(emotions));
-  if (!result.ok) return say(result.reason);
+  let result = await readPack(packDirs, name, Object.keys(emotions));
+  if (!result.ok) {
+    const offered = await packInstaller.find(name);
+    if (!offered) {
+      const note = packInstaller.indexNote();
+      return say(note ? `${result.reason} ${note}` : result.reason);
+    }
+    const installed = await packInstaller.install(name);
+    if (!installed.ok) return say(installed.reason);
+    result = await readPack(packDirs, name, Object.keys(emotions));
+    if (!result.ok) return say(result.reason);
+  }
   settings.framePack = name;
   await saveSettings(settingsPath, settings);
   activePack = result.pack;
@@ -723,16 +793,20 @@ const slashCommands: Record<
       ),
   },
   frames: {
-    help: "show her with your own pictures instead of the drawn avatar: /frames lists the packs in data/frames, /frames <name> uses one, /frames off goes back",
+    help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (downloading it first when the pack list has it and it is not installed), /frames off goes back",
     run: async ({ args, say }) => {
       const wanted = args.trim();
       if (!wanted) {
+        await refreshPackIndex(false);
         const packs = await listPacks(...packDirs);
+        const remote = remotePacks(packs).map((pack) => pack.id);
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
-        return say(
-          `${using} ` +
-            (packs.length ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}. Use /frames <name> or /frames off.` : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one."),
-        );
+        const installed = packs.length
+          ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}.`
+          : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one.";
+        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> downloads one.` : "";
+        const hint = packs.length || remote.length ? " Use /frames <name> or /frames off." : "";
+        return say(`${using} ${installed}${available}${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
@@ -792,6 +866,50 @@ async function chooseFolder(say: Say): Promise<void> {
   } finally {
     pickerOpen = false;
     broadcast({ type: "picking", on: false });
+  }
+}
+
+let installAbort: AbortController | null = null;
+void cleanInstallLeftovers(); // a scratch folder from an install that was cut short by closing the app
+
+/**
+ * The question shown before anything is fetched, saying who is contacted, how much and where it goes. Null when opencode is already there, or when
+ * there is no pinned build for this machine (then the page falls back to saying how to install it by hand).
+ */
+function opencodeOffer(): Record<string, unknown> | null {
+  const asset = opencodeAsset();
+  // OPENCODE_BIN is the user's own choice and wins over a copy we install, so installing one would not make it start: no offer then.
+  if (!asset || process.env.OPENCODE_BIN || isInstalled(brainProgram("opencode") ?? "opencode")) return null;
+  return {
+    type: "install-offer",
+    brain: "opencode",
+    version: OPENCODE_PIN.version,
+    host: "github.com",
+    megabytes: Math.round(asset.bytes / 1048576),
+    folder: opencodeFolder(),
+  };
+}
+
+/** Installs the pinned opencode, telling every page how far it is. The page that asked then picks the brain, as if from the menu. */
+async function installOpencodeFor(say: Say): Promise<void> {
+  if (installAbort) return say("opencode is already being installed.");
+  const abort = (installAbort = new AbortController());
+  let shown = -1;
+  try {
+    await installOpencode({
+      signal: abort.signal,
+      onProgress: (p) => {
+        const percent = p.stage === "download" && p.total ? Math.floor(((p.received ?? 0) / p.total) * 100) : null;
+        if (percent !== null && percent === shown) return;
+        if (percent !== null) shown = percent;
+        broadcast({ type: "install-progress", stage: p.stage, percent });
+      },
+    });
+    broadcast({ type: "install-done", ok: true });
+  } catch (err) {
+    broadcast({ type: "install-done", ok: false, text: err instanceof InstallError ? err.message : `Could not install opencode: ${err instanceof Error ? err.message : String(err)}` });
+  } finally {
+    installAbort = null;
   }
 }
 
@@ -938,6 +1056,17 @@ function forgetConversationSize(): void {
   turns.dropHeld();
 }
 
+/** In basic mode an empty conversation opens by saying what she is and how to get a real brain: shown like a reply, nothing was asked of anything. */
+function greetBasic(): void {
+  if (!basicMode || provider.busy || transcript.items.length > 0) return;
+  const said = basicGreeting(settings.name);
+  transcript.delta(said);
+  transcript.flush();
+  persistTranscript();
+  broadcast({ type: "delta", text: said });
+  broadcast({ type: "done" });
+}
+
 function resetConversation(): void {
   queue.drop();
   provider.reset();
@@ -949,6 +1078,7 @@ function resetConversation(): void {
   broadcast({ type: "reset" });
   broadcast(modeInfo());
   cards.greet();
+  greetBasic();
 }
 
 // --- messages typed while she is still answering: see queue-service.ts ---
@@ -1018,6 +1148,9 @@ wss.on("connection", (ws) => {
   void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
+  greetBasic();
+  const offer = basicMode && !remote ? opencodeOffer() : null; // with no brain at all, the way out is one click away
+  if (offer) ws.send(JSON.stringify(offer));
   const acp = acpBrain();
   if (acp?.lastError) ws.send(JSON.stringify({ type: "notice", text: acp.lastError }));
   if (acp?.replacedSession) {
@@ -1089,6 +1222,11 @@ wss.on("connection", (ws) => {
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
       await switchMode(msg.mode, remote ? undefined : msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "install-brain" && msg.brain === "opencode" && (msg.choice === "yes" || msg.choice === "stop")) {
+      // It fetches and runs a program, so it is a decision for the person at the computer, never a phone.
+      if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+      if (msg.choice === "stop") installAbort?.abort();
+      else await installOpencodeFor((text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pick-folder") {
       if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       await chooseFolder((text) => ws.send(JSON.stringify({ type: "notice", text })));
@@ -1110,6 +1248,11 @@ wss.on("connection", (ws) => {
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
       const program = brainProgram(msg.provider);
       if (program && !isInstalled(program)) {
+        const offer = msg.provider === "opencode" && !remote ? opencodeOffer() : null;
+        if (offer) {
+          ws.send(JSON.stringify(offer));
+          return notice(`opencode is not installed, so she stays on ${provider.name}. I can install it for you: answer the question below.`);
+        }
         return notice(`${programLabel(msg.provider)} is not installed or not on PATH, so she stays on ${provider.name}.`);
       }
       if (msg.provider === "ollama") {
@@ -1129,7 +1272,8 @@ wss.on("connection", (ws) => {
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
       if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
       if (msg.provider !== "cursor" && msg.provider !== "opencode" && permissionMode === "everything") permissionMode = "manual";
-      const switching = settings.provider !== msg.provider;
+      const switching = settings.provider !== msg.provider || basicMode;
+      basicMode = false;
       settings.provider = msg.provider;
       await saveSettings(settingsPath, settings);
       if (switching) {
@@ -1190,6 +1334,25 @@ wss.on("connection", (ws) => {
       if (line) console.error(line);
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "pack-catalog") {
+      // The gallery is opening: ask the index so a pack that is not installed can still be shown and downloaded.
+      await refreshPackIndex(false);
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(await packsMessage()));
+    } else if (msg.type === "pack-install" && typeof msg.name === "string") {
+      const id = msg.name;
+      const installed = await packInstaller.install(id, (event) => {
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "pack-progress", ...event }));
+      });
+      if (!installed.ok) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: "pack-progress", id, phase: "error", message: installed.reason }));
+          ws.send(JSON.stringify({ type: "notice", text: installed.reason }));
+        }
+      } else {
+        await choosePack(id, (text) => {
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
+        });
+      }
     } else if (msg.type === "preset-thumbs") {
       try {
         ws.send(JSON.stringify({ type: "preset-thumbs", svgs: await avatar.presetThumbnails() }));
@@ -1262,7 +1425,7 @@ server.listen(port, bindHost, () => {
       { name: "anime_ai_companion", dir: root, url: "https://github.com/rhedak/anime_ai_companion" },
       { name: "anime-character-creator", dir: resolve(creatorSrc, "../.."), url: "https://github.com/rhedak/anime-character-creator" },
     ],
-    join(root, "data/nudge.json"),
+    join(dataDir, "nudge.json"),
   );
 });
 
@@ -1271,7 +1434,7 @@ function openBrowser(url: string): void {
     process.platform === "darwin" ? ["open", url]
     : process.platform === "win32" ? ["cmd", "/c", "start", "", url]
     : ["xdg-open", url];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+  spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
 }
 
 const shutdown = () => {

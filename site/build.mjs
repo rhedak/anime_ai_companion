@@ -13,6 +13,7 @@ const REPO = "https://github.com/rhedak/anime_ai_companion";
 /** The pages, in order. `file` is relative to the repository root. */
 const pages = [
   { slug: "index", title: "Home", file: "site/pages/index.md" },
+  { slug: "download", title: "Download", file: "site/pages/download.md" },
   { slug: "getting-started", title: "Getting started", file: "site/pages/getting-started.md" },
   { slug: "chatting", title: "Chatting with her", file: "site/pages/chatting.md" },
   { slug: "brains", title: "Brains", file: "site/pages/brains.md" },
@@ -123,6 +124,7 @@ function layout({ page, index, html, headings, description }) {
 <header class="top">
   <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="side"><span></span></button>
   <a class="brand" href="index.html">Anime AI Companion</a>
+  <a class="gh cta" href="download.html">Download</a>
   <a class="gh demo" href="demo/">Try the demo</a>
   <a class="gh" href="${REPO}">GitHub</a>
 </header>

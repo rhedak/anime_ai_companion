@@ -1,5 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { removeDir, symlinkDir, sweepStale } from "./platform.ts";
+import { baseEnv, pathOf, systemPathDirs, writeStandIn } from "./standin.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -166,22 +168,23 @@ export interface ServerOptions {
   userSkills?: string[];
   /** Start with a big conversation that has been idle for two hours, so Claude's prompt cache is cold. */
   coldConversation?: boolean;
+  /** Start as a brand-new install: no data/settings.json yet. */
+  firstStart?: boolean;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
+  sweepStale("anaico-test-", ["anaico-test-launcher"]); // folders an earlier run could not delete (Windows holds them for a while)
   const dir = mkdtempSync(join(tmpdir(), "anaico-test-"));
   const app = join(dir, "app");
   mkdirSync(app);
   for (const name of ["src", "public", "bin", "persona.md", "persona-work.md", "emotions.json", "package.json"]) cpSync(join(repo, name), join(app, name), { recursive: true });
-  symlinkSync(join(repo, "node_modules"), join(app, "node_modules"));
+  symlinkDir(join(repo, "node_modules"), join(app, "node_modules"));
   mkdirSync(join(app, "data"));
-  writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
+  if (!options.firstStart) writeFileSync(join(app, "data", "settings.json"), JSON.stringify({ provider: "claude", ...options.settings }));
 
   const bin = join(dir, "bin");
   mkdirSync(bin);
-  const standIn = join(bin, "claude");
-  writeFileSync(standIn, STAND_IN);
-  chmodSync(standIn, 0o755);
+  writeStandIn(bin, "claude", STAND_IN);
   const config = join(dir, "claude-config");
   for (const skill of options.userSkills ?? []) {
     mkdirSync(join(config, "skills", skill), { recursive: true });
@@ -220,8 +223,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     cwd: app,
     env: {
       // Only the stand-in `claude` is reachable: a real one cannot start from a test.
-      PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
-      HOME: join(dir, "home"),
+      PATH: pathOf(bin, dirname(process.execPath), ...systemPathDirs()),
+      ...baseEnv(join(dir, "home")),
       PORT: String(port),
       CLAUDE_CONFIG_DIR: config,
       CREATOR_SRC: creatorSrcForServer(),
@@ -281,7 +284,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     },
     async stop() {
       clients.forEach((c) => c.close());
-      child.kill("SIGTERM");
+      // Windows has no signals and `kill` ends only the server: its brain (the stand-in and the Node it runs) would go on holding the folder.
+      if (process.platform === "win32" && child.pid && child.exitCode === null) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+      else child.kill("SIGTERM");
       await new Promise<void>((r) => {
         if (child.exitCode !== null) return r();
         child.once("exit", () => r());
@@ -290,7 +295,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           r();
         }, 3000);
       });
-      rmSync(dir, { recursive: true, force: true });
+      removeDir(dir);
     },
   };
 }

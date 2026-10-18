@@ -10,7 +10,7 @@ import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
 import { repeatsItself } from "../demo/model.js";
 import { MODEL, buildMessages, emotionFix, guessEmotion, modelId, systemPrompt } from "../demo/model-prompt.js";
-import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../demo/script.js";
+import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../public/script.js";
 import { DEMO_PACKS, stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
 import { demoMessage } from "../src/demo.ts";
@@ -674,6 +674,7 @@ test("staging the demo gives a flat static folder in demo mode that loads the de
     assert.match(html, /demo-banner[^]*nothing you type is sent anywhere[^]*github\.com\/rhedak\/anime_ai_companion/);
     assert.match(html, /demo-banner-short[^>]*>[^<]*nothing is sent anywhere/, "the short line keeps the privacy statement");
     assert.match(html, /class="demo-banner-toggle" aria-expanded="true"/, "the notice can be folded");
+    assert.match(html, /class="demo-banner-cta" href="https:\/\/rhedak\.github\.io\/anime_ai_companion\/download\.html">Download the full version</, "a way to the real app that stays when the notice is folded");
     for (const file of ["app.js", "avatar.js", "frames.js", "tags.js", "local-socket.js", "render-bridge.js", "script.js", "demo-boot.js", "demo.css", "emotions.json", "custom.css", "js/render-ops.js", "creator/js/render.js", "creator/js/presets.js", "creator/js/pyjsonload.js"]) assert.ok(existsSync(join(dir, file)), file);
     assert.ok(!existsSync(join(dir, "creator-files.json")) && !existsSync(join(dir, "render_ops.py")), "no Python files list and no Python request handling");
     const packs = JSON.parse(readFileSync(join(dir, "packs.json"), "utf8"));

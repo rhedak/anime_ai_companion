@@ -1,5 +1,6 @@
+import { symlinkDir } from "./helpers/platform.ts";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -14,7 +15,7 @@ function project() {
   writeFileSync(join(dir, "src", "a.ts"), "const one = 1;\nconst Two = 2;\nexport { one };\n");
   writeFileSync(join(dir, "node_modules", "skipped.js"), "const one = 1;\n");
   writeFileSync(join(dir, "bin.dat"), Buffer.from([1, 2, 0, 3]));
-  symlinkSync(outside, join(dir, "link"));
+  symlinkDir(outside, join(dir, "link"));
   return { dir, outside, done: () => [dir, outside].forEach((d) => rmSync(d, { recursive: true, force: true })) };
 }
 
@@ -143,13 +144,15 @@ test("edit_file keeps Windows line endings working, and refuses empty, identical
 test("bash runs in the project folder and reports failures and silence", async () => {
   const p = project();
   try {
-    const ok = await runTool("bash", { command: "pwd && echo hi" }, { cwd: p.dir });
+    // The same things in the words of the shell the tool runs: sh, or cmd.exe on Windows.
+    const win = process.platform === "win32";
+    const ok = await runTool("bash", { command: win ? "cd && echo hi" : "pwd && echo hi" }, { cwd: p.dir });
     assert.equal(ok.ok, true);
     assert.match(ok.output, /hi/);
-    const failed = await runTool("bash", { command: "echo oops; exit 3" }, { cwd: p.dir });
+    const failed = await runTool("bash", { command: win ? "echo oops & exit 3" : "echo oops; exit 3" }, { cwd: p.dir });
     assert.equal(failed.ok, false);
     assert.match(failed.output, /oops[^]*exit code 3/);
-    assert.equal((await runTool("bash", { command: "true" }, { cwd: p.dir })).output, "(no output)");
+    assert.equal((await runTool("bash", { command: win ? "cd ." : "true" }, { cwd: p.dir })).output, "(no output)");
     assert.equal((await runTool("bash", { command: "" }, { cwd: p.dir })).ok, false);
   } finally {
     p.done();

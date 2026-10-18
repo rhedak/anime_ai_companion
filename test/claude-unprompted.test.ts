@@ -1,21 +1,24 @@
+import { removeDir } from "./helpers/platform.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { ClaudeCodeProvider } from "../src/providers/claude-code.ts";
 import type { ProviderEvent } from "../src/providers/types.ts";
 
 // A real `claude` capture: she answers, the turn ends, then a finished background subagent makes the CLI
 // start a second turn on its own. The stand-in below replays it; a real claude is never started, because
 // PATH holds only the stand-in while these tests run.
-const fixture = new URL("./fixtures/claude-background-subagent.jsonl", import.meta.url).pathname;
+const fixture = fileURLToPath(new URL("./fixtures/claude-background-subagent.jsonl", import.meta.url));
 
 function standIn(): { dir: string; restore: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "anaico-claude-"));
-  const script = join(dir, "claude");
-  writeFileSync(
-    script,
+  writeStandIn(
+    dir,
+    "claude",
     `#!${process.execPath}
 const lines = require("fs").readFileSync(${JSON.stringify(fixture)}, "utf8").split("\\n").filter(Boolean);
 // Split the recording after each result: the first turn answers the user, the second starts on its own.
@@ -31,14 +34,13 @@ require("readline").createInterface({ input: process.stdin }).on("line", () => {
 });
 `,
   );
-  chmodSync(script, 0o755);
   const saved = process.env.PATH;
   process.env.PATH = dir;
   return {
     dir,
     restore: () => {
       process.env.PATH = saved;
-      rmSync(dir, { recursive: true, force: true });
+      removeDir(dir);
     },
   };
 }

@@ -1,4 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { managedOpencode, managedOpencodeEnv } from "../install-opencode.ts";
+import { brainProgram } from "../programs.ts";
+import { spawnCli } from "../spawn-cli.ts";
 import { createInterface } from "node:readline";
 import type { ImageInput } from "../images.ts";
 import {
@@ -449,7 +452,10 @@ export class OpenCodeProvider implements Provider {
 }
 
 function defaultSpawn(args: string[], cwd: string, env: NodeJS.ProcessEnv): ChildProcessWithoutNullStreams {
-  return spawn(process.env.OPENCODE_BIN ?? "opencode", args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+  const program = brainProgram("opencode") ?? "opencode";
+  // The copy this app installed keeps its files apart from any other OpenCode on the machine; the user's own install is run as it is.
+  const own = program === managedOpencode() ? managedOpencodeEnv() : {};
+  return spawnCli(program, args, { cwd, env: { ...env, ...own }, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 function loginHint(message: string): string {

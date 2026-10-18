@@ -20,3 +20,13 @@ trailer/.stage/
 site/dist/
 out/
 trailer/.sample-pack/
+
+# editor settings (PyCharm / JetBrains)
+.idea/
+
+# built Mac app
+/dist/
+
+# the desktop shell's staged contents and installer
+/app/stage/
+/app/dist/

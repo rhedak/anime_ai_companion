@@ -1,5 +1,7 @@
+import { removeDir } from "./helpers/platform.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { test } from "node:test";
@@ -19,7 +21,7 @@ test("countSkills counts folders that hold a SKILL.md, and tolerates a missing f
     assert.equal(await countSkills(dir), 2);
     assert.equal(await countSkills(join(dir, "nope")), 0);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
   }
 });
 
@@ -50,9 +52,7 @@ test("reaching for a skill: a failed Skill call, or reading one of the user's SK
 function argvOf(config: Partial<SessionConfig>): string[] {
   const dir = mkdtempSync(join(tmpdir(), "anaico-argv-"));
   const log = join(dir, "argv.json");
-  const script = join(dir, "claude");
-  writeFileSync(script, `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)));\nsetInterval(() => {}, 1000);\n`);
-  chmodSync(script, 0o755);
+  writeStandIn(dir, "claude", `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)));\nsetInterval(() => {}, 1000);\n`);
   const saved = process.env.PATH;
   process.env.PATH = dir; // only the stand-in: a real claude cannot start here
   const claude = new ClaudeCodeProvider({
@@ -74,7 +74,7 @@ function argvOf(config: Partial<SessionConfig>): string[] {
   } finally {
     claude.close();
     process.env.PATH = saved;
-    rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
   }
 }
 

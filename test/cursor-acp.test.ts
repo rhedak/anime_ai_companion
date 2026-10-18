@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { removeDir } from "./helpers/platform.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -200,7 +201,7 @@ test("the provider streams a reply, and Run Everything spawns with --force", asy
     assert.equal(provider.sessionId, "sess-1");
   } finally {
     provider.close();
-    await rm(dir, { recursive: true });
+    removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
   }
 });
 
@@ -228,6 +229,6 @@ test("a permission request reaches the card and the allow answer lets the turn f
     assert.equal(card?.type === "permission" && card.request.input.command, "echo hi");
   } finally {
     provider.close();
-    await rm(dir, { recursive: true });
+    removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
   }
 });

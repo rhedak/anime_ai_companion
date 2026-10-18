@@ -23,6 +23,11 @@ export interface HttpDeps {
   emotionNames(): string[];
   /** The picture pack in use, if any. */
   activePack(): FramePack | null;
+  /**
+   * A small preview of a pack (`packs/thumbs/<id>.webp`, or the index thumbnail when the pack is not installed).
+   * Null falls through to the pack's own neutral picture, which is what a folder without a preview uses.
+   */
+  packThumb?(name: string): Promise<{ body: Buffer; mime: string } | null>;
 }
 
 const mime: Record<string, string> = {
@@ -94,6 +99,12 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       try {
         name = decodeURIComponent(thumb[1]);
       } catch {}
+      const preview = isPackName(name) ? await deps.packThumb?.(name) : null;
+      if (preview) {
+        res.writeHead(200, { "content-type": preview.mime, "cache-control": "no-cache", ...headers });
+        res.end(preview.body);
+        return;
+      }
       const found = isPackName(name) ? await readPack(deps.packDirs, name, deps.emotionNames()) : null;
       const file = found?.ok ? found.pack.emotions.neutral.idle : "";
       const body = found?.ok && (await readFile(found.pack.files.get(file)!.path).catch(() => null));

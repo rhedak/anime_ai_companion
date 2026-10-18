@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-const bin = new URL("../bin/anaico.js", import.meta.url).pathname;
+const bin = fileURLToPath(new URL("../bin/anaico.js", import.meta.url));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 test("--version prints the version and the pinned creator release, and exits 0 without starting anything", () => {

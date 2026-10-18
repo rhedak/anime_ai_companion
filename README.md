@@ -28,13 +28,15 @@ browser ──ws── Node server ──┬─ a brain: Claude Code, Cursor, op
 
 It is free to use, change and share (MIT). Everything runs on your machine; the only thing that leaves it is the
 conversation your own brain sends to its provider (nothing at all with Ollama), and, if you turn on the microphone
-button, the recording your browser's speech recognition sends to the browser maker.
+button, the recording your browser's speech recognition sends to the browser maker. The desktop app can, only if you say yes, ask GitHub once a
+day whether a newer version exists (it never installs anything).
 
 ## Requirements
 
 - **Node.js 22.18 or newer** (it runs the TypeScript directly, no build step). Many systems ship an older one, and `npm install` itself
   refuses it; with [nvm](https://github.com/nvm-sh/nvm): `nvm install 22 && nvm use 22`
-- **One brain**, installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
+- **One brain** (without one she runs a small built-in script: she can change her look, show moods and wave, but not really talk, and says so
+  when you open the page), installed and signed in: [Claude Code](https://code.claude.com) (`claude`), Cursor (`cursor-agent`), opencode,
   or [Ollama](https://ollama.com) for a local model
 - A checkout of **[anime-character-creator](https://github.com/rhedak/anime-character-creator)** (the drawing code) next to this repo,
   at the release this version pins (the Quick start does that), or point `CREATOR_SRC` at its `ts/src` folder (the creator's TypeScript draws her, in the app's own process: no Python is involved). Without either, the app downloads
@@ -54,6 +56,12 @@ npm start          # then open http://127.0.0.1:3737
 The first line takes the creator release this version was made for (`--branch`); its `main` may be ahead of it. Nothing else needs installing:
 the app draws her with the creator's TypeScript, so there is no Python to set up. (Python is only for the optional picture-pack tools under
 `python/`, which `docs/frame-packs.md` describes.)
+
+**On a Mac**, `npm run dist:mac` in `app/` builds a double-clickable app (a `.dmg` and a `.zip`, for Apple Silicon and Intel) with everything inside; it is the same desktop shell as on Windows ([app/README.md](app/README.md)).
+
+**On Windows**, download the repository as a ZIP (or clone it), unpack it and double-click `windows-start.bat`: it installs Node.js and the
+free opencode brain if you say yes, fetches the character creator, and opens the page. [docs/windows.md](docs/windows.md) has the steps.
+Windows support is new and has had little testing; please report what breaks.
 
 Try: *"Hi! Could you change your hair to mint green and put on a black witch hat?"*
 
@@ -78,6 +86,7 @@ Try: *"Hi! Could you change your hair to mint green and put on a black witch hat
 | `PORT` | `3737` | |
 | `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box (see Security model) |
 | `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
+| `COMPANION_PACK_INDEX` | a placeholder GitHub Pages URL | https address of `packs/index.json` for packs that can be downloaded; `off` skips it. See `docs/pack-archives.md` |
 
 ## Voice
 
@@ -121,6 +130,11 @@ A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/fr
 unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
 screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
 yourself: this project cannot grant you the right to use the character.
+
+A pack that is not on this computer yet can be downloaded from **Looks → Packs…** (a small preview and **Download**)
+or with `/frames <name>`. It is saved in `data/frames/` and afterwards works like any other pack, including offline.
+The list is fetched from `COMPANION_PACK_INDEX`. Until that packs site is published, the built-in address is a
+placeholder and only packs already on disk are offered. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
 
 ## Local models with Ollama
 

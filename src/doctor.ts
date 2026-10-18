@@ -2,7 +2,8 @@
  * `anaico --doctor`: looks at what the app needs and says what is missing, in plain words. It only looks: nothing is installed,
  * started or signed in. Every check goes through a `Probe`, so the checks can be tested without this machine's real setup.
  */
-import { spawnSync } from "node:child_process";
+import { brainProgram } from "./programs.ts";
+import { spawnCliSync } from "./spawn-cli.ts";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
@@ -42,7 +43,7 @@ export function realProbe(root: string, port: number): Probe {
     home: homedir(),
     port,
     run(command, args) {
-      const result = spawnSync(command, args, { encoding: "utf8", timeout: 8000 });
+      const result = spawnCliSync(command, args, { encoding: "utf8", timeout: 8000 });
       if (result.error || result.status !== 0) return null;
       return `${result.stdout}${result.stderr}`.trim();
     },
@@ -133,7 +134,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   // Brains: at least one must be there. Whether you are signed in is the brain's own business, so this does not try.
   const claude = p.run("claude", ["--version"]);
   const cursor = p.run("cursor-agent", ["--version"]);
-  const opencode = p.run("opencode", ["--version"]);
+  const opencode = p.run(brainProgram("opencode", p.env) ?? "opencode", ["--version"]); // also the copy this app installed itself
   const host = (p.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
   const tags = await p.get(`${host}/api/tags`);
   let ollamaModels: number | null = null;
@@ -163,7 +164,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   else add("warn", `Port ${p.port} is in use by something that is not answering as a web page`, "Set PORT=<another number> to use a different one.");
 
   // Where her data lives
-  const data = join(p.root, "data");
+  const data = p.env.ANAICO_DATA ? resolve(p.env.ANAICO_DATA) : join(p.root, "data");
   if (p.exists(data) ? p.writable(data) : p.writable(p.root)) add("ok", "data/ is writable (settings, chat log, her look)");
   else add("fail", "data/ is not writable", `Fix the permissions on ${p.exists(data) ? data : p.root}.`);
 

@@ -25,7 +25,7 @@ function files(dir: string, skipPacks = true): { path: string; size: number }[] 
     for (const entry of readdirSync(at, { withFileTypes: true })) {
       const full = join(at, entry.name);
       if (entry.isDirectory()) walk(full);
-      else found.push({ path: relative(dir, full), size: statSync(full).size });
+      else found.push({ path: relative(dir, full).replace(/\\/g, "/"), size: statSync(full).size }); // `/` on every system, as the patterns below and the staged URLs use it
     }
   };
   walk(dir);
