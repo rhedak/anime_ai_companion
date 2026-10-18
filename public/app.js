@@ -1269,6 +1269,7 @@ function handle(msg) {
       $("dot").classList.add("on");
       avatar.setVersion(msg.version);
       setBusy(busy);
+      setTimeout(maybeShowLooksHint, 1500); // after the menu has been filled in
       break;
     case "demo":
       if (busy) addMsg("sys", "She is still answering: ask again when she is done.");
@@ -1905,6 +1906,21 @@ document.addEventListener("click", (e) => {
   if (!(/** @type {Element} */ (e.target)).closest(".gallery, #looks")) closeGallery();
 });
 
+// A one-time hint that Looks exists. Remembered per browser; any use of the menu, the button, or 20 seconds ends it.
+function hideLooksHint(remember = true) {
+  $("looks-hint").hidden = true;
+  if (remember) try { localStorage.setItem("looksHintSeen", "1"); } catch {}
+}
+function maybeShowLooksHint() {
+  let seen = false;
+  try { seen = localStorage.getItem("looksHintSeen") === "1"; } catch {}
+  if (seen || !$("looks-hint").hidden || $("looks").disabled) return;
+  $("looks-hint").hidden = false;
+  setTimeout(() => hideLooksHint(), 20000);
+}
+$("looks-hint-close").addEventListener("click", () => hideLooksHint());
+$("looks").addEventListener("focus", () => hideLooksHint());
+$("looks").addEventListener("pointerdown", () => hideLooksHint());
 $("undo-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "look-undo" })));
 $("looks").addEventListener("change", () => {
   const value = $("looks").value;

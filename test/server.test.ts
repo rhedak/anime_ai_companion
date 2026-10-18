@@ -47,6 +47,25 @@ describe("chatting", { skip }, () => {
     await server?.stop();
   });
 
+  test("a new page gets the hello, the mode and an empty history", async () => {
+    const c = await server.client();
+    await c.next("hello");
+    assert.deepEqual((await c.next("history")).items, []);
+    const mode = await c.next("mode");
+    assert.equal(mode.mode, "chat");
+    assert.equal(mode.provider, "claude");
+    assert.equal(mode.permissionMode, "manual");
+  });
+
+  test("a message gets a reply with its tags, which is saved and shown to a page that connects later", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const said = await ask(c, "hello there");
+    assert.match(said, /\[emotion:happy\] echo: hello there/);
+    const late = await server.client();
+    assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
+  });
+
   test("with a picture pack on she is told what the pictures show, and sees her resting picture once; a new chat tells her again", async () => {
     const pack = join(server.dir, "data", "frames", "tester");
     mkdirSync(pack, { recursive: true });
@@ -82,25 +101,6 @@ describe("chatting", { skip }, () => {
     const icon = await fetch(`http://127.0.0.1:${server.port}/favicon.png`);
     assert.equal(icon.status, 200);
     assert.equal(icon.headers.get("content-type"), "image/png");
-  });
-
-  test("a new page gets the hello, the mode and an empty history", async () => {
-    const c = await server.client();
-    await c.next("hello");
-    assert.deepEqual((await c.next("history")).items, []);
-    const mode = await c.next("mode");
-    assert.equal(mode.mode, "chat");
-    assert.equal(mode.provider, "claude");
-    assert.equal(mode.permissionMode, "manual");
-  });
-
-  test("a message gets a reply with its tags, which is saved and shown to a page that connects later", async () => {
-    const c = await server.client();
-    await c.next("history");
-    const said = await ask(c, "hello there");
-    assert.match(said, /\[emotion:happy\] echo: hello there/);
-    const late = await server.client();
-    assert.deepEqual((await late.next("history")).items.map((i: any) => i.type), ["user", "bot"]);
   });
 
   test("Reset look only restores the look: the conversation stays, and she is told on her next message", async () => {
