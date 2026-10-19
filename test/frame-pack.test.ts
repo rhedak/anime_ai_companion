@@ -332,8 +332,13 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   const root = fileURLToPath(new URL("..", import.meta.url));
   const packs = join(root, "packs");
   const text = await readFile(join(packs, "characters", "draconia.txt"), "utf8");
-  assert.match(text, /^Draconia Malfoid\r?\n/);
-  assert.match(text, /platinum-blonde/);
+  // Split on either line ending: a Windows checkout stores this file with CRLF.
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  assert.deepEqual(lines, [
+    "Draconia Malfoid",
+    "An unofficial fan character loosely inspired by Draco Malfoy. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
+    "She's a proud, sharp-tongued tsundere. She acts aloof and teases, but is secretly caring and gets flustered when someone is kind to her.",
+  ]);
   assert.doesNotMatch(text, /franzi/i);
   const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
   assert.doesNotMatch(franziText, /draconia/i);
@@ -354,6 +359,12 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     assert.equal(read.pack.character?.id, "draconia");
     assert.equal(read.pack.character?.name, "Draconia Malfoid");
     assert.match(read.pack.character?.text ?? "", /side braid/);
+    // The description lines are joined into the note she is given with the pack, so the personality is part of the chat prompt.
+    assert.match(read.pack.character?.text ?? "", /teal-green eyes\. She's a proud, sharp-tongued tsundere/);
+    const told = packNote(read.pack);
+    assert.match(told, /You are Draconia Malfoid\./);
+    assert.match(told, /sharp-tongued tsundere/);
+    assert.match(told, /gets flustered when someone is kind to her/);
     assert.equal(read.pack.look, "You wear a Slytherin-style uniform.");
     const grouped = await packCharacters([dir, packs], ["draconia-uniform", "franzi-dress"]);
     assert.equal(grouped["draconia-uniform"].id, "draconia");
