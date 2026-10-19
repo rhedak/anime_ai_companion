@@ -587,6 +587,10 @@ software you have not read line by line.
 - The Hatsune Miku pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
 
+## Code of conduct
+
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (the Contributor Covenant).
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), from the first Windows installer that is signed. Roles, what is signed and the privacy statement are on the [Code signing page](https://rhedak.github.io/anime_ai_companion/code-signing.html).

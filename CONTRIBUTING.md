@@ -3,6 +3,8 @@
 First: **you do not have to do any of this.** The project is MIT-licensed, so you can use it,
 change it and keep your changes to yourself. This page is only a friendly request.
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## The request
 
 If you make something better, in this repo or in your checkout of
