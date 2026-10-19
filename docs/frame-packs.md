@@ -132,6 +132,10 @@ change: <what changes>."* Blinks and mouth openings were edited from that emotio
 is Crypton's, so the pack is not MIT: see its `NOTICE.md`. The pictures are lossless WebP at 720 × 819
 (about 350 KB each): lossy encoding would put faint noise back into the parts that are meant to be identical.
 
+## The Draconia pack
+
+The Draconia pack (`packs-src/draconia-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); it is downloaded on request, not shipped) is her own character, `character: draconia` in its `look.txt`, not an outfit of Franzi. Draconia Malfoid is unofficial fan art loosely inspired by Draco Malfoy (a girl version). The pictures were made with Grok Imagine. The pack is not MIT: non-commercial use only, not affiliated with or endorsed by Warner Bros. or Wizarding World, and taken down on request (rhedak00@yahoo.de). The gallery preview in this repository, `packs/thumbs/draconia-uniform.webp`, is under the same terms: see `packs/thumbs/draconia-uniform.NOTICE.md`. Her shared description is `packs/characters/draconia.txt` (the name the gallery shows is Draconia Malfoid, the same as the download index), so once the pack is installed the gallery and `[outfit …]` treat her separately from Franzi.
+
 ## How it is built
 
 `src/frame-pack.ts` reads and checks a folder (only files whose names it understands are ever served, from

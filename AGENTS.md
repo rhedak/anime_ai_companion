@@ -106,7 +106,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
   model), and `franzi-dress` (an original character, made with AI): one outfit per original character,
-  so each works offline. Everything in this repository is MIT (keep it so; the pack with Crypton's character is the one download kept outside it). Everything else is in the sister repository `anime_ai_companion-packs` and are downloaded on request (see Pack archives). Ship lossless WebP.
+  so each works offline. Everything in this repository is MIT, except the Draconia gallery preview `packs/thumbs/draconia-uniform.webp` (unofficial fan art; see its NOTICE). Keep it so: do not add other non-MIT pictures. The Miku pack and the Draconia pack stay in the sister repository `anime_ai_companion-packs` and are downloaded on request (see Pack archives). Ship lossless WebP.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,

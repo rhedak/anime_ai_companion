@@ -1,14 +1,15 @@
 ---
-description: Credits, the licence (including the note on the downloadable Hatsune Miku pack), and how to contribute.
+description: Credits, the licence (including the notes on the downloadable Hatsune Miku and Draconia packs), and how to contribute.
 ---
 
 # About, credits, licence
 
 ## Licence
 
-[MIT](https://github.com/rhedak/anime_ai_companion/blob/main/LICENSE): everything in this repository. The one exception is a pack you can download, which is not
-part of it: the Hatsune Miku pictures show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the
-pack's own NOTICE.
+[MIT](https://github.com/rhedak/anime_ai_companion/blob/main/LICENSE): everything in this repository, except the gallery preview of Draconia
+(`packs/thumbs/draconia-uniform.webp`; see its [NOTICE](../../packs/thumbs/draconia-uniform.NOTICE.md)). Two packs you can download are not
+part of this repository and are not MIT either. The Hatsune Miku pictures show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the
+pack's own NOTICE. The Draconia Malfoid pictures are unofficial fan art, non-commercial, and will be taken down on request (see below).
 
 ## The Risa (dress) pack
 
@@ -23,6 +24,12 @@ settled everywhere, and the image tool's own terms apply too.
 **Franzi** is another original character, with four outfits (dirndl, casual, pajamas, bikini). Her pictures were made with Grok Imagine from a design by the
 repository's owner and are MIT-licensed like the rest, with the same caveat about AI-made pictures in each pack's NOTICE. The dirndl comes with the
 app; the other three are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
+
+## The Draconia pack
+
+A picture pack of **Draconia Malfoid** is available as a download (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). She is her own character, not one of Franzi's outfits: an **unofficial** fan character loosely inspired by Draco Malfoy (a girl version), with long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. The pictures were made with Grok Imagine. The pack is **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World.
+
+The gallery preview in this repository (`packs/thumbs/draconia-uniform.webp`) is under the same terms. Read the [NOTICE](../../packs/thumbs/draconia-uniform.NOTICE.md) before you use or share it. The pack's own NOTICE travels with the pictures (`NOTICE.md` in `data/frames/draconia-uniform/` once downloaded, and in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)). This project cannot grant you the right to use the character. The pictures will be taken down on request: rhedak00@yahoo.de.
 
 ## The Hatsune Miku pack
 
@@ -52,7 +59,7 @@ software you have not read line by line.
   began from AI-generated reference images (some made with Grok, kept in the creator's `ref/` folder), which set the
   style and the first roster, and several characters, Katherina and Risa among them, were traced from such
   references.
-- **The Hatsune Miku pictures and the Risa (dress) pictures** were made with Grok Imagine (see above).
+- **The Hatsune Miku pictures, the Risa (dress) pictures and the Draconia pictures** were made with Grok Imagine (see above).
 - **The commits** made by Claude Code in this repository carry a `Co-Authored-By` trailer. The creator's commits do
   not, so its history does not show which were AI-written: assume most of its code was.
 
@@ -65,7 +72,7 @@ software you have not read line by line.
 - [`ws`](https://github.com/websockets/ws) for WebSockets and [`qrcode-generator`](https://github.com/kazuhikoarase/qrcode-generator)
   for the phone QR code.
 - This documentation is built with [`marked`](https://github.com/markedjs/marked).
-- Not affiliated with or endorsed by Anthropic, Cursor, opencode, Ollama, Crypton Future Media or any other company
+- Not affiliated with or endorsed by Anthropic, Cursor, opencode, Ollama, Crypton Future Media, Warner Bros., Wizarding World or any other company
   named here.
 
 ## Contributing

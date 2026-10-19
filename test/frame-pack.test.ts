@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, isPackName, listPacks, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -317,12 +317,54 @@ test("each character's default outfit is a pack that ships with the app; the oth
     const def = /^default:\s*(\S+)\s*$/im.exec(text)?.[1];
     const id = file.replace(/\.txt$/, "");
     const shipped = (await listPacks(join(root, "packs"))).filter((name) => name === id || name.startsWith(`${id}-`));
-    // Miku's pictures are Crypton's and not open source, so that pack is only in the packs repository and downloaded on request: the app's own files are all MIT.
-    if (id === "miku") {
-      assert.equal(shipped.length, 0, "no Miku pictures in this repository");
+    // Pictures that are not open source stay in the packs repository and are downloaded on request.
+    // Miku is Crypton's. Draconia is unofficial fan art: the only file of hers here is the gallery preview, and it is not MIT.
+    if (id === "miku" || id === "draconia") {
+      assert.equal(shipped.length, 0, `no ${id} pictures in this repository`);
       continue;
     }
     assert.ok(shipped.length >= 1, `${id} has at least one pack that ships with the app, so she works offline`);
     if (def) assert.ok(shipped.includes(def), `${id}: default ${def} must ship with the app`);
+  }
+});
+
+test("Draconia is her own character, so a pack of hers is not one of Franzi's outfits", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const packs = join(root, "packs");
+  const text = await readFile(join(packs, "characters", "draconia.txt"), "utf8");
+  assert.match(text, /^Draconia Malfoid\r?\n/);
+  assert.match(text, /platinum-blonde/);
+  assert.doesNotMatch(text, /franzi/i);
+  const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
+  assert.doesNotMatch(franziText, /draconia/i);
+  const notice = await readFile(join(packs, "thumbs", "draconia-uniform.NOTICE.md"), "utf8");
+  for (const phrase of ["unofficial", "Non-commercial", "Warner Bros.", "Wizarding World", "taken down on request", "rhedak00@yahoo.de"]) {
+    assert.ok(notice.includes(phrase), phrase);
+  }
+  // look.txt's `character: draconia` resolves through packs/characters/draconia.txt. Outfit tags are matched per character id,
+  // so Franzi's list never treats this folder name as one of her short outfit names.
+  const dir = await mkdtemp(join(tmpdir(), "draconia-"));
+  try {
+    await mkdir(join(dir, "draconia-uniform"));
+    await writeFile(join(dir, "draconia-uniform", "neutral.png"), png(4, 4));
+    await writeFile(join(dir, "draconia-uniform", "look.txt"), "character: draconia\nYou wear a Slytherin-style uniform.\n");
+    const read = await readPack([dir, packs], "draconia-uniform", ["neutral"]);
+    assert.equal(read.ok, true);
+    if (!read.ok) return;
+    assert.equal(read.pack.character?.id, "draconia");
+    assert.equal(read.pack.character?.name, "Draconia Malfoid");
+    assert.match(read.pack.character?.text ?? "", /side braid/);
+    assert.equal(read.pack.look, "You wear a Slytherin-style uniform.");
+    const grouped = await packCharacters([dir, packs], ["draconia-uniform", "franzi-dress"]);
+    assert.equal(grouped["draconia-uniform"].id, "draconia");
+    assert.equal(grouped["franzi-dress"].id, "franzi");
+    assert.notEqual(grouped["draconia-uniform"].id, grouped["franzi-dress"].id);
+    assert.equal(outfitName("draconia-uniform", "draconia"), "uniform");
+    assert.equal(outfitName("draconia-uniform", "franzi"), "draconia-uniform");
+    const franziOutfits = ["franzi-dress", "franzi-casual", "franzi-pajamas", "franzi-bikini"].map((pack) => outfitName(pack, "franzi"));
+    assert.equal(franziOutfits.includes(outfitName("draconia-uniform", "draconia")), false);
+    assert.equal(franziOutfits.includes("draconia-uniform"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
