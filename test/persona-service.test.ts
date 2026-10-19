@@ -23,6 +23,7 @@ function make(options: { mode?: "chat" | "work" } = {}) {
     remoteRefusal: () => "only on the computer",
     pushNote: (t) => void notes.push(t),
     current: () => ({ choice, characterName: "" }),
+    name: () => "Risa",
   });
   const say = (t: string) => void said.push(t);
   const propose = (text = "You are a calm night-shift librarian who whispers.") => {
@@ -96,5 +97,29 @@ test("/persona edit starts a file from the voice part she uses now (never the pr
     assert.deepEqual(t.opened, [t.file]);
   } finally {
     t.done();
+  }
+});
+
+test("a persona can only be kept in chat mode: after a switch to work the card waits, and /persona show fills in her name and starts with a capital", () => {
+  const t = make();
+  try {
+    const offer = t.propose();
+    t.state.mode = "work";
+    t.service.answer(offer.id, "keep", t.say, false);
+    assert.match(t.said.at(-1)!, /only be kept in chat mode/);
+    assert.equal(existsSync(t.file), false);
+    assert.equal(t.service.pending().length, 1, "the card is still there");
+    t.state.mode = "chat";
+    t.service.answer(offer.id, "keep", t.say, false);
+    assert.equal(existsSync(t.file), true);
+  } finally {
+    t.done();
+  }
+  const u = make();
+  try {
+    u.service.command("show", u.say, false);
+    assert.match(u.said.at(-1)!, /^The default persona\.md that comes with the app:/);
+  } finally {
+    u.done();
   }
 });

@@ -24,7 +24,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -518,7 +518,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
         settings.provider === "ollama"
           ? `Ollama does not report that ${settings.ollamaModel || "this model"} can use tools, so work mode is off for it. Pick a tool-capable model (a recent Qwen or Llama, for example), or, if you know this one works, start the server with COMPANION_OLLAMA_TOOLS=${settings.ollamaModel || "<model>"}.`
           : basicMode
-            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): npm install -g opencode-ai, then restart this app."
+            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): press the Install opencode card, or run npm install -g opencode-ai and restart this app."
             : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
       );
     }
@@ -593,6 +593,7 @@ const personaVoice = createPersonaService({
   remoteRefusal: () => remoteRefusal,
   pushNote: (text) => notes.push(text),
   current: () => ({ choice: personaChoice(), characterName: activePack?.character?.name ?? "" }),
+  name: () => settings.name,
 });
 
 // --- character cards: see card-service.ts ---
@@ -918,14 +919,15 @@ const slashCommands: Record<
       if (!wanted) {
         await refreshPackIndex(false);
         const packs = await listPacks(...packDirs);
-        const remote = remotePacks(packs).map((pack) => pack.id);
+        const remote = remotePacks(packs);
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
-        const installed = packs.length
-          ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}.`
-          : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one.";
-        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> asks whether to download one.` : "";
-        const hint = packs.length || remote.length ? " Use /frames <name> or /frames off." : "";
-        return say(`${using} ${installed}${available}${hint}`);
+        if (!packs.length && !remote.length) return say(`${using} There are no packs in data/frames yet; docs/frame-packs.md says how to make one.`);
+        // By character, as the gallery shows them: the packs on this computer (yours in data/frames, and those shipped in packs/), then the ones the pack list offers.
+        const lines = groupPacks(packs, await packCharacters(packDirs, packs), remote).map(
+          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
+        );
+        const hint = remote.length ? "/frames <name> uses one (it asks first when it has to be downloaded), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
+        return say(`${using} Packs, by character:\n${lines.join("\n")}\n${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
@@ -1024,6 +1026,7 @@ async function installOpencodeFor(say: Say): Promise<void> {
         broadcast({ type: "install-progress", stage: p.stage, percent });
       },
     });
+    installedJustNow = true;
     broadcast({ type: "install-done", ok: true });
   } catch (err) {
     broadcast({ type: "install-done", ok: false, text: err instanceof InstallError ? err.message : `Could not install opencode: ${err instanceof Error ? err.message : String(err)}` });
@@ -1180,6 +1183,24 @@ function forgetConversationSize(): void {
 function greetBasic(): void {
   if (!basicMode || provider.busy || transcript.items.length > 0) return;
   const said = basicGreeting(settings.name);
+  transcript.delta(said);
+  transcript.flush();
+  persistTranscript();
+  broadcast({ type: "delta", text: said });
+  broadcast({ type: "done" });
+}
+
+/** Set when the page's one-click install of opencode has just finished: the new conversation with it opens by saying so (see greetInstalled). */
+let installedJustNow = false;
+
+/**
+ * After the one-click install the page switches her to opencode, which starts an empty conversation; without a word on it the empty chat is the only sign that
+ * it worked. Said like a reply (kept in the history, shown on every open page), and nothing was asked of the model.
+ */
+function greetInstalled(): void {
+  if (!installedJustNow || settings.provider !== "opencode" || provider.busy || transcript.items.length > 0) return;
+  installedJustNow = false;
+  const said = "[emotion:happy] opencode is installed and I am using it now. Say hello to start!";
   transcript.delta(said);
   transcript.flush();
   persistTranscript();
@@ -1426,6 +1447,7 @@ wss.on("connection", (ws) => {
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());
         cards.greet();
+        greetInstalled();
       }
       provider.configure(sessionConfig());
       if (settings.provider === "ollama") await ollamaBrain.checkTools(); // waited for, so the page hears the new model's answer once, not "no tools" first

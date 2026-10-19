@@ -233,3 +233,15 @@ export function parseModels(result: unknown): { models: OpenCodeModel[]; current
 }
 
 export { permissionResult };
+
+/**
+ * What the page shows when opencode answers a message with an error. Most are shown as they are; the one a user cannot fix from here is said plainly:
+ * opencode's own service turns a network away (its free models, "abusive traffic from this IP address", which shared and cloud addresses can hit), and that
+ * is neither this app's doing nor a broken install.
+ */
+export function opencodeErrorText(message: string): string {
+  if (/free models? (aren'?t|are not) available|abusive traffic/i.test(message)) {
+    return `opencode's service refused this request, so this is not a problem in the app or in your install: ${message.replace(/^\s*Internal error:?\s*/i, "").trim()} It tends to happen on shared or cloud network addresses. Try again later or from another network, or choose another brain in the Brain menu (Ollama runs on your own computer).`;
+  }
+  return message;
+}

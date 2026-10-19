@@ -144,8 +144,9 @@ const NEEDS_MODEL =
  * install a brain. opencode comes first because it is free and needs no account.
  */
 const NEEDS_BRAIN =
-  "To really talk I need a brain. The easiest is [opencode](https://opencode.ai): it is free and needs no account (install it with `npm install -g opencode-ai`, " +
-  `then restart this app). Claude Code, Cursor and Ollama work too: [how to set up each one](${DOCS}brains.html).`;
+  "To really talk I need a brain. The easiest is [opencode](https://opencode.ai): it is free and needs no account. If you see the **Install opencode** card, press it (it asks first, and puts opencode in this app's own folder); " +
+  "otherwise install it yourself with `npm install -g opencode-ai` and restart this app. " +
+  `Claude Code, Cursor and Ollama work too: [how to set up each one](${DOCS}brains.html).`;
 
 /** Her first message when no brain is installed: what this is, and what to do about it. */
 export const basicGreeting = (name = "Risa") =>
@@ -203,7 +204,7 @@ const VOICES = {
       `The [full version](${DOCS}download.html) works with Claude Code, Cursor or opencode, or with a free model on your own computer through [Ollama](https://ollama.com) ` +
       `([how to set that up](${DOCS}brains.html#ollama)). If you can't wait, the "Chat with a small model…" button below runs a tiny one here in your browser, but don't blame me when it's silly.`,
     needsBrain:
-      "Start with [opencode](https://opencode.ai): it is free and needs no account (`npm install -g opencode-ai`, then restart this app), and Claude Code, Cursor and Ollama work too " +
+      "Start with [opencode](https://opencode.ai): it is free and needs no account. Press the **Install opencode** card if there is one, or run `npm install -g opencode-ai` and restart this app. Claude Code, Cursor and Ollama work too " +
       `([how to set up each one](${DOCS}brains.html)). Even you can manage that. Probably.`,
     work: "[emotion:angry] Work mode needs a proper brain: with only a script I can't read or change your files, baka.",
     moods: {

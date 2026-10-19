@@ -16,6 +16,7 @@ import {
   promptBlocks,
   type AcpPermission,
   type OpenCodeModel,
+  opencodeErrorText,
 } from "./opencode-acp.ts";
 import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
@@ -351,7 +352,7 @@ export class OpenCodeProvider implements Provider {
         this.finish({ type: "done" });
         return;
       }
-      this.finish({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      this.finish({ type: "error", message: opencodeErrorText(err instanceof Error ? err.message : String(err)) });
     } finally {
       const mode = opencodeSessionMode(this.config.mode, this.config.permissionMode);
       if (!this.listener && (mode !== this.appliedMode || this.launchKey() !== this.appliedKey)) {

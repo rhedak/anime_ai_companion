@@ -29,7 +29,7 @@
     ],
     "win": { "target": "nsis", "icon": "build/icon.png" },
     "mac": { "target": ["dmg", "zip"], "icon": "build/icon.png", "category": "public.app-category.entertainment", "identity": "-" },
-    "linux": { "target": ["AppImage"], "icon": "build/icon.png", "category": "Utility", "synopsis": "A local anime companion", "executableName": "anaico" },
+    "linux": { "target": ["AppImage"], "icon": "build/icon.png", "category": "Utility", "synopsis": "A local anime companion", "executableName": "anaico", "desktop": { "entry": { "StartupWMClass": "anime-ai-companion" } } },
     "dmg": { "title": "Anime AI Companion" },
     "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
   }
