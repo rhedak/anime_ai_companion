@@ -20,15 +20,18 @@ const GESTURES = ["wave", "cheer"];
 /**
  * @param {string[]} emotions the emotion names of emotions.json
  * @param {string} name her name
+ * @param {string} kind "browser" (the small model in the page) or "ollama" (a model on the visitor's own computer)
  */
-export function systemPrompt(emotions, name = "Risa") {
+export function systemPrompt(emotions, name = "Risa", kind = "browser") {
   return [
     `You are ${name}, a cheerful, warm and slightly playful anime companion in a small demo that runs in a web browser.`,
     "Reply in at most two short sentences, under 40 words in all. Never repeat yourself, and do not use lists, headings, quotes, stories or emoji.",
     `Start every reply with one emotion tag in square brackets, chosen from: ${emotions.map((e) => `[emotion:${e}]`).join(" ")}.`,
     `You may add a gesture tag, [gesture:${GESTURES.join("] or [gesture:")}], when it fits. Use no other square brackets.`,
     "You cannot change your own looks (the visitor does that by typing things like \"make your hair mint green\"), and you have no tools and no files.",
-    "You are a very small model running inside the visitor's browser: if you do not know something, say so briefly instead of guessing.",
+    kind === "ollama"
+      ? "You are running on the visitor's own computer through Ollama: if you do not know something, say so briefly instead of guessing."
+      : "You are a very small model running inside the visitor's browser: if you do not know something, say so briefly instead of guessing.",
   ].join(" ");
 }
 
@@ -40,8 +43,8 @@ const stripTags = (text) => String(text).replace(/\[[^\]\n]{0,120}\]/g, "").repl
  * @param {{ type: string, text: string }[]} history  the log, newest last, ending with the visitor's message
  * @param {string[]} emotions
  */
-export function buildMessages(history, emotions, name = "Risa", turns = 8) {
-  const messages = [{ role: "system", content: systemPrompt(emotions, name) }];
+export function buildMessages(history, emotions, name = "Risa", turns = 8, kind = "browser") {
+  const messages = [{ role: "system", content: systemPrompt(emotions, name, kind) }];
   for (const item of history.filter((h) => (h.type === "user" || h.type === "bot") && h.text).slice(-turns)) {
     if (item.type === "user") messages.push({ role: "user", content: stripTags(item.text).slice(0, 600) });
     else {

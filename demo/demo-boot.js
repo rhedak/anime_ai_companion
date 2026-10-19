@@ -4,6 +4,8 @@ import { loadRenderer } from "./render-bridge.js";
 import { createLocalSocket } from "./local-socket.js";
 import { GREETING, reply } from "../public/script.js";
 import { createModel } from "./model.js";
+import { createOllamaModel } from "./ollama.js";
+import { createModelSwitch } from "./model-switch.js";
 import { createModelDialog } from "./model-dialog.js";
 
 /** A phone-sized window: the page stacks her over the chat there, and the chat gets little height. */
@@ -40,11 +42,29 @@ const emotions = fetch("emotions.json").then((res) => res.json());
 const packs = fetch("packs.json").then((res) => (res.ok ? res.json() : {})).catch(() => ({}));
 
 // The small in-browser model: nothing of it is loaded or fetched until the visitor opens the dialog and says yes.
-const model = createModel();
+const smallModel = createModel();
+// Ollama on the visitor's own computer: tried only when the visitor presses its button in the same dialog.
+const ollama = createOllamaModel();
+const model = createModelSwitch(smallModel, ollama);
 const OLLAMA = "https://rhedak.github.io/anime_ai_companion/brains.html#ollama";
+const DOWNLOAD = "https://rhedak.github.io/anime_ai_companion/download.html";
 const modelDialog = createModelDialog({
-  model,
+  model: smallModel,
+  ollama,
+  onOllamaOn: (name) => {
+    smallModel.setEnabled(false); // one at a time
+    showChips(packed);
+    socket?.announce(
+      `[emotion:happy] [gesture:wave] Now I'm talking through ${name} on your own computer, so I can chat properly. Changing my looks works as before: just ask. ` +
+        `This is only a taste, though: the full app gives me a coding agent with tools, memory and picture packs. [Download it](${DOWNLOAD}).`,
+    );
+  },
+  onOllamaOff: () => {
+    showChips(packed);
+    socket?.announce("[emotion:neutral] Okay, Ollama is off. I'm back to my script.");
+  },
   onReady: () => {
+    ollama.setEnabled(false); // one at a time
     showChips(packed);
     socket?.announce(
       "[emotion:happy] [gesture:wave] The small model is loaded, so now I can chat. I'm small, though: expect simple, sometimes silly answers. " +
@@ -121,7 +141,7 @@ const CHIPS = [
   { label: "Try the picture pack", text: "/frames risa-dress" },
   "Show me work mode",
   "What can you do?",
-  { label: () => (model.ready() ? "Small model: on" : "Chat with a small model…"), action: () => modelDialog.open() },
+  { label: () => (model.ready() ? "Model: on" : "Chat with a model…"), action: () => modelDialog.open() },
 ];
 
 /** The same while she is a set of pictures: nothing that would redraw her, and the way back. */
@@ -134,7 +154,7 @@ const PACK_CHIPS = [
   "Show me work mode",
   "What can you do?",
   { label: "Back to the drawn avatar", text: "/frames off" },
-  { label: () => (model.ready() ? "Small model: on" : "Chat with a small model…"), action: () => modelDialog.open() },
+  { label: () => (model.ready() ? "Model: on" : "Chat with a model…"), action: () => modelDialog.open() },
 ];
 
 /** The suggested prompts can be folded away, which gives the chat the room. */

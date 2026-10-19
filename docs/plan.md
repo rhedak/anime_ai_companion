@@ -243,6 +243,8 @@ browser. `test/demo-stage.test.ts` stages the demo for real: no Python or Pyodid
 the same SHA-256 as the server's path. Still to do: a creator release that has its TypeScript (the pin in `package.json` is v0.3.0, which has none,
 so the pages workflow and the README's clone commands wait for that tag).
 
+**Phase 2b, Ollama from the demo page: done, locally** (`demo/ollama.js`; see `demo/README.md`). The dialog offers a model on the visitor's own computer before the in-browser one, tried only when the visitor presses the button.
+
 **Phase 2, an optional small model in the browser: done, locally.** A prompt "Chat with a small model…" opens a dialog (`demo/model-dialog.js`)
 that says what is downloaded and from where, how big it is, that it is small and a model on the visitor's own computer (Ollama) is the way to a
 proper chat, and only then downloads. Chosen with the owner: the smallest usable model, **SmolLM2-360M-Instruct** (Apache-2.0; Hugging Face's

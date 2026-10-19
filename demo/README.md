@@ -34,6 +34,14 @@ What is here, and how the pieces fit:
 - Asked to chat, or for anything only a model could do (a joke, a poem, "who are you?"), or for anything the script does not know, she says plainly
   that the demo has no language model, and points to the real app's brains (Claude Code, Cursor, opencode) and to Ollama with a link to the
   setup page. The reply ends on words, because the bubble over her picture shows the tail of a reply as plain text.
+- **Ollama on the visitor's own computer** (`ollama.js`, `model-switch.js`, the top of the same dialog): "Chat with a model…" first offers Ollama. Nothing is
+  tried until the visitor presses *Connect to Ollama*; the page then asks `http://localhost:11434` itself (no server of ours is involved, and nothing
+  leaves the machine), lists the models and streams the chat from `/api/chat`: chat only, no tools. It has the interface of `model.js`, so
+  `local-socket.js` does not care which answers (`createModelSwitch`; turning one on turns the other off), and the prompt says where it runs
+  (`systemPrompt(…, kind)`). Ollama refuses other websites by default, and a browser cannot tell "not running" from "refused", so the failure
+  message names both and the fix (`OLLAMA_ORIGINS=<this site> ollama serve`; Chrome may also ask whether the page may reach local devices; Safari may
+  block a plain-HTTP address from an HTTPS page). Every model line in the dialog and the first message after switching one on points to the Download page:
+  the demo is a taste, the full app is the point. Tests fake Ollama's two endpoints (`test/demo-ollama.test.ts`); nothing real is started.
 - The optional small model (`model.js`, `model-dialog.js`, `model-prompt.js`): the prompt "Chat with a small model…" opens a dialog that says
   plainly what is downloaded (SmolLM2 360M, about 207 MB, from huggingface.co, cdn.jsdelivr.net and raw.githubusercontent.com), that it is
   small, and that a model on the visitor's own computer (Ollama) is better. Nothing is fetched before the visitor says yes. With the model on,

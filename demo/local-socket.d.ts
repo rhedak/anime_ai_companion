@@ -34,5 +34,5 @@ export function createLocalSocket(options: {
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;
   /** Called with what to keep for the next visit (her look and pack), or null to forget it. */
   onSave?: (saved: { character: any; pack: string | null; base: string | null } | null) => void;
-  model?: { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void } | null;
+  model?: { ready(): boolean; kind?: () => string; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void } | null;
 }): LocalSocket;

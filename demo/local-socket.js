@@ -477,7 +477,7 @@ export function createLocalSocket({
     const names = Object.keys(await emotions);
     let said = "";
     try {
-      said = await model.chat(buildMessages(history, names, name), (piece) => out({ type: "delta", text: piece }));
+      said = await model.chat(buildMessages(history, names, name, 8, model.kind?.() ?? "browser"), (piece) => out({ type: "delta", text: piece }));
     } catch (err) {
       out({ type: "notice", text: `The small model stopped: ${err?.message ?? err}` });
     }
