@@ -187,7 +187,8 @@ async function checkForUpdates(manual) {
     if (latest && isNewer(latest, current)) {
       const { response } = await askUser({
         type: "info",
-        message: `Anaico ${latest.replace(/^v/, "")} is available`,
+        title: "Anime AI Companion",
+        message: `Anime AI Companion ${latest.replace(/^v/, "")} is available`,
         detail: `You have ${current}. Nothing is downloaded or installed for you: the button opens the releases page in your browser.`,
         buttons: ["Open releases page", "Later"],
         defaultId: 0,
@@ -195,7 +196,7 @@ async function checkForUpdates(manual) {
       });
       if (response === 0) shell.openExternal(RELEASES_URL);
     } else if (manual) {
-      await askUser({ type: "info", message: "Anaico is up to date", detail: `You have ${current}.`, buttons: ["OK"] });
+      await askUser({ type: "info", title: "Anime AI Companion", message: "Anime AI Companion is up to date", detail: `You have ${current}.`, buttons: ["OK"] });
     }
   } catch (err) {
     if (manual) dialog.showErrorBox("Could not check for updates", String(err && err.message ? err.message : err));
@@ -215,9 +216,10 @@ async function offerUpdateChecks() {
     writeUpdateSettings({ asked: true });
     const { response } = await askUser({
       type: "question",
+      title: "Anime AI Companion",
       message: "Tell me when a new version is out?",
       detail:
-        "About once a day Anaico would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
+        "About once a day Anime AI Companion would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
         "Nothing is downloaded or installed for you. You can change this later under File, Options.",
       buttons: ["Check for updates", "No thanks"],
       defaultId: 1,
@@ -243,16 +245,16 @@ function hideToTray() {
   const flag = path.join(app.getPath("userData"), ".tray-notice-shown");
   if (process.platform === "win32" && tray && !fs.existsSync(flag)) {
     fs.writeFileSync(flag, "");
-    tray.displayBalloon({ iconType: "info", title: "Anaico is still running", content: "She is in the tray. Click the icon to bring the window back, or right-click it to quit." });
+    tray.displayBalloon({ iconType: "info", title: "Anime AI Companion is still running", content: "She is in the tray. Click the icon to bring the window back, or right-click it to quit." });
   }
 }
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: isMac ? 18 : 32, height: isMac ? 18 : 32, quality: "best" }));
-  tray.setToolTip("Anaico");
+  tray.setToolTip("Anime AI Companion");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Show Anaico", click: showWindow },
+      { label: "Show Anime AI Companion", click: showWindow },
       { label: "Open in Browser", click: () => shell.openExternal(origin + "/") },
       { type: "separator" },
       { label: "Quit", click: () => app.quit() },
@@ -267,7 +269,7 @@ function createWindow() {
     height: 860,
     minWidth: 480,
     minHeight: 520,
-    title: "Anaico",
+    title: "Anime AI Companion",
     icon: nativeImage.createFromPath(iconPath),
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
@@ -358,7 +360,7 @@ function fail(message) {
   if (quitting) return;
   quitting = true;
   stopServer();
-  dialog.showErrorBox("Anaico could not start", message);
+  dialog.showErrorBox("Anime AI Companion could not start", message);
   app.exit(1);
 }
 

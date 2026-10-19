@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { existsSync } from "node:fs";
@@ -8,7 +7,6 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { promisify } from "node:util";
 import sharp from "sharp";
 import { listPacks, readPack } from "../src/frame-pack.ts";
 import { buildPackArchive, indexEntryForArchive } from "../src/pack-archive.ts";
@@ -21,11 +19,9 @@ import {
   type PackProgress,
 } from "../src/pack-install.ts";
 import { parsePackIndex } from "../src/pack-index.ts";
-import { readTar } from "../src/tar-store.ts";
 import { decodeRgba, encodeRgba } from "../src/webp-rgba.ts";
 import { cannotRunServer, startServer } from "./helpers/server.ts";
 
-const exec = promisify(execFile);
 const root = join(import.meta.dirname, "..");
 const emotions = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")) as Record<string, unknown>);
 const texts = { "credit.txt": "Mina, an original character.\nMade with AI.\n", "NOTICE.md": "MIT, with the usual caveat about pictures made with AI.\n" };
@@ -418,30 +414,14 @@ async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 }
 
-/** franzi-casual is added on `add-franzi-casual`. Use it from this tree when it is here, otherwise from that branch. */
+/**
+ * A real pack to build an archive from and install: the dirndl that ships with the app (the other Franzi outfits are downloads now, so they are not in this
+ * repository). The tests call it "franzi-casual"; the id is only a name, the pictures are what matters.
+ */
 async function franziCasual(): Promise<string> {
-  const shipped = join(root, "packs", "franzi-casual");
-  if (await isPack(shipped)) return shipped;
-  const cached = join(tmpdir(), "anaico-franzi-casual");
-  if (await isPack(cached)) return cached;
-  const ref = "origin/add-franzi-casual";
-  const have = await exec("git", ["-C", root, "rev-parse", "--verify", "--quiet", ref]).then(() => true, () => false);
-  if (!have) await exec("git", ["-C", root, "fetch", "--depth", "1", "origin", "add-franzi-casual"], { timeout: 120_000 });
-  const tarPath = join(tmpdir(), "anaico-franzi-casual-src.tar");
-  await exec("git", ["-C", root, "archive", "-o", tarPath, ref, "packs/franzi-casual"], { timeout: 60_000 });
-  const archive = readTar(await readFile(tarPath));
-  assert.equal(archive.ok, true, !archive.ok ? archive.reason : "");
-  if (!archive.ok) throw new Error("no archive");
-  await mkdir(cached, { recursive: true });
-  const prefix = "packs/franzi-casual/";
-  for (const [name, data] of archive.files) {
-    if (!name.startsWith(prefix)) continue;
-    const base = name.slice(prefix.length);
-    if (!base || base.includes("/")) continue;
-    await writeFile(join(cached, base), data);
-  }
-  assert.equal(await isPack(cached), true, "the add-franzi-casual branch did not contain packs/franzi-casual");
-  return cached;
+  const shipped = join(root, "packs", "franzi-dress");
+  assert.equal(await isPack(shipped), true, "packs/franzi-dress ships with the app");
+  return shipped;
 }
 
 async function isPack(folder: string): Promise<boolean> {

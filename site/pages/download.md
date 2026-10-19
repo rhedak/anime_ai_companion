@@ -11,11 +11,11 @@ You still need **a brain** (below); without one she runs a small built-in script
 
 | System | File | Size |
 | --- | --- | --- |
-| **Windows** 10 or newer | [`Anime.AI.Companion.Setup.<version>.exe`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion.Setup.<version>.exe) | about 165 MB |
-| **macOS** 11 or newer, Apple Silicon | [`Anime.AI.Companion-<version>-arm64.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.dmg) | about 180 MB |
-| **macOS**, Intel | [`Anime.AI.Companion-<version>.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.dmg) | about 190 MB |
-| **Linux**, x64 | [`Anime.AI.Companion-<version>.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.AppImage) | about 190 MB |
-| **Linux**, arm64 | [`Anime.AI.Companion-<version>-arm64.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.AppImage) | about 190 MB |
+| **Windows** 10 or newer | [`Anime.AI.Companion.Setup.<version>.exe`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion.Setup.<version>.exe) | about 150 MB |
+| **macOS** 11 or newer, Apple Silicon | [`Anime.AI.Companion-<version>-arm64.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.dmg) | about 165 MB |
+| **macOS**, Intel | [`Anime.AI.Companion-<version>.dmg`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.dmg) | about 175 MB |
+| **Linux**, x64 | [`Anime.AI.Companion-<version>.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.AppImage) | about 175 MB |
+| **Linux**, arm64 | [`Anime.AI.Companion-<version>-arm64.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.AppImage) | about 175 MB |
 
 Signing the Windows installer, and notarising the Mac app, may come later; until then Windows and macOS warn as described below.
 

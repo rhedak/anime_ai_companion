@@ -280,3 +280,13 @@ test("in chat mode a tool request is refused without a card, and the turn goes o
     removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
   }
 });
+
+test("opencode's own refusal of a network is said as that, and any other error is shown as it is", async () => {
+  const { opencodeErrorText } = await import("../src/providers/opencode-acp.ts");
+  const refused = opencodeErrorText("Internal error: OpenCode's free models aren't available from your current network because we've detected abusive traffic from this IP address.");
+  assert.match(refused, /^opencode's service refused this request, so this is not a problem in the app/);
+  assert.match(refused, /OpenCode's free models aren't available from your current network/);
+  assert.doesNotMatch(refused, /Internal error/);
+  assert.match(refused, /another brain in the Brain menu/);
+  assert.equal(opencodeErrorText("Something else broke"), "Something else broke");
+});

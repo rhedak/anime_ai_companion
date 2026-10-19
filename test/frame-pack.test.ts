@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
+import { frameMime, gestureNote, groupPacks, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -378,4 +378,19 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("packs are grouped by character for /frames: the ones here, the ones on offer, packs of nobody last", () => {
+  const franzi = { id: "franzi", name: "Franzi" };
+  const groups = groupPacks(
+    ["franzi-dress", "my-own", "risa-dress", "franzi-casual"],
+    { "franzi-dress": franzi, "franzi-casual": franzi, "risa-dress": { id: "risa", name: "Risa" } },
+    [{ id: "franzi-bikini", character: franzi }, { id: "miku", character: { id: "miku", name: "Miku" } }, { id: "loose" }],
+  );
+  assert.deepEqual(groups.map((g) => [g.who?.name ?? null, g.here, g.offered]), [
+    ["Franzi", ["franzi-dress", "franzi-casual"], ["franzi-bikini"]],
+    ["Miku", [], ["miku"]],
+    ["Risa", ["risa-dress"], []],
+    [null, ["my-own"], ["loose"]],
+  ]);
 });

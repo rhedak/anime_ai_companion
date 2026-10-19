@@ -49,6 +49,15 @@ const remote = fetch(`${PACKS_SITE}index.json`, { signal: AbortSignal.timeout(80
   .then((res) => (res.ok ? res.json() : {}))
   .then((index) => remotePacksFrom(index))
   .catch(() => ({}));
+/** The packs the visitor has said yes to on earlier visits (kept in this browser): a link to one of them does not ask again. */
+const agreed = (() => {
+  try {
+    const list = JSON.parse(remembered("demoAgreedPacks") || "[]");
+    return Array.isArray(list) ? list.filter((id) => typeof id === "string" && /^[A-Za-z0-9._-]{1,40}$/.test(id)).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+})();
 /** Fetches a picture so the browser has it before the pack is shown. */
 const preload = (url) =>
   new Promise((resolve, reject) => {
@@ -115,6 +124,8 @@ let loading = true;
     remote,
     preload,
     want: wantedFromSearch(location.search),
+    agreed,
+    onAgree: (id) => remember("demoAgreedPacks", JSON.stringify([...new Set([...agreed, id])].slice(-20))),
     onPack: (name) => showChips(name !== null),
     model,
     restore: savedLook(),

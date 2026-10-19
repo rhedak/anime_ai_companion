@@ -46,7 +46,7 @@ export function remotePacksFrom(index, site = PACKS_SITE) {
       host: base.hostname,
       thumb,
       base: base.href,
-      saved: "Your browser keeps it for next time.",
+      saved: "The demo remembers that you said yes and fetches it again when you come back.",
     };
   }
   return found;

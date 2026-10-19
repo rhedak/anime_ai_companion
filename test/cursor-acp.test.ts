@@ -232,3 +232,27 @@ test("a permission request reaches the card and the allow answer lets the turn f
     removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
   }
 });
+
+test("the Cursor CLI's own approval setting is read (and only read): 'unrestricted' is the one that never asks", async () => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { cursorApprovalMode, CURSOR_UNRESTRICTED_TEXT } = await import("../src/providers/cursor-acp.ts");
+  const dir = await mkdtemp(join(tmpdir(), "cursor-config-"));
+  try {
+    const file = join(dir, "cli-config.json");
+    assert.equal(cursorApprovalMode(file), null, "no file");
+    await writeFile(file, JSON.stringify({ approvalMode: "unrestricted", permissions: { allow: [] } }));
+    assert.equal(cursorApprovalMode(file), "unrestricted");
+    await writeFile(file, JSON.stringify({ approvalMode: "allowlist" }));
+    assert.equal(cursorApprovalMode(file), "allowlist");
+    await writeFile(file, JSON.stringify({ version: 1 }));
+    assert.equal(cursorApprovalMode(file), null, "no such setting: the default, which asks");
+    await writeFile(file, "not json");
+    assert.equal(cursorApprovalMode(file), null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.match(CURSOR_UNRESTRICTED_TEXT, /Nothing was sent/);
+  assert.match(CURSOR_UNRESTRICTED_TEXT, /Everything in the permission menu/);
+});

@@ -4,6 +4,15 @@
  */
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Drawn bodies whose face and arms the drawing engine does not animate yet (creator 0.5.0's adult body draws one fixed face and arms, so an emotion, a blink,
+ * the talking mouth and a gesture all give the same picture). For such a look `/show` says so instead of playing a sequence in which nothing changes.
+ */
+export const BODIES_WITHOUT_EXPRESSIONS = ["adult_female"];
+export const NO_EXPRESSIONS_TEXT =
+  "This drawn look has no expressions or gestures yet in the drawing engine, so /show would not change her face (and her moods and talking mouth do nothing for it either). " +
+  "Her picture packs do have them: Looks → Packs…, or pick another look.";
+
 /** How long each emotion is held, in milliseconds. */
 export const DEMO_HOLD_MS = 1000;
 

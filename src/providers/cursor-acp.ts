@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ImageInput } from "../images.ts";
 import { summarizeTool } from "./claude-stream.ts";
 import type { Decision, Mode, PermissionMode, PermissionRequest, ProviderEvent } from "./types.ts";
@@ -241,3 +244,22 @@ export function parseModels(result: unknown): { models: CursorModel[]; currentMo
   const currentModelId = typeof body.models?.currentModelId === "string" ? body.models.currentModelId : "";
   return { models, currentModelId };
 }
+
+/**
+ * The Cursor CLI's own approval setting: `approvalMode` in `~/.cursor/cli-config.json`. With "unrestricted" it runs commands and edits files without ever sending
+ * `session/request_permission`, whatever the client asks for (measured with cursor-agent 2026.10.14: a work-mode edit in Ask mode produced no approval card), so the
+ * app's Ask could not ask. Read only; the app never changes Cursor's settings. Null when there is no file or no such setting.
+ */
+export function cursorApprovalMode(configPath: string = join(homedir(), ".cursor", "cli-config.json")): string | null {
+  try {
+    const mode = (JSON.parse(readFileSync(configPath, "utf8")) as { approvalMode?: unknown }).approvalMode;
+    return typeof mode === "string" ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Said (and the message not sent) when work mode in Ask would be run by a Cursor that never asks. */
+export const CURSOR_UNRESTRICTED_TEXT =
+  'Your Cursor CLI is set to run everything without asking ("approvalMode": "unrestricted" in ~/.cursor/cli-config.json), so the approval cards here could never appear and Ask would not ask. Nothing was sent. ' +
+  "Change that setting in Cursor (or delete the line, which brings the default back) so that it asks again, or choose Everything in the permission menu if you do want it to run without asking, or use another brain for work mode.";

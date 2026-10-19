@@ -23,7 +23,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/memory [add <note> \| forget <number\|all> \| edit \| ask \| auto \| off]` | her notes about you (`data/memory.md`); in chat she asks before saving one (`auto` saves with an Undo, `off` saves nothing), never in work mode |
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
-| `/rename [name]` | change her name |
+| `/rename [name \| reset]` | give her a name of your own (it wins over the name of a pack's character); `reset` goes back to the character's name, or Risa |
 | `/frames [name\|off]` | show her with a [picture pack](picture-packs.html); alone, lists the packs |
 | `/show` | she plays every emotion, a blink, talking and her gestures, naming each |
 | `/phone [new]` | the link and QR code for your [phone](phone.html) (needs `--lan`); `new` makes a new token |

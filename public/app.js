@@ -986,11 +986,9 @@ function installProgress(msg) {
   el.textContent = msg.stage === "download" ? `Downloading… ${msg.percent ?? 0}%` : (INSTALL_STAGES[msg.stage] ?? "Working…");
 }
 
-let justInstalled = false; // set when this page's install finished, until the new conversation has started
 function installDone(msg) {
   if (!installEl?.active) return; // another page started it, or this card was closed
   installEl.active = false;
-  if (msg.ok) justInstalled = true;
   const done = document.createElement("div");
   done.className = "perm-done";
   if (msg.ok) {
@@ -1223,6 +1221,8 @@ function handle(msg) {
       packNames = msg.names ?? [];
       packCharacters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
       remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
+      // The browser demo names the preview of every pack its list has, also of one it has fetched (it has no previews folder for them); the app has /pack-thumb/<name>.
+      packThumbs = msg.thumbs && typeof msg.thumbs === "object" ? Object.fromEntries(Object.entries(msg.thumbs).filter(([, url]) => typeof url === "string" && url.startsWith("https://"))) : {};
       activePackName = msg.active ?? null;
       renderLooksMenu();
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
@@ -1420,11 +1420,6 @@ function handle(msg) {
       voice.cancel();
       log.replaceChildren();
       sayLook();
-      if (justInstalled) {
-        // The install ends in a new conversation with the new brain, which empties the log: say that it worked, so the empty chat is not the only sign.
-        justInstalled = false;
-        addMsg("sys", "opencode is installed and she is using it now. Say hello to start.");
-      }
       coldEl = null;
       skillsEl = null;
       cardEl = null;
@@ -1798,6 +1793,7 @@ setInterval(() => meter && renderMeter(), 60_000);
 let lastLooks = { names: [], presets: [] };
 let packNames = [];
 let remotePacks = []; // { id, name, description?, credit? } for packs the index lists that are not on disk
+let packThumbs = {}; // pack name -> https address of its preview, when the server names one (the browser demo)
 let activePackName = null; // the picture pack in use, or null for the drawn avatar
 let galleryFill = null; // redraws the open packs gallery when the index arrives
 
@@ -1809,8 +1805,12 @@ function renderLooksMenu() {
     g.append(...options);
     return g;
   };
+  // The label of the menu, not a choice of it: picking an option that is already selected does nothing, so it is not offered in the list.
+  const label = new Option("Looks…", "");
+  label.hidden = true;
+  label.disabled = true;
   select.replaceChildren(
-    new Option("Looks…", ""),
+    label,
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
     ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
@@ -1914,7 +1914,8 @@ function packItem(name, remote, shown) {
     const img = document.createElement("img");
     img.alt = "";
     img.loading = "lazy";
-    img.src = typeof remote?.thumb === "string" && remote.thumb.startsWith("https://") ? remote.thumb : `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder; the demo names the preview of a pack it fetches itself
+    const named = typeof remote?.thumb === "string" && remote.thumb.startsWith("https://") ? remote.thumb : packThumbs[name];
+    img.src = named ?? `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder; the demo names the preview of a pack it fetches itself
     pic.append(img);
   }
   item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));

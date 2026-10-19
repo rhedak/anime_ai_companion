@@ -17,6 +17,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
+import { CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
 import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -24,7 +25,8 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { BODIES_WITHOUT_EXPRESSIONS, NO_EXPRESSIONS_TEXT } from "./demo.ts";
+import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
@@ -41,7 +43,7 @@ import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
-import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
+import { checkProjectDir, cleanName, DEFAULT_NAME, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 import { dataDir, workspaceDir } from "./paths.ts";
 
@@ -83,6 +85,11 @@ const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
+/**
+ * Her name, in two tiers: the one the user gave her (typed, /rename, or a character card), else the name of the character of the picture pack that is on, else the
+ * default. A pack of a character she is not called after never renames her over a name the user chose.
+ */
+const herName = (): string => (settings.nameSet || !activePack?.character ? settings.name : activePack.character.name);
 /** The pack's resting picture, kept ready to show her how she looks (brains that can read pictures), and whether the next message should carry it. */
 let lookPicture: ImageInput | null = null;
 let lookPictureDue = false;
@@ -252,7 +259,7 @@ const personaChoice = () => {
   });
 };
 const persona = (config: SessionConfig) =>
-  personaChoice().text.replaceAll("{{name}}", settings.name) +
+  personaChoice().text.replaceAll("{{name}}", herName()) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -287,7 +294,7 @@ const skills = createSkillsService({
   pushNote: (text) => notes.push(text),
   broadcast: (msg) => broadcast(msg),
   modeInfo: () => modeInfo(),
-  name: () => settings.name,
+  name: () => herName(),
   remoteRefusal: () => remoteRefusal,
 });
 
@@ -363,7 +370,7 @@ const shownModel = () => acpBrain()?.modelLabel || sessionConfig().model;
 
 const modeInfo = () => ({
   type: "mode",
-  name: settings.name,
+  name: herName(),
   mode,
   // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
   provider: basicMode ? "basic" : settings.provider,
@@ -491,7 +498,7 @@ function renewNotes(): void {
   if (activePack) {
     // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
     const pack = activePack;
-    notes.pushLazy(() => packNote(pack, outfitCache));
+    notes.pushLazy(() => packNote(pack, outfitCache, herName()));
     lookPictureDue = true;
   }
 }
@@ -518,7 +525,7 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
         settings.provider === "ollama"
           ? `Ollama does not report that ${settings.ollamaModel || "this model"} can use tools, so work mode is off for it. Pick a tool-capable model (a recent Qwen or Llama, for example), or, if you know this one works, start the server with COMPANION_OLLAMA_TOOLS=${settings.ollamaModel || "<model>"}.`
           : basicMode
-            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): npm install -g opencode-ai, then restart this app."
+            ? "Work mode needs a brain, and none is installed yet. opencode is the easiest (free, no account): press the Install opencode card, or run npm install -g opencode-ai and restart this app."
             : "This model cannot use tools. Switch to Claude Code, Cursor, opencode or a tool-capable Ollama model for work mode.",
       );
     }
@@ -593,13 +600,23 @@ const personaVoice = createPersonaService({
   remoteRefusal: () => remoteRefusal,
   pushNote: (text) => notes.push(text),
   current: () => ({ choice: personaChoice(), characterName: activePack?.character?.name ?? "" }),
+  name: () => herName(),
 });
 
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
   file: join(dataDir, "character.json"),
   personaBase,
-  settings,
+  // A card that names her gives her a name of her own (the user's choice, so it wins over a pack character's name).
+  settings: {
+    get name() {
+      return herName();
+    },
+    set name(value: string) {
+      settings.name = value;
+      settings.nameSet = true;
+    },
+  },
   saveSettings: () => saveSettings(settingsPath, settings),
   pushNote: (text) => notes.push(text),
   busy: () => provider.busy,
@@ -612,13 +629,23 @@ const cards = createCardService({
 await cards.load();
 
 async function rename(input: string, say: Say): Promise<void> {
+  if (/^\s*(reset|default)\s*$/i.test(input)) {
+    if (!settings.nameSet) return say(`She already goes by ${herName()}.`);
+    settings.nameSet = false;
+    settings.name = DEFAULT_NAME;
+    await saveSettings(settingsPath, settings);
+    notes.push(`the user took away the name they gave you: your name is ${herName()} again.`);
+    broadcast(modeInfo());
+    return say(`She goes by ${herName()} again${activePack?.character ? " (the name of the character of the pack that is on)" : ""}.`);
+  }
   const name = cleanName(input);
   if (!name) return say("A name can have 1 to 24 letters, numbers, spaces and . ' - _");
-  if (name === settings.name) return;
+  if (settings.nameSet && name === settings.name) return;
   settings.name = name;
+  settings.nameSet = true;
   await saveSettings(settingsPath, settings);
   // Her running session keeps the old prompt until it restarts, so tell her directly.
-  notes.push(`the user renamed you: your name is now ${name}.`);
+  notes.push(`the user renamed you: your name is now ${name}. This replaces any other name you were given, including the name of a character.`);
   broadcast(modeInfo());
 }
 
@@ -682,11 +709,13 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   if (name === null) {
     if (!settings.framePack) return say("Already showing the drawn avatar.");
     const hadVoice = Boolean(activePack?.character?.voice);
+    const hadName = !settings.nameSet && Boolean(activePack?.character);
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}`);
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}`);
+    broadcast(modeInfo());
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
@@ -709,8 +738,9 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   activePack = result.pack;
   await loadLookPicture();
   await refreshOutfits();
-  notes.push(packNote(result.pack, outfitCache));
+  notes.push(packNote(result.pack, outfitCache, herName()));
   lookPictureDue = true;
+  broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());
   broadcast(await packsMessage());
   // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
@@ -866,8 +896,8 @@ const slashCommands: Record<
     },
   },
   rename: {
-    help: "rename the companion: /rename Hana (or click her name at the top)",
-    run: ({ args, say }) => (args ? rename(args, say) : say(`She is called ${settings.name}. Use /rename <new name>`)),
+    help: "rename the companion: /rename Hana (or click her name at the top); /rename reset goes back to the character's name (or Risa)",
+    run: ({ args, say }) => (args ? rename(args, say) : say(`She is called ${herName()}${settings.nameSet ? "" : activePack?.character ? " (the name of the character of the pack that is on)" : ""}. /rename <new name> gives her a name of your own, /rename reset goes back.`)),
   },
   setup: {
     help: "work mode: use your own Claude Code setup (settings, hooks, MCP servers): /setup on | off",
@@ -918,21 +948,25 @@ const slashCommands: Record<
       if (!wanted) {
         await refreshPackIndex(false);
         const packs = await listPacks(...packDirs);
-        const remote = remotePacks(packs).map((pack) => pack.id);
+        const remote = remotePacks(packs);
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
-        const installed = packs.length
-          ? `Packs (yours in data/frames, and those shipped in packs/): ${packs.join(", ")}.`
-          : "There are no packs in data/frames yet; docs/frame-packs.md says how to make one.";
-        const available = remote.length ? ` Not installed yet: ${remote.join(", ")}. /frames <name> asks whether to download one.` : "";
-        const hint = packs.length || remote.length ? " Use /frames <name> or /frames off." : "";
-        return say(`${using} ${installed}${available}${hint}`);
+        if (!packs.length && !remote.length) return say(`${using} There are no packs in data/frames yet; docs/frame-packs.md says how to make one.`);
+        // By character, as the gallery shows them: the packs on this computer (yours in data/frames, and those shipped in packs/), then the ones the pack list offers.
+        const lines = groupPacks(packs, await packCharacters(packDirs, packs), remote).map(
+          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
+        );
+        const hint = remote.length ? "/frames <name> uses one (it asks first when it has to be downloaded), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
+        return say(`${using} Packs, by character:\n${lines.join("\n")}\n${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
     },
   },
   show: {
     help: "she shows all her emotions, a blink, talking and her gestures, one at a time, naming each (no model call)",
-    run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
+    run: ({ say }) =>
+      !activePack && BODIES_WITHOUT_EXPRESSIONS.includes((avatar.character as { body?: string }).body ?? "")
+        ? say(NO_EXPRESSIONS_TEXT)
+        : broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
@@ -1024,6 +1058,7 @@ async function installOpencodeFor(say: Say): Promise<void> {
         broadcast({ type: "install-progress", stage: p.stage, percent });
       },
     });
+    installedJustNow = true;
     broadcast({ type: "install-done", ok: true });
   } catch (err) {
     broadcast({ type: "install-done", ok: false, text: err instanceof InstallError ? err.message : `Could not install opencode: ${err instanceof Error ? err.message : String(err)}` });
@@ -1179,7 +1214,25 @@ function forgetConversationSize(): void {
 /** In basic mode an empty conversation opens by saying what she is and how to get a real brain: shown like a reply, nothing was asked of anything. */
 function greetBasic(): void {
   if (!basicMode || provider.busy || transcript.items.length > 0) return;
-  const said = basicGreeting(settings.name);
+  const said = basicGreeting(herName());
+  transcript.delta(said);
+  transcript.flush();
+  persistTranscript();
+  broadcast({ type: "delta", text: said });
+  broadcast({ type: "done" });
+}
+
+/** Set when the page's one-click install of opencode has just finished: the new conversation with it opens by saying so (see greetInstalled). */
+let installedJustNow = false;
+
+/**
+ * After the one-click install the page switches her to opencode, which starts an empty conversation; without a word on it the empty chat is the only sign that
+ * it worked. Said like a reply (kept in the history, shown on every open page), and nothing was asked of the model.
+ */
+function greetInstalled(): void {
+  if (!installedJustNow || settings.provider !== "opencode" || provider.busy || transcript.items.length > 0) return;
+  installedJustNow = false;
+  const said = "[emotion:happy] opencode is installed and I am using it now. Say hello to start!";
   transcript.delta(said);
   transcript.flush();
   persistTranscript();
@@ -1224,7 +1277,12 @@ const turns = createTurnService({
     const sees = !basicMode && (settings.provider === "claude" || (settings.provider === "ollama" && ollamaBrain.canSeePicturesFor(settings.ollamaModel)));
     return picture && sees ? [picture] : [];
   },
-  notReady: () => (settings.provider === "ollama" && !settings.ollamaModel ? ollamaNotReady() : null),
+  notReady: () =>
+    settings.provider === "ollama" && !settings.ollamaModel
+      ? ollamaNotReady()
+      : settings.provider === "cursor" && mode === "work" && permissionMode === "manual" && cursorApprovalMode() === "unrestricted"
+        ? CURSOR_UNRESTRICTED_TEXT
+        : null,
   emotionNames: () => Object.keys(emotions),
   folder: () => sessionConfig().cwd,
   broadcast: (msg) => broadcast(msg),
@@ -1426,6 +1484,7 @@ wss.on("connection", (ws) => {
         broadcast({ type: "reset" });
         broadcast(backgroundMessage());
         cards.greet();
+        greetInstalled();
       }
       provider.configure(sessionConfig());
       if (settings.provider === "ollama") await ollamaBrain.checkTools(); // waited for, so the page hears the new model's answer once, not "no tools" first

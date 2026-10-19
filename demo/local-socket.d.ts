@@ -39,6 +39,9 @@ export function createLocalSocket(options: {
   preload?: (url: string) => Promise<unknown>;
   /** A pack or character id from the page's link (`?pack=…`), shown, or asked about if it must be fetched first. */
   want?: string;
+  /** Packs the visitor said yes to on earlier visits, and a call when they say yes to one now (the page keeps the list in the browser). */
+  agreed?: string[];
+  onAgree?: (id: string) => void;
   onPack?: (name: string | null) => void;
   /** The look and pack from the visitor's last visit. */
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;

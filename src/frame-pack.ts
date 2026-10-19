@@ -244,7 +244,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   for (const [gesture, list] of Object.entries(poses)) gestures[gesture] = list.sort((a, b) => a[0] - b[0]).map(([, f]) => f);
   const plain = emotions.filter((e) => !result[e]);
   if (plain.length) notes.push(`No pictures for ${plain.join(", ")}: she shows neutral for those.`);
-  const known = new Set(["credit.txt", "NOTICE.md", "look.txt"]);
+  const known = new Set(["credit.txt", "NOTICE.md", "look.txt", "PROCESS.md"]);
   const unused = ignored.filter((f) => !known.has(f));
   if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN] or <gesture>-N, as .png/.webp/.jpg): ${unused.join(", ")}.`);
   const lines = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
@@ -303,6 +303,26 @@ export function gestureNote(pack: FramePack | null): string {
  * What she is told when a pack comes on, and at the start of a new conversation while one is on: that her look is fixed, what it is (look.txt),
  * and which gestures work. Without the description she would go on describing the drawn character.
  */
+/** One character's packs, for `/frames`: the ones on this computer and the ones the pack list offers. `who` is absent for packs of nobody in particular. */
+export interface PackGroup {
+  who?: { id: string; name: string };
+  here: string[];
+  offered: string[];
+}
+
+/** The packs grouped by character (alphabetically by her name, packs of nobody last), as the gallery groups them. */
+export function groupPacks(installed: string[], characters: Record<string, { id: string; name: string }>, offered: { id: string; character?: { id: string; name: string } }[]): PackGroup[] {
+  const groups = new Map<string, PackGroup>();
+  const slot = (who: { id: string; name: string } | undefined): PackGroup => {
+    const key = who ? `c:${who.id}` : "other";
+    if (!groups.has(key)) groups.set(key, { ...(who ? { who } : {}), here: [], offered: [] });
+    return groups.get(key)!;
+  };
+  for (const name of installed) slot(characters[name]).here.push(name);
+  for (const pack of offered) slot(pack.character).offered.push(pack.id);
+  return [...groups.values()].sort((a, b) => (a.who ? 0 : 1) - (b.who ? 0 : 1) || (a.who?.name ?? "").localeCompare(b.who?.name ?? ""));
+}
+
 /** An outfit of the character a pack belongs to, as she is told about it: its short name, and whether its pictures are on this computer. */
 export interface Outfit {
   pack: string;
@@ -316,8 +336,9 @@ export function outfitName(pack: string, characterId: string): string {
   return lower.startsWith(`${characterId}-`) ? lower.slice(characterId.length + 1) : lower;
 }
 
-export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
-  const who = pack.character ? `You are ${pack.character.name}. ${pack.character.text} ` : "";
+export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? ""): string {
+  // `name` is what she is called now: the character's own name, or the one the user gave her (which wins, see herName in server.ts).
+  const who = pack.character ? `You are ${name}. ${pack.character.text} ` : "";
   const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
   const wear =
     outfits.length > 1
@@ -327,7 +348,7 @@ export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
       : "";
   // A character with a voice: she speaks as that character while these pictures are on, instead of in her usual manner (the tags and rules stay).
   const voice = pack.character?.voice
-    ? ` Speak as ${pack.character.name} from now on, in her own voice: ${pack.character.voice} This replaces your usual manner of speaking for as long as these pictures are on; the emotion tags and every other rule stay.`
+    ? ` Speak as ${name} from now on, in her own voice: ${pack.character.voice} This replaces your usual manner of speaking for as long as these pictures are on; the emotion tags and every other rule stay.`
     : "";
   return (
     "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +

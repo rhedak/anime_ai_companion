@@ -10,7 +10,7 @@ updates never touch them.
 | To change | Edit | Takes effect |
 | --- | --- | --- |
 | Her voice | the **Voice** menus; `public/speech.js` for more | at once; reload after editing |
-| Her name | click it, or `/rename Hana` | at once |
+| Her name | click it, or `/rename Hana` (`/rename reset` goes back to the character's name) | at once |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
 | Her personality and voice | `persona.md` (chat) and `persona-work.md` (work-mode rules) | restart the server; for Claude also `/clear`, because an existing conversation keeps the prompt it began with |
 | Her expressions | `emotions.json` | restart the server |

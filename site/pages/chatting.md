@@ -101,5 +101,5 @@ message waits and a card asks what to do:
 
 ## Her name
 
-Click her name at the top, or use `/rename Hana`. Names are 1 to 24 letters, numbers, spaces and `. ' - _`, so a
+Click her name at the top, or use `/rename Hana`. A name you give her is yours: it stays whatever picture pack is on. Until you do, she goes by the name of the pack's character (Draconia Malfoid, Franzi, …) while it is on, and `/rename reset` takes your name away again. Names are 1 to 24 letters, numbers, spaces and `. ' - _`, so a
 name cannot carry instructions into her prompt. She is told about the change right away.

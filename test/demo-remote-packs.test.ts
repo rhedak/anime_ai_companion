@@ -25,7 +25,7 @@ test("the index becomes gallery entries: the size is what the demo fetches (the 
   assert.equal(pack.base, BASE);
   assert.equal(pack.thumb, `${PACKS_SITE}thumbs/franzi-bikini.webp`);
   assert.deepEqual(pack.character, { id: "franzi", name: "Franzi" });
-  assert.match(pack.saved, /browser keeps it/);
+  assert.match(pack.saved, /remembers that you said yes/);
 });
 
 test("an index entry that names another host's preview, a bad id or a repeated id is not used as given", () => {

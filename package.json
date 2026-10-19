@@ -1,7 +1,7 @@
 {
   "name": "anime-ai-companion",
-  "version": "0.12.0",
-  "installerVersion": "0.12.0",
+  "version": "0.12.1",
+  "installerVersion": "0.12.1",
   "private": true,
   "type": "module",
   "description": "A local browser-based anime AI companion, drawn by code and driven by a headless Claude Code session",
