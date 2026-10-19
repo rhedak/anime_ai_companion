@@ -269,7 +269,7 @@ Switching brains starts a new conversation. The brains do not share memory.
   `version` in `package.json` (a minor number for a feature, a patch number for a fix or a docs-only change;
   the project is 0.x). The bump goes into `package-lock.json` too (`npm install --package-lock-only`; `test/lockfile.test.ts` and CI fail
   otherwise: a lockfile npm would rewrite makes a fresh clone look modified). After the merge, tag that commit on `main` with an
-  annotated `vX.Y.Z` and push `main` and the tag together. Release notes are optional. The tag push builds the installers (`.github/workflows/release.yml`) and attaches them to the release, which stays a draft until the owner publishes it; `app/package.json` needs the same version as the root one.
+  annotated `vX.Y.Z` and push `main` and the tag together. Release notes are optional. A release that changes only documentation (or tests) is tagged `git tag -a vX.Y.Z -m "[docs-only] ..."`: the workflow then builds nothing, and `installerVersion` in `package.json` stays at the last version that has installers, so the Download page keeps linking to files that exist (`site/build.mjs`); a release with installers sets both numbers equal. The tag push builds the installers (`.github/workflows/release.yml`) and attaches them to the release, which stays a draft until the owner publishes it; `app/package.json` needs the same version as the root one.
 - **`main` pins only a creator tag that exists** on the creator's remote (`package.json`), because a fresh
   clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
   unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new

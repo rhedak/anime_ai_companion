@@ -88,3 +88,15 @@ test("the clone commands in the README and on the site take the creator release 
     assert.doesNotMatch(text, /^git clone https:\/\/github\.com\/rhedak\/anime-character-creator\.git/m, `${file}: a bare clone gets whatever main holds today`);
   }
 });
+
+test("the Download page links to installers that a release has built", () => {
+  const pkg = JSON.parse(read("package.json"));
+  const named = pkg.installerVersion ?? pkg.version;
+  assert.match(named, /^\d+\.\d+\.\d+$/);
+  const [a, b] = [named, pkg.version].map((v: string) => v.split(".").map(Number));
+  assert.ok(a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] <= b[2]))), "installerVersion is newer than version");
+  const page = readFileSync(join(root, "site/dist/download.html"), "utf8");
+  assert.ok(page.includes(`Anime.AI.Companion.Setup.${named}.exe`), "the Download page names the installers' version");
+  const workflow = read(".github/workflows/release.yml");
+  assert.match(workflow, /\[docs-only\]/);
+});

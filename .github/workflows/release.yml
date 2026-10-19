@@ -4,6 +4,8 @@ name: Release
 # tag's GitHub release. The release is made as a draft if it does not exist, so nothing goes public until the owner publishes it.
 # A tag with a hyphen (v0.9.1-rc1) makes a pre-release, which the app's update notice ignores: use one to try this workflow.
 # The installers are not signed (no certificates yet), the same as the ones built by hand.
+# A tag whose message starts with "[docs-only]" (git tag -a v0.11.3 -m "[docs-only] ...") builds nothing: the release is still created, without files.
+# Raise `version` only and leave `installerVersion` in package.json at the last version that has installers, so the Download page keeps linking to them.
 
 on:
   push:
@@ -15,6 +17,8 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.kind.outputs.build }}
     steps:
       - uses: actions/checkout@v4
       # The tag, the app's version and the shell's version must be one number, or the installers would be named for the wrong release.
@@ -25,6 +29,20 @@ jobs:
           shell="$(node -p "require('./app/package.json').version")"
           echo "tag=$tag package.json=$app app/package.json=$shell"
           [ "$tag" = "$app" ] && [ "$tag" = "$shell" ]
+      # An annotated tag is its own object with a message; a lightweight one points straight at a commit and has none (it always builds).
+      - name: Docs-only tag?
+        id: kind
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build=true
+          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME")"
+          if [ "$(jq -r .object.type <<<"$ref")" = tag ]; then
+            message="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$(jq -r .object.sha <<<"$ref")" --jq .message)"
+            case "$message" in "[docs-only]"*) build=false;; esac
+          fi
+          echo "build=$build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
       - name: Draft release, if there is none yet
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,6 +55,7 @@ jobs:
 
   build:
     needs: prepare
+    if: needs.prepare.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -72,7 +91,8 @@ jobs:
 
   # One checksum file for everything on the release, made after all three builds (the Download page names it).
   checksums:
-    needs: build
+    needs: [prepare, build]
+    if: needs.prepare.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: SHA256SUMS
