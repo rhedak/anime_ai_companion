@@ -58,7 +58,7 @@ const app = await startApp({
   settings: { provider: "opencode", name: "Draconia", framePack: "draconia-uniform" },
   before: async (app) => {
     await installPack(app);
-    tsunderePersona(app);
+    if (!process.env.DEFAULT_PERSONA) tsunderePersona(app); // DEFAULT_PERSONA=1 leaves persona.md alone: her character's own voice (src/persona.ts) has to do it
   },
 });
 const browser = await openBrowser();
