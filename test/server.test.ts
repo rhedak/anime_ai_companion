@@ -1294,8 +1294,8 @@ describe("whose voice she speaks in: custom, then the character of the pack that
     const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(false) });
     try {
       const prompt = await promptOf(server);
-      assert.match(prompt, /cheerful, warm and slightly mischievous/);
-      assert.doesNotMatch(prompt, /gruff sailor|You are Ann/);
+      assert.match(prompt, /You are Ann, a cheerful, warm and slightly mischievous/, "the default persona, under the character's name (she has no name of her own)");
+      assert.doesNotMatch(prompt, /gruff sailor|How you speak/);
     } finally {
       await server.stop();
     }
