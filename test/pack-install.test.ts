@@ -237,7 +237,7 @@ test("every shipped pack has a 200 px thumbnail, and that folder is not a pack",
     await assertThumb(packsDir, name);
   }
   // Outfits that are downloaded, not shipped as frames, still keep a preview here.
-  for (const name of ["franzi-casual", "franzi-pajamas", "franzi-bikini", "draconia-uniform"]) await assertThumb(packsDir, name);
+  for (const name of ["franzi-casual", "franzi-pajamas", "franzi-bikini"]) await assertThumb(packsDir, name);
 });
 
 async function assertThumb(packsDir: string, name: string): Promise<void> {

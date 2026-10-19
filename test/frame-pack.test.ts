@@ -318,7 +318,7 @@ test("each character's default outfit is a pack that ships with the app; the oth
     const id = file.replace(/\.txt$/, "");
     const shipped = (await listPacks(join(root, "packs"))).filter((name) => name === id || name.startsWith(`${id}-`));
     // Pictures that are not open source stay in the packs repository and are downloaded on request.
-    // Miku is Crypton's. Draconia is unofficial fan art: the only file of hers here is the gallery preview, and it is not MIT.
+    // Miku is Crypton's and Draconia is unofficial fan art: neither is MIT, so only a text file of theirs is here.
     if (id === "miku" || id === "draconia") {
       assert.equal(shipped.length, 0, `no ${id} pictures in this repository`);
       continue;
@@ -336,16 +336,15 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   assert.deepEqual(lines, [
     "Draconia Malfoid",
-    "An unofficial fan character loosely inspired by Draco Malfoy. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
+    "An unofficial fan character loosely inspired by Draco Malfoy: a 21-year-old adult woman. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
     "She's a proud, sharp-tongued tsundere. She acts aloof and teases, but is secretly caring and gets flustered when someone is kind to her.",
   ]);
   assert.doesNotMatch(text, /franzi/i);
   const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
   assert.doesNotMatch(franziText, /draconia/i);
-  const notice = await readFile(join(packs, "thumbs", "draconia-uniform.NOTICE.md"), "utf8");
-  for (const phrase of ["unofficial", "Non-commercial", "Warner Bros.", "Wizarding World", "taken down on request", "rhedak00@yahoo.de"]) {
-    assert.ok(notice.includes(phrase), phrase);
-  }
+  assert.match(text, /21-year-old adult/, "her age is said, as Franzi's and Risa's are");
+  // No picture of hers (nor a notice for one) is in this repository: everything here is MIT, and her pictures are not.
+  assert.deepEqual((await readdir(join(packs, "thumbs"))).filter((f) => /draconia/i.test(f)), []);
   // look.txt's `character: draconia` resolves through packs/characters/draconia.txt. Outfit tags are matched per character id,
   // so Franzi's list never treats this folder name as one of her short outfit names.
   const dir = await mkdtemp(join(tmpdir(), "draconia-"));
