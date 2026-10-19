@@ -29,6 +29,14 @@ export function createLocalSocket(options: {
   preset?: string;
   pause?: (ms: number) => Promise<void>;
   packs?: Record<string, PackInfo> | Promise<Record<string, PackInfo>>;
+  /** Who each pack's character is ({ pack: { id, name, default? } }), for the gallery's grouping. */
+  characters?: Record<string, { id: string; name: string; default?: string }> | Promise<Record<string, { id: string; name: string; default?: string }>>;
+  /** Packs that can be fetched from the packs site (see remote-packs.js), by id. */
+  remote?: Record<string, import("./remote-packs.js").RemotePack> | Promise<Record<string, import("./remote-packs.js").RemotePack>>;
+  /** Fetches a JSON document (a pack's pack.json); replaced in tests. */
+  fetchJson?: (url: string) => Promise<unknown>;
+  /** Warms the browser's cache with a picture (the pack's neutral one) before the pack is shown. */
+  preload?: (url: string) => Promise<unknown>;
   onPack?: (name: string | null) => void;
   /** The look and pack from the visitor's last visit. */
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;

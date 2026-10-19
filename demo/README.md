@@ -55,6 +55,14 @@ What is here, and how the pieces fit:
 - The stand-in also plays one scripted scene, a pretend work-mode session: she reads a page, wants one edit, and asks with the real approval
   card (marked as pretend); Allow, Deny and the stop button all lead somewhere. Drawing never waits behind it, so her face keeps moving
   while the card is open.
+- **Packs fetched from the packs site** (`remote-packs.js`, `installPack` in `local-socket.js`): the gallery also lists the packs of the packs repository
+  (`anime_ai_companion-packs`; the same GitHub Pages host family as the demo, so no new party sees the visitor), grouped by character like the app's, each with the
+  index's own preview. A release asset cannot be fetched from a page (no CORS headers), so the packs repository's publish workflow also puts each pack's loose
+  lossless frames and a `pack.json` (`node src/pack-archive-cli.ts manifest <folder> -o pack.json`) on its Pages site under `frames/<id>/`; the demo fetches
+  `pack.json` and shows the pictures from there, lazily, like the bundled ones. The page asks first, with the size and the host, exactly as in the app
+  (`pack-offer`; `/frames <name>` only asks; nothing is fetched before "Download"), and a pack fetched once comes back quietly on the next visit. What comes
+  from that site is checked (`remotePacksFrom`, `packInfoFrom`): ids, file names (a bare `*.webp`, never a path or an address) and counts, and only the
+  pack's own folder is ever used. A pack not published there yet says so on its tile. The demo bundles `risa-dress` and `franzi-dress` (both in `packs/`).
 - A picture pack: Looks… → Packs… offers **Risa in a dress** (`DEMO_PACKS` in `stage.mjs`; also `/frames risa-dress`, `/frames off`,
   or the "Try the picture pack" prompt). `stage.mjs` reads the pack with the app's own `readPack` and copies it to `frames/<name>/`, a
   thumbnail to `pack-thumb/<name>` (the page asks for that path) and the list the page needs to `packs.json`. The pictures load only when the

@@ -4,6 +4,7 @@
  *   node src/pack-archive-cli.ts build <pack-folder> -o <archive.tar>
  *   node src/pack-archive-cli.ts restore <archive.tar> -o <folder>
  *   node src/pack-archive-cli.ts report <archive.tar>
+ *   node src/pack-archive-cli.ts manifest <pack-folder> -o <pack.json>
  *   node src/pack-archive-cli.ts index <archive.tar> --name <name> --version <version> --url <https-url>
  *       [--description text] [--credit text] [--thumbnail thumbs/<id>.webp|https-url] [--ai-made]
  */
@@ -11,6 +12,8 @@ import { realpathSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { basename, resolve } from "node:path";
+import { packInfo, readPack } from "./frame-pack.ts";
 import { buildPackArchive, formatReport, indexEntryForArchive, inspectPackArchive, restorePackArchive } from "./pack-archive.ts";
 import { PACK_INDEX_FORMAT } from "./pack-index.ts";
 
@@ -35,10 +38,11 @@ function usage(): string {
   node src/pack-archive-cli.ts build <pack-folder> -o <archive.tar>
   node src/pack-archive-cli.ts restore <archive.tar> -o <folder>
   node src/pack-archive-cli.ts report <archive.tar>
+  node src/pack-archive-cli.ts manifest <pack-folder> -o <pack.json>
   node src/pack-archive-cli.ts index <archive.tar> --name <name> --version <version> --url <https-url>
       [--description text] [--credit text] [--thumbnail thumbs/<id>.webp or an https url] [--ai-made]
 
-build prints a size report. index prints a packs/index.json document for that one archive.`;
+build prints a size report. manifest writes what the browser demo needs to show an unpacked copy of the pack from a static host (which picture is which, by file name; the pictures sit beside it). index prints a packs/index.json document for that one archive.`;
 }
 
 function parseArgs(argv: string[]): Args | string {
@@ -115,6 +119,23 @@ async function run(argv: string[]): Promise<number> {
       return 1;
     }
     console.log(`restored ${restored.files.length} files into ${args.out}`);
+    return 0;
+  }
+  if (args.command === "manifest") {
+    const folder = args.positional[0];
+    if (!folder || !args.out) {
+      console.error("manifest needs a pack folder and -o <pack.json>.");
+      return 1;
+    }
+    const full = resolve(folder);
+    const read = await readPack(dirname(full), basename(full), await emotions());
+    if (!read.ok) {
+      console.error(read.reason);
+      return 1;
+    }
+    await mkdir(dirname(args.out), { recursive: true });
+    await writeFile(args.out, `${JSON.stringify(packInfo(read.pack, ""), null, 1)}\n`);
+    console.log(`wrote ${args.out}`);
     return 0;
   }
   if (args.command === "report") {

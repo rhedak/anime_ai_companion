@@ -1185,7 +1185,7 @@ function handle(msg) {
       if (openGallery?.dataset.kind === "packs") galleryFill?.();
       break;
     case "pack-offer":
-      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host });
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, saved: msg.saved });
       break;
     case "pack-progress":
       showPackProgress(msg);
@@ -1789,7 +1789,7 @@ function closeGallery() {
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
 /** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
-function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string }} */ offer) {
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string }} */ offer) {
   document.querySelector(".pack-confirm")?.remove();
   const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
   const box = document.createElement("div");
@@ -1798,7 +1798,7 @@ function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, 
   box.setAttribute("role", "alertdialog");
   box.setAttribute("aria-label", `Download ${offer.name}?`);
   const text = document.createElement("p");
-  text.textContent = `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. It is saved on this computer and checked before it is used.`;
+  text.textContent = `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. ${typeof offer.saved === "string" ? offer.saved : "It is saved on this computer and checked before it is used."}`;
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Download ${size}` });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
   no.onclick = () => box.remove();
@@ -1864,14 +1864,14 @@ function packItem(name, remote, shown) {
     const img = document.createElement("img");
     img.alt = "";
     img.loading = "lazy";
-    img.src = `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder
+    img.src = typeof remote?.thumb === "string" && remote.thumb.startsWith("https://") ? remote.thumb : `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder; the demo names the preview of a pack it fetches itself
     pic.append(img);
   }
   item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));
   if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
   item.onclick = () => {
     if (remote) {
-      askPackDownload({ id: name, name: remote.name, bytes: remote.sizes?.archiveBytes, host: remote.host });
+      askPackDownload({ id: name, name: remote.name, bytes: remote.sizes?.archiveBytes, host: remote.host, saved: remote.saved });
       return;
     }
     closeGallery();

@@ -16,10 +16,10 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveCreatorSrc } from "../src/creator.ts";
-import { packInfo, readPack } from "../src/frame-pack.ts";
+import { packCharacters, packInfo, readPack } from "../src/frame-pack.ts";
 
 /** The picture packs the demo offers, by folder name in packs/. Each is copied in whole, so it is only fetched when someone chooses it. */
-export const DEMO_PACKS = ["risa-dress"];
+export const DEMO_PACKS = ["risa-dress", "franzi-dress"];
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -98,6 +98,8 @@ export async function stage(target = out) {
     packs[name] = packInfo(read.pack, `frames/${encodeURIComponent(name)}/`);
   }
   writeFileSync(join(target, "packs.json"), JSON.stringify(packs, null, 1) + "\n");
+  // Which character each belongs to (packs/characters/<id>.txt), so the gallery groups an outfit with the others of her character.
+  writeFileSync(join(target, "characters.json"), JSON.stringify(await packCharacters([join(root, "packs")], DEMO_PACKS), null, 1) + "\n");
 
   // The renderer: this app's request handling (src/render-ops.ts) in `js/`, the creator's drawing code in `creator/js/` (demo/render-bridge.js
   // imports both by relative URL). The creator comes from wherever the app finds it.

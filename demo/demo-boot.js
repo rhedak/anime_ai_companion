@@ -7,6 +7,7 @@ import { createModel } from "./model.js";
 import { createOllamaModel } from "./ollama.js";
 import { createModelSwitch } from "./model-switch.js";
 import { createModelDialog } from "./model-dialog.js";
+import { PACKS_SITE, remotePacksFrom } from "./remote-packs.js";
 
 /** A phone-sized window: the page stacks her over the chat there, and the chat gets little height. */
 const phone = () => matchMedia("(max-width: 800px)").matches;
@@ -40,6 +41,22 @@ if (phone() && remembered("stageView") === null) remember("stageView", "behind")
 const emotions = fetch("emotions.json").then((res) => res.json());
 // The picture packs the demo offers (written by stage.mjs); none if the list is missing, and the demo is the same without them.
 const packs = fetch("packs.json").then((res) => (res.ok ? res.json() : {})).catch(() => ({}));
+// Who each of those packs' characters is, so the gallery can group outfits (written by stage.mjs).
+const characters = fetch("characters.json").then((res) => (res.ok ? res.json() : {})).catch(() => ({}));
+// The packs the packs repository's own site offers (the same GitHub Pages host family as this page): listed in the gallery, and fetched only when
+// the visitor says yes to the question the page asks. None if the list cannot be reached; the demo is the same without them.
+const remote = fetch(`${PACKS_SITE}index.json`, { signal: AbortSignal.timeout(8000) })
+  .then((res) => (res.ok ? res.json() : {}))
+  .then((index) => remotePacksFrom(index))
+  .catch(() => ({}));
+/** Fetches a picture so the browser has it before the pack is shown. */
+const preload = (url) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("the picture could not be loaded"));
+    image.src = url;
+  });
 
 // The small in-browser model: nothing of it is loaded or fetched until the visitor opens the dialog and says yes.
 const smallModel = createModel();
@@ -94,6 +111,9 @@ let loading = true;
     reply,
     greeting: GREETING,
     packs,
+    characters,
+    remote,
+    preload,
     onPack: (name) => showChips(name !== null),
     model,
     restore: savedLook(),
