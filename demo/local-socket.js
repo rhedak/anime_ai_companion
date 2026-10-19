@@ -8,6 +8,7 @@ import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { buildMessages, emotionFix } from "./model-prompt.js";
 import { packInfoFrom } from "./remote-packs.js";
+import { BODIES_WITHOUT_EXPRESSIONS, NO_EXPRESSIONS_TEXT } from "../public/demo.js";
 import { DRAWN_AGAIN, packIntroFor, personaFor } from "../public/script.js";
 
 const OPEN = 1;
@@ -34,6 +35,8 @@ export function createLocalSocket({
   fetchJson = (/** @type {string} */ url) => fetch(url, { signal: AbortSignal.timeout(15000) }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(`the server answered ${res.status}`)))),
   preload = (/** @type {string} */ _url) => Promise.resolve(),
   want = "",
+  agreed = /** @type {string[]} */ ([]),
+  onAgree = (/** @type {string} */ _id) => {},
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
   restore = null,
@@ -174,9 +177,11 @@ export function createLocalSocket({
     if (echoOpen) out({ type: "done" });
   };
 
+  /** Her name: the character's while a pack of a character is on (the demo has no rename), else the demo's own. */
+  const herName = () => (pack ? (characterList[pack]?.name ?? name) : name);
   const modeInfo = () => ({
     type: "mode",
-    name,
+    name: herName(),
     mode: "chat",
     provider: "ollama",
     canUseTools: false,
@@ -202,6 +207,8 @@ export function createLocalSocket({
     characters: characterList,
     active: pack,
     remote: Object.values(remoteList).filter((entry) => !Object.hasOwn(packList, entry.id)),
+    // The preview of every pack the packs site lists, fetched or not: the gallery needs it for a pack once it is fetched too (the demo has no folder of previews for them).
+    thumbs: Object.fromEntries(Object.values(remoteList).filter((entry) => entry.thumb).map((entry) => [entry.id, entry.thumb])),
   });
   const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0, current: basePreset });
 
@@ -391,6 +398,7 @@ export function createLocalSocket({
   /** The show-off sequence for what she is just now: the drawn avatar, or the picture pack's own pictures. */
   async function showMessage() {
     const names = Object.keys(await emotions);
+    if (!pack && BODIES_WITHOUT_EXPRESSIONS.includes(character?.body)) return { type: "notice", text: NO_EXPRESSIONS_TEXT };
     return pack ? packDemoMessage(names, Object.keys(GESTURES), packList[pack]) : drawnDemoMessage(names, Object.keys(GESTURES));
   }
 
@@ -404,6 +412,7 @@ export function createLocalSocket({
       if (pack === name) return out({ type: "notice", text: `Already showing the pack "${name}".` });
       pack = name;
     }
+    out(modeInfo()); // her name may be the character's now
     out(packMessage());
     out(packsMessage());
     onPack(pack);
@@ -428,6 +437,12 @@ export function createLocalSocket({
     if (entry.character && !characterList[id]) characterList[id] = entry.character;
   }
 
+  /** The visitor said yes to this pack, now or on an earlier visit (kept in the browser by the page): a link to it does not ask again. */
+  const agree = (id) => {
+    if (!agreed.includes(id)) agreed = [...agreed, id];
+    onAgree(id);
+  };
+
   /**
    * The link asked for a pack or a character (`?pack=…`): one that is here is shown at once, one that is only on the packs site is asked about first
    * (the same question as a click on its tile: size and host, nothing fetched until the visitor says yes). Anything else is ignored.
@@ -440,6 +455,13 @@ export function createLocalSocket({
     const chosen = id ?? (here.find((n) => characterList[n]?.default === n) ?? here[0] ?? ofCharacter(remoteList)[0]);
     if (!chosen || chosen === pack) return;
     if (Object.hasOwn(packList, chosen)) return choosePack(chosen);
+    // A pack the visitor already said yes to (the one she showed last time, or one they agreed to on an earlier visit) is fetched again without asking, as the plain page does.
+    if (restore?.pack === chosen || agreed.includes(chosen)) {
+      try {
+        await fetchPack(chosen);
+        return choosePack(chosen);
+      } catch {} // gone from the server: ask as for any other pack
+    }
     const entry = remoteList[chosen];
     out({ type: "pack-offer", id: chosen, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
   }
@@ -452,6 +474,7 @@ export function createLocalSocket({
     } catch (err) {
       return void out({ type: "pack-progress", id, phase: "error", message: err?.message ?? String(err) });
     }
+    agree(id);
     out({ type: "pack-progress", id, phase: "done" });
     await choosePack(id);
   }
@@ -554,7 +577,7 @@ export function createLocalSocket({
     const names = Object.keys(await emotions);
     let said = "";
     try {
-      said = await model.chat(buildMessages(history, names, name, 8, model.kind?.() ?? "browser", pack ? personaFor(characterId()) : ""), (piece) => out({ type: "delta", text: piece }));
+      said = await model.chat(buildMessages(history, names, herName(), 8, model.kind?.() ?? "browser", pack ? personaFor(characterId()) : ""), (piece) => out({ type: "delta", text: piece }));
     } catch (err) {
       out({ type: "notice", text: `The small model stopped: ${err?.message ?? err}` });
     }

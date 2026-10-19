@@ -24,6 +24,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
+import { BODIES_WITHOUT_EXPRESSIONS, NO_EXPRESSIONS_TEXT } from "./demo.ts";
 import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
@@ -41,7 +42,7 @@ import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
 import type { Say } from "./server-types.ts";
 import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from "./claude-settings.ts";
-import { checkProjectDir, cleanName, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
+import { checkProjectDir, cleanName, DEFAULT_NAME, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 import { dataDir, workspaceDir } from "./paths.ts";
 
@@ -83,6 +84,11 @@ const framesDir = join(dataDir, "frames");
 /** Where packs are looked for: the user's own first, then the ones that come with the app. */
 const packDirs = [framesDir, join(root, "packs")];
 let activePack: FramePack | null = null;
+/**
+ * Her name, in two tiers: the one the user gave her (typed, /rename, or a character card), else the name of the character of the picture pack that is on, else the
+ * default. A pack of a character she is not called after never renames her over a name the user chose.
+ */
+const herName = (): string => (settings.nameSet || !activePack?.character ? settings.name : activePack.character.name);
 /** The pack's resting picture, kept ready to show her how she looks (brains that can read pictures), and whether the next message should carry it. */
 let lookPicture: ImageInput | null = null;
 let lookPictureDue = false;
@@ -252,7 +258,7 @@ const personaChoice = () => {
   });
 };
 const persona = (config: SessionConfig) =>
-  personaChoice().text.replaceAll("{{name}}", settings.name) +
+  personaChoice().text.replaceAll("{{name}}", herName()) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -287,7 +293,7 @@ const skills = createSkillsService({
   pushNote: (text) => notes.push(text),
   broadcast: (msg) => broadcast(msg),
   modeInfo: () => modeInfo(),
-  name: () => settings.name,
+  name: () => herName(),
   remoteRefusal: () => remoteRefusal,
 });
 
@@ -363,7 +369,7 @@ const shownModel = () => acpBrain()?.modelLabel || sessionConfig().model;
 
 const modeInfo = () => ({
   type: "mode",
-  name: settings.name,
+  name: herName(),
   mode,
   // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
   provider: basicMode ? "basic" : settings.provider,
@@ -593,14 +599,23 @@ const personaVoice = createPersonaService({
   remoteRefusal: () => remoteRefusal,
   pushNote: (text) => notes.push(text),
   current: () => ({ choice: personaChoice(), characterName: activePack?.character?.name ?? "" }),
-  name: () => settings.name,
+  name: () => herName(),
 });
 
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
   file: join(dataDir, "character.json"),
   personaBase,
-  settings,
+  // A card that names her gives her a name of her own (the user's choice, so it wins over a pack character's name).
+  settings: {
+    get name() {
+      return herName();
+    },
+    set name(value: string) {
+      settings.name = value;
+      settings.nameSet = true;
+    },
+  },
   saveSettings: () => saveSettings(settingsPath, settings),
   pushNote: (text) => notes.push(text),
   busy: () => provider.busy,
@@ -613,10 +628,20 @@ const cards = createCardService({
 await cards.load();
 
 async function rename(input: string, say: Say): Promise<void> {
+  if (/^\s*(reset|default)\s*$/i.test(input)) {
+    if (!settings.nameSet) return say(`She already goes by ${herName()}.`);
+    settings.nameSet = false;
+    settings.name = DEFAULT_NAME;
+    await saveSettings(settingsPath, settings);
+    notes.push(`the user took away the name they gave you: your name is ${herName()} again.`);
+    broadcast(modeInfo());
+    return say(`She goes by ${herName()} again${activePack?.character ? " (the name of the character of the pack that is on)" : ""}.`);
+  }
   const name = cleanName(input);
   if (!name) return say("A name can have 1 to 24 letters, numbers, spaces and . ' - _");
-  if (name === settings.name) return;
+  if (settings.nameSet && name === settings.name) return;
   settings.name = name;
+  settings.nameSet = true;
   await saveSettings(settingsPath, settings);
   // Her running session keeps the old prompt until it restarts, so tell her directly.
   notes.push(`the user renamed you: your name is now ${name}.`);
@@ -683,11 +708,13 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   if (name === null) {
     if (!settings.framePack) return say("Already showing the drawn avatar.");
     const hadVoice = Boolean(activePack?.character?.voice);
+    const hadName = !settings.nameSet && Boolean(activePack?.character);
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}`);
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}`);
+    broadcast(modeInfo());
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
@@ -712,6 +739,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   await refreshOutfits();
   notes.push(packNote(result.pack, outfitCache));
   lookPictureDue = true;
+  broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());
   broadcast(await packsMessage());
   // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
@@ -867,8 +895,8 @@ const slashCommands: Record<
     },
   },
   rename: {
-    help: "rename the companion: /rename Hana (or click her name at the top)",
-    run: ({ args, say }) => (args ? rename(args, say) : say(`She is called ${settings.name}. Use /rename <new name>`)),
+    help: "rename the companion: /rename Hana (or click her name at the top); /rename reset goes back to the character's name (or Risa)",
+    run: ({ args, say }) => (args ? rename(args, say) : say(`She is called ${herName()}${settings.nameSet ? "" : activePack?.character ? " (the name of the character of the pack that is on)" : ""}. /rename <new name> gives her a name of your own, /rename reset goes back.`)),
   },
   setup: {
     help: "work mode: use your own Claude Code setup (settings, hooks, MCP servers): /setup on | off",
@@ -934,7 +962,10 @@ const slashCommands: Record<
   },
   show: {
     help: "she shows all her emotions, a blink, talking and her gestures, one at a time, naming each (no model call)",
-    run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
+    run: ({ say }) =>
+      !activePack && BODIES_WITHOUT_EXPRESSIONS.includes((avatar.character as { body?: string }).body ?? "")
+        ? say(NO_EXPRESSIONS_TEXT)
+        : broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
@@ -1182,7 +1213,7 @@ function forgetConversationSize(): void {
 /** In basic mode an empty conversation opens by saying what she is and how to get a real brain: shown like a reply, nothing was asked of anything. */
 function greetBasic(): void {
   if (!basicMode || provider.busy || transcript.items.length > 0) return;
-  const said = basicGreeting(settings.name);
+  const said = basicGreeting(herName());
   transcript.delta(said);
   transcript.flush();
   persistTranscript();

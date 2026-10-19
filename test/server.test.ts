@@ -1386,3 +1386,45 @@ describe("her own persona: she proposes, the user keeps", { skip }, () => {
     c.send({ type: "mode", mode: "chat" });
   });
 });
+
+describe("her name: the user's own, else the character's of the pack that is on", { skip }, () => {
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({
+      settings: { framePack: "ann-coat" },
+      dataFiles: { "frames/characters/ann.txt": "Ann\nA tall young woman with short red hair.\n", "frames/ann-coat/neutral.png": tiny, "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n" },
+    });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("with a pack on and no name of her own she goes by the character's; /rename is the user's and wins; /rename reset goes back; the pack off gives the default", async () => {
+    const c = await server.client();
+    assert.equal((await c.next("mode")).name, "Ann");
+    const said = async (text: string): Promise<string> => {
+      const mark = c.mark;
+      c.say(text);
+      return (await c.next("notice", 5000, mark)).text;
+    };
+    assert.match(await said("/rename"), /She is called Ann \(the name of the character of the pack that is on\)/);
+    let from = c.mark;
+    c.say("/rename Hana");
+    assert.equal((await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from)).name, "Hana");
+    from = c.mark;
+    c.say("/frames off");
+    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Hana", "the user's name stays when the pack goes");
+    from = c.mark;
+    c.say("/frames ann-coat");
+    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Hana", "and a pack does not take it over");
+    await c.next("packs", 5000, from);
+    from = c.mark;
+    c.say("/rename reset");
+    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Ann", "reset: the character's name again");
+    assert.equal(server.data("settings.json")?.includes('"nameSet": false'), true);
+    from = c.mark;
+    c.say("/frames off");
+    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Risa", "no pack: the default");
+  });
+});

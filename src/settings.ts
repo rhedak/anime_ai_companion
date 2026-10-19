@@ -25,6 +25,8 @@ export interface Settings {
   workModel: string;
   /** What the companion is called. */
   name: string;
+  /** The user gave her this name (typed, /rename, or a card): then it wins over the name of the character of a picture pack. False: she goes by the character's name while a pack is on. */
+  nameSet: boolean;
   /** A folder in data/frames shown instead of the drawn avatar (see src/frame-pack.ts); null is the drawn one. */
   framePack: string | null;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
@@ -35,6 +37,8 @@ export interface Settings {
   allowedTools: string[];
 }
 
+export const DEFAULT_NAME = "Risa";
+
 const defaults = (): Settings => ({
   provider: "claude",
   ollamaModel: null,
@@ -44,6 +48,7 @@ const defaults = (): Settings => ({
   chatModel: "haiku",
   workModel: "sonnet",
   name: "Risa",
+  nameSet: false,
   framePack: null,
   effort: "default",
   memorySaving: "ask",
@@ -59,7 +64,9 @@ export async function loadSettings(path: string): Promise<Settings> {
     // first run
   }
   const settings = { ...defaults(), ...saved };
-  settings.name = cleanName(String(settings.name)) ?? "Risa";
+  settings.name = cleanName(String(settings.name)) ?? DEFAULT_NAME;
+  // Settings from before this flag: a name that is not the default was the user's own choice.
+  settings.nameSet = typeof saved.nameSet === "boolean" ? saved.nameSet : settings.name !== DEFAULT_NAME;
   if (typeof settings.framePack !== "string" || !isPackName(settings.framePack)) settings.framePack = null;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (!isMemorySaving(settings.memorySaving)) settings.memorySaving = "ask";
@@ -90,9 +97,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack, memorySaving } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, memorySaving } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, framePack, memorySaving }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, memorySaving }, null, 2));
 }
 
 /**

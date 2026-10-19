@@ -40,9 +40,9 @@ function fakeRenderer() {
 
 /** A socket with the page's side of it: what the page receives, in order. */
 type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; characters?: Record<string, any>; remote?: Record<string, any>; fetchJson?: (url: string) => Promise<unknown>; preload?: (url: string) => Promise<unknown>; want?: string; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; characters?: Record<string, any>; remote?: Record<string, any>; fetchJson?: (url: string) => Promise<unknown>; preload?: (url: string) => Promise<unknown>; want?: string; agreed?: string[]; onAgree?: (id: string) => void; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, characters: options.characters, remote: options.remote, fetchJson: options.fetchJson, preload: options.preload, want: options.want, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, characters: options.characters, remote: options.remote, fetchJson: options.fetchJson, preload: options.preload, want: options.want, agreed: options.agreed, onAgree: options.onAgree, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -226,13 +226,13 @@ test("the demo offers its picture packs like the app's Looks menu does, and choo
   const told: (string | null)[] = [];
   const { events, next, send } = connect({ packs: PICTURES, onPack: (name) => told.push(name) });
   await next((e) => e.type === "queue");
-  assert.deepEqual(events.find((e) => e.type === "packs"), { type: "packs", names: ["pic"], characters: {}, active: null, remote: [] });
+  assert.deepEqual(events.find((e) => e.type === "packs"), { type: "packs", names: ["pic"], characters: {}, active: null, remote: [], thumbs: {} });
   assert.deepEqual(events.find((e) => e.type === "pack"), { type: "pack", pack: null });
   let from = events.length;
   send({ type: "pack-select", name: "pic" });
   const shown = await next((e) => e.type === "pack", from);
   assert.deepEqual(shown.pack, PICTURES.pic);
-  assert.deepEqual(await next((e) => e.type === "packs", from), { type: "packs", names: ["pic"], characters: {}, active: "pic", remote: [] });
+  assert.deepEqual(await next((e) => e.type === "packs", from), { type: "packs", names: ["pic"], characters: {}, active: "pic", remote: [], thumbs: {} });
   await next((e) => e.type === "done", from);
   const said = events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join("");
   assert.equal(said, PACK_INTRO);
@@ -894,7 +894,7 @@ test("a queued message can be taken out, and Stop gives the waiting words back f
 // --- packs fetched from the packs site ---
 
 const REMOTE = {
-  "franzi-bikini": { id: "franzi-bikini", name: "Franzi (bikini)", character: { id: "franzi", name: "Franzi" }, sizes: { archiveBytes: 15_078_150 }, host: "rhedak.github.io", thumb: "https://rhedak.github.io/t.webp", base: "https://rhedak.github.io/anime_ai_companion-packs/frames/franzi-bikini/", saved: "Your browser keeps it for next time." },
+  "franzi-bikini": { id: "franzi-bikini", name: "Franzi (bikini)", character: { id: "franzi", name: "Franzi" }, sizes: { archiveBytes: 15_078_150 }, host: "rhedak.github.io", thumb: "https://rhedak.github.io/t.webp", base: "https://rhedak.github.io/anime_ai_companion-packs/frames/franzi-bikini/", saved: "The demo remembers that you said yes and fetches it again when you come back." },
 };
 const BIKINI_JSON = { name: "franzi-bikini", character: "franzi", emotions: { neutral: { idle: "neutral.webp", talk: [] } }, gestures: {} };
 
@@ -908,7 +908,7 @@ test("packs on the packs site are listed in the gallery, a command only asks abo
   send({ type: "user", text: "/frames franzi-bikini" });
   const offer = await next((e) => e.type === "pack-offer", from);
   assert.deepEqual({ id: offer.id, bytes: offer.bytes, host: offer.host }, { id: "franzi-bikini", bytes: 15_078_150, host: "rhedak.github.io" });
-  assert.match(offer.saved, /browser keeps it/);
+  assert.match(offer.saved, /remembers that you said yes/);
   assert.deepEqual(fetched, [], "asking is not fetching");
 });
 
@@ -1040,4 +1040,63 @@ test("in the demo her pack's character decides the voice: the intro, the answers
   send({ type: "pack-select", name: "pic" });
   await next((e) => e.type === "done", from);
   assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), PACK_INTRO, "another pack: the plain intro");
+});
+
+test("a link to a pack the visitor already said yes to fetches it quietly, instead of asking every visit, and saying yes is reported to be kept", async () => {
+  const fetched: string[] = [];
+  const kept: string[] = [];
+  const known = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["franzi-bikini"], fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
+  assert.equal((await known.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini");
+  assert.equal(known.events.some((e) => e.type === "pack-offer"), false, "no question for a pack they agreed to");
+  assert.equal(fetched.length, 1);
+
+  const last = connect({ remote: REMOTE, want: "franzi-bikini", restore: { pack: "franzi-bikini" }, fetchJson: async () => BIKINI_JSON });
+  assert.equal((await last.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini", "the pack she showed last time counts as agreed");
+
+  const never = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["something-else"], fetchJson: async () => BIKINI_JSON, onAgree: (id) => void kept.push(id) });
+  await never.next((e) => e.type === "pack-offer");
+  never.send({ type: "pack-install", name: "franzi-bikini" });
+  await never.next((e) => e.type === "pack-progress" && e.phase === "done");
+  assert.deepEqual(kept, ["franzi-bikini"], "yes is reported, so the page can keep it");
+
+  const gone = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["franzi-bikini"], fetchJson: async () => Promise.reject(new Error("offline")) });
+  assert.equal((await gone.next((e) => e.type === "pack-offer")).id, "franzi-bikini", "a pack that cannot be fetched is asked about as any other");
+});
+
+test("the packs message names the preview of every pack the list has, fetched or not, so the gallery never falls back to a folder the demo does not have", async () => {
+  const { events, next, send } = connect({ remote: REMOTE, fetchJson: async () => BIKINI_JSON });
+  const first = await next((e) => e.type === "packs");
+  assert.deepEqual(first.thumbs, { "franzi-bikini": "https://rhedak.github.io/t.webp" });
+  const from = events.length;
+  send({ type: "pack-install", name: "franzi-bikini" });
+  const after = await next((e) => e.type === "packs" && e.names.includes("franzi-bikini"), from);
+  assert.deepEqual(after.remote, []);
+  assert.deepEqual(after.thumbs, { "franzi-bikini": "https://rhedak.github.io/t.webp" }, "still named once it is fetched");
+});
+
+test("/show for a drawn look whose body has no expressions yet says so instead of playing a sequence in which nothing changes", async () => {
+  const { events, next, send } = connect({ restore: { character: { body: "adult_female" } } });
+  await next((e) => e.type === "queue");
+  const from = events.length;
+  send({ type: "user", text: "/show" });
+  const note = await next((e) => e.type === "notice" && /no expressions or gestures yet/.test(e.text), from);
+  assert.match(note.text, /Looks → Packs/);
+  assert.equal(events.slice(from).some((e) => e.type === "demo"), false);
+  const plain = connect();
+  await plain.next((e) => e.type === "queue");
+  const mark = plain.events.length;
+  plain.send({ type: "user", text: "/show" });
+  await plain.next((e) => e.type === "demo", mark);
+});
+
+test("in the demo her name is the character's while that character's pack is on, and the demo's own again after", async () => {
+  const two = { ...PICTURES, dra: { ...PICTURES.pic, name: "dra", character: "draconia" } };
+  const { events, next, send } = connect({ packs: two, characters: { dra: { id: "draconia", name: "Draconia Malfoid" } } });
+  assert.equal((await next((e) => e.type === "mode")).name, "Risa");
+  let from = events.length;
+  send({ type: "pack-select", name: "dra" });
+  assert.equal((await next((e) => e.type === "mode", from)).name, "Draconia Malfoid");
+  from = events.length;
+  send({ type: "pack-select", name: null });
+  assert.equal((await next((e) => e.type === "mode", from)).name, "Risa");
 });

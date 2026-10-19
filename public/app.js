@@ -1221,6 +1221,8 @@ function handle(msg) {
       packNames = msg.names ?? [];
       packCharacters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
       remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
+      // The browser demo names the preview of every pack its list has, also of one it has fetched (it has no previews folder for them); the app has /pack-thumb/<name>.
+      packThumbs = msg.thumbs && typeof msg.thumbs === "object" ? Object.fromEntries(Object.entries(msg.thumbs).filter(([, url]) => typeof url === "string" && url.startsWith("https://"))) : {};
       activePackName = msg.active ?? null;
       renderLooksMenu();
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
@@ -1791,6 +1793,7 @@ setInterval(() => meter && renderMeter(), 60_000);
 let lastLooks = { names: [], presets: [] };
 let packNames = [];
 let remotePacks = []; // { id, name, description?, credit? } for packs the index lists that are not on disk
+let packThumbs = {}; // pack name -> https address of its preview, when the server names one (the browser demo)
 let activePackName = null; // the picture pack in use, or null for the drawn avatar
 let galleryFill = null; // redraws the open packs gallery when the index arrives
 
@@ -1911,7 +1914,8 @@ function packItem(name, remote, shown) {
     const img = document.createElement("img");
     img.alt = "";
     img.loading = "lazy";
-    img.src = typeof remote?.thumb === "string" && remote.thumb.startsWith("https://") ? remote.thumb : `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder; the demo names the preview of a pack it fetches itself
+    const named = typeof remote?.thumb === "string" && remote.thumb.startsWith("https://") ? remote.thumb : packThumbs[name];
+    img.src = named ?? `pack-thumb/${encodeURIComponent(name)}`; // relative, so a static copy (the demo) can serve it from its own folder; the demo names the preview of a pack it fetches itself
     pic.append(img);
   }
   item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));
