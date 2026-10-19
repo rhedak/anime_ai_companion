@@ -132,9 +132,14 @@ export function createCardService(deps: CardDeps) {
       }
     },
 
+    /** The persona a card makes (its character part, then our style notes and protocol), or null with no card in use. Which persona wins is src/persona.ts. */
+    personaOverride(): string | null {
+      return card && parts ? characterFromCard(card, parts.style, { orders: use.orders }) + parts.protocol : null;
+    },
+
     /** persona.md, with the character part replaced by the card's when one is in use. The protocol after it is always ours. */
     personaText(): string {
-      return card && parts ? characterFromCard(card, parts.style, { orders: use.orders }) + parts.protocol : deps.personaBase;
+      return this.personaOverride() ?? deps.personaBase;
     },
 
     /** Starts an empty conversation with her greeting: shown like a reply, but nothing was asked of the model. */

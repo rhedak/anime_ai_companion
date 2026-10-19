@@ -1262,3 +1262,54 @@ describe("a picture pack chosen in an earlier run", { skip }, () => {
     await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
   });
 });
+
+describe("whose voice she speaks in: custom, then the character of the pack that is on, then the default", { skip }, () => {
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const frames = (voice: boolean) => ({
+    "frames/characters/ann.txt": `Ann\nA tall young woman with short red hair.\n${voice ? "voice: a gruff sailor who says arr a lot.\n" : ""}`,
+    "frames/ann-coat/neutral.png": tiny,
+    "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n",
+  });
+  const promptOf = async (server: RunningServer) => {
+    const c = await server.client();
+    await c.next("history");
+    await ask(c, "hello");
+    return server.systemPrompt();
+  };
+
+  test("with a pack whose character has a voice, her prompt is that character's, with the expression protocol after it", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(true) });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /You are Ann, an anime-style AI companion/);
+      assert.match(prompt, /How you speak: a gruff sailor who says arr a lot\./);
+      assert.doesNotMatch(prompt, /cheerful, warm and slightly mischievous/);
+      assert.match(prompt, /Expression protocol \(important\):/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a character without a voice leaves the default persona alone", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(false) });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /cheerful, warm and slightly mischievous/);
+      assert.doesNotMatch(prompt, /gruff sailor|You are Ann/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("the user's own data/persona.md beats the character, and the protocol is still ours", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: { ...frames(true), "persona.md": "You are a dry-witted librarian.\n" } });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /You are a dry-witted librarian\./);
+      assert.doesNotMatch(prompt, /gruff sailor/);
+      assert.match(prompt, /Expression protocol \(important\):/);
+    } finally {
+      await server.stop();
+    }
+  });
+});

@@ -48,7 +48,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 | To change | Edit | Takes effect |
 | --- | --- | --- |
-| Her personality and voice | `persona.md` (chat), `persona-work.md` (work-mode rules) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
+| Her personality and voice | `persona.md` (chat; the default), `data/persona.md` (the user's own, wins over everything), `persona-work.md` (work-mode rules); a character's `voice:` line sits between them (`src/persona.ts`) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
 | Her name | click it, or `/rename Hana` | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |

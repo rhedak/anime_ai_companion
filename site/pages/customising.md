@@ -37,6 +37,19 @@ deleting it restores the default look. You can simply ask an AI assistant to wri
 in step with `emotions.json`. It has a `{{name}}` placeholder for her name. The `[remember …]` tag (how she saves a note about
 you) is explained to her with her first message of a conversation, not in `persona.md`, so you do not need to add it.
 
+### Whose voice she speaks in
+
+Three things can decide how she talks, and the first that applies wins:
+
+1. **Your own persona.** An imported character card, a file `data/persona.md` of your own (put there what you would otherwise change in the first part of `persona.md`: who she is and how she talks; it
+   works in the desktop app too, where the shipped `persona.md` cannot be edited), or an edited `persona.md` if you run from a checkout.
+2. **The character of the picture pack that is on**, if her file has a `voice:` line (Draconia's does): she speaks as that character while the pack is on, and her usual manner is back when you switch the
+   pack off or choose another character.
+3. **The default**, the `persona.md` that comes with the app.
+
+Only the voice part is ever replaced. The tag protocol and the work-mode rules always stay, whatever your file, a card or a pack says. A new conversation uses the new voice; one that is already running
+keeps the prompt it began with (for Claude, `/clear`), and gets a note when you switch a pack.
+
 ### Her notes about you
 
 She can keep a few notes about you across conversations, in `data/memory.md`: one short fact per line, plain Markdown you can

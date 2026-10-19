@@ -337,7 +337,7 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   assert.deepEqual(lines, [
     "Draconia Malfoid",
     "An unofficial fan character loosely inspired by Draco Malfoy: a 21-year-old adult woman. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
-    "She's a proud, sharp-tongued tsundere. She acts aloof and teases, but is secretly caring and gets flustered when someone is kind to her.",
+    "voice: a proud, sharp-tongued tsundere: aloof and teasing, calls the user a baka now and then, secretly caring, and flustered when someone is kind to her; never cruel.",
   ]);
   assert.doesNotMatch(text, /franzi/i);
   const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
@@ -358,12 +358,13 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     assert.equal(read.pack.character?.id, "draconia");
     assert.equal(read.pack.character?.name, "Draconia Malfoid");
     assert.match(read.pack.character?.text ?? "", /side braid/);
-    // The description lines are joined into the note she is given with the pack, so the personality is part of the chat prompt.
-    assert.match(read.pack.character?.text ?? "", /teal-green eyes\. She's a proud, sharp-tongued tsundere/);
+    // Her voice is its own line: not part of the description, but told to her when the pack comes on, as what replaces her usual manner of speaking.
+    assert.doesNotMatch(read.pack.character?.text ?? "", /tsundere/);
+    assert.match(read.pack.character?.voice ?? "", /^a proud, sharp-tongued tsundere/);
     const told = packNote(read.pack);
     assert.match(told, /You are Draconia Malfoid\./);
-    assert.match(told, /sharp-tongued tsundere/);
-    assert.match(told, /gets flustered when someone is kind to her/);
+    assert.match(told, /Speak as Draconia Malfoid from now on, in her own voice: a proud, sharp-tongued tsundere[^]*flustered when someone is kind to her/);
+    assert.match(told, /replaces your usual manner of speaking[^]*the emotion tags and every other rule stay/);
     assert.equal(read.pack.look, "You wear a Slytherin-style uniform.");
     const grouped = await packCharacters([dir, packs], ["draconia-uniform", "franzi-dress"]);
     assert.equal(grouped["draconia-uniform"].id, "draconia");

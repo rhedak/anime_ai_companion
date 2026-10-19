@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
+import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
@@ -231,8 +232,26 @@ const sessionConfig = (): SessionConfig => ({
   effort: effectiveEffort(),
 });
 
+/** The user's own persona file (data/persona.md), read when a conversation starts; null when there is none. */
+function readUserPersona(): string | null {
+  try {
+    return readFileSync(join(dataDir, "persona.md"), "utf8");
+  } catch {
+    return null;
+  }
+}
+/** Whose voice she speaks in (custom, then the character of the pack that is on, then the default): see src/persona.ts. */
+const personaChoice = () => {
+  const who = activePack?.character;
+  return choosePersona({
+    base: personaBase,
+    card: cards.personaOverride(),
+    userFile: readUserPersona(),
+    character: who?.voice ? { name: who.name, text: who.text, voice: who.voice } : null,
+  });
+};
 const persona = (config: SessionConfig) =>
-  cards.personaText().replaceAll("{{name}}", settings.name) +
+  personaChoice().text.replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -650,11 +669,12 @@ function remoteBlocked(name: string, args: string): boolean {
 async function choosePack(name: string | null, say: Say): Promise<void> {
   if (name === null) {
     if (!settings.framePack) return say("Already showing the drawn avatar.");
+    const hadVoice = Boolean(activePack?.character?.voice);
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}`);
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
