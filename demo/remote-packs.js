@@ -82,3 +82,19 @@ export function packInfoFrom(json, base) {
   if (count > MAX_FRAMES) return null;
   return { name: text(json.name, 80) || "pack", character: typeof json.character === "string" && NAME.test(json.character) ? json.character : undefined, credit: text(json.credit, 300), terms: text(json.terms, 600), emotions, gestures };
 }
+
+/**
+ * The pack or character a link asks for: `?pack=franzi-bikini` or `?character=franzi` (either name works for both). A name this does not
+ * recognise as a pack or character id (letters, digits, `.`, `_`, `-`, at most 40) is ignored, so a link cannot put anything else in the page.
+ * @param {string} search `location.search`
+ */
+export function wantedFromSearch(search) {
+  let params;
+  try {
+    params = new URLSearchParams(search);
+  } catch {
+    return "";
+  }
+  const value = (params.get("pack") ?? params.get("character") ?? "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9._-]{0,39}$/.test(value) && !value.includes("..") ? value : "";
+}

@@ -7,7 +7,7 @@ import { createModel } from "./model.js";
 import { createOllamaModel } from "./ollama.js";
 import { createModelSwitch } from "./model-switch.js";
 import { createModelDialog } from "./model-dialog.js";
-import { PACKS_SITE, remotePacksFrom } from "./remote-packs.js";
+import { PACKS_SITE, remotePacksFrom, wantedFromSearch } from "./remote-packs.js";
 
 /** A phone-sized window: the page stacks her over the chat there, and the chat gets little height. */
 const phone = () => matchMedia("(max-width: 800px)").matches;
@@ -114,6 +114,7 @@ let loading = true;
     characters,
     remote,
     preload,
+    want: wantedFromSearch(location.search),
     onPack: (name) => showChips(name !== null),
     model,
     restore: savedLook(),

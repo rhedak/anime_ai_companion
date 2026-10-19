@@ -11,6 +11,7 @@ export interface RemotePack {
   base: string;
   saved: string;
 }
+export function wantedFromSearch(search: string): string;
 export function remotePacksFrom(index: unknown, site?: string): Record<string, RemotePack>;
 export function packInfoFrom(
   json: unknown,

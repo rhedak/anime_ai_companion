@@ -33,6 +33,7 @@ export function createLocalSocket({
   remote = {},
   fetchJson = (/** @type {string} */ url) => fetch(url, { signal: AbortSignal.timeout(15000) }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(`the server answered ${res.status}`)))),
   preload = (/** @type {string} */ _url) => Promise.resolve(),
+  want = "",
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
   restore = null,
@@ -227,13 +228,16 @@ export function createLocalSocket({
     characterList = await characters;
     remoteList = await remote;
     // A pack fetched on an earlier visit is fetched again (quietly: the visitor asked for it then).
-    if (restore?.pack && !Object.hasOwn(packList, restore.pack) && Object.hasOwn(remoteList, restore.pack)) await fetchPack(restore.pack).catch(() => {});
-    if (restore?.pack && Object.hasOwn(packList, restore.pack)) {
-      pack = restore.pack;
+    // (A link that names a pack or a character wins, so the last visit's pack is neither fetched nor shown first.)
+    const last = want ? null : restore?.pack;
+    if (last && !Object.hasOwn(packList, last) && Object.hasOwn(remoteList, last)) await fetchPack(last).catch(() => {});
+    if (last && Object.hasOwn(packList, last)) {
+      pack = last;
       onPack(pack);
     }
     out(packMessage());
     out(packsMessage());
+    if (want) await applyWanted();
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
     out({ type: "history", items: history });
     out({ type: "queue", items: [], returned: [] });
@@ -419,6 +423,22 @@ export function createLocalSocket({
     await preload(info.emotions.neutral.idle).catch(() => {});
     packList[id] = info;
     if (entry.character && !characterList[id]) characterList[id] = entry.character;
+  }
+
+  /**
+   * The link asked for a pack or a character (`?pack=…`): one that is here is shown at once, one that is only on the packs site is asked about first
+   * (the same question as a click on its tile: size and host, nothing fetched until the visitor says yes). Anything else is ignored.
+   */
+  async function applyWanted() {
+    const id = Object.keys(packList).find((n) => n.toLowerCase() === want) ?? Object.keys(remoteList).find((n) => n.toLowerCase() === want);
+    const ofCharacter = (list) => Object.keys(list).filter((n) => (list === packList ? characterList[n]?.id : list[n].character?.id) === want);
+    // A character: the outfit its file names as the default if that is here, else any outfit that is here, else the first one to fetch.
+    const here = ofCharacter(packList);
+    const chosen = id ?? (here.find((n) => characterList[n]?.default === n) ?? here[0] ?? ofCharacter(remoteList)[0]);
+    if (!chosen || chosen === pack) return;
+    if (Object.hasOwn(packList, chosen)) return choosePack(chosen);
+    const entry = remoteList[chosen];
+    out({ type: "pack-offer", id: chosen, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
   }
 
   /** The visitor said yes to the question the page asked: fetch the pack, then show it, as the app does after an install. */
