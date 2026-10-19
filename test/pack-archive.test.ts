@@ -341,3 +341,21 @@ function craftTar(name: string, data: Buffer, typeflag = "0"): Buffer {
   const pad = (block - (data.length % block)) % block;
   return Buffer.concat([header, data, Buffer.alloc(pad + block * 2)]);
 }
+
+test("the manifest command describes a pack folder for a static host: which picture is which, by file name, with the pack's character and credit", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const dir = await mkdtemp(join(tmpdir(), "pack-manifest-"));
+  try {
+    const out = join(dir, "pack.json");
+    execFileSync(process.execPath, [join(root, "src", "pack-archive-cli.ts"), "manifest", await franziPack(), "-o", out], { stdio: "pipe" });
+    const info = JSON.parse(await readFile(out, "utf8"));
+    assert.equal(info.name, "franzi-dress");
+    assert.equal(info.character, "franzi");
+    assert.equal(info.emotions.neutral.idle, "neutral.webp", "a bare file name: the pictures sit beside the file");
+    assert.deepEqual(info.emotions.happy.talk, ["happy-talk1.webp", "happy-talk2.webp", "happy-talk3.webp"]);
+    assert.deepEqual(Object.keys(info.gestures).sort(), ["cheer", "wave"]);
+    assert.match(info.credit, /Franzi/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

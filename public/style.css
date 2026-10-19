@@ -174,6 +174,8 @@ form.composer.shell textarea { font-family: var(--font-mono); }
 .perm-more button { padding: 5px 10px; font-size: 12px; }
 .msg.perm.memory { background: var(--fill-1); border-color: var(--line); }
 .memory-fact { margin-bottom: 8px; overflow-wrap: anywhere; }
+.persona-text { white-space: pre-wrap; max-height: 40vh; overflow-y: auto; padding: 8px 10px; background: var(--fill-2, rgba(0, 0, 0, 0.18)); border-radius: 8px; }
+.persona-note { margin-bottom: 8px; font-size: 12px; opacity: 0.8; }
 .memory-undo { margin-left: 4px; padding: 2px 8px; font-size: 12px; }
 .perm-done { font-size: var(--font-size-small); color: var(--muted); }
 .perm-option { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: var(--font-size-small); cursor: pointer; }

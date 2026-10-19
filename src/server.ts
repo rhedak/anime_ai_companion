@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
+import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
@@ -34,6 +35,7 @@ import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
 import { createTurnService } from "./turn-service.ts";
 import { createMemoryService } from "./memory-service.ts";
+import { createPersonaService } from "./persona-service.ts";
 import { createNotes } from "./notes.ts";
 import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
@@ -231,8 +233,26 @@ const sessionConfig = (): SessionConfig => ({
   effort: effectiveEffort(),
 });
 
+/** The user's own persona file (data/persona.md), read when a conversation starts; null when there is none. */
+function readUserPersona(): string | null {
+  try {
+    return readFileSync(join(dataDir, "persona.md"), "utf8");
+  } catch {
+    return null;
+  }
+}
+/** Whose voice she speaks in (custom, then the character of the pack that is on, then the default): see src/persona.ts. */
+const personaChoice = () => {
+  const who = activePack?.character;
+  return choosePersona({
+    base: personaBase,
+    card: cards.personaOverride(),
+    userFile: readUserPersona(),
+    character: who?.voice ? { name: who.name, text: who.text, voice: who.voice } : null,
+  });
+};
 const persona = (config: SessionConfig) =>
-  cards.personaText().replaceAll("{{name}}", settings.name) +
+  personaChoice().text.replaceAll("{{name}}", settings.name) +
   (config.mode === "work" ? `\n${personaWork}\nProject folder: ${config.cwd}\n` : "") +
   "\n" +
   avatar.promptSection();
@@ -300,7 +320,7 @@ const providers: Record<ProviderName, Provider> = {
     resumeSessionId: opencodeResumable,
   }),
 };
-const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null });
+const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null, character: () => activePack?.characterId ?? "" });
 let provider: Provider = basicMode ? scripted : providers[settings.provider];
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */
@@ -564,6 +584,17 @@ const memory = createMemoryService({
   pushNote: (text) => notes.push(text),
 });
 
+// --- her own persona (data/persona.md) and the [persona …] proposal: see persona-service.ts ---
+const personaVoice = createPersonaService({
+  file: join(dataDir, "persona.md"),
+  mode: () => mode,
+  broadcast: (msg) => broadcast(msg),
+  openFile: (path) => openBrowser(path),
+  remoteRefusal: () => remoteRefusal,
+  pushNote: (text) => notes.push(text),
+  current: () => ({ choice: personaChoice(), characterName: activePack?.character?.name ?? "" }),
+});
+
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
   file: join(dataDir, "character.json"),
@@ -650,11 +681,12 @@ function remoteBlocked(name: string, args: string): boolean {
 async function choosePack(name: string | null, say: Say): Promise<void> {
   if (name === null) {
     if (!settings.framePack) return say("Already showing the drawn avatar.");
+    const hadVoice = Boolean(activePack?.character?.voice);
     settings.framePack = null;
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push("The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.");
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}`);
     broadcast(packMessage());
     broadcast(await packsMessage());
     return say("Back to the drawn avatar.");
@@ -845,6 +877,10 @@ const slashCommands: Record<
       if (wanted === "on" || wanted === "off") return changeClaudeSetup(wanted === "on", say);
       say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
     },
+  },
+  persona: {
+    help: "whose voice she speaks in (your own persona, the character of the pack that is on, or the default): /persona | show | edit | reset",
+    run: async ({ args, say, remote }) => personaVoice.command(args, say, remote),
   },
   memory: {
     help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit | ask | auto | off",
@@ -1136,6 +1172,7 @@ function forgetConversationSize(): void {
   skills.forgetOffer();
   cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
+  personaVoice.forgetTold();
   turns.dropHeld();
 }
 
@@ -1199,6 +1236,7 @@ const turns = createTurnService({
   looksInfo: () => looksInfo(),
   notes,
   memory,
+  persona: personaVoice,
   cards,
   skills,
   queue,
@@ -1255,6 +1293,7 @@ wss.on("connection", (ws) => {
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   for (const offer of memory.pending()) ws.send(JSON.stringify({ type: "memory-offer", ...offer }));
+  for (const offer of personaVoice.pending()) ws.send(JSON.stringify({ type: "persona-offer", ...offer }));
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
@@ -1289,6 +1328,8 @@ wss.on("connection", (ws) => {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "memory-reply") {
       memory.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "persona-reply") {
+      personaVoice.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "memory-undo") {
       memory.undo(msg.fact, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {

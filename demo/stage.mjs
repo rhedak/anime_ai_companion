@@ -16,10 +16,10 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveCreatorSrc } from "../src/creator.ts";
-import { packInfo, readPack } from "../src/frame-pack.ts";
+import { packCharacters, packInfo, readPack } from "../src/frame-pack.ts";
 
 /** The picture packs the demo offers, by folder name in packs/. Each is copied in whole, so it is only fetched when someone chooses it. */
-export const DEMO_PACKS = ["risa-dress"];
+export const DEMO_PACKS = ["risa-dress", "franzi-dress"];
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -40,13 +40,31 @@ function tsc(args) {
  * The creator's TypeScript as browser JavaScript, in `<target>/creator/js`. It is the creator's own build (`<creator>/ts/tsconfig.web.json`,
  * the one its web tool uses: it rewrites the `.ts` imports to `.js`, which a browser needs), run with this repository's compiler. That config
  * asks for Node's types, which only exist in a checkout that ran `npm install` in `ts/`; the pinned clone has none, so the types come from this
- * repository's own `@types/node` (`--typeRoots`). The code itself imports nothing from Node.
+ * repository's own `@types/node` (`--typeRoots`). The renderer itself imports nothing from Node, but the folder also holds tools that do (the cover and cast
+ * sheets read files): those modules, and any that import them, are left out of what is staged, since nothing the demo loads reaches them.
  */
 function buildCreator(creatorSrc, target) {
   const config = join(dirname(creatorSrc), "tsconfig.web.json");
   if (!existsSync(config)) throw new Error(`${config} is missing: the creator at ${creatorSrc} has no browser build, so the demo cannot draw with it`);
   const typeRoots = dirname(dirname(createRequire(import.meta.url).resolve("@types/node/package.json")));
-  tsc(["-p", config, "--outDir", join(target, "creator", "js"), "--typeRoots", typeRoots]);
+  const out = join(target, "creator", "js");
+  tsc(["-p", config, "--outDir", out, "--typeRoots", typeRoots]);
+  pruneNodeOnly(out);
+}
+
+/** Removes the compiled modules that import from Node, and (repeatedly) the ones that import a removed module. A browser could not load them. */
+function pruneNodeOnly(dir) {
+  const names = readdirSync(dir).filter((f) => f.endsWith(".js"));
+  const text = new Map(names.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
+  const gone = new Set(names.filter((f) => /\bfrom "node:|\brequire\(/.test(text.get(f))));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const f of names) {
+      if (gone.has(f)) continue;
+      if ([...gone].some((g) => text.get(f).includes(`"./${g}"`))) (gone.add(f), (grew = true));
+    }
+  }
+  for (const f of gone) rmSync(join(dir, f), { force: true });
 }
 
 export async function stage(target = out) {
@@ -98,6 +116,8 @@ export async function stage(target = out) {
     packs[name] = packInfo(read.pack, `frames/${encodeURIComponent(name)}/`);
   }
   writeFileSync(join(target, "packs.json"), JSON.stringify(packs, null, 1) + "\n");
+  // Which character each belongs to (packs/characters/<id>.txt), so the gallery groups an outfit with the others of her character.
+  writeFileSync(join(target, "characters.json"), JSON.stringify(await packCharacters([join(root, "packs")], DEMO_PACKS), null, 1) + "\n");
 
   // The renderer: this app's request handling (src/render-ops.ts) in `js/`, the creator's drawing code in `creator/js/` (demo/render-bridge.js
   // imports both by relative URL). The creator comes from wherever the app finds it.

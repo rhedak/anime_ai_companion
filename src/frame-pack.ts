@@ -46,7 +46,7 @@ export interface FramePack {
   /** look.txt: what she wears in these pictures, in the pack author's words. Told to her when the pack comes on. */
   look?: string;
   /** The `character: <id>` line of look.txt, and that character's name and shared description (characters/<id>.txt), when there is one. */
-  character?: { id: string; name: string; text: string; defaultPack?: string };
+  character?: { id: string; name: string; text: string; defaultPack?: string; voice?: string };
   /** What look.txt's `character:` line asked for, before the character file has been looked up. */
   characterId?: string;
 }
@@ -69,6 +69,7 @@ const MAX_CREDIT = 300;
 const MAX_TERMS = 600;
 const MAX_LOOK = 600;
 const MAX_CHARACTER = 600;
+const MAX_VOICE = 400;
 const CHARACTER_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 export const CHARACTERS_DIR = "characters";
 const MAX_FILES = 120;
@@ -106,7 +107,7 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
 }
 
 /** A character's shared description from `characters/<id>.txt` in the first folder that has it: first line the name, the rest the text. Null when missing or too long. */
-async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string; defaultPack?: string } | undefined> {
+async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string; defaultPack?: string; voice?: string } | undefined> {
   for (const dir of dirs) {
     const raw = await readFile(join(dir, CHARACTERS_DIR, `${id}.txt`), "utf8").catch(() => null);
     if (raw === null) continue;
@@ -114,9 +115,14 @@ async function readCharacter(dirs: string[], id: string): Promise<{ id: string; 
     const [name, ...rest] = lines;
     // An optional line `default: <pack>` says which outfit stands for the character in the gallery; it is not part of her description.
     const defaultLine = rest.find((l) => /^default:\s*\S+$/i.test(l));
-    const text = rest.filter((l) => l !== defaultLine).join(" ");
+    // An optional line `voice: <how she speaks>` is her manner of speaking while the pack is on: it outranks the default persona (see src/persona.ts), not a custom one.
+    const voiceLine = rest.find((l) => /^voice:\s*\S/i.test(l));
+    const voice = voiceLine?.replace(/^voice:\s*/i, "");
+    const text = rest.filter((l) => l !== defaultLine && l !== voiceLine).join(" ");
     const defaultPack = defaultLine?.replace(/^default:\s*/i, "");
-    if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) return { id, name, text, defaultPack: defaultPack && isPackName(defaultPack) ? defaultPack : undefined };
+    if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) {
+      return { id, name, text, defaultPack: defaultPack && isPackName(defaultPack) ? defaultPack : undefined, voice: voice && voice.length <= MAX_VOICE ? voice : undefined };
+    }
     return undefined;
   }
   return undefined;
@@ -319,9 +325,14 @@ export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
           .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? o.name : `${o.name} (not on this computer yet, so the user is asked before it is downloaded; you stay in your current outfit until they agree)`))
           .join(", ")}. The tag is invisible to the user; change only when it fits the conversation, not in every reply.`
       : "";
+  // A character with a voice: she speaks as that character while these pictures are on, instead of in her usual manner (the tags and rules stay).
+  const voice = pack.character?.voice
+    ? ` Speak as ${pack.character.name} from now on, in her own voice: ${pack.character.voice} This replaces your usual manner of speaking for as long as these pictures are on; the emotion tags and every other rule stay.`
+    : "";
   return (
     "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +
     look +
+    voice +
     " " +
     gestureNote(pack) +
     " Your emotions and talking still drive which picture is shown." +

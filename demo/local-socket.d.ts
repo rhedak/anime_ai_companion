@@ -23,16 +23,26 @@ export interface Renderer {
 export function createLocalSocket(options: {
   renderer: Promise<Renderer>;
   emotions: Record<string, Record<string, number>> | Promise<Record<string, Record<string, number>>>;
-  reply: (text: string, context?: { presets?: string[]; pack?: boolean; model?: boolean; recent?: string[] }) => { text: string; scene?: string; needsModel?: boolean };
+  reply: (text: string, context?: { presets?: string[]; pack?: boolean; character?: string; model?: boolean; recent?: string[] }) => { text: string; scene?: string; needsModel?: boolean };
   greeting?: string;
   name?: string;
   preset?: string;
   pause?: (ms: number) => Promise<void>;
   packs?: Record<string, PackInfo> | Promise<Record<string, PackInfo>>;
+  /** Who each pack's character is ({ pack: { id, name, default? } }), for the gallery's grouping. */
+  characters?: Record<string, { id: string; name: string; default?: string }> | Promise<Record<string, { id: string; name: string; default?: string }>>;
+  /** Packs that can be fetched from the packs site (see remote-packs.js), by id. */
+  remote?: Record<string, import("./remote-packs.js").RemotePack> | Promise<Record<string, import("./remote-packs.js").RemotePack>>;
+  /** Fetches a JSON document (a pack's pack.json); replaced in tests. */
+  fetchJson?: (url: string) => Promise<unknown>;
+  /** Warms the browser's cache with a picture (the pack's neutral one) before the pack is shown. */
+  preload?: (url: string) => Promise<unknown>;
+  /** A pack or character id from the page's link (`?pack=…`), shown, or asked about if it must be fetched first. */
+  want?: string;
   onPack?: (name: string | null) => void;
   /** The look and pack from the visitor's last visit. */
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;
   /** Called with what to keep for the next visit (her look and pack), or null to forget it. */
   onSave?: (saved: { character: any; pack: string | null; base: string | null } | null) => void;
-  model?: { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void } | null;
+  model?: { ready(): boolean; kind?: () => string; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void } | null;
 }): LocalSocket;

@@ -54,3 +54,18 @@ test("stopping ends the turn with what was said so far, and the next message wor
   assert.equal(provider.interrupt(), false);
   assert.match(await turn(provider, "wave"), /\[gesture:wave\]/);
 });
+
+test("with a character's picture pack on she speaks in that character's voice, and the plain voice comes back with the drawn avatar", async () => {
+  let pack = true;
+  let character = "draconia";
+  const provider = new ScriptedProvider({ presets: () => ["risa"], pack: () => pack, character: () => character });
+  const chat = await turn(provider, "tell me a joke");
+  assert.match(chat, /^\[emotion:angry\] If you want to talk to me properly, link a proper brain first\. If you even have one, baka!/);
+  assert.match(chat, /opencode/, "the way out is still named");
+  assert.doesNotMatch(chat, /download the full version/i, "in the app there is no demo to leave");
+  character = "someone-without-a-voice";
+  assert.match(await turn(provider, "tell me a joke"), /^\[emotion:happy\] I'd love to chat/);
+  pack = false;
+  character = "draconia";
+  assert.match(await turn(provider, "tell me a joke"), /^\[emotion:happy\] I'd love to chat/, "the drawn avatar speaks plainly whatever the last pack was");
+});

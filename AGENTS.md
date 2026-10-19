@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.3.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.5.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -48,7 +48,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 | To change | Edit | Takes effect |
 | --- | --- | --- |
-| Her personality and voice | `persona.md` (chat), `persona-work.md` (work-mode rules) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
+| Her personality and voice | `persona.md` (chat; the default), `data/persona.md` (the user's own, wins over everything), `persona-work.md` (work-mode rules); a character's `voice:` line sits between them (`src/persona.ts`) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
 | Her name | click it, or `/rename Hana` | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
@@ -87,6 +87,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   something has set it; that one line is the only change the page needs. `node demo/stage.mjs` builds the static folder; `npm run demo`
   serves it on 8765; `npm run site:preview` builds the docs site with the demo in it at `demo/` (what the pages workflow publishes) and
   serves it on 8766.
+- **Character voices** (`VOICES` in `public/script.js`): the scripted reader (the demo, and the app's basic mode) speaks in a character's own voice while that character's pack is on (keyed by look.txt's `character:` id), and the demo's small model is told her persona. Plain voice for everyone else. Keep every line honest about what the script can do and keep its emotion tag.
 - `public/frames.js`, `public/tags.js` and `public/demo.js` are shared by the server and the demo (the server imports
   them from `src/avatar.ts`, `src/avatar-tags.ts`, `src/demo.ts`), so both ask for the same frames and read the same tags and show-off list.
   Do not copy them. The request handling (schema, base, patch, frames) is `src/render-ops.ts` for the server, run in a worker thread by
@@ -106,11 +107,11 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
   model), and `franzi-dress` (an original character, made with AI): one outfit per original character,
-  so each works offline. Everything in this repository is MIT (keep it so; the pack with Crypton's character is the one download kept outside it). Everything else is in the sister repository `anime_ai_companion-packs` and are downloaded on request (see Pack archives). Ship lossless WebP.
+  so each works offline. Everything in this repository is MIT (keep it so: other people's characters, Crypton's Miku and the unofficial Draconia fan art, stay in the sister repository `anime_ai_companion-packs`, preview pictures included, and are downloaded on request (see Pack archives); only their text descriptions in `packs/characters/` are here). Ship lossless WebP.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
-  sha256, https URL of a GitHub Release asset, thumbnail). `packs/thumbs/<id>.webp` is a 200 px preview (`npm run pack-thumbs`); the gallery
+  sha256, https URL of a GitHub Release asset, thumbnail). `packs/thumbs/<id>.webp` is a 200 px preview (`npm run pack-thumbs`; publish the pack in the sister repository first, because `scripts/check-published-packs.mjs` in CI and `check.sh` fails on a preview whose pack the live index does not list); the gallery
   shows it even when the pack is not installed. The installer fetches the index (`COMPANION_PACK_INDEX`, or a placeholder GitHub Pages URL
   until the sister repo is published), checks size and sha256, and renames a restored folder into `data/frames/<id>/`. Packs already on disk
   are not replaced. Nothing is downloaded until the page has asked and the user said yes: the question (`pack-offer`, `askPackDownload` in `public/app.js`) gives the size and the host,
@@ -151,6 +152,10 @@ The server can run an agent that edits files and runs commands. These are not op
   protocol. Lorebook entries travel as notes on the user's message, never in the
   system prompt (it is cached), once per conversation with a cap. The expression protocol is never replaced by a
   card, and with no card the prompt is unchanged.
+- Her own persona (`data/persona.md`, `src/persona.ts`, `src/persona-service.ts`) is text that outlives the conversation and sits in her system prompt, so the `[persona …]` tag is
+  held to a stricter version of the notes' rules: she only proposes, on the user's request; the page shows the whole text and nothing is written before Keep; chat mode only; Keep, reset and edit are refused from a
+  phone; one proposal at a time; the file it replaces is kept as `persona.md.bak`. Only the voice part is replaceable: `choosePersona` always ends with the shipped expression protocol, whatever a user file, a card or a
+  pack says. The tiers are custom (card, `data/persona.md`, an edited `persona.md`), then a pack character's `voice:` line, then the default.
 - Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through
   `notesForModel`, never in the system prompt. She may save a note (`[remember …]`) only in chat mode: in
   work mode a file or page she reads could talk her into writing something that outlives the conversation.

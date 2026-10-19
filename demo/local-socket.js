@@ -7,7 +7,8 @@ import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { buildMessages, emotionFix } from "./model-prompt.js";
-import { DRAWN_AGAIN, PACK_INTRO } from "../public/script.js";
+import { packInfoFrom } from "./remote-packs.js";
+import { DRAWN_AGAIN, packIntroFor, personaFor } from "../public/script.js";
 
 const OPEN = 1;
 
@@ -28,6 +29,11 @@ export function createLocalSocket({
   preset = "risa",
   pause = (ms) => new Promise((r) => setTimeout(r, ms)),
   packs = {},
+  characters = {},
+  remote = {},
+  fetchJson = (/** @type {string} */ url) => fetch(url, { signal: AbortSignal.timeout(15000) }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(`the server answered ${res.status}`)))),
+  preload = (/** @type {string} */ _url) => Promise.resolve(),
+  want = "",
   onPack = (/** @type {string | null} */ _name) => {},
   model = null,
   restore = null,
@@ -45,6 +51,9 @@ export function createLocalSocket({
   /** The picture packs on offer, and the one she is showing as just now (null: the drawn avatar). */
   let packList = {};
   let pack = null;
+  /** Who each pack's character is ({ pack: { id, name, default? } }), for the gallery's grouping, and the packs that can be fetched from the packs site. */
+  let characterList = {};
+  let remoteList = {};
   /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
   let editAllowed = false;
   /** The built-in character her look started from (a tweak keeps it), for the gallery to mark; null when it is not known. */
@@ -187,7 +196,13 @@ export function createLocalSocket({
     shellOff: true,
   });
   const packMessage = () => ({ type: "pack", pack: pack ? packList[pack] : null });
-  const packsMessage = () => ({ type: "packs", names: Object.keys(packList), active: pack });
+  const packsMessage = () => ({
+    type: "packs",
+    names: Object.keys(packList),
+    characters: characterList,
+    active: pack,
+    remote: Object.values(remoteList).filter((entry) => !Object.hasOwn(packList, entry.id)),
+  });
   const looksInfo = () => ({ type: "looks", names: [], presets, canUndo: looks.length > 0, current: basePreset });
 
   /** The opening messages a page gets, then her greeting. */
@@ -210,12 +225,19 @@ export function createLocalSocket({
     out(modeInfo());
     out(looksInfo());
     packList = await packs;
-    if (restore?.pack && Object.hasOwn(packList, restore.pack)) {
-      pack = restore.pack;
+    characterList = await characters;
+    remoteList = await remote;
+    // A pack fetched on an earlier visit is fetched again (quietly: the visitor asked for it then).
+    // (A link that names a pack or a character wins, so the last visit's pack is neither fetched nor shown first.)
+    const last = want ? null : restore?.pack;
+    if (last && !Object.hasOwn(packList, last) && Object.hasOwn(remoteList, last)) await fetchPack(last).catch(() => {});
+    if (last && Object.hasOwn(packList, last)) {
+      pack = last;
       onPack(pack);
     }
     out(packMessage());
     out(packsMessage());
+    if (want) await applyWanted();
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
     out({ type: "history", items: history });
     out({ type: "queue", items: [], returned: [] });
@@ -314,6 +336,7 @@ export function createLocalSocket({
       return out(looksInfo());
     }
     if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) return choosePack(msg.name);
+    if (msg.type === "pack-install" && typeof msg.name === "string") return installPack(msg.name);
     if (msg.type === "look-preset" && typeof msg.name === "string" && presets.includes(msg.name)) {
       const base = await (await renderer).call({ op: "base", name: msg.name });
       if (base.ok) {
@@ -362,6 +385,9 @@ export function createLocalSocket({
     out({ type: "notice", text: `/${name} is a command of the real app. This demo knows /show, /frames, /clear and /help.` });
   }
 
+  /** The id of the character whose pack she is showing, whose voice she speaks in ("" for the drawn avatar or a pack of nobody in particular). */
+  const characterId = () => (pack ? (characterList[pack]?.id ?? packList[pack]?.character ?? "") : "");
+
   /** The show-off sequence for what she is just now: the drawn avatar, or the picture pack's own pictures. */
   async function showMessage() {
     const names = Object.keys(await emotions);
@@ -382,7 +408,52 @@ export function createLocalSocket({
     out(packsMessage());
     onPack(pack);
     save();
-    if (!quiet) await speak(pack ? PACK_INTRO : DRAWN_AGAIN);
+    if (!quiet) await speak(pack ? packIntroFor(characterId()) : DRAWN_AGAIN);
+  }
+
+  /** Reads a pack's `pack.json` from the packs site and keeps it in the list (nothing is shown yet). Throws what went wrong, in words. */
+  async function fetchPack(id) {
+    const entry = remoteList[id];
+    if (!entry) throw new Error(`There is no pack called "${id}".`);
+    let json;
+    try {
+      json = await fetchJson(`${entry.base}pack.json`);
+    } catch (err) {
+      throw new Error(`${entry.name} is not available in the demo yet (${err?.message ?? err}). The full app has it.`);
+    }
+    const info = packInfoFrom(json, entry.base);
+    if (!info) throw new Error(`The description of ${entry.name} on the server does not look right, so it was not used.`);
+    await preload(info.emotions.neutral.idle).catch(() => {});
+    packList[id] = info;
+    if (entry.character && !characterList[id]) characterList[id] = entry.character;
+  }
+
+  /**
+   * The link asked for a pack or a character (`?pack=…`): one that is here is shown at once, one that is only on the packs site is asked about first
+   * (the same question as a click on its tile: size and host, nothing fetched until the visitor says yes). Anything else is ignored.
+   */
+  async function applyWanted() {
+    const id = Object.keys(packList).find((n) => n.toLowerCase() === want) ?? Object.keys(remoteList).find((n) => n.toLowerCase() === want);
+    const ofCharacter = (list) => Object.keys(list).filter((n) => (list === packList ? characterList[n]?.id : list[n].character?.id) === want);
+    // A character: the outfit its file names as the default if that is here, else any outfit that is here, else the first one to fetch.
+    const here = ofCharacter(packList);
+    const chosen = id ?? (here.find((n) => characterList[n]?.default === n) ?? here[0] ?? ofCharacter(remoteList)[0]);
+    if (!chosen || chosen === pack) return;
+    if (Object.hasOwn(packList, chosen)) return choosePack(chosen);
+    const entry = remoteList[chosen];
+    out({ type: "pack-offer", id: chosen, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
+  }
+
+  /** The visitor said yes to the question the page asked: fetch the pack, then show it, as the app does after an install. */
+  async function installPack(id) {
+    try {
+      out({ type: "pack-progress", id, phase: "download" });
+      await fetchPack(id);
+    } catch (err) {
+      return void out({ type: "pack-progress", id, phase: "error", message: err?.message ?? String(err) });
+    }
+    out({ type: "pack-progress", id, phase: "done" });
+    await choosePack(id);
   }
 
   /** `/frames`: the packs there are, `/frames off` for the drawn avatar, `/frames <name>` for a pack. */
@@ -392,9 +463,15 @@ export function createLocalSocket({
       return out({
         type: "notice",
         text: names.length
-          ? `Picture packs in this demo: ${names.join(", ")}. Showing ${pack ? `the pack "${pack}"` : "the drawn avatar"}. /frames <name> shows one, /frames off goes back to the drawn avatar.`
+          ? `Picture packs in this demo: ${names.join(", ")}${Object.keys(remoteList).length ? ` (more to fetch in Looks → Packs…, or /frames <name>: ${Object.keys(remoteList).filter((id) => !names.includes(id)).join(", ")})` : ""}. Showing ${pack ? `the pack "${pack}"` : "the drawn avatar"}. /frames <name> shows one, /frames off goes back to the drawn avatar.`
           : "This demo has no picture packs.",
       });
+    }
+    const wanted = Object.keys(remoteList).find((id) => id.toLowerCase() === arg.toLowerCase());
+    if (wanted && !Object.hasOwn(packList, wanted)) {
+      // Like the app: a pack that is not here is asked about first (its size and which server), never fetched by the command alone.
+      const entry = remoteList[wanted];
+      return out({ type: "pack-offer", id: wanted, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
     }
     return choosePack(arg.toLowerCase() === "off" ? null : arg);
   }
@@ -463,7 +540,7 @@ export function createLocalSocket({
     }
     // The last few lines, without tags, so "that colour" can mean one she or the visitor just named.
     const recent = history.slice(-7, -1).map((h) => String(h.text).replace(/\[[^\]\n]*\]/g, " "));
-    const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()), recent });
+    const answered = reply(text, { presets, pack: pack !== null, character: characterId(), model: Boolean(model?.ready()), recent });
     if (answered.scene === "work") return workScene();
     if (answered.needsModel && model?.ready()) return modelReply();
     await speak(answered.text);
@@ -477,7 +554,7 @@ export function createLocalSocket({
     const names = Object.keys(await emotions);
     let said = "";
     try {
-      said = await model.chat(buildMessages(history, names, name), (piece) => out({ type: "delta", text: piece }));
+      said = await model.chat(buildMessages(history, names, name, 8, model.kind?.() ?? "browser", pack ? personaFor(characterId()) : ""), (piece) => out({ type: "delta", text: piece }));
     } catch (err) {
       out({ type: "notice", text: `The small model stopped: ${err?.message ?? err}` });
     }

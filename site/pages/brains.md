@@ -59,6 +59,10 @@ Pick **Ollama (local)** and she is powered by a model on your own machine: nothi
 [Ollama](https://ollama.com), run `ollama pull llama3.2` (or any chat model), and choose the model in the menu.
 Small models follow the tag protocol less reliably, so her expressions may be less consistent. Chat never uses tools.
 
+The [browser demo](demo/) can use your Ollama too (**Chat with a model…**, then *Connect to Ollama*). Ollama refuses other websites by default, so
+allow this one and restart it: `OLLAMA_ORIGINS=https://rhedak.github.io ollama serve` (the Ollama app needs that variable set in its environment).
+The page talks straight to Ollama on your computer; nothing goes anywhere else, and the demo only chats (no tools). The app gives you the rest.
+
 You can also start with it: `COMPANION_PROVIDER=ollama npm start` uses the first model you have installed, and
 `COMPANION_PROVIDER=ollama OLLAMA_MODEL=llama3.2 npm start` names one.
 

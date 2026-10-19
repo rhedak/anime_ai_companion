@@ -1,5 +1,5 @@
 // Joins the recorded scenes into the cuts, each at its own speed, then gives them sound: an original backing track and
-// effects timed to the cues the recorder noted (trailer/audio.py). Usage: node trailer/compose.mjs [--silent]
+// effects timed to the cues the recorder noted (trailer/audio.py). Usage: node trailer/compose.mjs [miku risa draconia] [--silent]
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,12 +8,13 @@ import { join_, outDir } from "./lib.mjs";
 const silentOnly = process.argv.includes("--silent");
 const plan = {
   // scene: speed. Scenes the video does not need (a version without a Miku switch) are simply missing.
-  "01-hook": 1, "02-react": 1.15, "02b-show": 1, "03-switch": 1, "04-work": 1.4, "05-views": 1.35, "06-phone": 1, "07-customise": 1.2, "08-end": 1,
+  "01-hook": 1, "02-react": 1.15, "02b-show": 1, "03-switch": 1, "04-work": 1.4, "05-views": 1.35, "03-packs": 1.1, "06-phone": 1, "07-customise": 1.2, "08-end": 1,
 };
 const seconds = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString());
 
-for (const version of ["miku", "risa"]) {
-  const scenes = Object.keys(plan).filter((name) => existsSync(join(outDir, `${version}-${name}.mp4`)) && !(version === "risa" && name === "03-switch"));
+const asked = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+for (const version of asked.length ? asked : ["miku", "risa"]) {
+  const scenes = Object.keys(plan).filter((name) => existsSync(join(outDir, `${version}-${name}.mp4`)) && !(version !== "miku" && name === "03-switch") && !(version !== "draconia" && name === "03-packs"));
   const files = scenes.map((n) => join(outDir, `${version}-${n}.mp4`));
   const silent = join(outDir, `trailer-${version}-silent.mp4`);
   const total = join_(files, silent, { speeds: scenes.map((n) => plan[n]) });

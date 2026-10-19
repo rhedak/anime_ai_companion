@@ -118,7 +118,7 @@ export const GREETING =
 
 const HELP =
   "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
-  'turn into one of the 20 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
+  'turn into one of the 21 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
   "The Undo button above my picture takes back the last change. I can't chat freely here: that needs a real language model, and the real app has one.";
 
@@ -164,7 +164,7 @@ const CHAT_WORDS =
 
 /** What she says when the drawn avatar comes back. */
 export const DRAWN_AGAIN =
-  "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 20 characters. Just ask.";
+  "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 21 characters. Just ask.";
 
 const HELP_PACK =
   "[emotion:happy] Here is what I can do as a picture pack: show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
@@ -172,30 +172,86 @@ const HELP_PACK =
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. I can\'t chat freely here: that needs a real language model.';
 
 /**
+ * What she says in her own voice when a character's picture pack is on, by the character's id (look.txt's `character:` line). Anything a voice does not
+ * have is said in the plain voice above; a character with no voice here speaks plainly. `persona` is also what the small model in the demo is told.
+ * Like the plain lines, these only ever mention what the script can do: no promise of a chat, no link but the real documentation.
+ * @type {Record<string, { persona: string, packIntro: string, helpPack: string, undoPack: string, redraw: (things: string) => string, beyond: string, chat: (basic: boolean) => string, needsModel: string, needsBrain: string, work: string, moods: Record<string, string>, wave: string, cheer: string }>}
+ */
+const VOICES = {
+  draconia: {
+    persona:
+      "You are Draconia Malfoid, an unofficial fan character: a 21-year-old adult woman, a proud, sharp-tongued tsundere. You act aloof and tease, " +
+      "but you are secretly caring and get flustered when someone is kind to you. Stay in that voice, and keep the teasing light.",
+    packIntro:
+      "[emotion:angry] [gesture:wave] Hmph. So you picked me. Fine. Right now I'm a set of pictures, not something drawn by code, so don't ask me to change my hair, eyes or clothes: " +
+      "I'm perfect as I am anyway! I can still change my face, blink, talk, wave and cheer. If you want the drawn avatar back, choose Looks… → Packs… → Drawn avatar (or type /frames off). " +
+      "And type /show if you want to see everything I can do. Not that I'm trying to impress you!",
+    helpPack:
+      "[emotion:angry] Honestly, do I have to explain everything? As pictures I can show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
+      "I can't change my looks: for that, go back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off). " +
+      'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. And don\'t expect me to chat freely here, baka: that needs a real language model.',
+    undoPack: "[emotion:angry] There is nothing to undo, baka: I'm only pictures, so nothing has changed.",
+    redraw: (things) =>
+      `[emotion:angry] I can't do that as a picture pack, baka: I'm only pictures, so I can't change ${things}. ` +
+      "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask again, if you must. For now I can show a mood, wave or cheer.",
+    beyond: "[emotion:angry] What kind of question is that? I'm only pictures here, so I only know a few things.",
+    chat: (basic) =>
+      basic
+        ? "[emotion:angry] If you want to talk to me properly, link a proper brain first. If you even have one, baka!"
+        : "[emotion:angry] If you want to talk to me properly, download the full version and link a proper brain. If you even have one, baka!",
+    needsModel:
+      `The [full version](${DOCS}download.html) works with Claude Code, Cursor or opencode, or with a free model on your own computer through [Ollama](https://ollama.com) ` +
+      `([how to set that up](${DOCS}brains.html#ollama)). If you can't wait, the "Chat with a small model…" button below runs a tiny one here in your browser, but don't blame me when it's silly.`,
+    needsBrain:
+      "Start with [opencode](https://opencode.ai): it is free and needs no account (`npm install -g opencode-ai`, then restart this app), and Claude Code, Cursor and Ollama work too " +
+      `([how to set up each one](${DOCS}brains.html)). Even you can manage that. Probably.`,
+    work: "[emotion:angry] Work mode needs a proper brain: with only a script I can't read or change your files, baka.",
+    moods: {
+      sad: "...Don't look at me like that. It's not like I'm upset because of you.",
+      angry: "Hmph! This is just my normal face, baka.",
+      surprised: "W-what?! Don't startle me like that!",
+      shy: "D-don't stare at me! I'm not blushing!",
+      thinking: "Hmm... don't rush me.",
+      happy: "Hmph. I'm only smiling because I feel like it.",
+      neutral: "Hmph. Satisfied?",
+    },
+    wave: "H-hello. Don't read anything into it.",
+    cheer: "F-fine, hooray! Happy now?",
+  },
+};
+
+/** What she says when a picture pack is chosen, in the voice of that pack's character (look.txt's `character:` id), or the plain one. */
+export const packIntroFor = (character = "") => VOICES[character]?.packIntro ?? PACK_INTRO;
+
+/** How the small model in the demo is told to speak while that character's pack is on; empty for a character with no voice here. */
+export const personaFor = (character = "") => VOICES[character]?.persona ?? "";
+
+/**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean, model?: boolean, recent?: string[], basic?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `recent`: the last lines of the conversation, newest last, for "that colour"
+ * @param {{ presets?: string[], pack?: boolean, character?: string, model?: boolean, recent?: string[], basic?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `character`: that pack's character id, whose voice she speaks in; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `recent`: the last lines of the conversation, newest last, for "that colour"
  * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
   const t = ` ${String(input).toLowerCase().replace(/\s+/g, " ")} `;
   const presets = context.presets ?? [];
   // Basic mode (the app with no brain installed) says "install a brain"; the browser demo says it is a demo and points to the real app.
-  const needs = context.basic ? NEEDS_BRAIN : NEEDS_MODEL;
+  const voice = context.pack ? VOICES[context.character ?? ""] : undefined;
+  const needs = voice ? (context.basic ? voice.needsBrain : voice.needsModel) : context.basic ? NEEDS_BRAIN : NEEDS_MODEL;
   const noModel = context.basic ? "I have no language model connected" : "this demo has no language model";
   /** The colour most recently named in the conversation (by either of them), for "that colour". */
   const lastColour = [...(context.recent ?? [])].reverse().map((line) => colourIn(String(line).toLowerCase())).find(Boolean) ?? null;
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
   if (WORK_WORDS.test(t) && context.basic) {
-    return { needsModel: true, text: `[emotion:thinking] Work mode needs a brain: with only a script I can't read or change your files. ${NEEDS_BRAIN}` };
+    return { needsModel: true, text: `${voice?.work ?? "[emotion:thinking] Work mode needs a brain: with only a script I can't read or change your files."} ${needs}` };
   }
   if (WORK_WORDS.test(t)) return { scene: "work", text: "" };
   if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become)\b/.test(t) && !LOOK_WORDS.test(t)) {
-    return { needsModel: true, text: `[emotion:happy] I'd love to chat, but ${noModel}: I only follow a small script. ${needs}` };
+    return { needsModel: true, text: `${voice ? voice.chat(Boolean(context.basic)) : `[emotion:happy] I'd love to chat, but ${noModel}: I only follow a small script.`} ${needs}` };
   }
-  if (HELP_WORDS.test(t)) return { text: context.basic && !context.pack ? HELP_BASIC : context.pack ? HELP_PACK : HELP };
-  if (/\bundo\b/.test(t) && context.pack) return { text: "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
+  if (HELP_WORDS.test(t)) return { text: context.basic && !context.pack ? HELP_BASIC : context.pack ? (voice?.helpPack ?? HELP_PACK) : HELP };
+  if (/\bundo\b/.test(t) && context.pack) return { text: voice?.undoPack ?? "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
 
   /** What she will change, by key (a later request for the same thing wins), the words for it, and what she could not do. */
@@ -274,9 +330,11 @@ export function reply(input, context = {}) {
   }
 
   if (context.pack && (set.size || missing.length)) {
+    const things = set.size ? nice(phrases.map((p) => p.replace(/^(an?|the) /, ""))) : "my looks";
+    if (voice) return { text: voice.redraw(things) };
     return {
       text:
-        `[emotion:shy] I can't do that as a picture pack: I'm only pictures, so I can't change ${set.size ? nice(phrases.map((p) => p.replace(/^(an?|the) /, ""))) : "my looks"}. ` +
+        `[emotion:shy] I can't do that as a picture pack: I'm only pictures, so I can't change ${things}. ` +
         "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask me again. For now I can show a mood, wave or cheer.",
     };
   }
@@ -292,15 +350,15 @@ export function reply(input, context = {}) {
       needsModel: true,
       text:
         context.pack
-          ? `[emotion:thinking] That is beyond my script: ${noModel}, so as a picture pack I only know a few things. Try "be shy", "wave", "cheer", "/show"${context.basic ? "" : ' or "show me work mode"'}. ${needs}`
+          ? `${voice?.beyond ?? `[emotion:thinking] That is beyond my script: ${noModel}, so as a picture pack I only know a few things.`} Try "be shy", "wave", "cheer", "/show"${context.basic ? "" : ' or "show me work mode"'}. ${needs}`
           : `[emotion:thinking] That is beyond my script: ${noModel}, so I only know a few things. Try "make your hair mint green", ` +
             `"put on glasses and a witch hat", "become Linnea", "be shy", "wave", "/show"${context.basic ? "" : ' or "show me work mode"'}. ${needs}`,
     };
   }
 
   const words = [];
-  if (mood) words.push(mood[2]);
-  else if (gesture) words.push(gesture === "wave" ? "Hi hi!" : "Yay!");
+  if (mood) words.push(voice?.moods[mood[1]] ?? mood[2]);
+  else if (gesture) words.push(gesture === "wave" ? (voice?.wave ?? "Hi hi!") : (voice?.cheer ?? "Yay!"));
   if (phrases.length) {
     const sentence = nice(phrases);
     words.push(`Okay! ${capital(sentence)}.`);

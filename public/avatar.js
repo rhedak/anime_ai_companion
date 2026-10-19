@@ -113,10 +113,8 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
     /** Only the active avatar draws into the host; switching back repaints from scratch. */
     setActive(on) {
       active = on;
-      if (on) {
-        shown = -1;
-        host.replaceChildren();
-      }
+      // The stage is not emptied: the pack's last picture stays until the drawn body has a frame (the loop draws it at once when its frames are cached).
+      if (on) shown = -1;
     },
     /** The character changed on the server: drop every cached frame and refetch. */
     setVersion(v) {
@@ -205,6 +203,8 @@ function createPackAvatar(host, onError) {
   let gestureUntil = 0;
   /** url -> its <img>, created the first time the emotion that uses it is on screen */
   const images = new Map();
+  /** What was on the stage before this pack (another pack, or the drawn body): left there until this pack's first picture has loaded, so a switch never shows an empty stage. */
+  let stale = [];
 
   const entry = () => pack?.emotions[emotion] ?? pack?.emotions.neutral;
 
@@ -226,8 +226,13 @@ function createPackAvatar(host, onError) {
   function show(url) {
     if (url === shown) return;
     const next = imageFor(url);
+    // A picture that has not loaded yet is not swapped in: the one on screen stays until it has (a swap to a blank one is a flicker, and she
+    // disappears for a moment). The loop asks again at every frame, so it changes as soon as the picture is there. With nothing on screen yet, it shows at once.
+    if (!(next.complete && next.naturalWidth > 0) && (shown || stale.length)) return;
     next.style.visibility = "visible";
     if (shown) images.get(shown).style.visibility = "hidden";
+    for (const old of stale) old.remove();
+    stale = [];
     shown = url;
   }
 
@@ -267,14 +272,15 @@ function createPackAvatar(host, onError) {
       active = on;
       shown = null;
       images.clear();
-      host.replaceChildren();
+      // Turned on: what is on the stage stays until the first picture is loaded. Turned off: the drawn body replaces it as soon as it has a frame.
+      stale = on ? [...host.children] : [];
     },
     setPack(info) {
       pack = info;
       gestureUntil = 0;
       shown = null;
       images.clear();
-      host.replaceChildren();
+      stale = [...host.children];
     },
     setEmotion(name) {
       emotion = name;

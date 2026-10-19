@@ -1262,3 +1262,127 @@ describe("a picture pack chosen in an earlier run", { skip }, () => {
     await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
   });
 });
+
+describe("whose voice she speaks in: custom, then the character of the pack that is on, then the default", { skip }, () => {
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const frames = (voice: boolean) => ({
+    "frames/characters/ann.txt": `Ann\nA tall young woman with short red hair.\n${voice ? "voice: a gruff sailor who says arr a lot.\n" : ""}`,
+    "frames/ann-coat/neutral.png": tiny,
+    "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n",
+  });
+  const promptOf = async (server: RunningServer) => {
+    const c = await server.client();
+    await c.next("history");
+    await ask(c, "hello");
+    return server.systemPrompt();
+  };
+
+  test("with a pack whose character has a voice, her prompt is that character's, with the expression protocol after it", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(true) });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /You are Ann, an anime-style AI companion/);
+      assert.match(prompt, /How you speak: a gruff sailor who says arr a lot\./);
+      assert.doesNotMatch(prompt, /cheerful, warm and slightly mischievous/);
+      assert.match(prompt, /Expression protocol \(important\):/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a character without a voice leaves the default persona alone", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(false) });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /cheerful, warm and slightly mischievous/);
+      assert.doesNotMatch(prompt, /gruff sailor|You are Ann/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("the user's own data/persona.md beats the character, and the protocol is still ours", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: { ...frames(true), "persona.md": "You are a dry-witted librarian.\n" } });
+    try {
+      const prompt = await promptOf(server);
+      assert.match(prompt, /You are a dry-witted librarian\./);
+      assert.doesNotMatch(prompt, /gruff sailor/);
+      assert.match(prompt, /Expression protocol \(important\):/);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe("her own persona: she proposes, the user keeps", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer({ delay: 50 });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("a proposal is a card with the whole text, written to data/persona.md only on Keep (the old file kept), and told to her; she is told about the tag once", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.say("PERSONA make yourself a sailor");
+    const offer = await c.next("persona-offer", 8000, from);
+    assert.match(offer.text, /^You are a gruff sailor who says arr a lot and keeps replies short\./);
+    assert.doesNotMatch(offer.text, /\[emotion|\[persona/, "her own tags are cleaned out of the text");
+    assert.match(offer.replaces, /the default/);
+    assert.equal(server.data("persona.md"), null, "nothing is written before Keep");
+    const intro = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(intro.text!, /\[persona <the complete new description/, "the first message of the conversation tells her how to propose a change");
+    from = c.mark;
+    c.send({ type: "persona-reply", id: offer.id, choice: "keep" });
+    await c.next("persona-resolved", 5000, from);
+    assert.equal(server.data("persona.md"), `${offer.text}\n`);
+    await ask(c, "hello again");
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /The user kept your new persona[^]*gruff sailor/, "the conversation that is running is told");
+    assert.doesNotMatch(told.text!, /\[persona <the complete/, "the how-to is said once per conversation");
+    // a second proposal replaces the file and keeps the first as persona.md.bak
+    await ask(c, "PERSONA another one");
+    const second = await c.next((e) => e.type === "persona-offer" && e.id !== offer.id, 8000);
+    assert.match(second.replaces, /your own: data\/persona\.md/);
+  });
+
+  test("Not now writes nothing and she is told; /persona says whose voice it is, shows it, and reset removes the file (kept as .bak)", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    const from = c.mark;
+    c.say("PERSONA again please");
+    const offer = await c.next("persona-offer", 8000, from);
+    c.send({ type: "persona-reply", id: offer.id, choice: "skip" });
+    await c.next("persona-resolved", 5000, from);
+    await ask(c, "ok never mind");
+    assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /declined your persona proposal/);
+    const said = async (text: string): Promise<string> => {
+      const mark = c.mark;
+      c.say(text);
+      return (await c.next("notice", 5000, mark)).text;
+    };
+    assert.match(await said("/persona"), /Her voice: your own: data\/persona\.md/);
+    assert.match(await said("/persona show"), /gruff sailor/);
+    assert.match(await said("/persona reset"), /removed \(kept as persona\.md\.bak\)/);
+    assert.equal(server.data("persona.md"), null);
+    assert.ok(server.data("persona.md.bak"), "the removed persona is still there as a backup");
+    assert.match(await said("/persona"), /Her voice: the default/);
+  });
+
+  test("in work mode she cannot propose: the user is told why and no card appears", async () => {
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    await c.next((e) => e.type === "mode" && e.mode === "work");
+    const from = c.mark;
+    c.say("PERSONA from work mode");
+    const notice = await c.next((e) => e.type === "notice" && /change her persona/.test(e.text), 8000, from);
+    assert.match(notice.text, /chat mode only/);
+    assert.equal(c.since(from).some((e) => e.type === "persona-offer"), false);
+    c.send({ type: "mode", mode: "chat" });
+  });
+});

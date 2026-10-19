@@ -4,6 +4,14 @@ The app still shows a pack from a folder of pictures (`docs/frame-packs.md`). A 
 `data/frames/` or `packs/` is read exactly as before. A pack that is only in the index can be downloaded
 into `data/frames/<id>/` the first time it is chosen (issue #8). The folders in `packs/` stay as plain frames.
 
+## For the browser demo
+
+A page cannot fetch a GitHub Release asset (no CORS headers), and restoring a patch archive needs Node's image library, so the browser demo does not use the
+archive. The packs repository's publish workflow also puts each published pack's loose frames, `NOTICE.md`, `credit.txt` and a `pack.json` on its GitHub Pages
+site under `frames/<id>/` (not committed: the workflow copies them from `packs-src/` into the Pages artifact on every deploy, for every pack the index lists,
+because a deploy replaces the whole site). `node src/pack-archive-cli.ts manifest <pack-folder> -o pack.json` writes the `pack.json`: the page's `PackInfo` with bare file
+names (which picture is which). See `demo/README.md`.
+
 ## The index
 
 `packs/index.json` is the list of packs that are hosted elsewhere. `parsePackIndex` (`src/pack-index.ts`) checks it.

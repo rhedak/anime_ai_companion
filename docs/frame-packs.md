@@ -36,7 +36,7 @@ The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`
 - `look.txt`: what she wears in these pictures, in a few plain sentences (up to 600 characters), in the second person ("You wear…", "Your hair is up…").
   She cannot see the pictures, and her prompt describes the drawn character, so without this she keeps describing the wrong look. Its first line may be
   `character: <id>`: the shared description of that character (build, apparent age, face, hair colour, eyes) is then `characters/<id>.txt` beside the
-  packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters), and an optional line `default: <pack>` names the outfit whose picture stands for the character in the gallery (the one she wears, once she wears one of them). Outfits of one character share
+  packs (or in `data/frames/characters/`): the first line is the name, the rest the description (up to 600 characters), and an optional line `voice: <how she speaks>` makes her speak as that character while a pack of hers is on (it outranks the default `persona.md`, not the user's own persona; `src/persona.ts`), and an optional line `default: <pack>` names the outfit whose picture stands for the character in the gallery (the one she wears, once she wears one of them). Outfits of one character share
   that file, so they cannot drift apart. Both are told to her when the pack is chosen and at the start of every new conversation while it is on, as a
   note with her next message (never in the system prompt). Brackets are dropped, so a text cannot carry one of her tags. A brain that reads pictures
   (Claude Code, and an Ollama model that reports vision) also gets the resting picture with that message, once. Neither text is shown on the page or served. She can change outfit herself: while a pack of a character that has several outfits is on, she is told the outfits and writes `[outfit casual]` (the name is the folder name without the character in front: `franzi-casual` is `casual`) when she decides to, or when the user asks her to. The tag can only name an outfit of the same character. An outfit that is on this computer is shown at once; one that is not raises the download question (size and server) and nothing is fetched until the user says yes, and then she wears it. Only the first `[outfit …]` of a reply counts. The `character:` line also groups the packs gallery: a character with one pack is a single tile, and one with several outfits is a tile that opens a row of them.
@@ -131,6 +131,10 @@ framing and crop, head position, pose, hair, outfit, colours, line weight and pl
 change: <what changes>."* Blinks and mouth openings were edited from that emotion's own picture. The character
 is Crypton's, so the pack is not MIT: see its `NOTICE.md`. The pictures are lossless WebP at 720 × 819
 (about 350 KB each): lossy encoding would put faint noise back into the parts that are meant to be identical.
+
+## The Draconia pack
+
+The Draconia pack (`packs-src/draconia-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); it is downloaded on request, not shipped) is her own character, `character: draconia` in its `look.txt`, not an outfit of Franzi. Draconia Malfoid is unofficial fan art loosely inspired by Draco Malfoy (a girl version). The pictures were made with Grok Imagine. The pack is not MIT: non-commercial use only, not affiliated with or endorsed by Warner Bros. or Wizarding World, and taken down on request (rhedak00@yahoo.de). Nothing of hers but this text is in the app's repository (her gallery preview is the index's, shown from the packs repository, as Miku's is). Her shared description is `packs/characters/draconia.txt` (the name the gallery shows is Draconia Malfoid, the same as the download index), so once the pack is installed the gallery and `[outfit …]` treat her separately from Franzi.
 
 ## How it is built
 
