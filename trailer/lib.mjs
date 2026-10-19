@@ -162,7 +162,9 @@ export function recorder(browser) {
       paused = true;
       pausedAt = performance.now();
       const last = frames.at(-1);
-      if (last) last.end = pausedAt;
+      // Only the first pause after a frame ends it: a later pause (the page did not change in between, so it is still the last frame) must not
+      // stretch it over everything that was left out before, which kept the waits in the clip as one long still picture.
+      if (last && last.end === undefined) last.end = pausedAt;
     },
     resume() {
       if (!paused) return;
