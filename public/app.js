@@ -942,9 +942,11 @@ function installProgress(msg) {
   el.textContent = msg.stage === "download" ? `Downloading… ${msg.percent ?? 0}%` : (INSTALL_STAGES[msg.stage] ?? "Working…");
 }
 
+let justInstalled = false; // set when this page's install finished, until the new conversation has started
 function installDone(msg) {
   if (!installEl?.active) return; // another page started it, or this card was closed
   installEl.active = false;
+  if (msg.ok) justInstalled = true;
   const done = document.createElement("div");
   done.className = "perm-done";
   if (msg.ok) {
@@ -1368,6 +1370,11 @@ function handle(msg) {
       voice.cancel();
       log.replaceChildren();
       sayLook();
+      if (justInstalled) {
+        // The install ends in a new conversation with the new brain, which empties the log: say that it worked, so the empty chat is not the only sign.
+        justInstalled = false;
+        addMsg("sys", "opencode is installed and she is using it now. Say hello to start.");
+      }
       coldEl = null;
       skillsEl = null;
       cardEl = null;
