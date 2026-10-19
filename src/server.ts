@@ -497,7 +497,7 @@ function renewNotes(): void {
   if (activePack) {
     // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
     const pack = activePack;
-    notes.pushLazy(() => packNote(pack, outfitCache));
+    notes.pushLazy(() => packNote(pack, outfitCache, herName()));
     lookPictureDue = true;
   }
 }
@@ -737,7 +737,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   activePack = result.pack;
   await loadLookPicture();
   await refreshOutfits();
-  notes.push(packNote(result.pack, outfitCache));
+  notes.push(packNote(result.pack, outfitCache, herName()));
   lookPictureDue = true;
   broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());

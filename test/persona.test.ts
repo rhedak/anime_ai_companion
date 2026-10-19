@@ -25,13 +25,13 @@ test("the default persona is used with no card, no file of the user's and no cha
 test("a character with a voice replaces who she is and how she talks, and the expression protocol stays", () => {
   const chosen = choosePersona(input({ character: who }));
   assert.equal(chosen.tier, "character");
-  assert.match(chosen.text, /^You are Draconia Malfoid, an anime-style AI companion/);
+  assert.match(chosen.text, /^You are \{\{name\}\}, an anime-style AI companion/);
   assert.match(chosen.text, /How you speak: a proud tsundere who teases\./);
   assert.doesNotMatch(chosen.text, /cheerful, warm and slightly mischievous/, "the default identity is gone");
   assert.doesNotMatch(chosen.text, /curious, playful, supportive/, "so is the default personality line");
   assert.match(chosen.text, /Show your character's personality and way of speaking\./);
   assert.ok(chosen.text.endsWith(parts.protocol), "the protocol is the shipped one, last");
-  assert.equal(chosen.text.includes("{{name}}"), false, "the character's own name stands for her, not the name she was given");
+  assert.match(chosen.text, /This is your character: A fan character\./, "who she is comes from the character's file; her name is {{name}}: the character's, or the user's own");
   assert.match(characterVoicePart(parts.style, who), /Talk casually and keep replies short/, "the other style notes stay");
 });
 

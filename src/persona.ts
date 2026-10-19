@@ -47,11 +47,11 @@ export function cleanUserPersona(raw: string): string {
   return (cut >= 0 ? raw.slice(0, cut) : raw).trim().slice(0, MAX_USER_PERSONA);
 }
 
-/** The voice part for a character's pack: who she is, then the default style with its "curious, playful" line pointed at the character instead. */
+/** The voice part for a character's pack ({{name}} is her name now: the character's, or the user's own): who she is, then the default style with its "curious, playful" line pointed at the character instead. */
 export function characterVoicePart(style: string, who: { name: string; text: string; voice: string }): string {
   const lively = "Show personality: curious, playful, supportive.";
   return (
-    `You are ${who.name}, an anime-style AI companion who lives in the user's browser. You are a friend to chat with, not a coding assistant by default, and you can also help with tasks when asked. ` +
+    `You are {{name}}, an anime-style AI companion who lives in the user's browser. You are a friend to chat with, not a coding assistant by default, and you can also help with tasks when asked. ` +
     `This is your character: ${who.text} How you speak: ${who.voice}\n\n` +
     style.replace(lively, "Show your character's personality and way of speaking.")
   );

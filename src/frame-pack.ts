@@ -336,8 +336,9 @@ export function outfitName(pack: string, characterId: string): string {
   return lower.startsWith(`${characterId}-`) ? lower.slice(characterId.length + 1) : lower;
 }
 
-export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
-  const who = pack.character ? `You are ${pack.character.name}. ${pack.character.text} ` : "";
+export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? ""): string {
+  // `name` is what she is called now: the character's own name, or the one the user gave her (which wins, see herName in server.ts).
+  const who = pack.character ? `You are ${name}. ${pack.character.text} ` : "";
   const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
   const wear =
     outfits.length > 1
@@ -347,7 +348,7 @@ export function packNote(pack: FramePack, outfits: Outfit[] = []): string {
       : "";
   // A character with a voice: she speaks as that character while these pictures are on, instead of in her usual manner (the tags and rules stay).
   const voice = pack.character?.voice
-    ? ` Speak as ${pack.character.name} from now on, in her own voice: ${pack.character.voice} This replaces your usual manner of speaking for as long as these pictures are on; the emotion tags and every other rule stay.`
+    ? ` Speak as ${name} from now on, in her own voice: ${pack.character.voice} This replaces your usual manner of speaking for as long as these pictures are on; the emotion tags and every other rule stay.`
     : "";
   return (
     "The user switched you to a fixed set of pictures: your look cannot change now, so [avatar ...] tags do nothing." +

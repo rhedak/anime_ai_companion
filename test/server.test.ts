@@ -1290,6 +1290,24 @@ describe("whose voice she speaks in: custom, then the character of the pack that
     }
   });
 
+  test("a name the user gave her wins over the character's: the prompt and the pack note say Hana, the voice is still the character's", async () => {
+    const server = await startServer({ settings: { framePack: "ann-coat", name: "Hana", nameSet: true }, dataFiles: frames(true) });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      await ask(c, "hello");
+      const prompt = server.systemPrompt();
+      assert.match(prompt, /You are Hana, an anime-style AI companion/);
+      assert.match(prompt, /How you speak: a gruff sailor who says arr a lot\./);
+      const first = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+      assert.match(first.text!, /You are Hana\. A tall young woman with short red hair/);
+      assert.match(first.text!, /Speak as Hana from now on, in her own voice: a gruff sailor/);
+      assert.doesNotMatch(first.text!, /You are Ann\./);
+    } finally {
+      await server.stop();
+    }
+  });
+
   test("a character without a voice leaves the default persona alone", async () => {
     const server = await startServer({ settings: { framePack: "ann-coat" }, dataFiles: frames(false) });
     try {
