@@ -234,13 +234,19 @@ test("every shipped pack has a 200 px thumbnail, and that folder is not a pack",
   assert.equal((await listPacks(packsDir)).includes("characters"), false, "characters/ holds the shared character texts, not pictures");
   for (const name of names) {
     if (name === "thumbs" || name === "characters") continue;
-    const thumb = await readFile(join(packsDir, "thumbs", `${name}.webp`));
-    const meta = await sharp(thumb).metadata();
-    assert.equal(meta.format, "webp", name);
-    assert.equal(meta.width, 200, name);
-    assert.ok((meta.height ?? 0) > 100, name);
+    await assertThumb(packsDir, name);
   }
+  // Outfits that are downloaded, not shipped as frames, still keep a preview here.
+  for (const name of ["franzi-casual", "franzi-pajamas", "franzi-bikini"]) await assertThumb(packsDir, name);
 });
+
+async function assertThumb(packsDir: string, name: string): Promise<void> {
+  const thumb = await readFile(join(packsDir, "thumbs", `${name}.webp`));
+  const meta = await sharp(thumb).metadata();
+  assert.equal(meta.format, "webp", name);
+  assert.equal(meta.width, 200, name);
+  assert.ok((meta.height ?? 0) > 100, name);
+}
 
 test("a local server installs franzi-casual from its patch archive, and a second run does not download it again", { timeout: 180_000 }, async () => {
   const folder = await franziCasual();

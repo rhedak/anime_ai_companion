@@ -126,7 +126,7 @@ and how to get a consistent set out of an image tool.
 A pack of **Risa in a dress** comes with the app too (Looks → Packs… → risa-dress, or `/frames risa-dress`): an original character,
 same as the drawn Risa preset, with the pictures made with Grok Imagine and MIT-licensed like the rest ([`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)).
 
-**Franzi**, an original character (made with AI, MIT-licensed like the rest), has three outfits: the dirndl comes with the app, and the casual and pajama
+**Franzi**, an original character (made with AI, MIT-licensed like the rest), has four outfits: the dirndl comes with the app, and the casual, pajama and bikini
 outfits are downloaded when you want them. Pictures are grouped by character in **Looks → Packs…**: a character with several outfits is one tile that opens a row of them.
 While a pack is on, she is told what the pictures show (each pack's `look.txt`, and the character's shared description), and with a brain that can read pictures she is
 also shown her resting picture. She can change outfit herself: ask her to, or let her decide, and she writes `[outfit casual]` (only outfits of her own character; one that

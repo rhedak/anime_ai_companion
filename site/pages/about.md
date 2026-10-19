@@ -20,9 +20,9 @@ settled everywhere, and the image tool's own terms apply too.
 
 ## The Franzi pack
 
-**Franzi** is another original character, with three outfits (dirndl, casual, pajamas). Her pictures were made with Grok Imagine from a design by the
+**Franzi** is another original character, with four outfits (dirndl, casual, pajamas, bikini). Her pictures were made with Grok Imagine from a design by the
 repository's owner and are MIT-licensed like the rest, with the same caveat about AI-made pictures in each pack's NOTICE. The dirndl comes with the
-app; the other two are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
+app; the other three are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
 
 ## The Hatsune Miku pack
 
