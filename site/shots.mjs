@@ -17,7 +17,6 @@ const app = await startApp({
   port: 3802,
   settings: { provider: "opencode" },
   before: async (dir) => {
-    rmSync(join(dir, "packs", "miku"), { recursive: true, force: true }); // no Miku in the screenshots
     mkdirSync(join(dir, "data", "frames"), { recursive: true });
     cpSync(join(sampleFrames, "risa"), join(dir, "data", "frames", "sample-risa"), { recursive: true });
   },

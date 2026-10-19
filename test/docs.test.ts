@@ -51,7 +51,7 @@ test("every link from the site to a file on GitHub points at a file that exists 
       assert.ok(existsSync(join(root, rest)), `${file} links to ${rest} on GitHub, but it is not in the repository`);
     }
   }
-  assert.ok(checked.has("packs/miku/NOTICE.md") && checked.has("CONTRIBUTING.md"), "the repository links were not found");
+  assert.ok(checked.has("packs/risa-dress/NOTICE.md") && checked.has("CONTRIBUTING.md"), "the repository links were not found");
 });
 
 test("the documentation does not carry anything personal", () => {

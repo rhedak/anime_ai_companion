@@ -123,13 +123,13 @@ mouth near the chin leaving a smear. The pictures are lossless WebP at full size
 
 ## The Miku pack
 
-`packs/miku/` was made from a base picture of the character cropped to the same framing as the Linnea sample
+The Miku pack (`packs-src/miku/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); it is downloaded on request, not shipped) was made from a base picture of the character cropped to the same framing as the Linnea sample
 (900 × 1024, the 580 × 660 ratio), then one edit per picture with Grok Imagine (35 pictures, about $2.50 in
 all). Each edit got the picture to change as its only reference and an instruction of this shape, which worked
 well: *"Edit Image 1. Output the same picture again with one change only. Keep everything else identical: same
 framing and crop, head position, pose, hair, outfit, colours, line weight and plain white background. The one
 change: <what changes>."* Blinks and mouth openings were edited from that emotion's own picture. The character
-is Crypton's, so the pack is not MIT: see `packs/miku/NOTICE.md`. The pictures are lossless WebP at 720 × 819
+is Crypton's, so the pack is not MIT: see its `NOTICE.md`. The pictures are lossless WebP at 720 × 819
 (about 350 KB each): lossy encoding would put faint noise back into the parts that are meant to be identical.
 
 ## How it is built
