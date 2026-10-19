@@ -132,10 +132,10 @@ While a pack is on, she is told what the pictures show (each pack's `look.txt`, 
 also shown her resting picture. She can change outfit herself: ask her to, or let her decide, and she writes `[outfit casual]` (only outfits of her own character; one that
 has to be downloaded makes the page ask you first).
 
-A **Hatsune Miku** pack comes with the app: Looks → Packs… → Miku (or `/frames miku`). She is Crypton's character, so that pack is
-unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on
-screen and its terms said in the chat when you choose it. Read [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md) before you use or share it, and follow its terms
-yourself: this project cannot grant you the right to use the character.
+A **Hatsune Miku** pack is available too, as a download (Looks → Packs… → Miku, or `/frames miku`; the page asks first). She is Crypton's character, so that
+pack is unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on screen and its terms said in the chat when you
+choose it. It lives in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not in this one, and its `NOTICE.md` (in `data/frames/miku/` once
+downloaded) says what you may do: read it before you use or share it, and follow its terms yourself: this project cannot grant you the right to use the character.
 
 A pack that is not on this computer yet can be downloaded from **Looks → Packs…** (a small preview and **Download**)
 or with `/frames <name>`. The page asks first and says how big it is (about 4 to 5 MB) and which server is contacted (GitHub, which sees your IP address); nothing is
@@ -584,11 +584,14 @@ software you have not read line by line.
   [How this was made](#how-this-was-made)). Please keep saying so if you share what it makes.
 - [`ws`](https://github.com/websockets/ws) for WebSockets.
 - `packs/risa-dress`: an original character, pictures made with Grok Imagine (AI-made; MIT, see its `NOTICE.md`).
-- `packs/miku`: Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
+- The Hatsune Miku pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), from the first Windows installer that is signed. Roles, what is signed and the privacy statement are on the [Code signing page](https://rhedak.github.io/anime_ai_companion/code-signing.html).
 
 ## Licence
 
-[MIT](LICENSE), **except `packs/miku/`**, which shows a character that belongs to Crypton Future Media and
-may only be used non-commercially under the terms in [`packs/miku/NOTICE.md`](packs/miku/NOTICE.md). Delete
-that folder if you build something commercial from this code.
+[MIT](LICENSE). Everything in this repository is MIT. The one exception is a pack you can download, not part of this repository: the Hatsune Miku pictures
+(see above) show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the pack's own `NOTICE.md`.

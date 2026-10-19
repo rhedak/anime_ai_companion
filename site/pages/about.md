@@ -1,14 +1,14 @@
 ---
-description: Credits, the licence (including the exception for the Hatsune Miku pack), and how to contribute.
+description: Credits, the licence (including the note on the downloadable Hatsune Miku pack), and how to contribute.
 ---
 
 # About, credits, licence
 
 ## Licence
 
-[MIT](https://github.com/rhedak/anime_ai_companion/blob/main/LICENSE), **except `packs/miku/`**. That folder shows a
-character that belongs to Crypton Future Media and may only be used non-commercially under the terms in its
-[NOTICE](../../packs/miku/NOTICE.md). Delete that folder if you build something commercial from this code.
+[MIT](https://github.com/rhedak/anime_ai_companion/blob/main/LICENSE): everything in this repository. The one exception is a pack you can download, which is not
+part of it: the Hatsune Miku pictures show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the
+pack's own NOTICE.
 
 ## The Risa (dress) pack
 
@@ -26,13 +26,13 @@ app; the other two are downloaded on request from the [packs repository](https:/
 
 ## The Hatsune Miku pack
 
-A picture pack of Hatsune Miku comes with the app. It is **unofficial fan art**, used under the
+A picture pack of Hatsune Miku is available as a download (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). It is **unofficial fan art**, used under the
 [Piapro Character License](https://piapro.net/license/pcl) for **non-commercial** use only. The pictures were made
 with Grok Imagine from a base design, then lined up and assembled with a script so that only the face changes
 between pictures. While the pack is on, the credit
 "Hatsune Miku © Crypton Future Media, INC. www.piapro.net" stays on screen and the terms are said in the chat.
 
-Read the [NOTICE](../../packs/miku/NOTICE.md) before you use or share it, and follow its terms yourself: this project
+Read the NOTICE that comes with the pack (`NOTICE.md` in `data/frames/miku/`, or [in the packs repository](https://github.com/rhedak/anime_ai_companion-packs/blob/main/packs-src/miku/NOTICE.md)) before you use or share it, and follow its terms yourself: this project
 cannot grant you the right to use the character. The repository's owner has asked Crypton about AI-made fan art
 and about distributing it in an open-source repository, and had no answer when this was written; the NOTICE says
 so openly.

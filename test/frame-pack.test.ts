@@ -272,30 +272,6 @@ test("a pack can carry its credit and its terms, and packs are found in the user
   }
 });
 
-test("the Miku pack that ships with the app is complete, and carries its credit and its terms", async () => {
-  const root = fileURLToPath(new URL("..", import.meta.url));
-  const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
-  const r = await readPack(join(root, "packs"), "miku", names);
-  assert.ok(r.ok);
-  for (const emotion of names) {
-    const e = r.pack.emotions[emotion];
-    assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
-  }
-  assert.equal(r.pack.files.size, names.length * 5 + Object.values(r.pack.gestures).flat().length);
-  assert.match(r.pack.credit ?? "", /Crypton Future Media, INC\. www\.piapro\.net/);
-  assert.ok((r.pack.credit ?? "").length <= 70, "short enough for one line on a phone");
-  assert.match(r.pack.terms ?? "", /unofficial/i);
-  assert.match(r.pack.terms ?? "", /non-commercial/i);
-  assert.match(r.pack.terms ?? "", /Piapro Character License/);
-  const notes = r.pack.notes.join("\n");
-  assert.match(notes, /NOTICE\.md/);
-  assert.doesNotMatch(notes, /different size|Not used|No pictures for/); // nothing odd about the set itself
-  const notice = await readFile(join(root, "packs/miku/NOTICE.md"), "utf8");
-  for (const needed of ["Piapro Character License", "Non-commercial only", "sublicens", "piapro.net/license/pcl"]) {
-    assert.ok(notice.includes(needed), `NOTICE.md should mention "${needed}"`);
-  }
-});
-
 test("the Risa (dress) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
@@ -341,6 +317,11 @@ test("each character's default outfit is a pack that ships with the app; the oth
     const def = /^default:\s*(\S+)\s*$/im.exec(text)?.[1];
     const id = file.replace(/\.txt$/, "");
     const shipped = (await listPacks(join(root, "packs"))).filter((name) => name === id || name.startsWith(`${id}-`));
+    // Miku's pictures are Crypton's and not open source, so that pack is only in the packs repository and downloaded on request: the app's own files are all MIT.
+    if (id === "miku") {
+      assert.equal(shipped.length, 0, "no Miku pictures in this repository");
+      continue;
+    }
     assert.ok(shipped.length >= 1, `${id} has at least one pack that ships with the app, so she works offline`);
     if (def) assert.ok(shipped.includes(def), `${id}: default ${def} must ship with the app`);
   }
