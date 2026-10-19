@@ -25,7 +25,6 @@ const pages = [
   { slug: "commands", title: "Slash commands", file: "site/pages/commands.md" },
   { slug: "how-it-works", title: "How it works", file: "site/pages/how-it-works.md" },
   { slug: "safety", title: "Safety and privacy", file: "site/pages/safety.md" },
-  { slug: "code-signing", title: "Code signing", file: "site/pages/code-signing.md" },
   { slug: "about", title: "About, credits, licence", file: "site/pages/about.md" },
 ];
 const bySource = new Map(pages.map((p) => [p.file, p]));
