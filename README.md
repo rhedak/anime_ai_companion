@@ -588,7 +588,7 @@ software you have not read line by line.
 - `packs/risa-dress`: an original character, pictures made with Grok Imagine (AI-made; MIT, see its `NOTICE.md`).
 - The Hatsune Miku pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
-- The Draconia Malfoid pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository) : unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see its `NOTICE.md`. It will be taken down on request (rhedak00@yahoo.de).
+- The Draconia Malfoid pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see its `NOTICE.md`. It will be taken down on request (rhedak00@yahoo.de).
 
 ## Code of conduct
 
