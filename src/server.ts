@@ -35,6 +35,7 @@ import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
 import { createTurnService } from "./turn-service.ts";
 import { createMemoryService } from "./memory-service.ts";
+import { createPersonaService } from "./persona-service.ts";
 import { createNotes } from "./notes.ts";
 import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
@@ -583,6 +584,17 @@ const memory = createMemoryService({
   pushNote: (text) => notes.push(text),
 });
 
+// --- her own persona (data/persona.md) and the [persona …] proposal: see persona-service.ts ---
+const personaVoice = createPersonaService({
+  file: join(dataDir, "persona.md"),
+  mode: () => mode,
+  broadcast: (msg) => broadcast(msg),
+  openFile: (path) => openBrowser(path),
+  remoteRefusal: () => remoteRefusal,
+  pushNote: (text) => notes.push(text),
+  current: () => ({ choice: personaChoice(), characterName: activePack?.character?.name ?? "" }),
+});
+
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
   file: join(dataDir, "character.json"),
@@ -865,6 +877,10 @@ const slashCommands: Record<
       if (wanted === "on" || wanted === "off") return changeClaudeSetup(wanted === "on", say);
       say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
     },
+  },
+  persona: {
+    help: "whose voice she speaks in (your own persona, the character of the pack that is on, or the default): /persona | show | edit | reset",
+    run: async ({ args, say, remote }) => personaVoice.command(args, say, remote),
   },
   memory: {
     help: "her notes about you (data/memory.md): /memory | add <note> | forget <number|all> | edit | ask | auto | off",
@@ -1156,6 +1172,7 @@ function forgetConversationSize(): void {
   skills.forgetOffer();
   cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
+  personaVoice.forgetTold();
   turns.dropHeld();
 }
 
@@ -1219,6 +1236,7 @@ const turns = createTurnService({
   looksInfo: () => looksInfo(),
   notes,
   memory,
+  persona: personaVoice,
   cards,
   skills,
   queue,
@@ -1275,6 +1293,7 @@ wss.on("connection", (ws) => {
   }
   for (const request of pendingPermissions.values()) ws.send(JSON.stringify({ type: "permission", request }));
   for (const offer of memory.pending()) ws.send(JSON.stringify({ type: "memory-offer", ...offer }));
+  for (const offer of personaVoice.pending()) ws.send(JSON.stringify({ type: "persona-offer", ...offer }));
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
@@ -1309,6 +1328,8 @@ wss.on("connection", (ws) => {
       await cards.answer(msg.choice, msg.use, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "memory-reply") {
       memory.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "persona-reply") {
+      personaVoice.answer(msg.id, msg.choice, (text) => ws.send(JSON.stringify({ type: "notice", text })), remote);
     } else if (msg.type === "memory-undo") {
       memory.undo(msg.fact, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "unqueue" && typeof msg.id === "string") {

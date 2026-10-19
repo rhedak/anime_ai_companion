@@ -66,3 +66,50 @@ export function choosePersona(input: PersonaInput): PersonaChoice {
   if (input.character && parts) return { tier: "character", text: `${characterVoicePart(parts.style, input.character)}${parts.protocol}` };
   return { tier: "default", text: input.base };
 }
+
+/** Every complete `[persona …]` tag in a reply: a proposal for her own voice part (who she is and how she talks), in her own words. */
+export const PERSONA_TAG = /\[persona\s+([^\]]+)\]/gi;
+
+export function findPersonaTags(text: string): string[] {
+  return [...text.matchAll(PERSONA_TAG)].map((m) => m[1]);
+}
+
+/** A proposal at most this long (her own file may be longer: the user can write more by hand). */
+export const MAX_PROPOSAL_CHARS = 2000;
+export const MIN_PROPOSAL_CHARS = 30;
+
+/**
+ * A proposal made fit to show and to save: markup, her own tags and control characters out, line ends kept, capped at a word.
+ * Null when too little is left. It ends up in her system prompt, so it is only ever saved after the user has read it and said yes.
+ */
+export function cleanProposal(input: string): string | null {
+  const text = input
+    .replace(/<\/?[a-z!][^>]*>/gi, "")
+    .replace(/\[\s*(?:emotion|gesture|avatar|image|demo|remember|outfit|persona)\b[^\]]*\]/gi, "")
+    // the tag ends at the first `]`, so one of her own tags written inside it leaves its start behind: cut that fragment
+    .replace(/\[[^\]]*$/, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (text.length < MIN_PROPOSAL_CHARS) return null;
+  return text.length > MAX_PROPOSAL_CHARS ? text.slice(0, MAX_PROPOSAL_CHARS).replace(/\s+\S*$/, "").trimEnd() + "…" : text;
+}
+
+/** The voice part of a persona text: everything before the expression protocol. */
+export const voicePartOf = (text: string): string => {
+  const cut = text.indexOf("Expression protocol (important):");
+  return (cut >= 0 ? text.slice(0, cut) : text).trim();
+};
+
+/** What `/persona` calls each source of the voice in use. */
+export function describeChoice(choice: PersonaChoice, characterName = ""): string {
+  if (choice.tier === "custom") {
+    return choice.source === "card" ? "your own: the imported character card (/card)" : choice.source === "data/persona.md" ? "your own: data/persona.md" : "your own: an edited persona.md";
+  }
+  if (choice.tier === "character") return `the character of the picture pack that is on${characterName ? ` (${characterName})` : ""}`;
+  return "the default (the persona.md that comes with the app)";
+}

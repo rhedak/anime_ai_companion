@@ -152,6 +152,10 @@ The server can run an agent that edits files and runs commands. These are not op
   protocol. Lorebook entries travel as notes on the user's message, never in the
   system prompt (it is cached), once per conversation with a cap. The expression protocol is never replaced by a
   card, and with no card the prompt is unchanged.
+- Her own persona (`data/persona.md`, `src/persona.ts`, `src/persona-service.ts`) is text that outlives the conversation and sits in her system prompt, so the `[persona …]` tag is
+  held to a stricter version of the notes' rules: she only proposes, on the user's request; the page shows the whole text and nothing is written before Keep; chat mode only; Keep, reset and edit are refused from a
+  phone; one proposal at a time; the file it replaces is kept as `persona.md.bak`. Only the voice part is replaceable: `choosePersona` always ends with the shipped expression protocol, whatever a user file, a card or a
+  pack says. The tiers are custom (card, `data/persona.md`, an edited `persona.md`), then a pack character's `voice:` line, then the default.
 - Her notes about the user (`data/memory.md`, `src/memory.ts`) are delivered as data through
   `notesForModel`, never in the system prompt. She may save a note (`[remember …]`) only in chat mode: in
   work mode a file or page she reads could talk her into writing something that outlives the conversation.

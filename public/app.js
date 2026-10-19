@@ -87,6 +87,7 @@ function parseReply(text) {
     .replace(/\[avatar\b[^\]]*\]/g, "")
     .replace(/\[demo\]/g, "")
     .replace(/ *\[remember\s[^\]]*\]/g, "")
+    .replace(/ *\[persona\s[^\]]*\]/g, "")
     .replace(/ *\[remember\][^\[]*$/i, "") // a [remember]… that is still being written
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
@@ -832,6 +833,49 @@ function resolveMemoryOffer(msg) {
   memoryEls.delete(msg.id);
 }
 
+// She proposes a new personality for herself (the user asked her to): the whole text, answered with Keep or Not now. Nothing changes before Keep.
+const personaEls = new Map(); // id -> { card, actions }
+
+function addPersonaOffer(msg) {
+  if (personaEls.has(msg.id)) return;
+  const card = document.createElement("div");
+  card.className = "msg perm memory persona";
+  const title = document.createElement("div");
+  title.className = "perm-title";
+  title.textContent = "Change how she is?";
+  const text = document.createElement("div");
+  text.className = "memory-fact persona-text";
+  text.textContent = msg.text; // textContent only: the model wrote it
+  const note = document.createElement("div");
+  note.className = "persona-note";
+  // textContent only: `replaces` comes from the server, but nothing here is built from markup.
+  note.textContent = `Replaces who she is and how she talks (now: ${msg.replaces}). It is saved as your own persona in data/persona.md, the tag rules stay, and a new chat uses it. /persona reset goes back.`;
+  const actions = document.createElement("div");
+  actions.className = "perm-actions";
+  const button = (label, cls, choice) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = () => ws.send(JSON.stringify({ type: "persona-reply", id: msg.id, choice }));
+    return b;
+  };
+  actions.append(button("Keep", "allow", "keep"), button("Not now", "deny", "skip"));
+  card.append(title, text, note, actions);
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  personaEls.set(msg.id, { card, actions });
+}
+
+function resolvePersonaOffer(msg) {
+  const el = personaEls.get(msg.id);
+  if (!el) return;
+  const done = document.createElement("div");
+  done.className = "perm-done";
+  done.textContent = msg.choice === "keep" ? "✓ Kept" : "Not kept";
+  el.actions.replaceWith(done);
+  personaEls.delete(msg.id);
+}
+
 // She saved a note by herself (the user turned asking off): say so, with an Undo.
 function addMemorySaved(msg) {
   const div = addMsg("sys", msg.text);
@@ -1263,6 +1307,12 @@ function handle(msg) {
       break;
     case "memory-saved":
       addMemorySaved(msg);
+      break;
+    case "persona-offer":
+      addPersonaOffer(msg);
+      break;
+    case "persona-resolved":
+      resolvePersonaOffer(msg);
       break;
     case "card-offer":
       addCardOffer(msg);

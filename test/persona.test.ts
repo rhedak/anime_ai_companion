@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { splitPersona } from "../src/card.ts";
-import { MAX_USER_PERSONA, SHIPPED_PERSONA_SHA256, characterVoicePart, choosePersona, cleanUserPersona, personaSha256 } from "../src/persona.ts";
+import { MAX_PROPOSAL_CHARS, MAX_USER_PERSONA, SHIPPED_PERSONA_SHA256, characterVoicePart, choosePersona, cleanProposal, cleanUserPersona, findPersonaTags, personaSha256, voicePartOf } from "../src/persona.ts";
 
 const root = join(import.meta.dirname, "..");
 const base = readFileSync(join(root, "persona.md"), "utf8");
@@ -57,4 +57,17 @@ test("the user's file never removes the protocol: whatever they pasted of it is 
   assert.equal(cleanUserPersona("x".repeat(MAX_USER_PERSONA + 500)).length, MAX_USER_PERSONA);
   // a persona.md that was reshaped (no protocol marker) cannot be fitted around: the file is not used, the base stands
   assert.equal(choosePersona(input({ base: "Just a line.", userFile: "Mine." })).text, "Just a line.");
+});
+
+test("a proposal is made fit to show and save: markup, her own tags and a half-written tag inside it are cut, line ends kept, short ones refused, long ones capped", () => {
+  const cut = cleanProposal;
+  assert.equal(cut("You are a sailor who says arr. [emotion:happy] Keep replies short.  <b>Always</b>."), "You are a sailor who says arr. Keep replies short. Always.");
+  assert.equal(cut("You are a sailor who says arr a lot and is gruff. [emotion:happy"), "You are a sailor who says arr a lot and is gruff.", "the tag ends at the first ], so a tag inside it leaves its start behind");
+  assert.equal(cut("First line of who she is, long enough.\n\n\n\nSecond line of how she talks."), "First line of who she is, long enough.\n\nSecond line of how she talks.");
+  assert.equal(cut("too short"), null);
+  assert.equal(cut("[remember x] [persona y]"), null);
+  const long = cut("word ".repeat(1000))!;
+  assert.ok(long.length <= MAX_PROPOSAL_CHARS + 1 && long.endsWith("…"));
+  assert.deepEqual(findPersonaTags("a [persona Be kind and short.] b [persona Two] c [persona]"), ["Be kind and short.", "Two"]);
+  assert.equal(voicePartOf(`Who she is.\n\nExpression protocol (important):\n- tags`), "Who she is.");
 });

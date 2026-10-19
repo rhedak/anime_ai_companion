@@ -50,6 +50,10 @@ Three things can decide how she talks, and the first that applies wins:
 Only the voice part is ever replaced. The tag protocol and the work-mode rules always stay, whatever your file, a card or a pack says. A new conversation uses the new voice; one that is already running
 keeps the prompt it began with (for Claude, `/clear`), and gets a note when you switch a pack.
 
+**She can change her own persona when you ask her to** ("talk more formally", "be a gruff sailor"). She proposes it: a card shows the whole new text, and only **Keep** writes it, as your own
+`data/persona.md` (the old file is kept as `persona.md.bak`). It works in chat mode only (in work mode a file or page she reads could talk her into rewriting herself), never from a phone, one proposal at a time, and she
+never proposes it on her own. `/persona` says whose voice is in use, `/persona show` prints it, `/persona edit` opens your file, `/persona reset` removes it.
+
 ### Her notes about you
 
 She can keep a few notes about you across conversations, in `data/memory.md`: one short fact per line, plain Markdown you can
