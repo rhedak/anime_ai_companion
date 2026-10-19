@@ -1701,17 +1701,18 @@ try {
 } catch {}
 $("worksummary-text").addEventListener("click", () => setWorkbarCollapsed(false));
 
-// "Work here" applies what is typed; once she already works in that folder the same button opens a folder dialog,
-// since the next thing someone wants there is a different folder.
+// "Work here" applies what is typed. With nothing typed, or once she already works in that folder, the same button opens a
+// folder dialog instead: a new user needs a way to pick a folder without knowing its path.
 let picking = false;
-const folderUnchanged = () => state.mode === "work" && Boolean(state.projectDir) && $("folder").value.trim().replace(/(?<=.)\/+$/, "") === state.projectDir;
+const folderUnchanged = () =>
+  !$("folder").value.trim() || (state.mode === "work" && Boolean(state.projectDir) && $("folder").value.trim().replace(/(?<=.)\/+$/, "") === state.projectDir);
 
 function renderFolderButton() {
   const button = $("folder-set");
   const choose = folderUnchanged();
   button.textContent = picking ? "Choosing…" : choose ? "Choose folder…" : "Work here";
   button.disabled = picking;
-  button.title = choose ? "Pick a different folder in a dialog" : "Work in the folder typed here";
+  button.title = choose ? "Pick a folder in a dialog" : "Work in the folder typed here";
 }
 $("folder").addEventListener("input", renderFolderButton);
 

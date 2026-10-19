@@ -209,7 +209,7 @@ there, like a regular Claude Code session. She asks first:
   Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
   Auto*, like the terminal's "yes, and don't ask again".
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
-- **Work here** applies the folder typed in the box. Once she already works in that folder, the same button
+- **Work here** applies the folder typed in the box. With nothing typed, or once she already works in that folder, the same button
   reads **Choose folder…** and opens your system's folder dialog (macOS, or Linux with `zenity` or
   `kdialog`; elsewhere type the path), starting in the current folder; picking one switches to it.
   Enter in the box always means "use what I typed".
