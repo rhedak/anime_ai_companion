@@ -256,7 +256,11 @@ export class OpenCodeProvider implements Provider {
     createInterface({ input: proc.stdout }).on("line", (line) => {
       if (this.proc === proc) this.onLine(line);
     });
-    proc.stderr.on("data", (chunk) => process.stderr.write(`[opencode] ${chunk}`));
+    let errorOutput = "";
+    proc.stderr.on("data", (chunk) => {
+      process.stderr.write(`[opencode] ${chunk}`);
+      errorOutput = (errorOutput + chunk).slice(-2000);
+    });
     proc.on("error", (err) => {
       if (this.proc !== proc) return;
       this.proc = null;
@@ -269,7 +273,8 @@ export class OpenCodeProvider implements Provider {
     proc.on("exit", (code) => {
       if (this.proc !== proc) return;
       this.proc = null;
-      const message = `opencode exited (${code ?? "signal"}).`;
+      const said = errorOutput.replace(/\x1b\[[0-9;]*m/g, "").trim().split(/\r?\n/).slice(-6).join("\n");
+      const message = `opencode exited (${code ?? "signal"}).${said ? ` It said:\n${said}` : ""}`;
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
     });

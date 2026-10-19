@@ -248,6 +248,31 @@ test("a permission request reaches the card and the allow answer lets the turn f
   }
 });
 
+test("when opencode dies at start, the page gets what it printed, not just the exit code", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "dies.mjs");
+  await writeFile(script, 'process.stderr.write("\\x1b[31mError: Database is locked\\x1b[0m\\n"); setTimeout(() => process.exit(1), 50);');
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] }),
+  });
+  try {
+    const message = await new Promise<string>((resolve) => {
+      provider.send("hello", (event) => {
+        if (event.type === "error") resolve(event.message);
+      });
+    });
+    assert.match(message, /^opencode exited \(1\)\./);
+    assert.match(message, /Error: Database is locked/);
+    assert.doesNotMatch(message, /\x1b/);
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});
+
 test("in chat mode a tool request is refused without a card, and the turn goes on", async () => {
   const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
   const script = join(dir, "fake.mjs");
