@@ -118,7 +118,7 @@ export const GREETING =
 
 const HELP =
   "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
-  'turn into one of the 20 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
+  'turn into one of the 21 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
   "The Undo button above my picture takes back the last change. I can't chat freely here: that needs a real language model, and the real app has one.";
 
@@ -164,7 +164,7 @@ const CHAT_WORDS =
 
 /** What she says when the drawn avatar comes back. */
 export const DRAWN_AGAIN =
-  "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 20 characters. Just ask.";
+  "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 21 characters. Just ask.";
 
 const HELP_PACK =
   "[emotion:happy] Here is what I can do as a picture pack: show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
