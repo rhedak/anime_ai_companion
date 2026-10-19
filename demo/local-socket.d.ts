@@ -23,7 +23,7 @@ export interface Renderer {
 export function createLocalSocket(options: {
   renderer: Promise<Renderer>;
   emotions: Record<string, Record<string, number>> | Promise<Record<string, Record<string, number>>>;
-  reply: (text: string, context?: { presets?: string[]; pack?: boolean; model?: boolean; recent?: string[] }) => { text: string; scene?: string; needsModel?: boolean };
+  reply: (text: string, context?: { presets?: string[]; pack?: boolean; character?: string; model?: boolean; recent?: string[] }) => { text: string; scene?: string; needsModel?: boolean };
   greeting?: string;
   name?: string;
   preset?: string;

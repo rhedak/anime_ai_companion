@@ -87,6 +87,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   something has set it; that one line is the only change the page needs. `node demo/stage.mjs` builds the static folder; `npm run demo`
   serves it on 8765; `npm run site:preview` builds the docs site with the demo in it at `demo/` (what the pages workflow publishes) and
   serves it on 8766.
+- **Character voices** (`VOICES` in `public/script.js`): the scripted reader (the demo, and the app's basic mode) speaks in a character's own voice while that character's pack is on (keyed by look.txt's `character:` id), and the demo's small model is told her persona. Plain voice for everyone else. Keep every line honest about what the script can do and keep its emotion tag.
 - `public/frames.js`, `public/tags.js` and `public/demo.js` are shared by the server and the demo (the server imports
   them from `src/avatar.ts`, `src/avatar-tags.ts`, `src/demo.ts`), so both ask for the same frames and read the same tags and show-off list.
   Do not copy them. The request handling (schema, base, patch, frames) is `src/render-ops.ts` for the server, run in a worker thread by

@@ -8,7 +8,7 @@ import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { buildMessages, emotionFix } from "./model-prompt.js";
 import { packInfoFrom } from "./remote-packs.js";
-import { DRAWN_AGAIN, PACK_INTRO } from "../public/script.js";
+import { DRAWN_AGAIN, packIntroFor, personaFor } from "../public/script.js";
 
 const OPEN = 1;
 
@@ -385,6 +385,9 @@ export function createLocalSocket({
     out({ type: "notice", text: `/${name} is a command of the real app. This demo knows /show, /frames, /clear and /help.` });
   }
 
+  /** The id of the character whose pack she is showing, whose voice she speaks in ("" for the drawn avatar or a pack of nobody in particular). */
+  const characterId = () => (pack ? (characterList[pack]?.id ?? packList[pack]?.character ?? "") : "");
+
   /** The show-off sequence for what she is just now: the drawn avatar, or the picture pack's own pictures. */
   async function showMessage() {
     const names = Object.keys(await emotions);
@@ -405,7 +408,7 @@ export function createLocalSocket({
     out(packsMessage());
     onPack(pack);
     save();
-    if (!quiet) await speak(pack ? PACK_INTRO : DRAWN_AGAIN);
+    if (!quiet) await speak(pack ? packIntroFor(characterId()) : DRAWN_AGAIN);
   }
 
   /** Reads a pack's `pack.json` from the packs site and keeps it in the list (nothing is shown yet). Throws what went wrong, in words. */
@@ -537,7 +540,7 @@ export function createLocalSocket({
     }
     // The last few lines, without tags, so "that colour" can mean one she or the visitor just named.
     const recent = history.slice(-7, -1).map((h) => String(h.text).replace(/\[[^\]\n]*\]/g, " "));
-    const answered = reply(text, { presets, pack: pack !== null, model: Boolean(model?.ready()), recent });
+    const answered = reply(text, { presets, pack: pack !== null, character: characterId(), model: Boolean(model?.ready()), recent });
     if (answered.scene === "work") return workScene();
     if (answered.needsModel && model?.ready()) return modelReply();
     await speak(answered.text);
@@ -551,7 +554,7 @@ export function createLocalSocket({
     const names = Object.keys(await emotions);
     let said = "";
     try {
-      said = await model.chat(buildMessages(history, names, name, 8, model.kind?.() ?? "browser"), (piece) => out({ type: "delta", text: piece }));
+      said = await model.chat(buildMessages(history, names, name, 8, model.kind?.() ?? "browser", pack ? personaFor(characterId()) : ""), (piece) => out({ type: "delta", text: piece }));
     } catch (err) {
       out({ type: "notice", text: `The small model stopped: ${err?.message ?? err}` });
     }

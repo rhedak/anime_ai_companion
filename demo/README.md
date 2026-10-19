@@ -63,6 +63,12 @@ What is here, and how the pieces fit:
   (`pack-offer`; `/frames <name>` only asks; nothing is fetched before "Download"), and a pack fetched once comes back quietly on the next visit. What comes
   from that site is checked (`remotePacksFrom`, `packInfoFrom`): ids, file names (a bare `*.webp`, never a path or an address) and counts, and only the
   pack's own folder is ever used. A pack not published there yet says so on its tile. The demo bundles `risa-dress` and `franzi-dress` (both in `packs/`).
+- **Characters have their own voice** (`VOICES` in `public/script.js`, keyed by the pack's character id, which is look.txt's `character:` line): while a pack of a
+  character with a voice is on, the scripted lines (the intro, help, "I can't redraw", the moods and gestures, and every "I need a real model" answer) are
+  said in that voice, and the small model is told who she is (`personaFor`). Draconia is a tsundere: when the script cannot answer she says "If you want to talk
+  to me properly, download the full version and link a proper brain. If you even have one, baka!", and the link to the Download page follows. Another pack, or the drawn
+  avatar, speaks plainly. The app's basic mode (no brain installed) uses the same voices (`character` in `src/providers/scripted.ts`) with the way to install a brain
+  instead of the Download link. A new voice is one more entry there; keep each line's emotion tag, and keep it to what the script can actually do.
 - **A link can pick the pack or character:** `…/demo/?pack=franzi-bikini` or `?character=franzi` (`wantedFromSearch`, `applyWanted`). A pack that is here (the two
   bundled ones) is shown at once; a character shows its default outfit (`default:` in `packs/characters/<id>.txt`), else any outfit that is here; one that is only
   on the packs site is asked about first (the same question as its tile: size, host, nothing fetched until the visitor says yes). Anything else in the link is ignored, and

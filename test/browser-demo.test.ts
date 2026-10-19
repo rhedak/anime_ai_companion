@@ -10,7 +10,7 @@ import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
 import { repeatsItself } from "../demo/model.js";
 import { MODEL, buildMessages, emotionFix, guessEmotion, modelId, systemPrompt } from "../demo/model-prompt.js";
-import { DRAWN_AGAIN, GREETING, PACK_INTRO, reply } from "../public/script.js";
+import { DRAWN_AGAIN, GREETING, PACK_INTRO, packIntroFor, personaFor, reply } from "../public/script.js";
 import { DEMO_PACKS, stage } from "../demo/stage.mjs";
 import { findAvatarTags as serverFindAvatarTags } from "../src/avatar-tags.ts";
 import { demoMessage } from "../src/demo.ts";
@@ -995,4 +995,49 @@ test("a link that names the pack she showed last time does not show it twice", a
   await other.next((e) => e.type === "queue");
   assert.deepEqual(other.events.filter((e) => e.type === "pack" && e.pack).map((e) => e.pack.name), ["second"], "the link wins: the last visit's pack is not shown first");
   assert.equal(events.some((e) => e.type === "notice" && /Already showing/.test(e.text)), false);
+});
+
+// --- a character's own voice while her pack is on ---
+
+test("the scripted lines are in a character's own voice while her pack is on, and plain for any other pack and the drawn avatar", () => {
+  const d = { pack: true, character: "draconia" };
+  assert.equal(reply("tell me a joke", d).needsModel, true);
+  assert.match(reply("tell me a joke", d).text, /^\[emotion:angry\] If you want to talk to me properly, download the full version and link a proper brain\. If you even have one, baka! /);
+  assert.match(reply("tell me a joke", d).text, /download\.html/, "the way to the full version is a link");
+  assert.match(reply("be shy", d).text, /^\[emotion:shy\] D-don't stare at me!/);
+  assert.match(reply("wave", d).text, /\[gesture:wave\] H-hello/);
+  assert.match(reply("cheer", d).text, /\[gesture:cheer\] F-fine, hooray!/);
+  assert.match(reply("make your hair blue", d).text, /baka: I'm only pictures, so I can't change blue hair\./);
+  assert.match(reply("what can you do?", d).text, /Honestly, do I have to explain everything\?/);
+  assert.match(reply("undo", d).text, /nothing to undo, baka/);
+  assert.match(reply("what is the weather like", d).text, /^\[emotion:angry\] What kind of question is that\?/);
+  assert.equal(packIntroFor("draconia").startsWith("[emotion:angry] [gesture:wave] Hmph. So you picked me."), true);
+  for (const line of [reply("be shy", d).text, packIntroFor("draconia"), reply("tell me a joke", d).text]) assert.match(line, /^\[emotion:(angry|shy|happy)\]/, "every line starts with an emotion tag");
+  // another pack, no pack, and the drawn avatar all speak plainly
+  assert.equal(reply("tell me a joke", { pack: true, character: "franzi" }).text, reply("tell me a joke", { pack: true }).text);
+  assert.equal(reply("be shy", { pack: false, character: "draconia" }).text, reply("be shy").text, "the drawn avatar is not her");
+  assert.equal(packIntroFor("franzi"), PACK_INTRO);
+  assert.equal(packIntroFor(), PACK_INTRO);
+  assert.equal(personaFor("franzi"), "");
+  assert.match(personaFor("draconia"), /21-year-old adult[^]*tsundere/);
+});
+
+test("in the demo her pack's character decides the voice: the intro, the answers and what the small model is told", async () => {
+  const two = { ...PICTURES, dra: { ...PICTURES.pic, name: "dra", character: "draconia" } };
+  const { model, asked } = fakeModel("[emotion:angry] Hmph.");
+  const { events, next, send } = connect({ packs: two, characters: { dra: { id: "draconia", name: "Draconia Malfoid" } }, model });
+  await next((e) => e.type === "queue");
+  let from = events.length;
+  send({ type: "pack-select", name: "dra" });
+  await next((e) => e.type === "done", from);
+  assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), packIntroFor("draconia"));
+  from = events.length;
+  send({ type: "user", text: "tell me a joke" });
+  await next((e) => e.type === "done", from);
+  assert.equal(asked.length, 1, "with the small model on, a chat still goes to it");
+  assert.match(asked[0][0].content, /^You are Draconia Malfoid, an unofficial fan character: a 21-year-old adult woman, a proud, sharp-tongued tsundere\./);
+  from = events.length;
+  send({ type: "pack-select", name: "pic" });
+  await next((e) => e.type === "done", from);
+  assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), PACK_INTRO, "another pack: the plain intro");
 });
