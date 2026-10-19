@@ -122,6 +122,9 @@ try {
   await scene(
     "02b-show",
     async () => {
+      await me.type("/clear", 16); // an empty chat, so she is not hidden behind the conversation while the sequence plays
+      await me.send();
+      await sleep(1500);
       await me.caption("Every emotion has a name", 3);
       await me.type("/show", 16);
       await me.send();

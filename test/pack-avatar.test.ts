@@ -12,6 +12,13 @@ function fakePage() {
     draggable = true;
     src = "";
     style: Record<string, string> = {};
+    /** A picture is loaded at once unless a test says otherwise (`loading` below). */
+    complete = true;
+    naturalWidth = 1;
+    setAttribute() {}
+    remove() {
+      children = children.filter((c) => c !== this);
+    }
   }
   (globalThis as any).Image = FakeImage;
   (globalThis as any).DOMParser = class {};
@@ -23,6 +30,9 @@ function fakePage() {
     replaceChildren: (...els: FakeImage[]) => (children = els),
     get firstElementChild() {
       return children[0] ?? null;
+    },
+    get children() {
+      return children;
     },
     classList: { toggle: (name: string, on: boolean) => void (on ? classes.add(name) : classes.delete(name)) },
   };
@@ -37,6 +47,31 @@ function fakePage() {
       for (const cb of now) cb(t0 + ms);
     },
     imgs: () => children,
+    /** Pictures that load slowly: until `finish`, they are not complete. */
+    slow(...names: string[]) {
+      const original = (globalThis as any).Image;
+      (globalThis as any).Image = class extends original {
+        constructor() {
+          super();
+          const self = this as any;
+          let src = "";
+          Object.defineProperty(this, "src", {
+            get: () => src,
+            set: (v: string) => {
+              src = v;
+              if (names.includes(v)) {
+                self.complete = false;
+                self.naturalWidth = 0;
+              }
+            },
+          });
+        }
+      };
+    },
+    finish(name: string) {
+      const img = children.find((c) => c.src === name);
+      if (img) Object.assign(img, { complete: true, naturalWidth: 1 });
+    },
     visible: () => children.filter((i) => i.style.visibility === "visible").map((i) => i.src),
     restore() {
       Object.assign(globalThis, { Image: saved.Image, DOMParser: saved.DOMParser, requestAnimationFrame: saved.raf });
@@ -155,7 +190,7 @@ test("a gesture alternates the pack's pose pictures for a moment, and does nothi
   }
 });
 
-test("switching to the drawn avatar and back leaves no stale pictures, and keeps the emotion", () => {
+test("switching to the drawn avatar and back keeps the emotion, never empties the stage, and leaves no stale pictures behind", () => {
   const page = fakePage();
   try {
     const avatar = createAvatar(page.host, () => {}, () => {});
@@ -166,15 +201,58 @@ test("switching to the drawn avatar and back leaves no stale pictures, and keeps
     avatar.usePack(null);
     assert.equal(avatar.packed, false);
     page.frame(200);
-    assert.equal(page.imgs().length, 0);
+    assert.deepEqual(page.visible(), ["h.png"], "the pack's last picture stays until the drawn body has a frame to replace it: the stage is never empty");
     avatar.usePack(pack);
     page.frame(300);
     assert.deepEqual(page.visible(), ["h.png"]);
+    assert.deepEqual(page.imgs().map((i) => i.src), ["h.png", "h-blink.png"], "only this pack's pictures of the emotion in use are left");
     assert.doesNotThrow(() => {
       avatar.gesture("wave");
       avatar.setFull(true);
       avatar.receiveFrames({ version: 1, emotion: "happy", svgs: [] });
     });
+  } finally {
+    page.restore();
+  }
+});
+
+test("a picture that has not loaded yet is not swapped in: the one on screen stays until it is there (no flicker, she never disappears)", () => {
+  const page = fakePage();
+  try {
+    page.slow("h.png");
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    avatar.usePack(pack);
+    page.frame(100);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    avatar.setEmotion("happy");
+    page.frame(200);
+    assert.deepEqual(page.visible(), ["n.png"], "happy is still loading: neutral stays");
+    page.frame(300);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    page.finish("h.png");
+    page.frame(400);
+    assert.deepEqual(page.visible(), ["h.png"], "and it changes at the next frame once it has loaded");
+  } finally {
+    page.restore();
+  }
+});
+
+test("switching to another pack keeps what was on the stage until its first picture has loaded, then removes it", () => {
+  const page = fakePage();
+  try {
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    avatar.usePack(pack);
+    page.frame(100);
+    page.slow("x-n.png");
+    const other = { name: "q", gestures: {}, emotions: { neutral: { idle: "x-n.png", talk: [] } } };
+    avatar.usePack(other as never);
+    page.frame(200);
+    assert.deepEqual(page.visible(), ["n.png"], "the first pack's picture is still there while the second one loads");
+    assert.equal(page.imgs().length >= 2, true);
+    page.finish("x-n.png");
+    page.frame(300);
+    assert.deepEqual(page.visible(), ["x-n.png"]);
+    assert.deepEqual(page.imgs().map((i) => i.src), ["x-n.png"], "the old pack's pictures are gone");
   } finally {
     page.restore();
   }

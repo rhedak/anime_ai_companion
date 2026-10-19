@@ -306,12 +306,14 @@ export function person(browser, app, watch, rec) {
 }
 
 /** Put clips one after another into one file, each fading in and out a little. */
-export function join_(clips, out, { fade = 0.18, speeds = [] } = {}) {
+export function join_(clips, out, { fade = 0.3, speeds = [] } = {}) {
   const inputs = clips.flatMap((c) => ["-i", c]);
+  // Hard cuts between scenes: a dip to black at every join looked like a flicker. Only the very start fades in, and the very end fades out.
   const chains = clips.map((c, i) => {
     const speed = speeds[i] ?? 1;
     const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", c]).toString()) / speed;
-    return `[${i}:v]setpts=PTS/${speed},fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, seconds - fade).toFixed(3)}:d=${fade}[v${i}]`;
+    const fades = [i === 0 ? `fade=t=in:st=0:d=${fade}` : "", i === clips.length - 1 ? `fade=t=out:st=${Math.max(0, seconds - fade).toFixed(3)}:d=${fade}` : ""].filter(Boolean);
+    return `[${i}:v]setpts=PTS/${speed}${fades.length ? "," + fades.join(",") : ""}[v${i}]`;
   });
   const filter = chains.join(";") + ";" + clips.map((_, i) => `[v${i}]`).join("") + `concat=n=${clips.length}:v=1:a=0,scale=in_range=pc:out_range=tv,format=yuv420p[v]`;
   execFileSync(FFMPEG, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter, "-map", "[v]", "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-profile:v", "high", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-movflags", "+faststart", out]);

@@ -127,12 +127,20 @@ try {
     log.push(`  emotions: ${emotionsSeen()}`);
     await me.say("Oh no, my laptop just died...", { cps: 22, hold: 0.9 });
     log.push(`  emotions: ${emotionsSeen()}`);
+    // a model sometimes misspells a tag ([emotion:surried]): her face would stay neutral, so that take is thrown away
+    const known = Object.keys(JSON.parse(readFileSync(join(root, "emotions.json"), "utf8")));
+    const bad = emotionsSeen().filter((e) => !known.includes(e));
+    if (bad.length) throw new Error(`not an emotion: ${bad}`);
   });
 
-  // 3. every picture her pack has
+  // 3. every picture her pack has: the chat is cleared first, so she is not hidden behind the conversation
   await scene(
     "02b-show",
     async () => {
+      await setView("behind");
+      await me.type("/clear", 16);
+      await me.send();
+      await sleep(1500);
       await me.caption("Every emotion has a picture", 3);
       await me.type("/show", 16);
       await me.send();
@@ -151,7 +159,7 @@ try {
     "03-packs",
     async () => {
       await me.caption("Pick a character. Pictures download when you want them", 4.4);
-      await setView("split");
+      await setView("behind"); // behind the chat: in the split view the outfits sit under the chat window
       await sleep(300);
       await me.tap("#looks");
       await browser.evaluate(`(() => { const s = document.getElementById('looks'); s.value = 'packs'; s.dispatchEvent(new Event('change')); })()`);
