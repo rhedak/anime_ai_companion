@@ -198,6 +198,9 @@ stdin/stdout. Spawn `cursor-agent`. A command named `agent` is not necessarily t
 - `session/request_permission` blocks until the client answers `allow-once`, `allow-always`, or
   `reject-once`. Those are the existing card buttons. No answer means the tool does not run.
 - Chat is ACP mode `ask` (read-only). Plan is `plan`. Anything else in work mode is `agent`.
+- **The CLI's own `approvalMode` decides whether it asks at all.** With `"approvalMode": "unrestricted"` in `~/.cursor/cli-config.json` cursor-agent never sends `session/request_permission` (measured with
+  2026.10.14: an Ask-mode edit changed the file with no card), so the app's Ask would be a lie. `cursorApprovalMode()` (`src/providers/cursor-acp.ts`) reads that file (never writes it) and `notReady` in `src/server.ts`
+  refuses to send in work mode + Ask while it says "unrestricted", saying how to fix it; choosing Everything is the explicit way to run without asking. ACP has no mode that asks every time to switch to.
 - **Run Everything** is `cursor-agent --force`, work mode only, chosen in the menu, not saved.
   `--auto-review` is not honoured by ACP, so Auto and Accept edits stay Claude-only. Do not
   pretend they work for Cursor.

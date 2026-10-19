@@ -17,6 +17,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
+import { CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
 import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -644,7 +645,7 @@ async function rename(input: string, say: Say): Promise<void> {
   settings.nameSet = true;
   await saveSettings(settingsPath, settings);
   // Her running session keeps the old prompt until it restarts, so tell her directly.
-  notes.push(`the user renamed you: your name is now ${name}.`);
+  notes.push(`the user renamed you: your name is now ${name}. This replaces any other name you were given, including the name of a character.`);
   broadcast(modeInfo());
 }
 
@@ -1276,7 +1277,12 @@ const turns = createTurnService({
     const sees = !basicMode && (settings.provider === "claude" || (settings.provider === "ollama" && ollamaBrain.canSeePicturesFor(settings.ollamaModel)));
     return picture && sees ? [picture] : [];
   },
-  notReady: () => (settings.provider === "ollama" && !settings.ollamaModel ? ollamaNotReady() : null),
+  notReady: () =>
+    settings.provider === "ollama" && !settings.ollamaModel
+      ? ollamaNotReady()
+      : settings.provider === "cursor" && mode === "work" && permissionMode === "manual" && cursorApprovalMode() === "unrestricted"
+        ? CURSOR_UNRESTRICTED_TEXT
+        : null,
   emotionNames: () => Object.keys(emotions),
   folder: () => sessionConfig().cwd,
   broadcast: (msg) => broadcast(msg),
