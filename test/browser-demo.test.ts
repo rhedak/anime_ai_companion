@@ -633,7 +633,7 @@ test("presets, moods, gestures, and the things she is honest about", () => {
   assert.match(say("put on a coat").text, /I need a colour for the coat/);
   assert.match(say("how is the weather").text, /beyond my script[^]*no language model[^]*Ollama/);
   assert.match(say("how is the weather").text, /\(https:\/\/rhedak\.github\.io\/anime_ai_companion\/brains\.html#ollama\)/, "the way to set a model up");
-  assert.match(say("what can you do?").text, /20 characters/);
+  assert.match(say("what can you do?").text, /21 characters/);
   assert.match(say("what can you do?").text, /\/show/);
   assert.match(say("show me all your expressions").text, /\[demo\]$/);
   assert.match(say("run through everything").text, /\[demo\]/);
