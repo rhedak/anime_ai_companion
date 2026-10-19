@@ -17,6 +17,8 @@ You still need **a brain** (below); without one she runs a small built-in script
 | **Linux**, x64 | [`Anime.AI.Companion-<version>.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.AppImage) | about 190 MB |
 | **Linux**, arm64 | [`Anime.AI.Companion-<version>-arm64.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.AppImage) | about 190 MB |
 
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), from the first Windows installer that is signed (it is being applied for; see the [code signing policy](code-signing.html)). Until then the installer is unsigned and Windows warns, as described below.
+
 ## The first start
 
 The app is **not signed with a developer certificate** (that needs a paid account), so your system warns you once. It is the same program
