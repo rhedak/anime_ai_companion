@@ -108,8 +108,8 @@ export const voicePartOf = (text: string): string => {
 /** What `/persona` calls each source of the voice in use. */
 export function describeChoice(choice: PersonaChoice, characterName = ""): string {
   if (choice.tier === "custom") {
-    return choice.source === "card" ? "your own: the imported character card (/card)" : choice.source === "data/persona.md" ? "your own: data/persona.md" : "your own: an edited persona.md";
+    return choice.source === "card" ? "your own: the imported character card" : choice.source === "data/persona.md" ? "your own: data/persona.md" : "your own: an edited persona.md";
   }
-  if (choice.tier === "character") return `the character of the picture pack that is on${characterName ? ` (${characterName})` : ""}`;
-  return "the default (the persona.md that comes with the app)";
+  if (choice.tier === "character") return `the character of the picture pack that is on${characterName ? `, ${characterName}` : ""}`;
+  return "the default persona.md that comes with the app";
 }
