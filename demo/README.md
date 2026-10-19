@@ -63,6 +63,10 @@ What is here, and how the pieces fit:
   (`pack-offer`; `/frames <name>` only asks; nothing is fetched before "Download"), and a pack fetched once comes back quietly on the next visit. What comes
   from that site is checked (`remotePacksFrom`, `packInfoFrom`): ids, file names (a bare `*.webp`, never a path or an address) and counts, and only the
   pack's own folder is ever used. A pack not published there yet says so on its tile. The demo bundles `risa-dress` and `franzi-dress` (both in `packs/`).
+- **A link can pick the pack or character:** `…/demo/?pack=franzi-bikini` or `?character=franzi` (`wantedFromSearch`, `applyWanted`). A pack that is here (the two
+  bundled ones) is shown at once; a character shows its default outfit (`default:` in `packs/characters/<id>.txt`), else any outfit that is here; one that is only
+  on the packs site is asked about first (the same question as its tile: size, host, nothing fetched until the visitor says yes). Anything else in the link is ignored, and
+  the link wins over the pack she showed last time.
 - A picture pack: Looks… → Packs… offers **Risa in a dress** (`DEMO_PACKS` in `stage.mjs`; also `/frames risa-dress`, `/frames off`,
   or the "Try the picture pack" prompt). `stage.mjs` reads the pack with the app's own `readPack` and copies it to `frames/<name>/`, a
   thumbnail to `pack-thumb/<name>` (the page asks for that path) and the list the page needs to `packs.json`. The pictures load only when the

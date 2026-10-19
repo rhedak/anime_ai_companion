@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PACKS_SITE, packInfoFrom, remotePacksFrom } from "../demo/remote-packs.js";
+import { PACKS_SITE, packInfoFrom, remotePacksFrom, wantedFromSearch } from "../demo/remote-packs.js";
 
 const BASE = `${PACKS_SITE}frames/franzi-bikini/`;
 const entry = (over: Record<string, unknown> = {}) => ({
@@ -80,4 +80,11 @@ test("a pack.json that names a path, an address, a non-picture, no neutral pictu
   assert.equal(bad((m) => (m.emotions["bad name!"] = { idle: "x.webp", talk: [] })), null);
   assert.equal(packInfoFrom(null, BASE), null);
   assert.equal(packInfoFrom({ emotions: "no" }, BASE), null);
+});
+
+test("the link's ?pack= or ?character= is read as a plain id, and anything else in it is ignored", () => {
+  assert.equal(wantedFromSearch("?pack=franzi-bikini"), "franzi-bikini");
+  assert.equal(wantedFromSearch("?character=Miku"), "miku");
+  assert.equal(wantedFromSearch("?x=1&pack=miku&character=franzi"), "miku", "pack wins when both are there");
+  for (const bad of ["", "?pack=", "?pack=../x", "?pack=a%20b", "?pack=<script>", "?pack=" + "a".repeat(41), "?pack=https://evil.example/", "?other=miku"]) assert.equal(wantedFromSearch(bad), "", bad);
 });

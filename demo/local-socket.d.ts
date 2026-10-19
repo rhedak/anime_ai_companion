@@ -37,6 +37,8 @@ export function createLocalSocket(options: {
   fetchJson?: (url: string) => Promise<unknown>;
   /** Warms the browser's cache with a picture (the pack's neutral one) before the pack is shown. */
   preload?: (url: string) => Promise<unknown>;
+  /** A pack or character id from the page's link (`?pack=…`), shown, or asked about if it must be fetched first. */
+  want?: string;
   onPack?: (name: string | null) => void;
   /** The look and pack from the visitor's last visit. */
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;
