@@ -110,7 +110,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
-  sha256, https URL of a GitHub Release asset, thumbnail). `packs/thumbs/<id>.webp` is a 200 px preview (`npm run pack-thumbs`); the gallery
+  sha256, https URL of a GitHub Release asset, thumbnail). `packs/thumbs/<id>.webp` is a 200 px preview (`npm run pack-thumbs`; publish the pack in the sister repository first, because `scripts/check-published-packs.mjs` in CI and `check.sh` fails on a preview whose pack the live index does not list); the gallery
   shows it even when the pack is not installed. The installer fetches the index (`COMPANION_PACK_INDEX`, or a placeholder GitHub Pages URL
   until the sister repo is published), checks size and sha256, and renames a restored folder into `data/frames/<id>/`. Packs already on disk
   are not replaced. Nothing is downloaded until the page has asked and the user said yes: the question (`pack-offer`, `askPackDownload` in `public/app.js`) gives the size and the host,

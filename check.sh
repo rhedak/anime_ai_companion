@@ -6,7 +6,7 @@
 #   ./check.sh --allow-dirty   skip the "what is tested is what is committed" guard (never used by the push hook)
 #   ./check.sh --install-hook  make git run this before every push (core.hooksPath=.githooks)
 #
-# Escape hatches (environment): CHECK_ALLOW_CREATOR_DRIFT=1 (creator not at the pinned tag), CHECK_ALLOW_SKIPS=1 (tests may skip).
+# Escape hatches (environment): CHECK_ALLOW_CREATOR_DRIFT=1 (creator not at the pinned tag), CHECK_ALLOW_SKIPS=1 (tests may skip), CHECK_OFFLINE=1 (no network: skips the published-packs check).
 # `git push --no-verify` skips the hook; then CI is the only net.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -93,6 +93,7 @@ lockfile() { npm install --package-lock-only --ignore-scripts >/dev/null && git 
 stage_demo() { local dir; dir=$(mktemp -d) && CREATOR_SRC="$(cd "$creator_src" && pwd)" node demo/stage.mjs --out "$dir" >/dev/null; }
 
 step "lockfile in step with package.json" lockfile
+if [ "${CHECK_OFFLINE:-0}" != 1 ]; then step "previews in packs/thumbs are published" node scripts/check-published-packs.mjs; fi
 step "typecheck" npm run --silent typecheck
 step "npm test" run_tests npm test --silent
 

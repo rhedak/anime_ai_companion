@@ -34,6 +34,9 @@ jobs:
         working-directory: anime_ai_companion
       - run: npm run typecheck
         working-directory: anime_ai_companion
+      # A download-only pack's preview may only be merged once the pack is in the published index (see the script).
+      - run: node scripts/check-published-packs.mjs
+        working-directory: anime_ai_companion
       - run: npm test
         working-directory: anime_ai_companion
 
