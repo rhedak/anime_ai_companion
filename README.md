@@ -591,10 +591,6 @@ software you have not read line by line.
 
 See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (the Contributor Covenant).
 
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), from the first Windows installer that is signed. Roles, what is signed and the privacy statement are on the [Code signing page](https://rhedak.github.io/anime_ai_companion/code-signing.html).
-
 ## Licence
 
 [MIT](LICENSE). Everything in this repository is MIT. The one exception is a pack you can download, not part of this repository: the Hatsune Miku pictures

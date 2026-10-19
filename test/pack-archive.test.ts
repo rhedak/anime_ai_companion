@@ -228,13 +228,16 @@ test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4
   assert.equal(report.framesBytes, 14_049_032);
   assert.equal(report.baseBytes, 4_071_740);
   assert.equal(report.patchBytes, 101_078);
-  // The text files are 4,211 bytes with LF line endings; a Windows checkout adds one CR per line, which at most moves the tar's padding.
+  // Git stores the text as LF (4,211 bytes). A Windows checkout adds one CR per line (4,265). The extra
+  // bytes fit in the tar's padding or spill into the next block; the pictures are unchanged either way.
+  const textLf = 4_211;
+  const textCrlf = 4_265;
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
-  assert.ok(textOnDisk >= 4_211 && textOnDisk <= 4_211 + 40, `text files are ${textOnDisk} bytes`);
+  assert.ok(textOnDisk === textLf || textOnDisk === textCrlf, `text files are ${textOnDisk} bytes`);
   const archiveBytes = 4_221_440;
   assert.ok(report.archiveBytes >= archiveBytes && report.archiveBytes <= archiveBytes + 2048, `the archive is ${report.archiveBytes} bytes`);
-  const other = await packWithLineEndings(folder, textOnDisk !== 4_211);
+  const other = await packWithLineEndings(folder, textOnDisk !== textLf);
   try {
     const again = await buildPackArchive(other, { id: "franzi-dress", emotions });
     assert.equal(again.ok, true, !again.ok ? again.reason : "");
@@ -243,7 +246,8 @@ test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4
       assert.equal(again.report.baseBytes, report.baseBytes);
       assert.equal(again.report.patchBytes, report.patchBytes);
       assert.ok(Math.abs(again.report.archiveBytes - report.archiveBytes) <= 2048);
-      assert.equal(again.report.textBytes, await textFileBytes(other)); // the same text with the other line endings
+      assert.equal(again.report.textBytes, textOnDisk === textLf ? textCrlf : textLf);
+      assert.equal(again.report.textBytes, await textFileBytes(other));
     }
   } finally {
     await rm(dirname(other), { recursive: true, force: true });

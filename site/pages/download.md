@@ -17,14 +17,14 @@ You still need **a brain** (below); without one she runs a small built-in script
 | **Linux**, x64 | [`Anime.AI.Companion-<version>.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>.AppImage) | about 190 MB |
 | **Linux**, arm64 | [`Anime.AI.Companion-<version>-arm64.AppImage`](https://github.com/rhedak/anime_ai_companion/releases/download/v<version>/Anime.AI.Companion-<version>-arm64.AppImage) | about 190 MB |
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org), from the first Windows installer that is signed (it is being applied for; see the [code signing policy](code-signing.html)). Until then the installer is unsigned and Windows warns, as described below.
+Signing the Windows installer, and notarising the Mac app, may come later; until then Windows and macOS warn as described below.
 
 ## The first start
 
 The app is **not signed with a developer certificate** (that needs a paid account), so your system warns you once. It is the same program
 you can read in this repository.
 
-- **Windows:** SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. On Windows 11 with **Smart App Control** switched on, an unsigned installer is blocked with no way to run it anyway: turn Smart App Control off (Windows Security → App & browser control → Smart App Control) to install. A signed installer is [being applied for](code-signing.html). The installer is per user and needs
+- **Windows:** SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. On Windows 11 with **Smart App Control** switched on, an unsigned installer is blocked with no way to run it anyway: turn Smart App Control off (Windows Security → App & browser control → Smart App Control) to install. The installer is per user and needs
   no administrator.
 - **macOS:** open the `.dmg`, drag the app into *Applications*, then **right-click it → Open**, and **Open** again. (Or System Settings →
   Privacy & Security → **Open Anyway**.)

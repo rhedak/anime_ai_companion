@@ -25,7 +25,6 @@ const pages = [
   { slug: "commands", title: "Slash commands", file: "site/pages/commands.md" },
   { slug: "how-it-works", title: "How it works", file: "site/pages/how-it-works.md" },
   { slug: "safety", title: "Safety and privacy", file: "site/pages/safety.md" },
-  { slug: "code-signing", title: "Code signing", file: "site/pages/code-signing.md" },
   { slug: "about", title: "About, credits, licence", file: "site/pages/about.md" },
 ];
 const bySource = new Map(pages.map((p) => [p.file, p]));
@@ -95,8 +94,10 @@ function split(text) {
   return { meta, body: text.slice(m[0].length) };
 }
 
-// The released version, written into the Download page where it says <version>, so the file names and links are the real ones.
-const version = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version;
+// The version of the installers, written into the Download page where it says <version>, so the file names and links are the real ones.
+// A docs-only release (tag message "[docs-only]") builds none, so it names the last version that did (`installerVersion`).
+const rootPackage = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
+const version = rootPackage.installerVersion ?? rootPackage.version;
 const css = readFileSync(join(here, "template", "site.css"), "utf8");
 const js = readFileSync(join(here, "template", "site.js"), "utf8");
 
