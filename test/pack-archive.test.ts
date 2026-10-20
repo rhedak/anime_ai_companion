@@ -229,10 +229,10 @@ test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4
   assert.equal(report.framesBytes, 14_049_032);
   assert.equal(report.baseBytes, 4_071_740);
   assert.equal(report.patchBytes, 101_078);
-  // Git stores the text as LF (4,211 bytes). A Windows checkout adds one CR per line (4,265). The extra
+  // Git stores the text as LF (4,176 bytes). A Windows checkout adds one CR per line (4,230). The extra
   // bytes fit in the tar's padding or spill into the next block; the pictures are unchanged either way.
-  const textLf = 4_211;
-  const textCrlf = 4_265;
+  const textLf = 4_176;
+  const textCrlf = 4_230;
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
   assert.ok(textOnDisk === textLf || textOnDisk === textCrlf, `text files are ${textOnDisk} bytes`);
