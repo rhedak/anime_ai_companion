@@ -101,7 +101,7 @@ button.icon.small { width: 26px; height: 26px; flex: none; font-size: 16px; line
 .workinfo { margin-top: 6px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .workinfo code { font: 12px var(--font-mono); color: var(--text); }
 .workinfo button { all: unset; cursor: pointer; text-decoration: underline; margin-left: 6px; }
-.meter { padding: 6px 14px 0; font: 12px var(--font-mono); color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+.meter { padding: 6px 14px 8px; font: 12px var(--font-mono); color: var(--muted); text-align: center; overflow-wrap: anywhere; }
 .meter span { white-space: nowrap; }
 .meter-toggle { all: unset; cursor: pointer; padding: 0 4px; border-radius: var(--radius-sm); }
 .meter-toggle:hover, .meter-toggle:focus-visible { color: var(--text); }

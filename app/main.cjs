@@ -25,6 +25,8 @@ let win = null;
 let tray = null; // kept in a variable so it is not garbage collected, which would remove the icon
 const iconPath = path.join(__dirname, "build", "icon.png");
 const isMac = process.platform === "darwin";
+// One window class for every window (the main one and the dialogs), the one the AppImage's launcher entry names as StartupWMClass (app/package.json).
+if (process.platform === "linux") app.commandLine.appendSwitch("class", "anime-ai-companion");
 
 // A Finder-launched app gets a bare PATH, so the server would not find claude, opencode, cursor-agent or ollama. Ask the user's own login shell for its PATH
 // (a marker line, because start-up files may print other things) and add the usual install places in case that fails.
@@ -274,6 +276,8 @@ function createWindow() {
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
+  // The constructor option alone left _NET_WM_ICON empty on Linux (issue 18); setting it on the live window sets the property.
+  if (process.platform === "linux") win.setIcon(nativeImage.createFromPath(iconPath));
   const ours = (url) => {
     try {
       return new URL(url).origin === origin;

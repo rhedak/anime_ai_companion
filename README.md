@@ -288,6 +288,13 @@ saved in `data/settings.json`, shown in the page title and exports, used in her 
 (`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
 letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
 
+## Changing her personality by asking
+
+You can ask her in chat to change her personality or voice. She answers with a proposal card showing the whole new text, and nothing is
+written until you press Keep (the old file is kept as `persona.md.bak`). **Known limitation:** the card depends on the model following the
+instruction to write the proposal. It appeared every time in testing (Claude, Big Pickle, a 3B Ollama model), but there is no fallback on
+the server, so a stubborn model can answer in words and show no card. Ask again, or edit `data/persona.md` yourself.
+
 ## Her notes about you
 
 She can keep a few notes about you across conversations, in `data/memory.md`: one short fact per line, plain Markdown you can
