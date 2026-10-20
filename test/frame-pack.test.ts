@@ -352,6 +352,9 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     await mkdir(join(dir, "draconia-uniform"));
     await writeFile(join(dir, "draconia-uniform", "neutral.png"), png(4, 4));
     await writeFile(join(dir, "draconia-uniform", "look.txt"), "character: draconia\nYou wear a Slytherin-style uniform.\n");
+    await mkdir(join(dir, "draconia-vest"));
+    await writeFile(join(dir, "draconia-vest", "neutral.png"), png(4, 4));
+    await writeFile(join(dir, "draconia-vest", "look.txt"), "character: draconia\nThe robe is off. The rest of the uniform is unchanged.\n");
     const read = await readPack([dir, packs], "draconia-uniform", ["neutral"]);
     assert.equal(read.ok, true);
     if (!read.ok) return;
@@ -366,15 +369,28 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     assert.match(told, /Speak as Draconia Malfoid from now on, in her own voice: a proud, sharp-tongued tsundere[^]*flustered when someone is kind to her/);
     assert.match(told, /replaces your usual manner of speaking[^]*the emotion tags and every other rule stay/);
     assert.equal(read.pack.look, "You wear a Slytherin-style uniform.");
-    const grouped = await packCharacters([dir, packs], ["draconia-uniform", "franzi-dress"]);
+    const vest = await readPack([dir, packs], "draconia-vest", ["neutral"]);
+    assert.equal(vest.ok, true);
+    if (!vest.ok) return;
+    assert.equal(vest.pack.character?.id, read.pack.character?.id, "the vest reuses packs/characters/draconia.txt");
+    assert.equal(vest.pack.character?.text, read.pack.character?.text);
+    assert.equal(vest.pack.character?.voice, read.pack.character?.voice);
+    assert.match(packNote(vest.pack), /Speak as Draconia Malfoid from now on, in her own voice: a proud, sharp-tongued tsundere/);
+    assert.equal(vest.pack.look, "The robe is off. The rest of the uniform is unchanged.");
+    const grouped = await packCharacters([dir, packs], ["draconia-uniform", "draconia-vest", "franzi-dress"]);
     assert.equal(grouped["draconia-uniform"].id, "draconia");
+    assert.equal(grouped["draconia-vest"].id, "draconia");
     assert.equal(grouped["franzi-dress"].id, "franzi");
     assert.notEqual(grouped["draconia-uniform"].id, grouped["franzi-dress"].id);
     assert.equal(outfitName("draconia-uniform", "draconia"), "uniform");
+    assert.equal(outfitName("draconia-vest", "draconia"), "vest");
     assert.equal(outfitName("draconia-uniform", "franzi"), "draconia-uniform");
+    assert.equal(outfitName("draconia-vest", "franzi"), "draconia-vest");
     const franziOutfits = ["franzi-dress", "franzi-casual", "franzi-pajamas", "franzi-bikini"].map((pack) => outfitName(pack, "franzi"));
     assert.equal(franziOutfits.includes(outfitName("draconia-uniform", "draconia")), false);
+    assert.equal(franziOutfits.includes(outfitName("draconia-vest", "draconia")), false);
     assert.equal(franziOutfits.includes("draconia-uniform"), false);
+    assert.equal(franziOutfits.includes("draconia-vest"), false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
