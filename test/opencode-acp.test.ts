@@ -388,3 +388,39 @@ test("opencode's own refusal of a network is said as that, and any other error i
   assert.match(refused, /another brain in the Brain menu/);
   assert.equal(opencodeErrorText("Something else broke"), "Something else broke");
 });
+
+test("a data folder written by another opencode version is explained, with opencode's own words kept", async () => {
+  const { opencodeErrorText } = await import("../src/providers/opencode-acp.ts");
+  const said = opencodeErrorText("opencode exited (1). Error: Unexpected error\n\nDatabase is not empty and has no session table");
+  assert.match(said, /^opencode exited \(1\)\. Error: Unexpected error/);
+  assert.match(said, /no session table/);
+  assert.match(said, /opencode debug paths/);
+  assert.match(said, /different version/);
+});
+
+test("closing while a turn is in flight does not start the agent again", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  let spawned = 0;
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
+    spawnAgent: (_args, cwd) => {
+      spawned++;
+      return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  });
+  try {
+    provider.send("hi", () => {});
+    await new Promise((resolve) => setTimeout(resolve, 20)); // the turn is under way
+    provider.close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(spawned <= 1, `close() must not be followed by a second start (started ${spawned})`);
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});

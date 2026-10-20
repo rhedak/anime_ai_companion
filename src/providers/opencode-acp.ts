@@ -255,5 +255,8 @@ export function opencodeErrorText(message: string): string {
   if (/free models? (aren'?t|are not) available|abusive traffic/i.test(message)) {
     return `opencode's service refused this request, so this is not a problem in the app or in your install: ${message.replace(/^\s*Internal error:?\s*/i, "").trim()} It tends to happen on shared or cloud network addresses. Try again later or from another network, or choose another brain in the Brain menu (Ollama runs on your own computer).`;
   }
+  if (/database is not empty|no session table/i.test(message)) {
+    return `${message} opencode keeps its data in one folder shared by every version, and a different version (1.x and 2.x differ) has written to it. Use the same opencode version as before, or move that folder aside (\`opencode debug paths\` names it on the "data" line) to start fresh; this removes its saved logins and sessions.`;
+  }
   return message;
 }

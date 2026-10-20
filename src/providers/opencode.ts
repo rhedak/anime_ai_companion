@@ -305,7 +305,7 @@ export class OpenCodeProvider implements Provider {
       if (this.proc !== proc) return;
       this.proc = null;
       const said = this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim(); // colour codes and CRs are noise in a chat bubble
-      const message = `opencode exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`;
+      const message = opencodeErrorText(`opencode exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`);
       this.recentStderr = [];
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
@@ -392,7 +392,8 @@ export class OpenCodeProvider implements Provider {
       this.finish({ type: "error", message: opencodeErrorText(err instanceof Error ? err.message : String(err)) });
     } finally {
       const mode = opencodeSessionMode(this.config.mode, this.config.permissionMode);
-      if (!this.listener && (mode !== this.appliedMode || this.launchKey() !== this.appliedKey)) {
+      // Not after a close() or reset() (the token moved): the next message starts the process, and a closed brain must not start one.
+      if (token === this.token && !this.listener && (mode !== this.appliedMode || this.launchKey() !== this.appliedKey)) {
         void this.enqueue(() => this.sync());
       }
     }
