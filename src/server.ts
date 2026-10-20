@@ -640,7 +640,7 @@ async function rename(input: string, say: Say): Promise<void> {
   }
   const name = cleanName(input);
   if (!name) return say("A name can have 1 to 24 letters, numbers, spaces and . ' - _");
-  if (settings.nameSet && name === settings.name) return;
+  if (settings.nameSet && name === settings.name) return say(`She is already called ${name}.`);
   settings.name = name;
   settings.nameSet = true;
   await saveSettings(settingsPath, settings);

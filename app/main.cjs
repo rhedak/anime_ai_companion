@@ -31,7 +31,10 @@ const windowIcon = () => {
   return process.platform === "linux" ? image.resize({ width: 128, height: 128, quality: "best" }) : image;
 };
 // One window class for every window (the main one and the dialogs), the one the AppImage's launcher entry names as StartupWMClass (app/package.json).
-if (process.platform === "linux") app.commandLine.appendSwitch("class", "anime-ai-companion");
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("class", "anime-ai-companion");
+  app.commandLine.appendSwitch("name", "anime-ai-companion"); // the window instance, which stayed "anaico" (issue 26); if Chromium ignores it, only the class is set
+}
 
 // A Finder-launched app gets a bare PATH, so the server would not find claude, opencode, cursor-agent or ollama. Ask the user's own login shell for its PATH
 // (a marker line, because start-up files may print other things) and add the usual install places in case that fails.
@@ -142,7 +145,11 @@ async function startServer() {
 }
 
 /** A question or notice that belongs to the app's window: modal to it while it is showing, so it cannot end up behind it (a separate dialog window is easy to lose). */
-const askUser = (options) => (win && !win.isDestroyed() && win.isVisible() ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+// Every dialog carries the app icon: a Linux dialog without one shows a generic icon in window lists and docks (issue 26).
+const askUser = (options) => {
+  const withIcon = { icon: windowIcon(), ...options };
+  return win && !win.isDestroyed() && win.isVisible() ? dialog.showMessageBox(win, withIcon) : dialog.showMessageBox(withIcon);
+};
 
 // --- Update notices: notify only. Off until the user agrees (the one request this shell makes on its own, so it says who is contacted first). ---
 const updateFile = () => path.join(app.getPath("userData"), "updates.json");
