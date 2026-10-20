@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
+import { ADULT_GESTURES, GESTURES, framesRequest, gestureRequest, gesturePoses, gestureView } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
@@ -92,6 +92,33 @@ test("the page's request for frames is answered with the same request the server
   send({ type: "frames", emotion: "happy" });
   await next((e) => e.type === "frames", events.indexOf(frames) + 1);
   assert.equal(calls.length, before, "served from the cache");
+});
+
+test("the adult body's gestures bend the elbow and close the fist, the chibi's swing the arm; only the adult cheer comes with a wider view", async () => {
+  assert.deepEqual(gesturePoses({ body: "adult_female" }, "wave"), ADULT_GESTURES.wave);
+  assert.deepEqual(gesturePoses({ body: "chibi" }, "wave"), GESTURES.wave);
+  assert.deepEqual(gesturePoses({}, "cheer"), GESTURES.cheer);
+  assert.equal(gesturePoses({ body: "adult_female" }, "backflip"), undefined);
+  assert.ok(ADULT_GESTURES.wave.every((p) => (p.right_elbow as number) >= 148 && p.right_arm_out === 6), "the pack's wave: the upper arm held in, the forearm folded up");
+  assert.ok(ADULT_GESTURES.cheer.every((p) => p.grip_style === "fist"), "the cheer's hands are fists");
+  assert.equal(gestureView({ body: "adult_female" }, "cheer"), "15 -30 370 360");
+  assert.equal(gestureView({ body: "adult_female" }, "wave"), null);
+  assert.equal(gestureView({ body: "chibi" }, "cheer"), null);
+  const adult = connect({ restore: { character: { body: "adult_female" } } });
+  await adult.next((e) => e.type === "queue");
+  adult.send({ type: "gesture-frames", emotion: "happy", gesture: "cheer" });
+  const cheer = await adult.next((e) => e.type === "gesture-frames");
+  assert.equal(cheer.svgs.length, 2);
+  assert.equal(cheer.view, "15 -30 370 360");
+  assert.deepEqual(adult.calls.filter((c) => c.poses).at(-1)!.poses, ADULT_GESTURES.cheer, "the renderer was asked for the adult poses");
+  adult.send({ type: "gesture-frames", emotion: "happy", gesture: "wave" });
+  const wave = await adult.next((e) => e.type === "gesture-frames" && e.gesture === "wave");
+  assert.equal(wave.view, undefined);
+  const plain = connect();
+  await plain.next((e) => e.type === "queue");
+  plain.send({ type: "gesture-frames", emotion: "happy", gesture: "cheer" });
+  assert.equal((await plain.next((e) => e.type === "gesture-frames")).view, undefined);
+  assert.deepEqual(plain.calls.filter((c) => c.poses).at(-1)!.poses, GESTURES.cheer);
 });
 
 test("an emotion she does not know is drawn neutral, and a gesture comes back as its two poses", async () => {
@@ -1074,19 +1101,14 @@ test("the packs message names the preview of every pack the list has, fetched or
   assert.deepEqual(after.thumbs, { "franzi-bikini": "https://rhedak.github.io/t.webp" }, "still named once it is fetched");
 });
 
-test("/show for a drawn look whose body has no expressions yet says so instead of playing a sequence in which nothing changes", async () => {
+test("/show for a drawn look on the adult body plays the sequence like any other (the creator's 0.5.1 animates her face and arms)", async () => {
   const { events, next, send } = connect({ restore: { character: { body: "adult_female" } } });
   await next((e) => e.type === "queue");
   const from = events.length;
   send({ type: "user", text: "/show" });
-  const note = await next((e) => e.type === "notice" && /no expressions or gestures yet/.test(e.text), from);
-  assert.match(note.text, /Looks → Packs/);
-  assert.equal(events.slice(from).some((e) => e.type === "demo"), false);
-  const plain = connect();
-  await plain.next((e) => e.type === "queue");
-  const mark = plain.events.length;
-  plain.send({ type: "user", text: "/show" });
-  await plain.next((e) => e.type === "demo", mark);
+  const show = await next((e) => e.type === "demo", from);
+  assert.deepEqual(show, drawnDemoMessage(Object.keys(emotions), Object.keys(GESTURES)));
+  assert.equal(events.slice(from).some((e) => e.type === "notice"), false);
 });
 
 test("in the demo her name is the character's while that character's pack is on, and the demo's own again after", async () => {

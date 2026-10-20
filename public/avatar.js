@@ -41,20 +41,26 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
   const cache = new Map();
   /** "emotion:gesture" -> the pose frames to alternate between */
   const gestureCache = new Map();
+  /** "gesture" -> the viewBox it is shown in when the usual close-up would cut it off (the server sends it with the poses) */
+  const gestureViews = new Map();
   let gestureName = null;
   let gestureStart = 0;
   let gestureUntil = 0;
 
   const parser = new DOMParser();
 
+  /** The frame to show in: the whole body, or the close-up (a gesture may bring its own, wider one). */
+  const viewFor = (own) => (full ? FULL_BODY : own || CLOSE_UP);
+
   function setView() {
     const svg = host.firstElementChild;
-    if (svg) svg.setAttribute("viewBox", full ? FULL_BODY : CLOSE_UP);
+    const posing = performance.now() < gestureUntil;
+    if (svg) svg.setAttribute("viewBox", viewFor(posing ? gestureViews.get(gestureName) : null));
   }
 
-  function showSvg(source, key) {
+  function showSvg(source, key, own = null) {
     const svg = source.cloneNode(true);
-    svg.setAttribute("viewBox", full ? FULL_BODY : CLOSE_UP);
+    svg.setAttribute("viewBox", viewFor(own));
     svg.setAttribute("preserveAspectRatio", "xMidYMax meet");
     host.replaceChildren(svg);
     shown = key;
@@ -90,7 +96,7 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
       // A frame's timestamp is when it began, which can be a moment before a gesture that started
       // since: never a negative time, or the index goes negative and no pose is found.
       const key = 100 + (Math.floor(Math.max(0, now - gestureStart) / 280) % poses.length);
-      if (key !== shown) showSvg(poses[key - 100], key);
+      if (key !== shown) showSvg(poses[key - 100], key, gestureViews.get(gestureName));
     } else {
       const index = pickFrame(now);
       if (index !== shown || host.firstElementChild === null) show(index);
@@ -122,6 +128,7 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
       version = v;
       cache.clear();
       gestureCache.clear();
+      gestureViews.clear();
       requestFrames(emotion);
     },
     setEmotion(name) {
@@ -159,6 +166,8 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
     },
     receiveGesture(msg) {
       if (msg.version !== version) return;
+      if (typeof msg.view === "string") gestureViews.set(msg.gesture, msg.view);
+      else gestureViews.delete(msg.gesture);
       gestureCache.set(
         `${msg.emotion}:${msg.gesture}`,
         msg.svgs.map((text) => sanitize(parser.parseFromString(text, "image/svg+xml").documentElement)),

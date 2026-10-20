@@ -89,6 +89,25 @@ test("saved looks can be loaded by the user or by the model, and bad names are r
   }
 });
 
+test("Franzi's gestures are drawn with the bent arm and the fist, from the creator's 0.5.1: each pose differs from the rest picture and from the other, and the cheer has fists", { skip }, async () => {
+  const s = await service({}, "franzi");
+  try {
+    const rest = await s.frames("neutral");
+    const wave = await s.gestureFrames("neutral", "wave");
+    const cheer = await s.gestureFrames("neutral", "cheer");
+    assert.equal(wave?.length, 2);
+    assert.equal(cheer?.length, 2);
+    assert.notEqual(wave![0], wave![1], "the forearm tilts then stands");
+    assert.notEqual(cheer![0], cheer![1], "the fists at the shoulders, then up");
+    for (const svg of [...wave!, ...cheer!]) assert.notEqual(svg, rest[0], "not her rest picture");
+    // the creator draws a raised, bent arm as its own group (`adult-pose-l`); a creator that did not know the fields would have left her arms down
+    for (const svg of wave!) assert.match(svg, /adult-pose-l-fill/);
+    for (const svg of cheer!) assert.match(svg, /adult-pose-l-fill[\s\S]*adult-pose-r-fill/);
+  } finally {
+    s.close();
+  }
+});
+
 test("gesture frames are two different poses, and unknown gestures are refused", { skip }, async () => {
   const s = await service();
   try {

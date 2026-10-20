@@ -4,11 +4,10 @@
 // page's look buttons (undo, presets, reset) working. One scripted scene plays out a pretend work-mode session with a real approval card.
 
 import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
-import { GESTURES, framesRequest, gestureRequest } from "../public/frames.js";
+import { GESTURES, framesRequest, gestureRequest, gestureView } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { buildMessages, emotionFix } from "./model-prompt.js";
 import { packInfoFrom } from "./remote-packs.js";
-import { BODIES_WITHOUT_EXPRESSIONS, NO_EXPRESSIONS_TEXT } from "../public/demo.js";
 import { DRAWN_AGAIN, packIntroFor, personaFor } from "../public/script.js";
 
 const OPEN = 1;
@@ -317,7 +316,7 @@ export function createLocalSocket({
     if (msg.type === "gesture-frames" && typeof msg.emotion === "string" && typeof msg.gesture === "string") {
       const request = gestureRequest(feel, character, msg.emotion, msg.gesture);
       if (!request) return;
-      return draw(request, `${version}:${msg.emotion}:${msg.gesture}`, (svgs) => ({ type: "gesture-frames", version, emotion: msg.emotion, gesture: msg.gesture, svgs }));
+      return draw(request, `${version}:${msg.emotion}:${msg.gesture}`, (svgs) => ({ type: "gesture-frames", version, emotion: msg.emotion, gesture: msg.gesture, svgs, ...(gestureView(character, msg.gesture) ? { view: gestureView(character, msg.gesture) } : {}) }));
     }
     if (msg.type === "preset-thumbs") return out({ type: "preset-thumbs", svgs: await thumbs() });
   }
@@ -398,7 +397,6 @@ export function createLocalSocket({
   /** The show-off sequence for what she is just now: the drawn avatar, or the picture pack's own pictures. */
   async function showMessage() {
     const names = Object.keys(await emotions);
-    if (!pack && BODIES_WITHOUT_EXPRESSIONS.includes(character?.body)) return { type: "notice", text: NO_EXPRESSIONS_TEXT };
     return pack ? packDemoMessage(names, Object.keys(GESTURES), packList[pack]) : drawnDemoMessage(names, Object.keys(GESTURES));
   }
 
