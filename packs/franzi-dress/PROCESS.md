@@ -15,8 +15,8 @@ Like the rest of this repository and the `risa-dress` pack, these pictures are u
    style. Only change <the expression or pose>. Keep everything else identical." One picture was kept per edit.
 3. **Blinks and mouths.** The blink (`<emotion>-blink`) and three mouth openings (`<emotion>-talk1` to `-talk3`)
    for all seven emotions were not made with an image tool. A script drew closed eyes or an open mouth over the
-   face of each emotion picture and left every other pixel identical. They are simpler than the hand-finished
-   pictures of `risa-dress`.
+   face of each emotion picture and left every other pixel identical. They are simpler than hand-drawn
+   eyes and mouths.
 4. **Transparent background.** A script made the black background transparent: near-black pixels connected to the
    picture's edge, plus the enclosed black gaps between arms and body, with a 1 px soft edge and the dark fringe
    removed. Her black hair and outlines are kept. Blinks and mouths reuse their emotion picture's mask.
