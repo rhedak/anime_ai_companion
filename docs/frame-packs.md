@@ -115,11 +115,16 @@ listed and ignored.
 ## The Risa packs
 
 `packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
-not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
-background, hair to hem so that raised arms fit), with the prompts and `python/finish_pack.py` run as
-`--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
-neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
-mouth near the chin leaving a smear. The pictures are lossless WebP at full size (940 × 1070, about 11 MB for all 39; the PNGs they were made from were 16.5 MB, and the pixels are identical, transparent areas included). Its wave and cheer are two pictures each, edited from the happy picture and made as full-body pictures with a transparent background, then cropped like the base; `finish_pack.py` takes only the skin that appeared or went away from the edit (`wave-1` and the like; `--pose-face` names the picture they came from, `--pose-align body` lines an edit up on her body instead of her head, `--pose-scale 1` keeps its pixels unresampled and so sharp, `--pose-sharpen` softens less, `--pose-keep` keeps a part such as the neck from the base picture when no arm touches it, `--pose-take` takes everything that differs clearly in a box (the straps and hair around a hand at the shoulder, which a skin-only comparison misses); `pose-mask-<name>.png` shows what was taken from the edit) and leaves everything else, hair and dress included, as in the happy picture.
+not settled about AI-made pictures). It shows her adult look and was made the same way as her bikini and school uniform
+(its `PROCESS.md` has the details). The neutral base is a Grok Imagine edit of her adult reference (`ref/risa-adult/00-bikini`
+in the character creator) with only the outfit changed to the green dress. The six other emotions and the four pose pictures
+(`wave-1`, `wave-2`, `cheer-1`, `cheer-2`) are edits of that base, one change each, used as they came, so the hair and outline
+can move a pixel or two between emotions. `cheer-2` came back at 944 × 1088 and was enlarged to 1312 × 1504 first, so it is
+a little softer. The blinks and the three mouth openings of every emotion were drawn by a script over the emotion picture,
+every other pixel left identical. Her `happy` picture is a toothy grin, so its mouths open the grin (the lower teeth and lip
+drop) rather than drawing a new mouth. The black background was made transparent by a script. None of the pictures was
+retouched by hand, and `python/finish_pack.py` was not used. The pictures are lossless WebP at 940 × 1070 (about 12.5 MB for
+all 39). The first version of the pack, from her earlier design, was made with `finish_pack.py` from a hand-cleaned base.
 
 Risa has two more outfits, the bikini and the school uniform (`packs-src/risa-bikini/` and `packs-src/risa-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); they are downloaded on request, not shipped). They are the same character: `character: risa` in each `look.txt`, and the shared description is `packs/characters/risa.txt` (`default: risa-dress`, so the gallery's tile is the dress that ships). The gallery previews are `packs/thumbs/risa-bikini.webp` and `packs/thumbs/risa-uniform.webp` in this repository, because she is MIT (Draconia's and Miku's previews stay on the packs site). The short names are `bikini`, the same short name as Franzi's bikini, and `uniform`, the same short name as Draconia's uniform. `[outfit …]` only names an outfit of the character she is already wearing, so while she is wearing Risa `[outfit bikini]` selects `risa-bikini` and `[outfit uniform]` selects `risa-uniform`, while she is wearing Franzi `[outfit bikini]` selects `franzi-bikini`, and while she is wearing Draconia `[outfit uniform]` selects `draconia-uniform`.
 

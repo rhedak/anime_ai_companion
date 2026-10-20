@@ -7,11 +7,19 @@ repository, so you may use, change and share them, commercially too.
 
 ## How it was made
 
-**These pictures were made with AI.** The base picture was made with xAI's Grok Imagine from a design by the
-repository's owner, and cleaned up by hand. Every other picture (six emotions, each with a blink and three mouth
-openings, and two poses each for a wave and a cheer: 39 in all) was edited from that base with Grok Imagine, one change at a time, and put together by a script
-(`python/finish_pack.py`) that keeps everything but the face identical between pictures. The character's design itself
-began from AI-generated reference images, as the About page of the documentation says.
+**These pictures were made with AI.** The neutral base picture was made with xAI's Grok Imagine by editing Risa's adult
+reference picture (`ref/risa-adult` in the `anime-character-creator` repository, the same base as the `risa-bikini` pack),
+changing only her outfit to a green sleeveless dress. The six other emotions (`happy`, `sad`, `angry`, `surprised`, `shy`,
+`thinking`) and the four poses (`wave-1`, `wave-2`, `cheer-1`, `cheer-2`) were made by editing that dress base in the same
+tool, one change at a time, and are used as they came, scaled to 940 × 1070 (`cheer-2` came out smaller and was enlarged
+first, so it is a little softer, and the tool zoomed out on it, so her figure is smaller there). None of the pictures was
+retouched by hand. The blink (`<emotion>-blink`) and the three mouth openings (`<emotion>-talk1` to `-talk3`) of the seven
+emotions were **not** made by an image tool: a script drew closed eyes and an open mouth over the face of each emotion
+picture, and left every other pixel identical. 39 pictures in all. `PROCESS.md` has the details. The character's design
+itself began from AI-generated reference images, as the About page of the documentation says.
+
+The background of every picture is transparent. It was removed with a script from the plain black background the pictures
+were made on.
 
 ## A caveat about AI-made pictures
 
