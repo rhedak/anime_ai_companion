@@ -22,15 +22,19 @@ by hand. This one shows her adult look, and none of its pictures was retouched b
    anything else; it is a little softer than the others. The tool also zoomed out on it, so her figure is smaller in that
    picture and her raised fists are close to the top edge. Otherwise it was kept as it came.
 3. **Blinks and mouths.** The blink (`<emotion>-blink`) and three mouth openings (`<emotion>-talk1` to `-talk3`)
-   for all seven emotions were not made with an image tool. A script drew closed eyes or an open mouth over the
-   face of each emotion picture and left every other pixel identical. The eye and mouth positions were measured on each
+   for all seven emotions were made by a script over the face of each emotion picture, which left every other pixel
+   identical. Only the `happy` mouths started from an image-tool picture (see below); the rest were drawn by the script. The eye and mouth positions were measured on each
    emotion picture. For the blinks, the script finds each open eye (the lashes, white and green iris connected to the
    iris) inside a box around it, paints it over with the surrounding skin colour, and draws a closed-eye line across it;
    red hair pixels are never painted, so her bangs, her eyebrows and the hair beside her eyes are left untouched. The `happy`
    blink closes her eyes with a gently upward-curved line. For the mouths of six emotions the script paints the closed mouth
-   over with skin and draws an open mouth in three sizes. Her `happy` picture is a toothy grin, so its mouths keep the grin
-   instead: the upper lip and teeth stay where they are, the lower teeth and lip move down (most in the middle, not at the
-   corners), and the gap shows the inside of the mouth, with the tongue in the two larger openings.
+   over with skin and draws an open mouth in three sizes. Her `happy` picture is a toothy grin, so its mouths come from one more Grok Imagine
+   edit of the `happy` picture with her mouth open (same prompt form), which was not used as a picture of its own. The script
+   lined it up with `happy` on the face around the mouth and pasted only the mouth, with a few pixels of skin and a soft
+   edge, into the `happy` picture: that is `happy-talk3`. For `happy-talk2` and `happy-talk1` the same open mouth was
+   squashed to about 65% and 35% of its height below the upper teeth (and a little narrower), anchored at the upper lip so
+   the lower lip moves up, over the skin of that picture with the mouth painted out. So the three read as the same mouth
+   opening wider.
 4. **Transparent background.** A script made the black background transparent, with the method used for Risa's adult
    reference cut-out: near-black pixels connected to the picture's edge, plus the enclosed black gaps between arms and body
    (and between hair and arms, between her raised arms and head in `cheer-2`) that survive a small opening, the narrow gaps

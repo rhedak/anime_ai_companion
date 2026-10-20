@@ -120,9 +120,11 @@ not settled about AI-made pictures). It shows her adult look and was made the sa
 in the character creator) with only the outfit changed to the green dress. The six other emotions and the four pose pictures
 (`wave-1`, `wave-2`, `cheer-1`, `cheer-2`) are edits of that base, one change each, used as they came, so the hair and outline
 can move a pixel or two between emotions. `cheer-2` came back at 944 × 1088 and was enlarged to 1312 × 1504 first, so it is
-a little softer. The blinks and the three mouth openings of every emotion were drawn by a script over the emotion picture,
-every other pixel left identical. Her `happy` picture is a toothy grin, so its mouths open the grin (the lower teeth and lip
-drop) rather than drawing a new mouth. The black background was made transparent by a script. None of the pictures was
+a little softer. The blinks and the three mouth openings of every emotion were made by a script over the emotion picture,
+every other pixel left identical. For six emotions the script drew the open mouths. Her `happy` picture is a toothy grin, so
+its mouths come from one more Grok Imagine edit of `happy` with her mouth open: the script lined it up on the face, pasted
+its mouth in for `happy-talk3`, and squashed that mouth to about 65% and 35% of its height (anchored at the upper lip) for
+`happy-talk2` and `happy-talk1`. The black background was made transparent by a script. None of the pictures was
 retouched by hand, and `python/finish_pack.py` was not used. The pictures are lossless WebP at 940 × 1070 (about 12.5 MB for
 all 39). The first version of the pack, from her earlier design, was made with `finish_pack.py` from a hand-cleaned base.
 

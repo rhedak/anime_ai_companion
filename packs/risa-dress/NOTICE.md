@@ -14,8 +14,9 @@ changing only her outfit to a green sleeveless dress. The six other emotions (`h
 tool, one change at a time, and are used as they came, scaled to 940 × 1070 (`cheer-2` came out smaller and was enlarged
 first, so it is a little softer, and the tool zoomed out on it, so her figure is smaller there). None of the pictures was
 retouched by hand. The blink (`<emotion>-blink`) and the three mouth openings (`<emotion>-talk1` to `-talk3`) of the seven
-emotions were **not** made by an image tool: a script drew closed eyes and an open mouth over the face of each emotion
-picture, and left every other pixel identical. 39 pictures in all. `PROCESS.md` has the details. The character's design
+emotions were made by a script over the face of each emotion picture, which left every other pixel identical. It drew the
+closed eyes and, for six emotions, the open mouths. The `happy` mouths are the mouth of one more edit of the `happy` picture
+with her mouth open, pasted in and, for the two smaller openings, squashed. 39 pictures in all. `PROCESS.md` has the details. The character's design
 itself began from AI-generated reference images, as the About page of the documentation says.
 
 The background of every picture is transparent. It was removed with a script from the plain black background the pictures
