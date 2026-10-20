@@ -10,6 +10,7 @@ import {
   opencodeArgs,
   opencodeConfig,
   opencodeSessionMode,
+  opencodeSupportsPure,
   parseModels,
   permissionResult,
   pickOpenCodeModel,
@@ -25,6 +26,17 @@ const models = [
 
 test("opencode args: plain ACP without plugins, never a skip-permissions flag", () => {
   assert.deepEqual(opencodeArgs(), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(true), ["acp", "--pure"]);
+});
+
+test("--pure is only passed where it still exists: opencode 2.x dropped it and exits 1 on launch", () => {
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("1.19.3")), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode 1.18.35")), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode v2.0.32")), ["acp"]); // what 2.x really prints
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("2.0.32")), ["acp"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("v2.1.0")), ["acp"]);
+  // An unreadable answer keeps opencode's default (the flag), so a 1.x install is never started differently by mistake.
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("")), ["acp", "--pure"]);
 });
 
 test("chat asks about every tool (and is refused each time); work asks with reads pre-approved, or lets everything through", () => {
@@ -191,6 +203,7 @@ test("the provider streams a reply, starts with plain ACP, and forces Ask in the
     config: config({ cwd: dir }),
     chatCwd: dir,
     persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
     spawnAgent: (args, cwd, env) => {
       seen.push(args);
       envs.push(env);
@@ -220,6 +233,89 @@ test("the provider streams a reply, starts with plain ACP, and forces Ask in the
   }
 });
 
+test("an opencode 2.x install is started without --pure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  const seen: string[][] = [];
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "2.0.32",
+    spawnAgent: (args, cwd) => {
+      seen.push(args);
+      return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  });
+  try {
+    const events: ProviderEvent[] = [];
+    await new Promise<void>((resolve, reject) => {
+      provider.send("hi", (event) => {
+        events.push(event);
+        if (event.type === "done") resolve();
+        if (event.type === "error") reject(new Error(event.message));
+      });
+    });
+    assert.deepEqual(seen[0], ["acp"]);
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});
+
+test("a version that cannot be read keeps --pure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  const seen: string[][] = [];
+  const spawnAgent = (args: string[], cwd: string) => {
+    seen.push(args);
+    return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+  };
+  const unreadable = new OpenCodeProvider({ config: config({ cwd: dir }), chatCwd: dir, persona: () => "You are Mio.", versionOf: async () => Promise.reject(new Error("no such program")), spawnAgent });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      unreadable.send("hi", (event) => {
+        if (event.type === "done") resolve();
+        if (event.type === "error") reject(new Error(event.message));
+      });
+    });
+    assert.deepEqual(seen[0], ["acp", "--pure"]);
+  } finally {
+    unreadable.close();
+    removeDir(dir);
+  }
+});
+
+test("a process that dies on launch reports the code and what it printed on stderr", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "die.mjs");
+  await writeFile(script, `process.stderr.write("ERROR\\n  Unrecognized flag: --pure in command opencode acp\\n");\nprocess.exit(1);\n`);
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "2.0.32",
+    spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] }),
+  });
+  try {
+    const events: ProviderEvent[] = [];
+    await new Promise<void>((resolve) => {
+      provider.send("hi", (event) => {
+        events.push(event);
+        if (event.type === "done" || event.type === "error") resolve();
+      });
+    });
+    const error = events.find((event) => event.type === "error");
+    assert.ok(error && error.type === "error" && /exited \(1\)/.test(error.message));
+    assert.ok(error && error.type === "error" && /Unrecognized flag: --pure/.test(error.message));
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});
+
 test("a permission request reaches the card and the allow answer lets the turn finish", async () => {
   const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
   const script = join(dir, "fake.mjs");
@@ -228,6 +324,7 @@ test("a permission request reaches the card and the allow answer lets the turn f
     config: config({ cwd: dir }),
     chatCwd: dir,
     persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
     spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] }),
   });
   try {
@@ -282,6 +379,7 @@ test("in chat mode a tool request is refused without a card, and the turn goes o
     config: config({ cwd: dir, mode: "chat" }),
     chatCwd: dir,
     persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
     spawnAgent: (_args, cwd, env) => {
       envs.push(env);
       return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
@@ -314,4 +412,40 @@ test("opencode's own refusal of a network is said as that, and any other error i
   assert.doesNotMatch(refused, /Internal error/);
   assert.match(refused, /another brain in the Brain menu/);
   assert.equal(opencodeErrorText("Something else broke"), "Something else broke");
+});
+
+test("a data folder written by another opencode version is explained, with opencode's own words kept", async () => {
+  const { opencodeErrorText } = await import("../src/providers/opencode-acp.ts");
+  const said = opencodeErrorText("opencode exited (1). Error: Unexpected error\n\nDatabase is not empty and has no session table");
+  assert.match(said, /^opencode exited \(1\)\. Error: Unexpected error/);
+  assert.match(said, /no session table/);
+  assert.match(said, /opencode debug paths/);
+  assert.match(said, /different version/);
+});
+
+test("closing while a turn is in flight does not start the agent again", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  let spawned = 0;
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
+    spawnAgent: (_args, cwd) => {
+      spawned++;
+      return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  });
+  try {
+    provider.send("hi", () => {});
+    await new Promise((resolve) => setTimeout(resolve, 20)); // the turn is under way
+    provider.close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(spawned <= 1, `close() must not be followed by a second start (started ${spawned})`);
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
 });
