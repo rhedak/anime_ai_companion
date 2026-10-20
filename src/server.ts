@@ -25,12 +25,12 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { BODIES_WITHOUT_EXPRESSIONS, NO_EXPRESSIONS_TEXT } from "./demo.ts";
 import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
+import { gestureView } from "../public/frames.js";
 import { formatClientError, perMinute } from "./client-errors.ts";
 import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
@@ -963,10 +963,7 @@ const slashCommands: Record<
   },
   show: {
     help: "she shows all her emotions, a blink, talking and her gestures, one at a time, naming each (no model call)",
-    run: ({ say }) =>
-      !activePack && BODIES_WITHOUT_EXPRESSIONS.includes((avatar.character as { body?: string }).body ?? "")
-        ? say(NO_EXPRESSIONS_TEXT)
-        : broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
+    run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
     help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
@@ -1577,7 +1574,8 @@ wss.on("connection", (ws) => {
       try {
         const version = avatar.version;
         const svgs = await avatar.gestureFrames(msg.emotion, msg.gesture);
-        if (svgs) ws.send(JSON.stringify({ type: "gesture-frames", version, emotion: msg.emotion, gesture: msg.gesture, svgs }));
+        const view = gestureView(avatar.character, msg.gesture);
+        if (svgs) ws.send(JSON.stringify({ type: "gesture-frames", version, emotion: msg.emotion, gesture: msg.gesture, svgs, ...(view ? { view } : {}) }));
       } catch (err) {
         console.error("gesture frames failed:", err);
       }

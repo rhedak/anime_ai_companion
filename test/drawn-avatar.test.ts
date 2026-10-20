@@ -11,8 +11,9 @@ function fakePage() {
       name,
       localName: "svg",
       attributes: [] as unknown[],
+      attrs: {} as Record<string, string>,
       querySelectorAll: () => [] as unknown[],
-      setAttribute: () => {},
+      setAttribute: (key: string, value: string) => void (el.attrs[key] = value),
       cloneNode: () => svg(name),
     };
     return el;
@@ -26,9 +27,9 @@ function fakePage() {
   const errors: unknown[] = [];
   console.error = (...args: unknown[]) => void errors.push(args);
   Math.random = () => 0;
-  let child: { name: string } | null = null;
+  let child: { name: string; attrs?: Record<string, string> } | null = null;
   const host = {
-    replaceChildren: (...els: { name: string }[]) => (child = els[0] ?? null),
+    replaceChildren: (...els: { name: string; attrs?: Record<string, string> }[]) => (child = els[0] ?? null),
     get firstElementChild() {
       return child;
     },
@@ -38,6 +39,8 @@ function fakePage() {
     host: host as unknown as HTMLElement,
     errors,
     shown: () => child?.name ?? null,
+    /** The viewBox the shown picture has been given. */
+    view: () => child?.attrs?.viewBox ?? null,
     /** Run one frame of the loop at `ms` on the page's own clock. */
     frame(ms: number) {
       const now = queued;
@@ -74,6 +77,37 @@ test("a gesture that starts a moment after the frame began still shows its pose,
     assert.equal(page.shown(), "wave-b");
     page.frame(began + 2500); // the gesture is over: back to her face (which may be mid-blink)
     assert.match(page.shown() ?? "", /^neutral-/);
+  } finally {
+    page.restore();
+  }
+});
+
+test("a gesture that brings its own view is shown in it, the close-up comes back after, and the whole body wins over both", () => {
+  const page = fakePage();
+  try {
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    avatar.setVersion(1);
+    avatar.receiveFrames({ version: 1, emotion: "neutral", svgs: frames("neutral") });
+    avatar.receiveGesture({ version: 1, emotion: "neutral", gesture: "cheer", svgs: ["cheer-a", "cheer-b"], view: "15 -30 370 360" });
+    avatar.receiveGesture({ version: 1, emotion: "neutral", gesture: "wave", svgs: ["wave-a", "wave-b"] });
+    const began = performance.now();
+    avatar.gesture("cheer", 2000);
+    page.frame(began + 10);
+    assert.match(page.shown() ?? "", /^cheer-/);
+    assert.equal(page.view(), "15 -30 370 360", "the cheer's own view");
+    page.frame(began + 2500);
+    assert.match(page.shown() ?? "", /^neutral-/);
+    assert.equal(page.view(), "55 0 290 330", "the usual close-up after it");
+    const second = performance.now();
+    avatar.gesture("wave", 2000);
+    page.frame(second + 10);
+    assert.match(page.shown() ?? "", /^wave-/);
+    assert.equal(page.view(), "55 0 290 330", "a gesture with no view of its own keeps the close-up");
+    avatar.setFull(true);
+    page.frame(second + 20);
+    avatar.gesture("cheer", 2000);
+    page.frame(second + 400);
+    assert.equal(page.view(), "0 0 400 500", "the whole body is the whole body");
   } finally {
     page.restore();
   }

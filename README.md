@@ -45,7 +45,7 @@ day whether a newer version exists (it never installs anything).
 ## Quick start
 
 ```bash
-git clone --branch v0.5.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.5.1 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install

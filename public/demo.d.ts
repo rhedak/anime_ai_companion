@@ -1,7 +1,5 @@
 export type DemoStep = { kind: "emotion"; name: string } | { kind: "blink" } | { kind: "talk" } | { kind: "gesture"; name: string };
 
-export const BODIES_WITHOUT_EXPRESSIONS: string[];
-export const NO_EXPRESSIONS_TEXT: string;
 export const DEMO_HOLD_MS: number;
 export function drawnDemoMessage(
   emotions: string[],
