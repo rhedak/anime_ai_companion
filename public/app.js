@@ -1816,6 +1816,7 @@ function renderLooksMenu() {
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
     ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
   );
+  select.value = ""; // a hidden, disabled first option is not selected by the browser on its own: it would pick "Presets…", which then fires no change
   select.disabled = select.options.length === 1;
 }
 
