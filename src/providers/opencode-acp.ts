@@ -33,10 +33,21 @@ export interface AcpEffect {
 /**
  * `opencode acp` has no `--force` equivalent we are allowed to pass: the app's safety rules
  * forbid a skip-permissions flag, so approvals are always handled through the permission config
- * below. Run Everything stays a Cursor-only mode. `--pure` keeps external plugins out of the run.
+ * below. Run Everything stays a Cursor-only mode. `--pure` keeps external plugins out of the run,
+ * but opencode 2.x removed that flag (the ACP command then exits 1 with "Unrecognized flag: --pure"),
+ * so it is only passed when the installed version still takes it.
  */
-export function opencodeArgs(): string[] {
-  return ["acp", "--pure"];
+export function opencodeArgs(supportsPure = true): string[] {
+  return supportsPure ? ["acp", "--pure"] : ["acp"];
+}
+
+/**
+ * Whether this opencode still takes the `--pure` flag. 1.x keeps it; 2.x (`@opencode/cli`) dropped it from every
+ * command, so its `--version` starts with 2. An unknown or unreadable answer keeps the flag, opencode's default.
+ */
+export function opencodeSupportsPure(version: string): boolean {
+  const major = /(\d+)\.\d+/.exec(version)?.[1]; // "1.19.3", "v2.1.0", and "opencode v2.0.32" (what 2.x prints)
+  return major === undefined || Number(major) < 2;
 }
 
 /**
@@ -50,9 +61,10 @@ export function opencodeArgs(): string[] {
  * pre-approved reads the user already trusts. This matters because opencode's own defaults are
  * permissive and would run tools unwatched.
  *
- * This uses the v1 config shape (`permission` object). opencode v2 renamed it to `permissions`
- * with an ordered rule array; if the installed opencode is v2 this block is ignored and its
- * permissive defaults apply, which is why the provider is not the default brain.
+ * This uses the v1 config shape (`permission` object). Checked against opencode 2.0.32 over ACP: it still honours
+ * this block (a shell command raises a permission request, and `"*": "allow"` lets it through), whereas with no
+ * config at all 2.x runs the command unasked. So the block must always be sent; a later 2.x that stops honouring
+ * it would run tools unwatched, which is why the provider is not the default brain.
  */
 export function opencodeConfig(mode: Mode, permissionMode: PermissionMode, allowedTools: string[]): string {
   if (mode === "chat") return JSON.stringify({ autoupdate: false, permission: { "*": "ask" } });
