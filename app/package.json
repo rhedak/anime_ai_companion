@@ -1,6 +1,6 @@
 {
   "name": "anaico-desktop",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "productName": "Anime AI Companion",
   "private": true,
   "description": "Desktop shell for Anime AI Companion: starts the app's own server and shows its page in a window.",
