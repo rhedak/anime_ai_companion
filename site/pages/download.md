@@ -4,7 +4,7 @@ description: Download the desktop app for Windows, macOS or Linux. One install, 
 
 # Download
 
-**[Download the latest version](https://github.com/rhedak/anime_ai_companion/releases/latest)** (free, MIT licensed)
+**[Download the latest version](https://github.com/rhedak/anime_ai_companion/releases/tag/v<version>)** (free, MIT licensed)
 
 One file for your system, from the table below or the *Assets* list of the release. Nothing else to install: Node.js and the character creator are inside.
 You still need **a brain** (below); without one she runs a small built-in script and tells you how to get one.

@@ -280,6 +280,8 @@ export class OpenCodeProvider implements Provider {
     this.proc = proc;
     this.appliedKey = key;
     this.stale = true;
+    // A process that exits at once leaves a closed pipe: the write to it raises EPIPE, which would end the server. The close handler reports what it said.
+    proc.stdin.on("error", () => {});
     createInterface({ input: proc.stdout }).on("line", (line) => {
       if (this.proc === proc) this.onLine(line);
     });

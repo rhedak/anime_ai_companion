@@ -1388,6 +1388,8 @@ function handle(msg) {
       avatar.setVersion(msg.version);
       break;
     case "pack":
+      // Installed from another page, or chosen: the question about downloading it is answered.
+      if (msg.pack?.name) document.querySelector(`.pack-confirm[data-pack="${CSS.escape(msg.pack.name)}"]`)?.remove();
       avatar.usePack(msg.pack);
       $("zoom").hidden = avatar.packed; // a set of pictures has one framing
       $("pack-credit").textContent = msg.pack?.credit ?? "";

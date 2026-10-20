@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { PassThrough, Writable } from "node:stream";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { removeDir } from "./helpers/platform.ts";
 import { tmpdir } from "node:os";
@@ -311,6 +313,45 @@ test("a process that dies on launch reports the code and what it printed on stde
     assert.ok(error && error.type === "error" && /exited \(1\)/.test(error.message));
     assert.ok(error && error.type === "error" && /Unrecognized flag: --pure/.test(error.message));
   } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});
+
+test("a write to the stdin of a process that has already gone is not an uncaught EPIPE that takes the server down", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const crashes: Error[] = [];
+  const onCrash = (err: Error) => crashes.push(err);
+  process.on("uncaughtException", onCrash);
+  // A process whose stdin has no reader any more: every write fails with EPIPE, asynchronously, the way a real pipe does.
+  const stdin = new Writable({ write: (_chunk, _encoding, done) => done(Object.assign(new Error("write EPIPE"), { code: "EPIPE" })) });
+  const gone = Object.assign(new EventEmitter(), { stdin, stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "2.1.0",
+    spawnAgent: () => {
+      setTimeout(() => {
+        gone.stderr.write("it died\n");
+        gone.emit("close", 1);
+      }, 100);
+      return gone as never;
+    },
+  });
+  try {
+    const events: ProviderEvent[] = [];
+    await new Promise<void>((resolve) => {
+      provider.send("hi", (event) => {
+        events.push(event);
+        if (event.type === "done" || event.type === "error") resolve();
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100)); // an EPIPE is raised on a later tick
+    assert.deepEqual(crashes.map((err) => err.message), []);
+    assert.ok(events.some((event) => event.type === "error" && /exited \(1\)[^]*it died/.test(event.message)));
+  } finally {
+    process.off("uncaughtException", onCrash);
     provider.close();
     removeDir(dir);
   }
