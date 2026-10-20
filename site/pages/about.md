@@ -24,11 +24,11 @@ settled everywhere, and the image tool's own terms apply too.
 repository's owner and are MIT-licensed like the rest, with the same caveat about AI-made pictures in each pack's NOTICE. The dirndl comes with the
 app; the other three are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
 
-## The Draconia pack
+## The Draconia packs
 
-A picture pack of **Draconia Malfoid** is available as a download (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). She is her own character, not one of Franzi's outfits: an **unofficial** fan character loosely inspired by Draco Malfoy (a girl version, 21 years old), with long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. The pictures were made with Grok Imagine. The pack is **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World.
+Two picture packs of **Draconia Malfoid** are available as downloads (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). She is her own character, not one of Franzi's outfits: an **unofficial** fan character loosely inspired by Draco Malfoy (a girl version, 21 years old), with long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform; the second outfit is the same uniform with the robe off. The pictures were made with Grok Imagine. The packs are **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World.
 
-The pack's own NOTICE travels with the pictures (`NOTICE.md` in `data/frames/draconia-uniform/` once downloaded, and in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)). This project cannot grant you the right to use the character. The pictures will be taken down on request: rhedak00@yahoo.de.
+Each pack's own NOTICE travels with the pictures (`NOTICE.md` in `data/frames/<name>/` once downloaded, and in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)). This project cannot grant you the right to use the character. The pictures will be taken down on request: rhedak00@yahoo.de.
 
 ## The Hatsune Miku pack
 
