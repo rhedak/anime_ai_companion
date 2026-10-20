@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import { networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import { WebSocket } from "ws";
 import { OPENCODE_PIN, opencodeAsset } from "../src/install-opencode.ts";
 import { Client, cannotRunServer, startServer, type RunningServer } from "./helpers/server.ts";
 import { pathOf, systemPathDirs } from "./helpers/standin.ts";
@@ -1353,6 +1355,99 @@ describe("[outfit uniform] is the uniform of the character she is wearing", { sk
     const draconiaTold = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
     assert.match(draconiaTold.text!, /Slytherin-style uniform/);
     assert.doesNotMatch(draconiaTold.text!, /Risa's school uniform/);
+  });
+});
+
+describe("/phone turns phone access on after a question, and /phone off turns it off", { skip }, () => {
+  let server: RunningServer;
+  before(async () => {
+    server = await startServer();
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  // An address another device would use. A machine with none (no network at all) still gets the question and answer checked, just not the listener.
+  const lanIp = Object.values(networkInterfaces())
+    .flatMap((list) => list ?? [])
+    .find((i) => i.family === "IPv4" && !i.internal)?.address;
+  const reach = async (path = "/"): Promise<number | "refused"> => {
+    if (!lanIp) return "refused";
+    try {
+      return (await fetch(`http://${lanIp}:${server.port}${path}`, { redirect: "manual", signal: AbortSignal.timeout(3000) })).status;
+    } catch {
+      return "refused";
+    }
+  };
+
+  test("nothing changes without the question, and a No keeps it off", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.send({ type: "lan-answer", yes: true }); // no /phone before it: ignored
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(c.since(from).some((e) => e.type === "phone" || e.type === "notice"), false);
+    assert.equal(await reach(), "refused");
+
+    from = c.mark;
+    c.say("/phone");
+    await c.next("lan-offer", 5000, from);
+    assert.match((await c.next("notice", 5000, from)).text, /Phone access is off\. The page asks/);
+    from = c.mark;
+    c.send({ type: "lan-answer", yes: false });
+    assert.match((await c.next("notice", 5000, from)).text, /Phone access stays off/);
+    assert.equal(await reach(), "refused");
+    from = c.mark;
+    c.send({ type: "lan-answer", yes: true }); // the question was answered: a second yes is nothing
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(c.since(from).some((e) => e.type === "phone"), false);
+    assert.equal(await reach(), "refused");
+  });
+
+  test("Yes opens the listener with the token gate, /phone shows the link, and /phone off closes it again", async () => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.say("/phone");
+    await c.next("lan-offer", 5000, from);
+    from = c.mark;
+    c.send({ type: "lan-answer", yes: true });
+    const card = await c.next("phone", 8000, from);
+    assert.ok(card.links.length > 0 && card.qr.length > 0);
+    const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
+    assert.ok(token, "the link carries the secret token");
+    assert.match(server.data("lan-token") ?? "", new RegExp(token!));
+
+    if (lanIp) {
+      assert.equal(await reach(), 401, "another device is let in only with the token");
+      assert.equal(await reach(`/?t=${token}`), 302, "and with it, it is signed in");
+      // A device on the network is a phone: it may not turn anything on or off.
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const heard: any[] = [];
+      ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
+      await new Promise<void>((resolve, reject) => {
+        ws.once("open", () => resolve());
+        ws.once("error", reject);
+      });
+      ws.send(JSON.stringify({ type: "user", text: "/phone off" }));
+      await new Promise((r) => setTimeout(r, 400));
+      assert.ok(heard.some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), "a phone cannot turn phone access off");
+      ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
+      ws.close();
+    }
+
+    // The page on this computer is still connected and still works.
+    from = c.mark;
+    c.say("/phone");
+    assert.equal((await c.next("phone", 5000, from)).links.length > 0, true);
+
+    from = c.mark;
+    c.say("/phone off");
+    assert.match((await c.next("notice", 5000, from)).text, /Phone access is off: phones are signed out/);
+    assert.equal(await reach(), "refused");
+    from = c.mark;
+    c.say("/phone off");
+    assert.match((await c.next("notice", 5000, from)).text, /already off/);
   });
 });
 

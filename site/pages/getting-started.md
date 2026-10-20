@@ -41,7 +41,7 @@ Open the address in a browser and say hello. Her first look is Risa; the **Looks
 | `anaico` | start in work mode for the current folder (a home folder or `/` falls back to chat) |
 | `anaico --chat` | start in chat mode; the folder is still filled in, so Work is one click away |
 | `anaico --no-open` | do not open the browser |
-| `anaico --lan` | also let your phone in, see [From your phone](phone.html) (off again at every start) |
+| `anaico --lan` | also let your phone in, see [From your phone](phone.html) (off again at every start; `/phone` in the chat can turn it on too) |
 | `anaico --daemon` | run in the background; output goes to `data/server.log` |
 | `anaico --status`, `--stop`, `--restart` | look at, stop or restart that background server |
 | `anaico --doctor` | check what it needs (Node, a brain, the creator, the port) and say what is missing; it changes nothing |

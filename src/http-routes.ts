@@ -14,8 +14,8 @@ export interface HttpDeps {
   publicDir: string;
   /** The user's own styling (data/custom.css). */
   customCssPath: string;
-  /** --lan is on: devices on the network may come in, with the token. */
-  lan: boolean;
+  /** Whether phone access is on (`--lan`, or turned on from /phone): devices on the network may come in, with the token. Asked per request: it can change while the server runs. */
+  lan(): boolean;
   lanToken(): string;
   transcript: Pick<Transcript, "findShown">;
   /** Where picture packs live. */
@@ -67,7 +67,7 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
   /** Whether this request may go on. Another device (--lan) needs the token; everything else is refused. */
   function letThrough(req: IncomingMessage, res: ServerResponse): boolean {
     if (isLoopbackAddress(req.socket.remoteAddress)) return true;
-    const gate = deps.lan ? gateRequest(req, deps.lanToken()) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
+    const gate = deps.lan() ? gateRequest(req, deps.lanToken()) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
     if (gate.action === "allow") return true;
     if (gate.action === "sign-in") {
       res.writeHead(302, { "set-cookie": sessionCookie(deps.lanToken()), location: gate.location, "cache-control": "no-store", ...headers }).end();

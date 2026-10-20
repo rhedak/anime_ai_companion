@@ -174,7 +174,7 @@ if (status || stop || restart || daemon) {
 
   // --daemon or --restart: start it
   if (await serverUp()) {
-    console.log(`Companion already running on ${url}, leaving it as it is (use --restart to apply new options${lan ? ", such as --lan" : ""}).`);
+    console.log(`Companion already running on ${url}, leaving it as it is (use --restart to apply new options${lan ? ", such as --lan, or type /phone in the chat" : ""}).`);
     process.exit(0);
   }
   const pid = startDaemon();
@@ -204,7 +204,7 @@ if (!(await serverUp())) {
     process.exit(1);
   }
 } else {
-  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it (its folder and mode stay as they are${lan ? "; --lan only applies to a server this command starts, so stop it first" : ""}).`);
+  console.log(`Companion already running on http://127.0.0.1:${port}, reusing it (its folder and mode stay as they are${lan ? "; --lan only applies to a server this command starts, so stop it first, or type /phone in its chat" : ""}).`);
 }
 
 function stopServer(): void {

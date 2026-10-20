@@ -54,11 +54,14 @@ const customCssPath = join(dataDir, "custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only unless `--lan` is passed: this server can run Claude Code, so reaching it from the network is an
 // opt-in made again at every start, and every request from the network needs the token (src/lan.ts).
+// `/phone` can also turn it on later, once, after a question answered on this computer (`setLan`); that is in memory only and is off again at every start.
 const host = "127.0.0.1";
-const lan = process.argv.includes("--lan");
-const bindHost = lan ? "0.0.0.0" : host;
+let lan = process.argv.includes("--lan");
+let bindHost = lan ? "0.0.0.0" : host;
 const lanTokenPath = join(dataDir, "lan-token");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
+/** `/phone` asked whether to turn phone access on, and the answer is still due. Only that question can be answered with yes. */
+let lanAsked = false;
 
 await mkdir(workspace, { recursive: true });
 const personaBase = await readFile(join(root, "persona.md"), "utf8");
@@ -428,7 +431,7 @@ const server = createServer(
     port,
     publicDir,
     customCssPath,
-    lan,
+    lan: () => lan,
     lanToken: () => lanToken,
     transcript,
     packDirs,
@@ -782,6 +785,37 @@ async function wearOutfit(wanted: string): Promise<void> {
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
  * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
  */
+/**
+ * Moves the listener between this machine only and the whole network without a restart, for `/phone` in the desktop app (which starts the server without `--lan`).
+ * The page on this machine stays connected (its WebSocket is already upgraded), and phones are signed out when it goes off. Returns what went wrong, or null.
+ */
+async function setLan(on: boolean): Promise<string | null> {
+  if (on === lan) return null;
+  const before = bindHost;
+  const after = on ? "0.0.0.0" : host;
+  if (on) lanToken = await loadToken(lanTokenPath);
+  const listenOn = (where: string) =>
+    new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, where, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+  server.close(); // stops accepting new connections; open ones carry on
+  try {
+    await listenOn(after);
+  } catch (err) {
+    await listenOn(before).catch(() => {});
+    return `Could not change phone access: ${err instanceof Error ? err.message : err}`;
+  }
+  bindHost = after;
+  lan = on;
+  if (!on) for (const c of clients) if (remoteSockets.has(c)) c.close();
+  console.log(on ? "Phone access turned on from /phone (until the next start)." : "Phone access turned off.");
+  return null;
+}
+
 const slashCommands: Record<
   string,
   {
@@ -967,10 +1001,20 @@ const slashCommands: Record<
     run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
-    help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
+    help: "show the link for controlling her from a phone on this network (it asks first if phone access is off; `/phone new` makes a new link, `/phone off` turns it off)",
     run: async ({ args, say, reply, remote }) => {
       if (remote) return say(remoteRefusal);
-      if (!lan) return say("Phone access is off. Restart with `anaico --lan` (or `npm start -- --lan`) to turn it on; it is off again at every start.");
+      if (args.trim() === "off") {
+        if (!lan) return say("Phone access is already off.");
+        const failed = await setLan(false);
+        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her.");
+      }
+      if (!lan) {
+        // The answer comes from the page on this computer (`lan-answer`), and only to this question.
+        lanAsked = true;
+        reply({ type: "lan-offer" });
+        return say("Phone access is off. The page asks whether to turn it on. It stays on until you restart, and is off again at every start.");
+      }
       if (args.trim() === "new") {
         lanToken = await saveToken(lanTokenPath, newToken());
         for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
@@ -1526,6 +1570,16 @@ wss.on("connection", (ws) => {
       // The page reporting a problem of its own: into the log, so it can be read here (rate limited).
       const line = pageErrorLimit() ? formatClientError(msg, remote ? "a phone" : "this computer") : null;
       if (line) console.error(line);
+    } else if (msg.type === "lan-answer") {
+      // The answer to the question /phone asked: only from this computer, never from a phone, and only while that question is open.
+      if (remote || !lanAsked) return;
+      lanAsked = false;
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (msg.yes !== true) return say("Phone access stays off.");
+      const failed = await setLan(true);
+      if (failed) return say(failed);
+      const links = phoneLinks(port, lanToken);
+      ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pack-catalog") {

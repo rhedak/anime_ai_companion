@@ -127,6 +127,33 @@ function setMsgText(el, text) {
 }
 
 /** The /phone card: a QR code for the first link, drawn from the server's rows of 1 and 0, and all the links. */
+/** The question before phone access is turned on: who gets in, and that it stays on until the next start. Nothing changes until "Turn on". */
+function askLan() {
+  document.querySelector(".lan-confirm")?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys lan-confirm";
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "Turn on phone access?");
+  const text = document.createElement("p");
+  text.textContent =
+    "Turn on phone access? Devices on your network (your Wi-Fi) can then open her with a secret link, and anyone who has the link can chat with her and her coding agent, so share it with nobody. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Turn on" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  const answer = (value) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "lan-answer", yes: value }));
+    box.remove();
+  };
+  yes.onclick = () => answer(true);
+  no.onclick = () => answer(false);
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
 function addPhoneCard(links, rows) {
   const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. They work like a password, so keep them to yourself:");
   const ns = "http://www.w3.org/2000/svg";
@@ -1244,6 +1271,9 @@ function handle(msg) {
       break;
     case "notice":
       addMsg("sys", msg.text);
+      break;
+    case "lan-offer":
+      askLan();
       break;
     case "phone":
       if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String));

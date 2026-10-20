@@ -5,19 +5,20 @@ description: Carry on a session from your phone over your own network, with a QR
 # From your phone
 
 `anaico --lan` (or `npm start -- --lan`) also lets other devices on your network in, so you can carry on a session
-from your phone while the computer does the work. It is **off at every start**: you ask for it each time, like a
-looser permission mode.
+from your phone while the computer does the work. In the desktop app, type `/phone` and answer **Turn on**. It is **off
+at every start**: you ask for it each time, like a looser permission mode.
 
 ![The chat on a phone](assets/phone.png)
 
 ## Connect
 
-1. **Start with `--lan`.** It prints a few links ending in `?t=<token>`, one per way the phone can reach the
-   computer: the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name. Type
-   `/phone` in the chat to see them again, with a **QR code** for the first one.
+1. **Start with `--lan`, or type `/phone` and answer Turn on** (your system may ask once to allow incoming
+   connections). It shows a few links ending in `?t=<token>`, one per way the phone can reach the
+   computer: the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name, with a
+   **QR code** for the first one. Type `/phone` again to see them again.
 2. **Open the link on the phone**, on the same Wi-Fi or on your private network. The first visit signs the phone
    in (a cookie) and removes the token from the address.
-3. **`/phone new`** makes a new token and signs every phone out.
+3. **`/phone new`** makes a new token and signs every phone out. **`/phone off`** turns phone access off again.
 
 ## What a phone can do
 
