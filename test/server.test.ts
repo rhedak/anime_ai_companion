@@ -1556,6 +1556,7 @@ describe("her name: the user's own, else the character's of the pack that is on"
     let from = c.mark;
     c.say("/rename Hana");
     assert.equal((await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from)).name, "Hana");
+    assert.match((await c.next("notice", 5000, from)).text, /She is called Hana now\. \/rename reset goes back\./, "a rename is confirmed in the chat, as a reset is");
     from = c.mark;
     c.say("/frames off");
     assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Hana", "the user's name stays when the pack goes");

@@ -647,6 +647,7 @@ async function rename(input: string, say: Say): Promise<void> {
   // Her running session keeps the old prompt until it restarts, so tell her directly.
   notes.push(`the user renamed you: your name is now ${name}. This replaces any other name you were given, including the name of a character.`);
   broadcast(modeInfo());
+  say(`She is called ${name} now. /rename reset goes back.`);
 }
 
 function changePermissionMode(value: PermissionMode, say: Say): void {

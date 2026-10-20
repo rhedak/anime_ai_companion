@@ -343,7 +343,7 @@ export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string =
   const wear =
     outfits.length > 1
       ? ` You can change into another of your outfits by writing [outfit <name>] in a reply when you decide to (or the user asks you to): ${outfits
-          .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? o.name : `${o.name} (not on this computer yet, so the user is asked before it is downloaded; you stay in your current outfit until they agree)`))
+          .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? o.name : `${o.name} (not on this computer yet: write the tag anyway, because that is how the user is asked; they decide whether it is downloaded, and you stay in your current outfit until they agree)`))
           .join(", ")}. The tag is invisible to the user; change only when it fits the conversation, not in every reply.`
       : "";
   // A character with a voice: she speaks as that character while these pictures are on, instead of in her usual manner (the tags and rules stay).

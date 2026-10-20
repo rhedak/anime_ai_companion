@@ -25,6 +25,11 @@ let win = null;
 let tray = null; // kept in a variable so it is not garbage collected, which would remove the icon
 const iconPath = path.join(__dirname, "build", "icon.png");
 const isMac = process.platform === "darwin";
+// X11 drops a window icon of 255 px or more (_NET_WM_ICON stays empty, issue 25), so Linux gets the 512 px file at 128 px.
+const windowIcon = () => {
+  const image = nativeImage.createFromPath(iconPath);
+  return process.platform === "linux" ? image.resize({ width: 128, height: 128, quality: "best" }) : image;
+};
 // One window class for every window (the main one and the dialogs), the one the AppImage's launcher entry names as StartupWMClass (app/package.json).
 if (process.platform === "linux") app.commandLine.appendSwitch("class", "anime-ai-companion");
 
@@ -272,12 +277,12 @@ function createWindow() {
     minWidth: 480,
     minHeight: 520,
     title: "Anime AI Companion",
-    icon: nativeImage.createFromPath(iconPath),
+    icon: windowIcon(),
     backgroundColor: "#1b1b22",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
   // The constructor option alone left _NET_WM_ICON empty on Linux (issue 18); setting it on the live window sets the property.
-  if (process.platform === "linux") win.setIcon(nativeImage.createFromPath(iconPath));
+  if (process.platform === "linux") win.setIcon(windowIcon());
   const ours = (url) => {
     try {
       return new URL(url).origin === origin;
