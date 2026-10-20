@@ -10,6 +10,7 @@ import {
   opencodeArgs,
   opencodeConfig,
   opencodeSessionMode,
+  opencodeSupportsPure,
   parseModels,
   permissionResult,
   pickOpenCodeModel,
@@ -32,6 +33,8 @@ export interface OpenCodeOptions {
   resumeSessionId?: string;
   /** Test hook. Defaults to `opencode` on PATH. */
   spawnAgent?: SpawnAgent;
+  /** Test hook: `opencode --version` for the chosen program. Defaults to a real spawn. */
+  versionOf?: (program: string) => Promise<string>;
 }
 
 interface PendingPermission extends AcpPermission {}
@@ -49,8 +52,13 @@ export class OpenCodeProvider implements Provider {
   private readonly chatCwd: string;
   private readonly persona: (config: SessionConfig) => string;
   private readonly spawnAgent: SpawnAgent;
+  private readonly versionOf: (program: string) => Promise<string>;
   private proc: ChildProcessWithoutNullStreams | null = null;
   private appliedKey = "";
+  /** Last stderr lines of a process that has just died, so an early exit can say why. */
+  private recentStderr: string[] = [];
+  /** Per program, whether its `--version` still takes `--pure`. Read once, kept for this provider's life. */
+  private readonly supportsPure = new Map<string, boolean>();
   /** Bumped on reset so a sync that was already running gives up. */
   private token = 0;
   private sessionIdValue: string | null;
@@ -77,6 +85,7 @@ export class OpenCodeProvider implements Provider {
     this.chatCwd = opts.chatCwd;
     this.persona = opts.persona;
     this.spawnAgent = opts.spawnAgent ?? defaultSpawn;
+    this.versionOf = opts.versionOf ?? defaultVersionOf;
     this.sessionIdValue = opts.resumeSessionId ?? null;
   }
 
@@ -207,6 +216,21 @@ export class OpenCodeProvider implements Provider {
     return `${this.cwd()}\n${opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools)}`;
   }
 
+  /**
+   * opencode 1.x starts plugins with `acp --pure`; 2.x removed `--pure` (`@opencode/cli`, whose ACP command rejects the
+   * flag and exits 1). The version is read once per program and kept on the instance, so a 2.x install is started
+   * without it and does not die on launch.
+   */
+  private async args(): Promise<string[]> {
+    const program = brainProgram("opencode") ?? "opencode";
+    const known = this.supportsPure.get(program);
+    if (known === undefined) {
+      const said = await this.versionOf(program).catch(() => "");
+      this.supportsPure.set(program, opencodeSupportsPure(said));
+    }
+    return opencodeArgs(this.supportsPure.get(program));
+  }
+
   private env(): NodeJS.ProcessEnv {
     return {
       ...process.env,
@@ -249,14 +273,24 @@ export class OpenCodeProvider implements Provider {
     if (this.proc && this.appliedKey === key) return;
     const token = this.token;
     this.kill();
-    const proc = this.spawnAgent(opencodeArgs(), cwd, this.env());
+    this.recentStderr = [];
+    const args = await this.args();
+    if (token !== this.token) return; // reset or closed while the version was being read: nothing to start
+    const proc = this.spawnAgent(args, cwd, this.env());
     this.proc = proc;
     this.appliedKey = key;
     this.stale = true;
     createInterface({ input: proc.stdout }).on("line", (line) => {
       if (this.proc === proc) this.onLine(line);
     });
-    proc.stderr.on("data", (chunk) => process.stderr.write(`[opencode] ${chunk}`));
+    proc.stderr.on("data", (chunk) => {
+      process.stderr.write(`[opencode] ${chunk}`);
+      const text = String(chunk);
+      if (this.proc === proc) {
+        this.recentStderr.push(text);
+        if (this.recentStderr.length > 20) this.recentStderr.shift();
+      }
+    });
     proc.on("error", (err) => {
       if (this.proc !== proc) return;
       this.proc = null;
@@ -266,10 +300,13 @@ export class OpenCodeProvider implements Provider {
       this.failWaiters(message);
       if (this.listener) this.finish({ type: "error", message });
     });
-    proc.on("exit", (code) => {
+    // "close", not "exit": exit can come before stderr is read, and a process that dies on launch is the case where it matters.
+    proc.on("close", (code) => {
       if (this.proc !== proc) return;
       this.proc = null;
-      const message = `opencode exited (${code ?? "signal"}).`;
+      const said = this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim(); // colour codes and CRs are noise in a chat bubble
+      const message = opencodeErrorText(`opencode exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`);
+      this.recentStderr = [];
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
     });
@@ -355,7 +392,8 @@ export class OpenCodeProvider implements Provider {
       this.finish({ type: "error", message: opencodeErrorText(err instanceof Error ? err.message : String(err)) });
     } finally {
       const mode = opencodeSessionMode(this.config.mode, this.config.permissionMode);
-      if (!this.listener && (mode !== this.appliedMode || this.launchKey() !== this.appliedKey)) {
+      // Not after a close() or reset() (the token moved): the next message starts the process, and a closed brain must not start one.
+      if (token === this.token && !this.listener && (mode !== this.appliedMode || this.launchKey() !== this.appliedKey)) {
         void this.enqueue(() => this.sync());
       }
     }
@@ -457,6 +495,28 @@ function defaultSpawn(args: string[], cwd: string, env: NodeJS.ProcessEnv): Chil
   // The copy this app installed keeps its files apart from any other OpenCode on the machine; the user's own install is run as it is.
   const own = program === managedOpencode() ? managedOpencodeEnv() : {};
   return spawnCli(program, args, { cwd, env: { ...env, ...own }, stdio: ["pipe", "pipe", "pipe"] });
+}
+
+/**
+ * `opencode --version` for the chosen program. A test may pass its own, and the result is cached per program.
+ * A copy this app installed is asked with its own config folders, the same ones it is started with.
+ */
+function defaultVersionOf(program: string): Promise<string> {
+  const own = program === managedOpencode() ? managedOpencodeEnv() : {};
+  return new Promise((resolve) => {
+    const child = spawnCli(program, ["--version"], { env: { ...process.env, ...own }, stdio: ["ignore", "pipe", "ignore"], windowsHide: true }); // spawnCli: an npm install on Windows is a .cmd shim
+    let out = "";
+    const timer = setTimeout(() => child.kill(), 10_000);
+    child.stdout.on("data", (chunk) => (out += chunk));
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve(out.trim());
+    });
+  });
 }
 
 function loginHint(message: string): string {

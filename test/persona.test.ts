@@ -11,15 +11,22 @@ const parts = splitPersona(base)!;
 const who = { name: "Draconia Malfoid", text: "A fan character.", voice: "a proud tsundere who teases." };
 const input = (over: Record<string, unknown> = {}) => ({ base, card: null, userFile: null, character: null, ...over });
 
+/**
+ * The same text with CRLF line ends. A Windows checkout already stores `\r\n` (`core.autocrlf`), so fold those to `\n` first.
+ * Replacing every `\n` on a CRLF file writes `\r\r\n`; `personaSha256` only folds `\r\n`, and the leftover `\r` is a different file.
+ */
+const withCrlf = (text: string): string => text.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+
 test("the persona.md that ships is a known one (and on Windows, with CRLF line ends, still is): add its hash when the file is changed on purpose", () => {
   assert.ok(SHIPPED_PERSONA_SHA256.includes(personaSha256(base)), `persona.md changed: add ${personaSha256(base)} to SHIPPED_PERSONA_SHA256 in src/persona.ts`);
-  assert.equal(personaSha256(base.replace(/\n/g, "\r\n")), personaSha256(base));
+  assert.equal(personaSha256(withCrlf(base)), personaSha256(base));
   assert.notEqual(personaSha256(`${base} `), personaSha256(base), "an edit changes it");
+  assert.notEqual(personaSha256(withCrlf(base).replace(/\n/g, "\r\n")), personaSha256(base), "a stray CR is still an edit");
 });
 
 test("the default persona is used with no card, no file of the user's and no character voice", () => {
   assert.deepEqual(choosePersona(input()), { tier: "default", text: base });
-  assert.equal(choosePersona(input({ base: base.replace(/\n/g, "\r\n") })).tier, "default", "CRLF is not an edit");
+  assert.equal(choosePersona(input({ base: withCrlf(base) })).tier, "default", "CRLF is not an edit");
 });
 
 test("a character with a voice replaces who she is and how she talks, and the expression protocol stays", () => {

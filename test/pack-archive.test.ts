@@ -79,7 +79,8 @@ test("a patch archive restores base frames byte for byte and blink and talk fram
 
     const archivePath = join(folder, "..", "mina.tar");
     await writeFile(archivePath, built.archive);
-    const listing = execFileSync("tar", ["-tf", archivePath], { encoding: "utf8" });
+    // Run in the archive's folder with a bare name: GNU tar (first on the PATH in Git Bash) reads `C:\…` as a host name.
+    const listing = execFileSync("tar", ["-tf", "mina.tar"], { encoding: "utf8", cwd: join(folder, "..") });
     assert.match(listing, /manifest\.json/);
     assert.match(listing, /base\/neutral\.webp/);
     assert.match(listing, /patch\/neutral-blink\.webp/);

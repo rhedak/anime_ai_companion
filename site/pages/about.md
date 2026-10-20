@@ -10,13 +10,14 @@ description: Credits, the licence (including the notes on the downloadable Hatsu
 part of it and are not MIT: the Hatsune Miku pictures show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the
 pack's own NOTICE; the Draconia Malfoid pictures are unofficial fan art, non-commercial, and will be taken down on request (see below).
 
-## The Risa (dress) pack
+## The Risa packs
 
-A second picture pack comes with the app: **Risa in a dress**, an original character (the same as the drawn Risa preset).
+**Risa** is an original character (the same as the drawn Risa preset), with three outfits (dress, bikini, school uniform). The dress comes with the app.
 Its pictures were made with Grok Imagine from a design by the repository's owner, then lined up and assembled with a
 script so that only the face changes between pictures. It is MIT-licensed like the rest of the repository, with one
 caveat said openly in its [NOTICE](../../packs/risa-dress/NOTICE.md): whether AI-made pictures can be copyrighted is not
-settled everywhere, and the image tool's own terms apply too.
+settled everywhere, and the image tool's own terms apply too. The bikini and the school uniform are downloaded on request from the
+[packs repository](https://github.com/rhedak/anime_ai_companion-packs).
 
 ## The Franzi pack
 
@@ -24,11 +25,11 @@ settled everywhere, and the image tool's own terms apply too.
 repository's owner and are MIT-licensed like the rest, with the same caveat about AI-made pictures in each pack's NOTICE. The dirndl comes with the
 app; the other three are downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs).
 
-## The Draconia pack
+## The Draconia packs
 
-A picture pack of **Draconia Malfoid** is available as a download (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). She is her own character, not one of Franzi's outfits: an **unofficial** fan character loosely inspired by Draco Malfoy (a girl version, 21 years old), with long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. The pictures were made with Grok Imagine. The pack is **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World.
+Three picture packs of **Draconia Malfoid** are available as downloads (from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); the page asks first). She is her own character, not one of Franzi's outfits: an **unofficial** fan character loosely inspired by Draco Malfoy (a girl version, 21 years old), with long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform; the second outfit is the same uniform with the robe off, and the third is an emerald and silver Yule Ball gown. The pictures were made with Grok Imagine. The packs are **not MIT** and are for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World.
 
-The pack's own NOTICE travels with the pictures (`NOTICE.md` in `data/frames/draconia-uniform/` once downloaded, and in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)). This project cannot grant you the right to use the character. The pictures will be taken down on request: rhedak00@yahoo.de.
+Each pack's own NOTICE travels with the pictures (`NOTICE.md` in `data/frames/<name>/` once downloaded, and in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)). This project cannot grant you the right to use the character. The pictures will be taken down on request: rhedak00@yahoo.de.
 
 ## The Hatsune Miku pack
 

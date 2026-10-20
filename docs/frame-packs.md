@@ -112,7 +112,7 @@ Start small. `neutral.png` alone already works; add `neutral-blink.png` and a `n
 emotions you use most (`happy`, `thinking`). Names are case-insensitive, and files she does not recognise are
 listed and ignored.
 
-## The Risa (dress) pack
+## The Risa packs
 
 `packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
 not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
@@ -120,6 +120,8 @@ background, hair to hem so that raised arms fit), with the prompts and `python/f
 `--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
 neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
 mouth near the chin leaving a smear. The pictures are lossless WebP at full size (940 × 1070, about 11 MB for all 39; the PNGs they were made from were 16.5 MB, and the pixels are identical, transparent areas included). Its wave and cheer are two pictures each, edited from the happy picture and made as full-body pictures with a transparent background, then cropped like the base; `finish_pack.py` takes only the skin that appeared or went away from the edit (`wave-1` and the like; `--pose-face` names the picture they came from, `--pose-align body` lines an edit up on her body instead of her head, `--pose-scale 1` keeps its pixels unresampled and so sharp, `--pose-sharpen` softens less, `--pose-keep` keeps a part such as the neck from the base picture when no arm touches it, `--pose-take` takes everything that differs clearly in a box (the straps and hair around a hand at the shoulder, which a skin-only comparison misses); `pose-mask-<name>.png` shows what was taken from the edit) and leaves everything else, hair and dress included, as in the happy picture.
+
+Risa has two more outfits, the bikini and the school uniform (`packs-src/risa-bikini/` and `packs-src/risa-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); they are downloaded on request, not shipped). They are the same character: `character: risa` in each `look.txt`, and the shared description is `packs/characters/risa.txt` (`default: risa-dress`, so the gallery's tile is the dress that ships). The gallery previews are `packs/thumbs/risa-bikini.webp` and `packs/thumbs/risa-uniform.webp` in this repository, because she is MIT (Draconia's and Miku's previews stay on the packs site). The short names are `bikini`, the same short name as Franzi's bikini, and `uniform`, the same short name as Draconia's uniform. `[outfit …]` only names an outfit of the character she is already wearing, so while she is wearing Risa `[outfit bikini]` selects `risa-bikini` and `[outfit uniform]` selects `risa-uniform`, while she is wearing Franzi `[outfit bikini]` selects `franzi-bikini`, and while she is wearing Draconia `[outfit uniform]` selects `draconia-uniform`.
 
 ## The Miku pack
 
@@ -132,9 +134,9 @@ change: <what changes>."* Blinks and mouth openings were edited from that emotio
 is Crypton's, so the pack is not MIT: see its `NOTICE.md`. The pictures are lossless WebP at 720 × 819
 (about 350 KB each): lossy encoding would put faint noise back into the parts that are meant to be identical.
 
-## The Draconia pack
+## The Draconia packs
 
-The Draconia pack (`packs-src/draconia-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); it is downloaded on request, not shipped) is her own character, `character: draconia` in its `look.txt`, not an outfit of Franzi. Draconia Malfoid is unofficial fan art loosely inspired by Draco Malfoy (a girl version). The pictures were made with Grok Imagine. The pack is not MIT: non-commercial use only, not affiliated with or endorsed by Warner Bros. or Wizarding World, and taken down on request (rhedak00@yahoo.de). Nothing of hers but this text is in the app's repository (her gallery preview is the index's, shown from the packs repository, as Miku's is). Her shared description is `packs/characters/draconia.txt` (the name the gallery shows is Draconia Malfoid, the same as the download index), so once the pack is installed the gallery and `[outfit …]` treat her separately from Franzi.
+The Draconia packs (`packs-src/draconia-uniform/`, `packs-src/draconia-vest/` and `packs-src/draconia-gown/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); they are downloaded on request, not shipped) are her own character, `character: draconia` in each `look.txt`, not outfits of Franzi. The vest is the uniform with the robe off. The gown is an emerald and silver Yule Ball gown. Draconia Malfoid is unofficial fan art loosely inspired by Draco Malfoy (a girl version). The pictures were made with Grok Imagine. The packs are not MIT: non-commercial use only, not affiliated with or endorsed by Warner Bros. or Wizarding World, and taken down on request (rhedak00@yahoo.de). Nothing of hers but this text is in the app's repository (her gallery previews are the index's, shown from the packs repository, as Miku's is). Her shared description is `packs/characters/draconia.txt` (the name the gallery shows is Draconia Malfoid, the same as the download index), so once a pack is installed the gallery and `[outfit …]` treat her separately from Franzi.
 
 ## How it is built
 

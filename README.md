@@ -45,7 +45,7 @@ day whether a newer version exists (it never installs anything).
 ## Quick start
 
 ```bash
-git clone --branch v0.5.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.5.1 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -123,8 +123,9 @@ picking one of your saved looks or a preset.
 `docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
 and how to get a consistent set out of an image tool.
 
-A pack of **Risa in a dress** comes with the app too (Looks → Packs… → risa-dress, or `/frames risa-dress`): an original character,
-same as the drawn Risa preset, with the pictures made with Grok Imagine and MIT-licensed like the rest ([`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)).
+**Risa**, an original character (the same as the drawn Risa preset, pictures made with Grok Imagine, MIT-licensed like the rest;
+[`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)), has three outfits: the dress comes with the app (Looks → Packs… → risa-dress, or `/frames risa-dress`),
+and the bikini and the school uniform are downloaded when you want them (Looks → Packs… → Risa, or `/frames risa-bikini` and `/frames risa-uniform`; the page asks first).
 
 **Franzi**, an original character (made with AI, MIT-licensed like the rest), has four outfits: the dirndl comes with the app, and the casual, pajama and bikini
 outfits are downloaded when you want them. Pictures are grouped by character in **Looks → Packs…**: a character with several outfits is one tile that opens a row of them.
@@ -132,7 +133,7 @@ While a pack is on, she is told what the pictures show (each pack's `look.txt`, 
 also shown her resting picture. She can change outfit herself: ask her to, or let her decide, and she writes `[outfit casual]` (only outfits of her own character; one that
 has to be downloaded makes the page ask you first).
 
-**Draconia Malfoid** is her own character, not one of Franzi's outfits. She is an unofficial fan character loosely inspired by Draco Malfoy (a girl version, 21 years old): long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. The pack is downloaded when you want it (Looks → Packs… → Draconia Malfoid, or `/frames draconia-uniform`; the page asks first). It is **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World, and the pictures will be taken down on request (rhedak00@yahoo.de). The pictures live in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not in this one, and the pack's `NOTICE.md` (in `data/frames/draconia-uniform/` once downloaded) is what you follow.
+**Draconia Malfoid** is her own character, not one of Franzi's outfits. She is an unofficial fan character loosely inspired by Draco Malfoy (a girl version, 21 years old): long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. She has three outfits, the uniform, the same uniform with the robe off (the vest), and an emerald and silver Yule Ball gown, and each pack is downloaded when you want it (Looks → Packs… → Draconia Malfoid, or `/frames draconia-uniform`, `/frames draconia-vest` and `/frames draconia-gown`; the page asks first). They are **not MIT** and are for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World, and the pictures will be taken down on request (rhedak00@yahoo.de). The pictures live in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not in this one, and each pack's `NOTICE.md` (in `data/frames/<name>/` once downloaded) is what you follow.
 
 A **Hatsune Miku** pack is available too, as a download (Looks → Packs… → Miku, or `/frames miku`; the page asks first). She is Crypton's character, so that
 pack is unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on screen and its terms said in the chat when you
@@ -209,7 +210,7 @@ there, like a regular Claude Code session. She asks first:
   Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
   Auto*, like the terminal's "yes, and don't ask again".
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
-- **Work here** applies the folder typed in the box. Once she already works in that folder, the same button
+- **Work here** applies the folder typed in the box. With nothing typed, or once she already works in that folder, the same button
   reads **Choose folder…** and opens your system's folder dialog (macOS, or Linux with `zenity` or
   `kdialog`; elsewhere type the path), starting in the current folder; picking one switches to it.
   Enter in the box always means "use what I typed".
@@ -287,6 +288,13 @@ Click her name at the top (or use `/rename Hana`) to rename her: Enter saves, Es
 saved in `data/settings.json`, shown in the page title and exports, used in her system prompt
 (`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
 letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
+
+## Changing her personality by asking
+
+You can ask her in chat to change her personality or voice. She answers with a proposal card showing the whole new text, and nothing is
+written until you press Keep (the old file is kept as `persona.md.bak`). **Known limitation:** the card depends on the model following the
+instruction to write the proposal. It appeared every time in testing (Claude, Big Pickle, a 3B Ollama model), but there is no fallback on
+the server, so a stubborn model can answer in words and show no card. Ask again, or edit `data/persona.md` yourself.
 
 ## Her notes about you
 
@@ -588,7 +596,7 @@ software you have not read line by line.
 - `packs/risa-dress`: an original character, pictures made with Grok Imagine (AI-made; MIT, see its `NOTICE.md`).
 - The Hatsune Miku pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
-- The Draconia Malfoid pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see its `NOTICE.md`. It will be taken down on request (rhedak00@yahoo.de).
+- The Draconia Malfoid packs (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see each pack's `NOTICE.md`. They will be taken down on request (rhedak00@yahoo.de).
 
 ## Code of conduct
 

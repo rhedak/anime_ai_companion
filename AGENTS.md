@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.5.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.5.1 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -210,8 +210,11 @@ stdin/stdout. Spawn `cursor-agent`. A command named `agent` is not necessarily t
 
 **opencode** (`src/providers/opencode.ts`) is `opencode acp`, the same Agent Client Protocol
 Cursor speaks, so `server.ts` shares the session, model and resume plumbing between both
-(`acpBrain`, `resumeAcp`). Spawn `opencode`; `--pure` keeps external plugins out of the run. A
-command named `agent` is not necessarily that binary.
+(`acpBrain`, `resumeAcp`). Spawn `opencode`; `--pure` keeps external plugins out of the run, but
+opencode 2.x (`@opencode/cli`) removed that flag and its ACP command exits 1 on "Unrecognized
+flag: --pure", so the version is read once (`opencode --version`) and the flag is only passed
+where it still exists (`opencodeArgs`/`opencodeSupportsPure` in `src/providers/opencode-acp.ts`).
+A command named `agent` is not necessarily that binary.
 
 - opencode's own permission defaults are permissive, so every start is given an isolated config
   (`opencodeConfig()` in `src/providers/opencode-acp.ts`, sent as `OPENCODE_CONFIG_CONTENT`): Ask
