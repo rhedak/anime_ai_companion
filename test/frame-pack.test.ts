@@ -412,6 +412,64 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   }
 });
 
+test("Risa and Franzi can share the short name bikini, and it stays inside the character she is wearing", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const packs = join(root, "packs");
+  const risaFile = await readFile(join(packs, "characters", "risa.txt"), "utf8");
+  assert.match(risaFile, /^default:\s*risa-dress\s*$/m, "the dress that ships is the outfit the gallery shows for her");
+  const dir = await mkdtemp(join(tmpdir(), "shared-bikini-"));
+  try {
+    for (const [pack, id, look] of [
+      ["risa-bikini", "risa", "You wear a bikini."],
+      ["franzi-bikini", "franzi", "You wear a bikini."],
+    ] as const) {
+      await mkdir(join(dir, pack));
+      await writeFile(join(dir, pack, "neutral.png"), png(4, 4));
+      await writeFile(join(dir, pack, "look.txt"), `character: ${id}\n${look}\n`);
+    }
+    const names = ["risa-dress", "risa-bikini", "franzi-dress", "franzi-bikini"];
+    const chars = await packCharacters([dir, packs], names);
+    assert.equal(chars["risa-dress"].id, "risa");
+    assert.equal(chars["risa-bikini"].id, "risa");
+    assert.equal(chars["franzi-dress"].id, "franzi");
+    assert.equal(chars["franzi-bikini"].id, "franzi");
+    assert.equal(chars["risa-dress"].default, "risa-dress");
+    assert.equal(chars["risa-bikini"].default, "risa-dress", "both of her outfits point at the dress the character file names");
+    assert.equal(outfitName("risa-bikini", "risa"), "bikini");
+    assert.equal(outfitName("franzi-bikini", "franzi"), "bikini");
+    assert.equal(outfitName("franzi-bikini", "risa"), "franzi-bikini", "the other character's folder is not a short name of hers");
+    const dress = await readPack([dir, packs], "risa-dress", ["neutral"]);
+    assert.equal(dress.ok, true);
+    if (!dress.ok) return;
+    assert.match(dress.pack.character?.text ?? "", /dark red hair/);
+    assert.doesNotMatch(dress.pack.character?.text ?? "", /default/, "the gallery's default outfit is not part of what she is told");
+    // wearOutfit (src/server.ts) builds this same list: packs of the active character only, then the short name or the folder name.
+    const choose = (wearing: string, wanted: string) => {
+      const id = chars[wearing].id;
+      const outfits = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id) }));
+      return outfits.find((outfit) => outfit.name === wanted || outfit.pack.toLowerCase() === wanted)?.pack;
+    };
+    assert.equal(choose("risa-dress", "bikini"), "risa-bikini");
+    assert.equal(choose("franzi-dress", "bikini"), "franzi-bikini");
+    assert.equal(choose("risa-dress", "franzi-bikini"), undefined);
+    assert.equal(choose("franzi-bikini", "bikini"), "franzi-bikini");
+    const groups = groupPacks(
+      ["risa-dress", "franzi-dress"],
+      { "risa-dress": { id: "risa", name: "Risa" }, "franzi-dress": { id: "franzi", name: "Franzi" } },
+      [
+        { id: "risa-bikini", character: { id: "risa", name: "Risa" } },
+        { id: "franzi-bikini", character: { id: "franzi", name: "Franzi" } },
+      ],
+    );
+    assert.deepEqual(groups.map((g) => [g.who?.name ?? null, g.here, g.offered]), [
+      ["Franzi", ["franzi-dress"], ["franzi-bikini"]],
+      ["Risa", ["risa-dress"], ["risa-bikini"]],
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("packs are grouped by character for /frames: the ones here, the ones on offer, packs of nobody last", () => {
   const franzi = { id: "franzi", name: "Franzi" };
   const groups = groupPacks(

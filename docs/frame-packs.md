@@ -112,7 +112,7 @@ Start small. `neutral.png` alone already works; add `neutral-blink.png` and a `n
 emotions you use most (`happy`, `thinking`). Names are case-insensitive, and files she does not recognise are
 listed and ignored.
 
-## The Risa (dress) pack
+## The Risa packs
 
 `packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
 not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
@@ -120,6 +120,8 @@ background, hair to hem so that raised arms fit), with the prompts and `python/f
 `--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
 neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
 mouth near the chin leaving a smear. The pictures are lossless WebP at full size (940 × 1070, about 11 MB for all 39; the PNGs they were made from were 16.5 MB, and the pixels are identical, transparent areas included). Its wave and cheer are two pictures each, edited from the happy picture and made as full-body pictures with a transparent background, then cropped like the base; `finish_pack.py` takes only the skin that appeared or went away from the edit (`wave-1` and the like; `--pose-face` names the picture they came from, `--pose-align body` lines an edit up on her body instead of her head, `--pose-scale 1` keeps its pixels unresampled and so sharp, `--pose-sharpen` softens less, `--pose-keep` keeps a part such as the neck from the base picture when no arm touches it, `--pose-take` takes everything that differs clearly in a box (the straps and hair around a hand at the shoulder, which a skin-only comparison misses); `pose-mask-<name>.png` shows what was taken from the edit) and leaves everything else, hair and dress included, as in the happy picture.
+
+Risa has a second outfit, the bikini (`packs-src/risa-bikini/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); it is downloaded on request, not shipped). It is the same character: `character: risa` in its `look.txt`, and the shared description is `packs/characters/risa.txt` (`default: risa-dress`, so the gallery's tile is the dress that ships). The gallery preview is `packs/thumbs/risa-bikini.webp` in this repository, because she is MIT (Draconia's and Miku's previews stay on the packs site). The short name is `bikini`, the same short name as Franzi's bikini. `[outfit bikini]` only names an outfit of the character she is already wearing, so while she is wearing Risa it selects `risa-bikini`, and while she is wearing Franzi it selects `franzi-bikini`.
 
 ## The Miku pack
 
