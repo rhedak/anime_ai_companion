@@ -470,6 +470,59 @@ test("Risa and Franzi can share the short name bikini, and it stays inside the c
   }
 });
 
+test("Risa and Draconia can share the short name uniform, and it stays inside the character she is wearing", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const packs = join(root, "packs");
+  const dir = await mkdtemp(join(tmpdir(), "shared-uniform-"));
+  try {
+    for (const [pack, id, look] of [
+      ["risa-bikini", "risa", "You wear a bikini."],
+      ["risa-uniform", "risa", "You wear your school uniform."],
+      ["draconia-uniform", "draconia", "You wear a Slytherin-style uniform."],
+      ["draconia-vest", "draconia", "You wear a grey vest."],
+    ] as const) {
+      await mkdir(join(dir, pack));
+      await writeFile(join(dir, pack, "neutral.png"), png(4, 4));
+      await writeFile(join(dir, pack, "look.txt"), `character: ${id}\n${look}\n`);
+    }
+    const names = ["risa-dress", "risa-bikini", "risa-uniform", "draconia-uniform", "draconia-vest"];
+    const chars = await packCharacters([dir, packs], names);
+    assert.equal(chars["risa-uniform"].id, "risa");
+    assert.equal(chars["draconia-uniform"].id, "draconia");
+    assert.equal(chars["risa-uniform"].default, "risa-dress", "all of her outfits point at the dress the character file names");
+    assert.equal(outfitName("risa-uniform", "risa"), "uniform");
+    assert.equal(outfitName("draconia-uniform", "draconia"), "uniform");
+    assert.equal(outfitName("draconia-uniform", "risa"), "draconia-uniform", "the other character's folder is not a short name of hers");
+    // wearOutfit (src/server.ts) builds this same list: packs of the active character only, then the short name or the folder name.
+    const choose = (wearing: string, wanted: string) => {
+      const id = chars[wearing].id;
+      const outfits = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id) }));
+      return outfits.find((outfit) => outfit.name === wanted || outfit.pack.toLowerCase() === wanted)?.pack;
+    };
+    assert.equal(choose("risa-dress", "uniform"), "risa-uniform");
+    assert.equal(choose("risa-bikini", "uniform"), "risa-uniform");
+    assert.equal(choose("draconia-vest", "uniform"), "draconia-uniform");
+    assert.equal(choose("risa-dress", "draconia-uniform"), undefined);
+    assert.equal(choose("draconia-uniform", "risa-uniform"), undefined);
+    assert.equal(choose("risa-uniform", "bikini"), "risa-bikini");
+    const groups = groupPacks(
+      ["risa-dress"],
+      { "risa-dress": { id: "risa", name: "Risa" } },
+      [
+        { id: "risa-bikini", character: { id: "risa", name: "Risa" } },
+        { id: "risa-uniform", character: { id: "risa", name: "Risa" } },
+        { id: "draconia-uniform", character: { id: "draconia", name: "Draconia Malfoid" } },
+      ],
+    );
+    assert.deepEqual(groups.map((g) => [g.who?.name ?? null, g.here, g.offered]), [
+      ["Draconia Malfoid", [], ["draconia-uniform"]],
+      ["Risa", ["risa-dress"], ["risa-bikini", "risa-uniform"]],
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("packs are grouped by character for /frames: the ones here, the ones on offer, packs of nobody last", () => {
   const franzi = { id: "franzi", name: "Franzi" };
   const groups = groupPacks(
