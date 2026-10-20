@@ -1230,6 +1230,71 @@ describe("basic mode: no brain installed", { skip }, () => {
   });
 });
 
+describe("[outfit bikini] is the bikini of the character she is wearing", { skip }, () => {
+  let server: RunningServer;
+  const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  before(async () => {
+    const files: Record<string, string | Buffer> = {};
+    for (const [id, name, dress, bikini] of [
+      ["risa", "Risa", "You wear a green dress.", "You wear Risa's bikini."],
+      ["franzi", "Franzi", "You wear a dirndl.", "You wear Franzi's bikini."],
+    ] as const) {
+      files[`frames/characters/${id}.txt`] = `${name}\nA woman.\ndefault: ${id}-dress\n`;
+      files[`frames/${id}-dress/neutral.png`] = tiny;
+      files[`frames/${id}-dress/look.txt`] = `character: ${id}\n${dress}\n`;
+      files[`frames/${id}-bikini/neutral.png`] = tiny;
+      files[`frames/${id}-bikini/look.txt`] = `character: ${id}\n${bikini}\n`;
+    }
+    server = await startServer({ dataFiles: files });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test("while Risa is on, bikini is risa-bikini; while Franzi is on, the same tag is franzi-bikini", async () => {
+    const c = await server.client();
+    await c.next("history");
+    c.send({ type: "pack-catalog" });
+    const listed = await c.next((e) => e.type === "packs" && e.names.includes("risa-bikini"), 8000);
+    assert.equal(listed.characters["risa-bikini"].id, "risa");
+    assert.equal(listed.characters["franzi-bikini"].id, "franzi");
+    assert.equal(listed.characters["risa-dress"].default, "risa-dress");
+    assert.notEqual(listed.characters["risa-bikini"].id, listed.characters["franzi-bikini"].id);
+
+    c.send({ type: "user", text: "/frames risa-dress" });
+    await c.next((e) => e.type === "notice" && /Showing the pack "risa-dress"/.test(e.text), 8000);
+    await ask(c, "hello");
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /bikini/);
+    assert.match(told.text!, /dress \(you wear this now\)/);
+    assert.doesNotMatch(told.text!, /franzi/i, "Franzi's bikini is not one of Risa's outfits");
+
+    const from = c.mark;
+    await ask(c, "please OUTFIT bikini");
+    const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "risa-bikini", 8000, from);
+    assert.equal(packMsg.pack.name, "risa-bikini");
+    assert.equal(packMsg.pack.character, "risa");
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "risa-bikini");
+    await ask(c, "and now?");
+    const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(after.text!, /You wear Risa's bikini/);
+    assert.doesNotMatch(after.text!, /Franzi/);
+
+    c.send({ type: "user", text: "/frames franzi-dress" });
+    await c.next((e) => e.type === "notice" && /Showing the pack "franzi-dress"/.test(e.text), 8000);
+    const franzi = c.mark;
+    await ask(c, "please OUTFIT bikini");
+    const hers = await c.next((e) => e.type === "pack" && e.pack?.name === "franzi-bikini", 8000, franzi);
+    assert.equal(hers.pack.name, "franzi-bikini");
+    assert.equal(hers.pack.character, "franzi");
+    assert.equal(JSON.parse(server.data("settings.json")!).framePack, "franzi-bikini");
+    await ask(c, "which bikini?");
+    const franziTold = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(franziTold.text!, /You wear Franzi's bikini/);
+    assert.doesNotMatch(franziTold.text!, /Risa's bikini/);
+  });
+});
+
 describe("a picture pack chosen in an earlier run", { skip }, () => {
   let server: RunningServer;
   const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");

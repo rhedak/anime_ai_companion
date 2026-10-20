@@ -123,8 +123,9 @@ picking one of your saved looks or a preset.
 `docs/frame-packs.md` has the file names, a sample pack drawn by the creator (`python/make_sample_pack.py`),
 and how to get a consistent set out of an image tool.
 
-A pack of **Risa in a dress** comes with the app too (Looks → Packs… → risa-dress, or `/frames risa-dress`): an original character,
-same as the drawn Risa preset, with the pictures made with Grok Imagine and MIT-licensed like the rest ([`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)).
+**Risa**, an original character (the same as the drawn Risa preset, pictures made with Grok Imagine, MIT-licensed like the rest;
+[`packs/risa-dress/NOTICE.md`](packs/risa-dress/NOTICE.md)), has two outfits: the dress comes with the app (Looks → Packs… → risa-dress, or `/frames risa-dress`),
+and the bikini is downloaded when you want it (Looks → Packs… → Risa, or `/frames risa-bikini`; the page asks first).
 
 **Franzi**, an original character (made with AI, MIT-licensed like the rest), has four outfits: the dirndl comes with the app, and the casual, pajama and bikini
 outfits are downloaded when you want them. Pictures are grouped by character in **Looks → Packs…**: a character with several outfits is one tile that opens a row of them.

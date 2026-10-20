@@ -10,13 +10,14 @@ description: Credits, the licence (including the notes on the downloadable Hatsu
 part of it and are not MIT: the Hatsune Miku pictures show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the
 pack's own NOTICE; the Draconia Malfoid pictures are unofficial fan art, non-commercial, and will be taken down on request (see below).
 
-## The Risa (dress) pack
+## The Risa packs
 
-A second picture pack comes with the app: **Risa in a dress**, an original character (the same as the drawn Risa preset).
+**Risa** is an original character (the same as the drawn Risa preset), with two outfits (dress, bikini). The dress comes with the app.
 Its pictures were made with Grok Imagine from a design by the repository's owner, then lined up and assembled with a
 script so that only the face changes between pictures. It is MIT-licensed like the rest of the repository, with one
 caveat said openly in its [NOTICE](../../packs/risa-dress/NOTICE.md): whether AI-made pictures can be copyrighted is not
-settled everywhere, and the image tool's own terms apply too.
+settled everywhere, and the image tool's own terms apply too. The bikini is downloaded on request from the
+[packs repository](https://github.com/rhedak/anime_ai_companion-packs).
 
 ## The Franzi pack
 
