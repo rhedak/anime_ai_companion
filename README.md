@@ -132,7 +132,7 @@ While a pack is on, she is told what the pictures show (each pack's `look.txt`, 
 also shown her resting picture. She can change outfit herself: ask her to, or let her decide, and she writes `[outfit casual]` (only outfits of her own character; one that
 has to be downloaded makes the page ask you first).
 
-**Draconia Malfoid** is her own character, not one of Franzi's outfits. She is an unofficial fan character loosely inspired by Draco Malfoy (a girl version, 21 years old): long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. She has two outfits, both downloaded when you want them (Looks → Packs… → Draconia Malfoid, or `/frames draconia-uniform` and `/frames draconia-vest`; the page asks first): the uniform, and the same uniform with the robe off. They share one description (`packs/characters/draconia.txt`). They are **not MIT** and are for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World, and the pictures will be taken down on request (rhedak00@yahoo.de). The vest gallery preview in this repository is under the same terms ([`packs/thumbs/draconia-vest.NOTICE.md`](packs/thumbs/draconia-vest.NOTICE.md)); the uniform's preview is shown from the packs index. The pictures themselves live in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not in this one, and each pack's `NOTICE.md` (in `data/frames/<name>/` once downloaded) is what you follow.
+**Draconia Malfoid** is her own character, not one of Franzi's outfits. She is an unofficial fan character loosely inspired by Draco Malfoy (a girl version, 21 years old): long platinum-blonde hair in a side braid, teal-green eyes, and a Slytherin-style uniform. The pack is downloaded when you want it (Looks → Packs… → Draconia Malfoid, or `/frames draconia-uniform`; the page asks first). It is **not MIT** and is for **non-commercial** use only. She is not affiliated with or endorsed by Warner Bros. or Wizarding World, and the pictures will be taken down on request (rhedak00@yahoo.de). The pictures live in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not in this one, and the pack's `NOTICE.md` (in `data/frames/draconia-uniform/` once downloaded) is what you follow.
 
 A **Hatsune Miku** pack is available too, as a download (Looks → Packs… → Miku, or `/frames miku`; the page asks first). She is Crypton's character, so that
 pack is unofficial fan art for **non-commercial** use under the Piapro Character License, with its credit shown on screen and its terms said in the chat when you
@@ -595,7 +595,7 @@ software you have not read line by line.
 - `packs/risa-dress`: an original character, pictures made with Grok Imagine (AI-made; MIT, see its `NOTICE.md`).
 - The Hatsune Miku pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): Hatsune Miku © Crypton Future Media, INC. (www.piapro.net), unofficial fan art under the
   [Piapro Character License](https://piapro.net/license/pcl). Not MIT; see its `NOTICE.md`.
-- The Draconia Malfoid packs (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository) and the vest gallery preview `packs/thumbs/draconia-vest.webp`: unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see [`packs/thumbs/draconia-vest.NOTICE.md`](packs/thumbs/draconia-vest.NOTICE.md) and each pack's `NOTICE.md`. They will be taken down on request (rhedak00@yahoo.de).
+- The Draconia Malfoid pack (downloaded on request from the [packs repository](https://github.com/rhedak/anime_ai_companion-packs), not part of this repository): unofficial fan art, non-commercial, not affiliated with or endorsed by Warner Bros. or Wizarding World. Not MIT; see its `NOTICE.md`. It will be taken down on request (rhedak00@yahoo.de).
 
 ## Code of conduct
 
@@ -603,5 +603,5 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (the Contributor Covenant).
 
 ## Licence
 
-[MIT](LICENSE). Everything in this repository is MIT, except the gallery preview `packs/thumbs/draconia-vest.webp` (see its NOTICE, above). The exceptions also include packs you can download, not part of this repository: the Hatsune Miku pictures
-(see above) show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the pack's own `NOTICE.md`; the Draconia Malfoid pictures are unofficial fan art under the same kind of exception (non-commercial, taken down on request; see the vest preview's NOTICE and each pack's `NOTICE.md`).
+[MIT](LICENSE). Everything in this repository is MIT. The exceptions are two packs you can download, not part of this repository: the Hatsune Miku pictures
+(see above) show a character that belongs to Crypton Future Media and may only be used non-commercially, under the terms in the pack's own `NOTICE.md`; the Draconia Malfoid pictures are unofficial fan art under the same kind of exception (non-commercial, taken down on request; see the pack's `NOTICE.md`).
