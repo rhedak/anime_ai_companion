@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { ADULT_GESTURES, GESTURES, framesRequest, gestureRequest, gesturePoses, gestureView } from "../public/frames.js";
+import { ADULT_GESTURES, CUT_FACES, GESTURES, framesRequest, gestureRequest, gesturePoses, gestureView } from "../public/frames.js";
 import { findAvatarTags } from "../public/tags.js";
 import { drawnDemoMessage, packDemoMessage } from "../public/demo.js";
 import { createLocalSocket, type PackInfo, type Renderer } from "../demo/local-socket.js";
@@ -92,6 +92,19 @@ test("the page's request for frames is answered with the same request the server
   send({ type: "frames", emotion: "happy" });
   await next((e) => e.type === "frames", events.indexOf(frames) + 1);
   assert.equal(calls.length, before, "served from the cache");
+});
+
+test("the adult cuts (Risa's and Franzi's) have their own happy over emotions.json's; every other emotion, and every other cut, is asked for as emotions.json says", () => {
+  const emotions = { neutral: {}, happy: { mouth_curve: 1.6, brow_tilt: -0.1, blush: 1.0, eye_openness: 0.7, mouth_open: 0.3 }, sad: { mouth_curve: -1.4 } };
+  const risa = { hairstyle: "long_straight_fringed", face: { mouth_open: 0 } };
+  assert.deepEqual(framesRequest(emotions, risa, "happy").face, { ...emotions.happy, ...CUT_FACES.long_straight_fringed.happy });
+  assert.equal(framesRequest(emotions, risa, "happy").face.mouth_open, 0.6);
+  assert.deepEqual(framesRequest(emotions, risa, "sad").face, emotions.sad);
+  assert.deepEqual(framesRequest(emotions, { hairstyle: "swept_ponytail" }, "happy").face, { ...emotions.happy, ...CUT_FACES.swept_ponytail.happy });
+  assert.deepEqual(CUT_FACES.swept_ponytail, CUT_FACES.long_straight_fringed, "the two adult cuts share the open smile");
+  assert.deepEqual(framesRequest(emotions, { hairstyle: "long_parted" }, "happy").face, emotions.happy, "a chibi hairstyle keeps the shared happy");
+  assert.deepEqual(framesRequest(emotions, {}, "happy").face, emotions.happy);
+  assert.deepEqual(gestureRequest(emotions, { ...risa, body: "adult_female" }, "happy", "wave")!.face, framesRequest(emotions, risa, "happy").face);
 });
 
 test("the adult body's gestures bend the elbow and close the fist, the chibi's swing the arm; only the adult cheer comes with a wider view", async () => {
