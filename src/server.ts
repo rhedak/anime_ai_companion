@@ -25,7 +25,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { animatedActivities, gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { animatedActivities, drawnActivityNote, gestureNote, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
@@ -518,12 +518,17 @@ function persistTranscript(): void {
   }, 300);
 }
 
+/** The character files (`characters/<id>.txt`), read once: a drawn character that has one (Risa) is told which activities her picture packs animate. */
+let characterFiles: Awaited<ReturnType<typeof readCharacters>> = {};
+characterFiles = await readCharacters(packDirs).catch(() => ({}));
+
 // Problems with the model's avatar tags, passed back to it with the next user message.
 const notes = createNotes();
 /** A new conversation starts with nothing waiting, except what she must know about her pictures while a pack is on (they replace the look her prompt describes). */
 function renewNotes(): void {
   notes.clear();
   lookPictureDue = false;
+  if (!activePack) notes.pushLazy(() => drawnActivityNote(characterFiles[avatar.basePreset?.toLowerCase() ?? ""]));
   if (activePack) {
     // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
     const pack = activePack;
@@ -744,7 +749,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}`);
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}${drawnActivityNote(characterFiles[avatar.basePreset?.toLowerCase() ?? ""])}`);
     broadcast(modeInfo());
     broadcast(packMessage());
     broadcast(await packsMessage());
@@ -833,9 +838,27 @@ function setActivity(name: string | null, outfitChosen: boolean): void {
       "Write [activity end] when the user is done; they can also end it with the stop button."
     );
   });
+  if (!activePack) void offerPackForActivity(name).catch((err) => console.error("activity offer failed:", err));
   if (outfit && !outfitChosen && activePack?.character && outfit !== outfitName(activePack.name, activePack.character.id)) {
     void wearOutfit(outfit).catch((err) => console.error("outfit change failed:", err));
   }
+}
+
+/**
+ * She started an activity while she is drawn, and her character has a picture pack that animates it (the character file says so): the page asks whether to switch to the
+ * pack (an outfit that is not on this computer then raises the usual download question). Animations for the drawn body do not exist yet; without a yes the activity just goes on.
+ */
+async function offerPackForActivity(name: string): Promise<void> {
+  const id = avatar.basePreset?.toLowerCase() ?? "";
+  const who = characterFiles[id];
+  const outfit = who?.activities?.[name];
+  if (!who || !outfit) return;
+  const pack = `${id}-${outfit}`;
+  if (!isPackName(pack)) return;
+  const here = (await listPacks(...packDirs)).includes(pack);
+  if (!here && !(await packInstaller.find(pack))) return; // neither here nor on the pack list: nothing to offer
+  if (activity !== name || activePack) return; // ended, or a pack was chosen, meanwhile
+  broadcast({ type: "activity-offer", activity: name, pack, character: who.name, outfit });
 }
 
 function endActivityByUser(): void {

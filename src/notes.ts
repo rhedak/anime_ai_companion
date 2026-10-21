@@ -18,7 +18,7 @@ export function createNotes() {
     },
     /** Everything waiting, and forgets it: it goes out with the next message. */
     take(): string[] {
-      const out = waiting.map((note) => (typeof note === "function" ? note() : note));
+      const out = waiting.map((note) => (typeof note === "function" ? note() : note)).filter(Boolean);
       waiting = [];
       return out;
     },

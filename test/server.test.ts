@@ -221,6 +221,44 @@ describe("chatting", { skip }, () => {
     await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
   });
 
+  test("while she is drawn, a character with an animated activity is told of it, and starting it asks whether to switch to the picture pack", async () => {
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    // the character files are read when the server starts, so this one runs a server of its own
+    const mine = await startServer({
+      dataFiles: {
+        "frames/characters/risa.txt": "Risa\nA shy young woman with long red hair.\nactivity: swimming = swim\n",
+        "frames/risa-swim/neutral.png": tiny,
+        "frames/risa-swim/look.txt": "character: risa\nYou wear a swimsuit.\n",
+        "frames/risa-swim/activity-swimming-1.png": tiny,
+      },
+    });
+    try {
+      const c = await mine.client();
+      await c.next("history");
+      await ask(c, "hello");
+      const told = mine.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+      assert.match(told.text!, /swimming \(in the swim picture pack\)/, "she is told which activities her picture packs animate");
+      const from = c.mark;
+      await ask(c, "please ACTIVITY swimming");
+      const offer = await c.next((e) => e.type === "activity-offer", 8000, from);
+      assert.equal(offer.pack, "risa-swim");
+      assert.equal(offer.character, "Risa");
+      c.send({ type: "pack-select", name: offer.pack });
+      const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "risa-swim", 8000, from);
+      assert.deepEqual(Object.keys(packMsg.pack.activities), ["swimming"]);
+      // an activity with no animation anywhere asks nothing
+      c.send({ type: "activity-end" });
+      c.send({ type: "user", text: "/frames off" });
+      await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+      const quiet = c.mark;
+      await ask(c, "please ACTIVITY cooking");
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(c.events.slice(quiet).some((e: any) => e.type === "activity-offer"), false);
+    } finally {
+      await mine.stop();
+    }
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

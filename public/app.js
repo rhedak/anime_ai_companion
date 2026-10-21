@@ -1435,7 +1435,11 @@ function handle(msg) {
       announcedLook = msg.pack?.name ?? null;
       announcedCharacter = msg.pack?.character ?? null;
       break;
+    case "activity-offer":
+      askPackForActivity(msg);
+      break;
     case "activity":
+      if (!msg.name) document.querySelector(".pack-confirm[data-kind='activity']")?.remove();
       avatar.setActivity(msg.name);
       $("activity-stop").hidden = !msg.name;
       $("activity-stop").textContent = msg.name ? `End ${msg.name}` : "End activity";
@@ -1904,6 +1908,31 @@ function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, 
     no.disabled = true;
     text.textContent = offer.update ? `Updating ${offer.name}…` : `Downloading ${offer.name}…`;
     ws?.send(JSON.stringify({ type: "pack-install", name: offer.id }));
+  };
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  (document.querySelector(".gallery") ?? document.querySelector(".stage")).append(box);
+  yes.focus();
+}
+
+/** She started an activity while she is drawn and her character's picture pack animates it: asks whether to switch to the pack (the download question follows if it is not on this computer). */
+function askPackForActivity(/** @type {{ activity: string, pack: string, character: string, outfit: string }} */ offer) {
+  document.querySelector(".pack-confirm")?.remove();
+  const box = document.createElement("div");
+  box.className = "pack-confirm";
+  box.dataset.pack = offer.pack;
+  box.dataset.kind = "activity";
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", `Switch to ${offer.pack}?`);
+  const text = document.createElement("p");
+  text.textContent = `${offer.character} has a ${offer.activity} animation in her ${offer.outfit} picture pack. Switch to it? The drawn body has no animation for this yet.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Switch to ${offer.outfit}` });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  no.onclick = () => box.remove();
+  yes.onclick = () => {
+    box.remove();
+    ws?.send(JSON.stringify({ type: "pack-select", name: offer.pack }));
   };
   const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
   buttons.append(yes, no);

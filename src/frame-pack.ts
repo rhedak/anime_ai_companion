@@ -129,7 +129,7 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
 }
 
 /** A character's shared description from `characters/<id>.txt` in the first folder that has it: first line the name, the rest the text. Null when missing or too long. */
-async function readCharacter(dirs: string[], id: string): Promise<PackCharacter | undefined> {
+export async function readCharacter(dirs: string[], id: string): Promise<PackCharacter | undefined> {
   for (const dir of dirs) {
     const raw = await readFile(join(dir, CHARACTERS_DIR, `${id}.txt`), "utf8").catch(() => null);
     if (raw === null) continue;
@@ -155,6 +155,20 @@ async function readCharacter(dirs: string[], id: string): Promise<PackCharacter 
     return undefined;
   }
   return undefined;
+}
+
+/** Every character file (`characters/<id>.txt`) in these folders, by id: what the drawn character of that name is told about the activities her picture packs animate. */
+export async function readCharacters(dirs: string[]): Promise<Record<string, PackCharacter>> {
+  const out: Record<string, PackCharacter> = {};
+  for (const dir of dirs) {
+    for (const e of await readdir(join(dir, CHARACTERS_DIR), { withFileTypes: true }).catch(() => [])) {
+      const id = /^([a-z0-9][a-z0-9-]{0,39})\.txt$/.exec(e.name)?.[1];
+      if (!e.isFile() || !id || out[id]) continue;
+      const who = await readCharacter(dirs, id);
+      if (who) out[id] = who;
+    }
+  }
+  return out;
 }
 
 /** Which character each pack belongs to (the `character:` line of its look.txt), for the gallery to group outfits. Packs without one are left out. */
@@ -414,6 +428,17 @@ export function activityNote(pack: FramePack): string {
     (animated.length
       ? ` These have an animation, so prefer suggesting one of them when the conversation fits (for example the user wants to do something with water): ${list}.${pack.character ? " Starting one puts you into its outfit if you wear another; the user is asked first if that outfit is not on this computer." : ""} Any other activity works too, with a fitting emotion instead of an animation.`
       : " None of them has an animation with these pictures: pick an emotion that fits instead.")
+  );
+}
+
+/** What the drawn character is told about activities when her picture packs animate some: she can do any, and for those the app offers the pack. Empty when none is. */
+export function drawnActivityNote(who: PackCharacter | undefined): string {
+  const animated = Object.entries(who?.activities ?? {});
+  if (!who || !animated.length) return "";
+  const list = animated.map(([name, outfit]) => `${name} (in the ${outfit} picture pack)`).join(", ");
+  return (
+    " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in the very reply in which you start it, one lower-case word such as swimming. It starts at once when the user asks for one or agrees to your suggestion; write [activity end] when they are done. " +
+    `You have no animation for it while you are drawn, but your picture packs have one for ${list}: prefer suggesting those when the conversation fits, and the app then asks the user whether to switch to the pack.`
   );
 }
 
