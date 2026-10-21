@@ -249,7 +249,7 @@ A command named `agent` is not necessarily that binary.
   on connect in basic mode). It names GitHub, the size and the folder, and fetches nothing until the button is pressed. The install downloads the
   **pinned** release, checks its SHA-256, unpacks it with the system's `tar` (zip on Windows and macOS, tar.gz on Linux), runs it to see the pinned version, and moves it into
   `data/tools/opencode-<version>/`. It never touches the PATH or a copy the user installed; `brainProgram("opencode")` is `OPENCODE_BIN`, then
-  that copy, then the plain name. The `install-brain` message is refused from a phone (it fetches and runs a program). Keep it opt-in, keep the
+  that copy, then the plain name. The `install-brain` message and `/install-opencode` are refused from a phone (they fetch and run a program), and so is `/doctor` (it names folders and programs); `/install-opencode` asks the same card question whatever else is installed (`opencodeOffer(true)`), the program order is `OPENCODE_BIN`, then the app's own copy, then the PATH, and the opencode launch key includes the program so installing the copy restarts a running PATH one. Keep it opt-in, keep the
   checksum, and keep the pin out of reach of `latest` (see "Before a release" below). Tests fake the network and the unpacker; nothing is downloaded.
 
 **Ollama** (`src/providers/ollama.ts`, tools in `ollama-tools.ts`) is chat, and work mode for models that take

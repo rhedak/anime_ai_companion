@@ -28,6 +28,16 @@ you press **Install opencode**; it then switches her to it. That copy keeps its 
 conversation is a real one. On a first start the app uses whichever brain it finds, in the order Claude Code, opencode, Cursor, a running
 Ollama; a brain you chose yourself that has gone missing is not swapped for another one.
 
+## Which opencode the app uses
+
+The app was made for one opencode version (**1.19.3** at the time of writing; the card and `/doctor` name the current one). The one-click install (the card, or **`/install-opencode`**, which works wherever you are, with any other opencode installed or not) downloads exactly that release
+from `github.com/anomalyco/opencode`, checks it against a checksum the app knows, and keeps it in the app's own data folder, in `tools/opencode-<version>/` (on Windows
+`%APPDATA%\Anime AI Companion\data\tools\opencode-1.19.3\` for the desktop app; `~/Library/Application Support/Anime AI Companion/data/tools/…` on a Mac; `~/.config/Anime AI Companion/data/tools/…` on Linux). It never touches your PATH or an opencode you installed yourself.
+
+The app picks the program in this order: **`OPENCODE_BIN`** (your own choice, if you set it), then **this copy**, then any `opencode` on the PATH. So once the pinned copy is there it is used even if you have another one, and `npm install -g opencode-ai` (which gets the newest release, not the pinned one) is only the fallback. **`/doctor`** says which one is in use, its version and where it is.
+
+To install it by hand, download the file for your system from the release page of that version (the file names are in `src/install-opencode.ts`; `/install-opencode` prints the link for your computer), unpack it into that folder so that the program (`opencode.exe` on Windows) is directly inside, and restart the app. A copy put there by hand is not checked against the checksum.
+
 ## Claude Code
 
 The default. A long-lived `claude -p` process on your machine, using your own login. Chat uses a small, quick model

@@ -2,8 +2,8 @@
  * `anaico --doctor`: looks at what the app needs and says what is missing, in plain words. It only looks: nothing is installed,
  * started or signed in. Every check goes through a `Probe`, so the checks can be tested without this machine's real setup.
  */
-import { brainProgram } from "./programs.ts";
-import { spawnCliSync } from "./spawn-cli.ts";
+import { OPENCODE_PIN, opencodeAsset, opencodeFolder, opencodeUrl } from "./install-opencode.ts";
+import { spawnCli, spawnCliSync } from "./spawn-cli.ts";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
@@ -25,8 +25,10 @@ export interface Probe {
   root: string;
   home: string;
   port: number;
-  /** Runs a program for its output; null when it is not there or does not answer. */
-  run(command: string, args: string[]): string | null;
+  /** Runs a program for its output; null when it is not there or does not answer. The app's own `/doctor` answers asynchronously, so the server is never held up by a program that hangs. */
+  run(command: string, args: string[]): string | null | Promise<string | null>;
+  /** True when the checks run inside the app (`/doctor`): its own server holds the port, so the port is not tested, and where the app keeps things is what is described. */
+  app?: boolean;
   exists(path: string): boolean;
   readText(path: string): string | null;
   writable(dir: string): boolean;
@@ -35,14 +37,44 @@ export interface Probe {
   portFree(port: number): Promise<boolean>;
 }
 
-export function realProbe(root: string, port: number): Probe {
+/** Asks a program something once (`--version`) without blocking: null when it is not there, fails, or has not answered in `ms`. */
+function askProgram(command: string, args: string[], ms: number): Promise<string | null> {
+  return new Promise((resolveAnswer) => {
+    let out = "";
+    let done = false;
+    const finish = (value: string | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolveAnswer(value);
+    };
+    let child: ReturnType<typeof spawnCli>;
+    try {
+      child = spawnCli(command, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    } catch {
+      return resolveAnswer(null);
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(null);
+    }, ms);
+    child.stdout?.on("data", (c) => (out += String(c)));
+    child.stderr?.on("data", (c) => (out += String(c)));
+    child.on("error", () => finish(null));
+    child.on("close", (code) => finish(code === 0 ? out.trim() : null));
+  });
+}
+
+export function realProbe(root: string, port: number, inApp = false): Probe {
   return {
     env: process.env,
     nodeVersion: process.versions.node,
     root,
     home: homedir(),
     port,
+    ...(inApp ? { app: true } : {}),
     run(command, args) {
+      if (inApp) return askProgram(command, args, 6000);
       const result = spawnCliSync(command, args, { encoding: "utf8", timeout: 8000 });
       if (result.error || result.status !== 0) return null;
       return `${result.stdout}${result.stderr}`.trim();
@@ -118,7 +150,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
     if (!hasTypeScript(sibling)) notTypeScript(sibling, "the checkout next to this repo");
     else {
       // The release this version was made for (package.json) is what a fresh install gets; a checkout of the creator's main may be ahead of it.
-      const at = pinned ? p.run("git", ["-C", creatorRoot, "describe", "--tags", "--always"]) : null;
+      const at = pinned ? await p.run("git", ["-C", creatorRoot, "describe", "--tags", "--always"]) : null;
       if (pinned && at && at !== pinned) {
         add("warn", `Character creator: the checkout next to this repo is at ${at}, not the release this version pins (${pinned})`, `Fine for development, but a fresh install uses ${pinned}. To match it: git -C ${creatorRoot} checkout ${pinned}`);
       } else add("ok", `Character creator: the checkout next to this repo (${sibling})`);
@@ -126,15 +158,24 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   } else if (clonedRoot && p.exists(clonedRoot)) {
     if (hasTypeScript(cloned)) add("ok", `Character creator ${pinned}: already fetched (${cloned})`);
     else notTypeScript(cloned, `the copy fetched for ${pinned}`);
-  } else if (p.run("git", ["--version"])) {
+  } else if (await p.run("git", ["--version"])) {
     const older = p.exists(join(creatorRoot, "src")) ? ` The checkout next to this repo (${creatorRoot}) has no ts/src, a release before the TypeScript, so it is not used.` : "";
     add("warn", `Character creator ${pinned ?? ""}: not here yet, so the first start downloads it into ${cloned || "~/.anaico/creator"}`, `That needs internet once. Or clone it next to this repo: git clone https://github.com/rhedak/anime-character-creator.git ../anime-character-creator.${older}`);
   } else add("fail", "Character creator: not found, and git is not installed to fetch it", "Install git, or clone https://github.com/rhedak/anime-character-creator.git next to this repo and run again.");
 
   // Brains: at least one must be there. Whether you are signed in is the brain's own business, so this does not try.
-  const claude = p.run("claude", ["--version"]);
-  const cursor = p.run("cursor-agent", ["--version"]);
-  const opencode = p.run(brainProgram("opencode", p.env) ?? "opencode", ["--version"]); // also the copy this app installed itself
+  const dataRoot = p.env.ANAICO_DATA ? resolve(p.env.ANAICO_DATA) : join(p.root, "data");
+  // The opencode that would run: the user's own choice (OPENCODE_BIN), else the pinned copy this app installed, else whatever is on the PATH.
+  const asset = opencodeAsset();
+  const pinnedFolder = opencodeFolder(dataRoot);
+  const managed = asset && p.exists(join(pinnedFolder, asset.program)) ? join(pinnedFolder, asset.program) : null;
+  const opencodeProgram = p.env.OPENCODE_BIN ?? managed ?? "opencode";
+  const [claude, cursor, opencode, onPath] = await Promise.all([
+    p.run("claude", ["--version"]),
+    p.run("cursor-agent", ["--version"]),
+    p.run(opencodeProgram, ["--version"]),
+    managed || p.env.OPENCODE_BIN ? p.run("opencode", ["--version"]) : null, // another copy on the PATH, which is then not the one used
+  ]);
   const host = (p.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
   const tags = await p.get(`${host}/api/tags`);
   let ollamaModels: number | null = null;
@@ -152,20 +193,31 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
     version ? add("ok", `${name} ${firstLine(version)}`, note) : add("warn", `${name}: not found`, `Only needed if you want to use it. ${note}`);
   brain("Claude Code", claude, "Sign in once by running `claude` in a terminal.");
   brain("Cursor", cursor, "Sign in once with `cursor-agent login`, or set CURSOR_API_KEY.");
-  brain("opencode", opencode, "Sign in once with `opencode auth login`.");
+  if (p.env.OPENCODE_BIN) {
+    add(opencode ? "ok" : "warn", `opencode: OPENCODE_BIN (${p.env.OPENCODE_BIN}) is used${opencode ? `, ${firstLine(opencode)}` : ", but it does not answer"}; it wins over the app's own copy`, "Unset OPENCODE_BIN to use the app's own copy (/install-opencode installs it).");
+  } else if (managed) {
+    add(opencode ? "ok" : "warn", `opencode: the app's own copy is used (${opencode ? firstLine(opencode) : "it does not answer"}), the pinned version ${OPENCODE_PIN.version}, in ${pinnedFolder}${onPath ? `; another opencode on the PATH (${firstLine(onPath)}) is not used` : ""}`, opencode ? undefined : "Type /install-opencode to fetch it again.");
+  } else if (opencode) {
+    add("ok", `opencode: ${firstLine(opencode)}, found on the PATH`, `It is not the version this app was made for (${OPENCODE_PIN.version}). Type /install-opencode in the app to install that one for the app only; it is then used instead of this one. Sign in once with \`opencode auth login\`.`);
+  } else if (asset) {
+    add("warn", "opencode: not found", `Only needed if you want to use it. Type /install-opencode in the app: it asks, then downloads the pinned version ${OPENCODE_PIN.version} (checked against a known checksum) into ${pinnedFolder}. By hand: ${opencodeUrl(asset)} unpacked there.`);
+  } else {
+    add("warn", "opencode: not found", `Only needed if you want to use it. There is no pinned download for this computer (${process.platform} ${process.arch}); install it from https://opencode.ai.`);
+  }
   if (ollamaModels === null) add("warn", `Ollama: nothing answers at ${host}`, "Only needed for local models. Install it from https://ollama.com, run `ollama serve`, and `ollama pull llama3.2`.");
   else if (ollamaModels === 0) add("warn", `Ollama answers at ${host}, but has no models`, "Pull one, for example: ollama pull llama3.2");
   else add("ok", `Ollama at ${host} with ${ollamaModels} model${ollamaModels === 1 ? "" : "s"}`);
   if (!found.length) add("fail", "No brain found: she needs Claude Code, Cursor, opencode or Ollama", "Install one of them (the README says how), then run this again.");
 
   // Port
-  if (await p.portFree(p.port)) add("ok", `Port ${p.port} is free`);
+  if (p.app) add("ok", `Running on port ${p.port}`);
+  else if (await p.portFree(p.port)) add("ok", `Port ${p.port} is free`);
   else if ((await p.get(`http://127.0.0.1:${p.port}/`)) !== null) add("ok", `Port ${p.port}: something answers, probably the companion is already running`, "`anaico --status` says whether it is the background one.");
   else add("warn", `Port ${p.port} is in use by something that is not answering as a web page`, "Set PORT=<another number> to use a different one.");
 
   // Where her data lives
-  const data = p.env.ANAICO_DATA ? resolve(p.env.ANAICO_DATA) : join(p.root, "data");
-  if (p.exists(data) ? p.writable(data) : p.writable(p.root)) add("ok", "data/ is writable (settings, chat log, her look)");
+  const data = dataRoot;
+  if (p.exists(data) ? p.writable(data) : p.writable(p.root)) add("ok", p.app ? `Her data folder is writable (${data}: settings, chat log, her look)` : "data/ is writable (settings, chat log, her look)");
   else add("fail", "data/ is not writable", `Fix the permissions on ${p.exists(data) ? data : p.root}.`);
 
   return lines;

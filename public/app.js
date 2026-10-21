@@ -969,7 +969,8 @@ function addInstallOffer(msg) {
   desc.textContent =
     `opencode is a free brain and needs no account. Pressing the button downloads opencode ${msg.version} (about ${msg.megabytes} MB) from ${msg.host}, ` +
     `checks it against a checksum this app already knows, and keeps it in ${msg.folder}. ${msg.host} will see your IP address. ` +
-    "Nothing is installed anywhere else, and nothing is fetched until you press it.";
+    "Nothing is installed anywhere else, and nothing is fetched until you press it." +
+    (msg.others ? " Another opencode is on this computer: it is left alone, and the app uses this copy instead of it." : "");
   desc.style.whiteSpace = "pre-wrap";
   const actions = document.createElement("div");
   actions.className = "perm-actions";

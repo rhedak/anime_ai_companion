@@ -68,7 +68,7 @@ Both are git-ignored and belong to you.
 
 ## When it does not start
 
-First, run `anaico --doctor` (or `node bin/anaico.js --doctor` before you have linked the command). It checks everything below and
+First, run `anaico --doctor` (or `node bin/anaico.js --doctor` before you have linked the command), or, when the page opens, type `/doctor` in the chat (the desktop app has no terminal). It checks everything below and
 prints what is missing and how to fix it. Nothing is installed or changed, and it exits with 1 when something must be fixed. By hand:
 
 

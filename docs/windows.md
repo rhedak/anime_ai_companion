@@ -28,6 +28,8 @@ runs it once to see that it starts, and switches her to it. There is no administ
 settings and history, separate from any OpenCode you have installed yourself, and one you installed yourself is never touched. If it fails, the
 card says why and offers to try again.
 
+If the card does not appear, or you want to be sure which opencode she uses, type **`/doctor`** in the chat (it says which brains it found and which opencode is in use) and **`/install-opencode`** (it asks the same question, whatever else is installed, and the copy it installs is used instead of any other opencode on the computer). The pinned version is named on the card and by `/doctor`; the folder is `data\tools\opencode-<version>\` (for the desktop app `%APPDATA%\Anime AI Companion\data\tools\`).
+
 ## Notes
 
 - **Where things live.** Your chat, settings and her look are in the app's `data\` folder; the creator is kept in `%USERPROFILE%\.anaico\creator`.

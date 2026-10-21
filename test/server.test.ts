@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { networkInterfaces } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { WebSocket } from "ws";
 import { OPENCODE_PIN, opencodeAsset } from "../src/install-opencode.ts";
 import { Client, cannotRunServer, startServer, type RunningServer } from "./helpers/server.ts";
-import { pathOf, systemPathDirs } from "./helpers/standin.ts";
+import { pathOf, systemPathDirs, writeStandIn } from "./helpers/standin.ts";
 
 // These start a throwaway copy of the whole app (its own data/, a random port) with a stand-in `claude`: no login, no real brain.
 // They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
@@ -1278,6 +1278,64 @@ describe("switching to a brain whose program is missing", { skip }, () => {
   });
 });
 
+describe("/doctor and /install-opencode", { skip }, () => {
+  test("/doctor says what the app found, without testing its own port, and changes nothing", async () => {
+    const server = await startServer({});
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      const from = c.mark;
+      c.say("/doctor");
+      await c.next((e) => e.type === "notice" && /Looking at what the app needs/.test(e.text), 10000, from);
+      const report = await c.next((e) => e.type === "notice" && /Running on port \d+/.test(e.text), 30000, from);
+      assert.match(report.text, /Node \d+\.\d+/);
+      assert.match(report.text, /Claude Code/, "the stand-in claude is on this server's PATH");
+      assert.match(report.text, /opencode: /);
+      assert.match(report.text, /Her data folder is writable/);
+      assert.ok(!c.since(from).some((e) => e.type === "reset" || e.type === "install-offer"), "it only looks");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("/install-opencode with OPENCODE_BIN set explains that it would change nothing, and offers nothing", async () => {
+    const server = await startServer({ env: { OPENCODE_BIN: "/nonexistent/opencode" } });
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      const from = c.mark;
+      c.say("/install-opencode");
+      const notice = await c.next((e) => e.type === "notice" && /OPENCODE_BIN/.test(e.text), 5000, from);
+      assert.match(notice.text, /wins over a copy the app installs/);
+      await new Promise((r) => setTimeout(r, 200));
+      assert.ok(!c.since(from).some((e) => e.type === "install-offer"));
+    } finally {
+      await server.stop();
+    }
+  });
+
+  // An opencode already on the PATH hides the automatic offers; the command asks for the pinned one all the same, and the card says the other is left alone.
+  test("/install-opencode asks for the pinned copy even when another opencode is on the PATH", { skip: skip || platformSkip() }, async () => {
+    const bin = mkdtempSync(join(tmpdir(), "anaico-opencode-"));
+    writeStandIn(bin, "opencode", `#!${process.execPath}\nconsole.log("0.9.9");\n`);
+    const server = await startServer({ env: { PATH: pathOf(bin, dirname(process.execPath), ...systemPathDirs()) } });
+    try {
+      const c = await server.client();
+      await c.next("mode");
+      const from = c.mark;
+      c.say("/install-opencode");
+      const offer = await c.next("install-offer", 5000, from);
+      assert.deepEqual([offer.brain, offer.host, offer.version, offer.others], ["opencode", "github.com", OPENCODE_PIN.version, true]);
+      assert.ok(String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
+      const notice = await c.next((e) => e.type === "notice" && /opencode/.test(e.text) && /Nothing is fetched until you say yes/.test(e.text), 5000, from);
+      assert.match(notice.text, /releases\/download\/v/);
+      assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
 describe("basic mode: no brain installed", { skip }, () => {
   /** No `claude` (or any other brain) on the server's PATH: only Node and the system. */
   const noBrains = () => ({ PATH: pathOf(dirname(process.execPath), ...systemPathDirs()), CURSOR_AGENT: "/nonexistent/cursor-agent", OPENCODE_BIN: "/nonexistent/opencode" });
@@ -1589,6 +1647,14 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       ws.send(JSON.stringify({ type: "user", text: "/phone off" }));
       await new Promise((r) => setTimeout(r, 400));
       assert.ok(heard.some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), "a phone cannot turn phone access off");
+      // /doctor names folders and programs on this computer and /install-opencode fetches and runs a program: neither is for a phone.
+      for (const command of ["/doctor", "/install-opencode"]) {
+        const before = heard.length;
+        ws.send(JSON.stringify({ type: "user", text: command }));
+        await new Promise((r) => setTimeout(r, 300));
+        assert.ok(heard.slice(before).some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), `a phone cannot run ${command}`);
+        assert.ok(!heard.slice(before).some((e) => e.type === "install-offer" || (e.type === "notice" && /Running on port|Looking at what/.test(e.text))), `${command} did nothing for a phone`);
+      }
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
     }
