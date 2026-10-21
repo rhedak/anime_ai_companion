@@ -345,6 +345,7 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     "voice: a proud, sharp-tongued tsundere: aloof and teasing, calls the user a baka now and then, secretly caring, and flustered when someone is kind to her; never cruel.",
     "activity: dancing = gown",
     "activity: swimming = swimsuit",
+    "activity: cooking = vest",
   ]);
   assert.doesNotMatch(text, /franzi/i);
   const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
