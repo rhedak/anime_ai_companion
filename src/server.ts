@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -25,8 +25,9 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
-import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
+import { animatedActivities, drawnActivityNote, gestureNote, packActivities, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
+import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
@@ -54,11 +55,14 @@ const customCssPath = join(dataDir, "custom.css");
 const port = Number(process.env.PORT ?? 3737);
 // Local only unless `--lan` is passed: this server can run Claude Code, so reaching it from the network is an
 // opt-in made again at every start, and every request from the network needs the token (src/lan.ts).
+// `/phone` can also turn it on later, once, after a question answered on this computer (`setLan`); that is in memory only and is off again at every start.
 const host = "127.0.0.1";
-const lan = process.argv.includes("--lan");
-const bindHost = lan ? "0.0.0.0" : host;
+let lan = process.argv.includes("--lan");
+let bindHost = lan ? "0.0.0.0" : host;
 const lanTokenPath = join(dataDir, "lan-token");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
+/** `/phone` asked whether to turn phone access on, and the answer is still due. Only that question can be answered with yes. */
+let lanAsked = false;
 
 await mkdir(workspace, { recursive: true });
 const personaBase = await readFile(join(root, "persona.md"), "utf8");
@@ -121,23 +125,65 @@ const packOffer = (entry: PackIndexEntry) => ({
   host: new URL(entry.url).hostname,
   credit: entry.credit,
 });
+/** What the page asks before a pack on this computer is replaced by newer files: the versions, the size and which server is contacted. */
+const packUpdateOffer = (update: PackUpdate) => ({
+  type: "pack-update-offer",
+  id: update.id,
+  name: update.entry.name,
+  from: update.installed,
+  to: update.available,
+  bytes: update.entry.sizes.archiveBytes,
+  host: new URL(update.entry.url).hostname,
+  credit: update.entry.credit,
+});
+/**
+ * Asks about a newer version of an installed pack, if the pack list (as loaded; the page's own actions load it) has one. With the user's yes to daily update
+ * checks the list is refreshed first, so picking a pack notices an update even when the gallery was never opened. Returns the sentence to add to what is said, or "".
+ */
+async function offerUpdate(id: string): Promise<string> {
+  if (await packUpdateChecksOn()) await refreshPackIndex(false);
+  const update = await packInstaller.updateFor(id);
+  if (!update) return "";
+  broadcast(packUpdateOffer(update));
+  notes.push(`A newer version of ${update.entry.name} is available (${update.installed} to ${update.available}); the user is asked on the page whether to update. The pictures on this computer stay in use until they agree.`);
+  return ` A newer version is available (${update.installed} to ${update.available}); the page asks whether to update.`;
+}
 /** The outfits of the character the active pack belongs to (installed ones, and ones the pack list offers), for her note and for `[outfit …]`. */
 async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
   const id = activePack?.character?.id;
   if (!id) return [];
   const names = await listPacks(...packDirs);
   const chars = await packCharacters(packDirs, names);
-  const here = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id), here: true }));
+  const here: Outfit[] = [];
+  for (const pack of names.filter((name) => chars[name]?.id === id)) here.push({ pack, name: outfitName(pack, id), here: true, update: Boolean(await packInstaller.updateFor(pack)) });
   const offered = remotePacks(names)
     .filter((pack) => pack.character?.id === id)
     .map((pack) => ({ pack: pack.id, name: outfitName(pack.id, id), here: false }));
   return [...here, ...offered];
 }
 let outfitCache: Outfit[] = [];
+/**
+ * Per character id, the activities that have an animation and the outfit (short name) each is in: what the character's file says (`activity: swimming = bikini`, for an outfit that
+ * is not on this computer yet) and what the outfits on this computer have pictures for (a pack a user made counts, with no file written). Read again whenever the outfits are.
+ */
+let activityIndex: Record<string, Record<string, string>> = {};
+async function refreshActivityIndex(): Promise<void> {
+  const index: Record<string, Record<string, string>> = {};
+  for (const [id, who] of Object.entries(await readCharacters(packDirs))) if (who.activities) index[id] = { ...who.activities };
+  const names = await listPacks(...packDirs);
+  const characters = await packCharacters(packDirs, names);
+  for (const name of names) {
+    const who = characters[name];
+    if (who) for (const activity of await packActivities(packDirs, name)) (index[who.id] ??= {})[activity] = outfitName(name, who.id);
+  }
+  activityIndex = index;
+}
 const refreshOutfits = async () => {
   if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
   outfitCache = await outfitsOfActiveCharacter();
+  await refreshActivityIndex();
 };
+const drawnActivities = () => activityIndex[avatar.basePreset?.toLowerCase() ?? ""];
 const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
 /** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
@@ -166,7 +212,8 @@ function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "de
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
-  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names) };
+  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
+  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names), updates };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
@@ -428,7 +475,7 @@ const server = createServer(
     port,
     publicDir,
     customCssPath,
-    lan,
+    lan: () => lan,
     lanToken: () => lanToken,
     transcript,
     packDirs,
@@ -495,10 +542,11 @@ const notes = createNotes();
 function renewNotes(): void {
   notes.clear();
   lookPictureDue = false;
+  if (!activePack) notes.pushLazy(() => drawnActivityNote(drawnActivities()));
   if (activePack) {
     // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
     const pack = activePack;
-    notes.pushLazy(() => packNote(pack, outfitCache, herName()));
+    notes.pushLazy(() => packNote(pack, outfitCache, herName(), activityIndex[pack.character?.id ?? ""]));
     lookPictureDue = true;
   }
 }
@@ -640,7 +688,7 @@ async function rename(input: string, say: Say): Promise<void> {
   }
   const name = cleanName(input);
   if (!name) return say("A name can have 1 to 24 letters, numbers, spaces and . ' - _");
-  if (settings.nameSet && name === settings.name) return;
+  if (settings.nameSet && name === settings.name) return say(`She is already called ${name}.`);
   settings.name = name;
   settings.nameSet = true;
   await saveSettings(settingsPath, settings);
@@ -715,7 +763,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}`);
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}${drawnActivityNote(drawnActivities())}`);
     broadcast(modeInfo());
     broadcast(packMessage());
     broadcast(await packsMessage());
@@ -739,16 +787,17 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   activePack = result.pack;
   await loadLookPicture();
   await refreshOutfits();
-  notes.push(packNote(result.pack, outfitCache, herName()));
+  notes.push(packNote(result.pack, outfitCache, herName(), activityIndex[result.pack.character?.id ?? ""]));
   lookPictureDue = true;
   broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());
   broadcast(await packsMessage());
+  const updateLine = await offerUpdate(name); // a pack that came from the pack list may have newer files: asked after switching, never before
   // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
-  if (sameCharacter) return say(`Showing the pack "${name}".`);
+  if (sameCharacter) return say(`Showing the pack "${name}".${updateLine}`);
   say(
     [
-      `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
+      `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.${updateLine}`,
       ...(result.pack.credit ? [`Credit: ${result.pack.credit}`] : []),
       ...result.pack.notes,
     ].join("\n"),
@@ -760,6 +809,8 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
  * name any other pack. An outfit that is on this computer is shown at once; one that is not raises the same question the gallery asks (size and host),
  * and nothing is fetched until the user says yes, after which it is shown.
  */
+let outfitAsked: { pack: string; at: number } | null = null;
+
 async function wearOutfit(wanted: string): Promise<void> {
   if (!activePack?.character) return notes.push("You have no other outfits: [outfit …] changes nothing.");
   const outfits = await outfitsOfActiveCharacter();
@@ -772,16 +823,123 @@ async function wearOutfit(wanted: string): Promise<void> {
     if (activePack?.name !== choice.pack) notes.push(`You could not change into ${choice.name}.`);
     return;
   }
+  // The same reply can ask twice (the activity's outfit and her own tag): one question is enough.
+  if (outfitAsked?.pack === choice.pack && Date.now() - outfitAsked.at < 60_000) return;
+  outfitAsked = { pack: choice.pack, at: Date.now() };
   const entry = await packInstaller.find(choice.pack);
   if (!entry) return notes.push(`${choice.name} is not available right now (the pack list could not be reached), so you stay in ${outfitName(activePack.name, activePack.character.id)}.`);
   broadcast(packOffer(entry));
   notes.push(`${choice.name} is not on this computer yet. The user was asked whether to download it (${formatMegabytes(entry.sizes.archiveBytes)}); you stay in your current outfit until they agree, and then you wear it.`);
 }
 
+// --- activities: what she is doing with the user (`[activity swimming]`); in memory only, so a restart or /clear ends it ---
+let activity: string | null = null;
+const activityMessage = () => ({ type: "activity", name: activity });
+
+/** She started an activity (or, with null, ended it). The outfit that goes with it is put on unless she named another one in the same reply. */
+function setActivity(name: string | null, outfitChosen: boolean): void {
+  if (name === activity) return;
+  activity = name;
+  broadcast(activityMessage());
+  if (!name) return;
+  const outfit = (activePack ? animatedActivities(activePack, activityIndex[activePack.character?.id ?? ""]) : {})[name];
+  // Worked out when the message goes out: by then the outfit that goes with it is on (or the user said no), and whether the animation plays is known.
+  notes.pushLazy(() => {
+    const playing = Boolean(activePack?.activities[name]);
+    return (
+      `You are doing "${name}" with the user now (the tag is invisible to them). ` +
+      (playing ? "Its animation keeps looping until the activity ends. " : "No animation plays for it with the pictures you wear now: use emotions that fit. ") +
+      "Write [activity end] when the user is done; they can also end it with the stop button."
+    );
+  });
+  if (!activePack) void offerPackForActivity(name).catch((err) => console.error("activity offer failed:", err));
+  if (outfit && !outfitChosen && activePack?.character && outfit !== outfitName(activePack.name, activePack.character.id)) {
+    void wearOutfit(outfit).catch((err) => console.error("outfit change failed:", err));
+  }
+}
+
+/**
+ * She started an activity while she is drawn, and her character has a picture pack that animates it (the character file says so): the page asks whether to switch to the
+ * pack (an outfit that is not on this computer then raises the usual download question). Animations for the drawn body do not exist yet; without a yes the activity just goes on.
+ */
+async function offerPackForActivity(name: string): Promise<void> {
+  const id = avatar.basePreset?.toLowerCase() ?? "";
+  const outfit = drawnActivities()?.[name];
+  const who = (await readCharacters(packDirs))[id];
+  if (!who || !outfit) return;
+  const pack = `${id}-${outfit}`;
+  if (!isPackName(pack)) return;
+  const here = (await listPacks(...packDirs)).includes(pack);
+  if (!here && !(await packInstaller.find(pack))) return; // neither here nor on the pack list: nothing to offer
+  if (activity !== name || activePack) return; // ended, or a pack was chosen, meanwhile
+  broadcast({ type: "activity-offer", activity: name, pack, character: who.name, outfit });
+}
+
+function endActivityByUser(): void {
+  if (!activity) return;
+  const was = activity;
+  activity = null;
+  broadcast(activityMessage());
+  notes.push(`The user ended the activity "${was}".`);
+}
+
 /**
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
  * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
  */
+/**
+ * Looks for newer files of the picture packs the pack list put on this computer, by itself, at most once a day, and only when the user said yes to update
+ * checks in the desktop app (`packUpdateChecksOn`). It fetches the list (the one request this adds) and says what it found; nothing is downloaded: the page asks
+ * per pack when the user picks it or presses Update in the gallery. Runs when a page connects and once an hour while the server is up.
+ */
+const packCheckPath = join(dataDir, "pack-check.json");
+let lastPackUpdateKey = "";
+async function backgroundPackCheck(): Promise<void> {
+  if (!(await packUpdateChecksOn())) return;
+  const last = Number(JSON.parse(await readFile(packCheckPath, "utf8").catch(() => "{}"))?.lastCheck) || 0;
+  if (Date.now() >= last && Date.now() - last < 24 * 3600_000) return;
+  await refreshPackIndex(true);
+  await writeFile(packCheckPath, JSON.stringify({ lastCheck: Date.now() })).catch(() => {});
+  const updates = await packInstaller.updates();
+  const key = updates.map((u) => `${u.id}@${u.entry.hashes.sha256}`).join(",");
+  if (!updates.length || key === lastPackUpdateKey) return;
+  lastPackUpdateKey = key;
+  broadcast(await packsMessage());
+  broadcast({ type: "notice", text: `Newer versions of picture packs on this computer: ${updates.map((u) => `${u.entry.name} (${u.installed} to ${u.available})`).join(", ")}. Looks → Packs… shows an Update on each; picking one asks before anything is downloaded.` });
+}
+setInterval(() => void backgroundPackCheck().catch(() => {}), 3600_000).unref();
+
+/**
+ * Moves the listener between this machine only and the whole network without a restart, for `/phone` in the desktop app (which starts the server without `--lan`).
+ * The page on this machine stays connected (its WebSocket is already upgraded), and phones are signed out when it goes off. Returns what went wrong, or null.
+ */
+async function setLan(on: boolean): Promise<string | null> {
+  if (on === lan) return null;
+  const before = bindHost;
+  const after = on ? "0.0.0.0" : host;
+  if (on) lanToken = await loadToken(lanTokenPath);
+  const listenOn = (where: string) =>
+    new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, where, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+  server.close(); // stops accepting new connections; open ones carry on
+  try {
+    await listenOn(after);
+  } catch (err) {
+    await listenOn(before).catch(() => {});
+    return `Could not change phone access: ${err instanceof Error ? err.message : err}`;
+  }
+  bindHost = after;
+  lan = on;
+  if (!on) for (const c of clients) if (remoteSockets.has(c)) c.close();
+  console.log(on ? "Phone access turned on from /phone (until the next start)." : "Phone access turned off.");
+  return null;
+}
+
 const slashCommands: Record<
   string,
   {
@@ -953,10 +1111,11 @@ const slashCommands: Record<
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
         if (!packs.length && !remote.length) return say(`${using} There are no packs in data/frames yet; docs/frame-packs.md says how to make one.`);
         // By character, as the gallery shows them: the packs on this computer (yours in data/frames, and those shipped in packs/), then the ones the pack list offers.
+        const newer = new Set((await packInstaller.updates()).map((u) => u.id));
         const lines = groupPacks(packs, await packCharacters(packDirs, packs), remote).map(
-          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
+          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.map((n) => (newer.has(n) ? `${n} (update available)` : n)).join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
         );
-        const hint = remote.length ? "/frames <name> uses one (it asks first when it has to be downloaded), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
+        const hint = remote.length || newer.size ? "/frames <name> uses one (it asks first when it has to be downloaded or updated), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
         return say(`${using} Packs, by character:\n${lines.join("\n")}\n${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
@@ -967,10 +1126,20 @@ const slashCommands: Record<
     run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
-    help: "show the link for controlling her from a phone on this network (`/phone new` makes a new one; needs --lan)",
+    help: "show the link for controlling her from a phone on this network (it asks first if phone access is off; `/phone new` makes a new link, `/phone off` turns it off)",
     run: async ({ args, say, reply, remote }) => {
       if (remote) return say(remoteRefusal);
-      if (!lan) return say("Phone access is off. Restart with `anaico --lan` (or `npm start -- --lan`) to turn it on; it is off again at every start.");
+      if (args.trim() === "off") {
+        if (!lan) return say("Phone access is already off.");
+        const failed = await setLan(false);
+        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her.");
+      }
+      if (!lan) {
+        // The answer comes from the page on this computer (`lan-answer`), and only to this question.
+        lanAsked = true;
+        reply({ type: "lan-offer" });
+        return say("Phone access is off. The page asks whether to turn it on. It stays on until you restart, and is off again at every start.");
+      }
       if (args.trim() === "new") {
         lanToken = await saveToken(lanTokenPath, newToken());
         for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
@@ -1245,8 +1414,10 @@ function resetConversation(): void {
   transcript.clear();
   persistTranscript();
   renewNotes();
+  activity = null;
   pendingPermissions.clear();
   broadcast({ type: "reset" });
+  broadcast(activityMessage());
   broadcast(modeInfo());
   cards.greet();
   greetBasic();
@@ -1268,6 +1439,8 @@ const turns = createTurnService({
   transcript,
   activePack: () => activePack,
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
+  activity: setActivity,
+  chatMode: () => mode === "chat",
   takeLookPicture: () => {
     const picture = lookPictureDue && lookPicture ? lookPicture : null;
     lookPictureDue = false;
@@ -1317,11 +1490,13 @@ for (const p of Object.values(providers)) {
 wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
+  void backgroundPackCheck().catch(() => {});
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   void refreshPack()
     .then(async () => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
+      ws.send(JSON.stringify(activityMessage()));
       ws.send(JSON.stringify(await packsMessage()));
       // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
       if (settings.framePack && !activePack) {
@@ -1526,6 +1701,18 @@ wss.on("connection", (ws) => {
       // The page reporting a problem of its own: into the log, so it can be read here (rate limited).
       const line = pageErrorLimit() ? formatClientError(msg, remote ? "a phone" : "this computer") : null;
       if (line) console.error(line);
+    } else if (msg.type === "lan-answer") {
+      // The answer to the question /phone asked: only from this computer, never from a phone, and only while that question is open.
+      if (remote || !lanAsked) return;
+      lanAsked = false;
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (msg.yes !== true) return say("Phone access stays off.");
+      const failed = await setLan(true);
+      if (failed) return say(failed);
+      const links = phoneLinks(port, lanToken);
+      ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+    } else if (msg.type === "activity-end") {
+      endActivityByUser(); // ending is harmless, so a phone may do it too
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pack-catalog") {
@@ -1534,6 +1721,8 @@ wss.on("connection", (ws) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(await packsMessage()));
     } else if (msg.type === "pack-install" && typeof msg.name === "string") {
       const id = msg.name;
+      const before = await packInstaller.installed(id); // set when this is an update of a pack from the list, not a first download
+      const wasShown = settings.framePack === id;
       const installed = await packInstaller.install(id, (event) => {
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "pack-progress", ...event }));
       });
@@ -1543,9 +1732,18 @@ wss.on("connection", (ws) => {
           ws.send(JSON.stringify({ type: "notice", text: installed.reason }));
         }
       } else {
-        await choosePack(id, (text) => {
+        const say: Say = (text) => {
           if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
-        });
+        };
+        const now = before && installed.status === "installed" ? await packInstaller.installed(id) : null;
+        if (now) say(`Updated ${id} to version ${now.version}.`);
+        if (now && !wasShown) {
+          // An update of a pack that is not the one on screen: the files are replaced, and what she is showing stays as it is.
+          broadcast(await packsMessage());
+        } else {
+          if (now) notes.push("Your pictures were just replaced by a newer version of this pack.");
+          await choosePack(id, say);
+        }
       }
     } else if (msg.type === "preset-thumbs") {
       try {

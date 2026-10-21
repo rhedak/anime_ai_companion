@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { findAvatarTags, findOutfitTags, normalizeTags, parseAvatarTag } from "../src/avatar-tags.ts";
+import { findActivityTags, findAvatarTags, findOutfitTags, normalizeTags, parseAvatarTag } from "../src/avatar-tags.ts";
 
 test("parses key=value pairs", () => {
   assert.deepEqual(parseAvatarTag("hair_color=#ff88cc outfit.hat_color=none glasses=true"), {
@@ -27,4 +27,10 @@ test("tags written a little differently by small models are rewritten to the exa
   // things that are not tags are left alone
   assert.equal(normalizeTags("see [the docs](https://x.y) and [remember to breathe]"), "see [the docs](https://x.y) and [remember to breathe]");
   assert.equal(normalizeTags("[remember]unfinished"), "[remember]unfinished");
+});
+
+test("an activity tag names a one-word activity, or ends it, and only complete tags count", () => {
+  assert.deepEqual(findActivityTags("Let's swim! [activity swimming] Splash. [activity end] [activity cooking dinner] [activity swi"), ["swimming", null, "cooking"]);
+  assert.deepEqual(findActivityTags("[activity: Walking] [activity stop] [activity 123] [activity ../x]"), [null]); // the colon form is rewritten by normalizeTags first; the others are no names
+  assert.deepEqual(findActivityTags(normalizeTags("[activity: Walking] [activity=end]")), ["walking", null]);
 });

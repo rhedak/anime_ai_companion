@@ -177,6 +177,8 @@ function createDrawnAvatar(host, requestFrames, requestGesture, onError) {
       talking = on;
       host.classList.toggle("talking", on);
     },
+    /** A drawn body has no activity animations (none yet): she keeps her emotions. */
+    setActivity(_name) {},
     setFull(on) {
       full = on;
       setView();
@@ -210,6 +212,8 @@ function createPackAvatar(host, onError) {
   let gestureName = null;
   let gestureStart = 0;
   let gestureUntil = 0;
+  let activityName = null;
+  let activityStart = 0;
   /** url -> its <img>, created the first time the emotion that uses it is on screen */
   const images = new Map();
   /** What was on the stage before this pack (another pack, or the drawn body): left there until this pack's first picture has loaded, so a switch never shows an empty stage. */
@@ -245,7 +249,15 @@ function createPackAvatar(host, onError) {
     shown = url;
   }
 
+  /** The loop of the activity she is doing, if this pack has pictures for it: the talking set while she speaks, from the same step so the arms do not jump. */
+  const activityFrames = () => (activityName ? pack?.activities?.[activityName] : null);
+
   function pick(now, e) {
+    const loop = activityFrames();
+    if (loop?.loop.length) {
+      const step = Math.floor(Math.max(0, now - activityStart) / 333);
+      return talking && loop.talk.length ? loop.talk[step % loop.talk.length] : loop.loop[step % loop.loop.length];
+    }
     const poses = now < gestureUntil ? pack?.gestures?.[gestureName] : null;
     if (poses?.length) return poses[Math.floor(Math.max(0, now - gestureStart) / 280) % poses.length]; // as the drawn avatar's two arm poses
     if (e.blink && now > nextBlink) {
@@ -267,6 +279,8 @@ function createPackAvatar(host, onError) {
       if (e) {
         for (const url of [e.idle, e.blink, ...e.talk]) if (url) imageFor(url); // load the rest while the idle one shows
         for (const poses of Object.values(pack?.gestures ?? {})) for (const url of poses) imageFor(url);
+        const loop = activityFrames();
+        if (loop) for (const url of [...loop.loop, ...loop.talk]) imageFor(url);
         show(pick(now, e));
       }
     } catch (err) {
@@ -293,6 +307,11 @@ function createPackAvatar(host, onError) {
     },
     setEmotion(name) {
       emotion = name;
+    },
+    setActivity(name) {
+      if (name === activityName) return;
+      activityName = name;
+      activityStart = performance.now();
     },
     setTalking(on) {
       talking = on;
@@ -340,7 +359,7 @@ export function createAvatar(host, requestFrames, requestGesture, onError = (err
   const drawn = createDrawnAvatar(host, requestFrames, requestGesture, onError);
   const packed = createPackAvatar(host, onError);
   let current = drawn;
-  const state = { emotion: "neutral", talking: false, full: false, version: -1 };
+  const state = { emotion: "neutral", talking: false, full: false, version: -1, activity: null };
 
   return {
     /** The pack to show, or null for the drawn avatar. */
@@ -354,6 +373,7 @@ export function createAvatar(host, requestFrames, requestGesture, onError = (err
       }
       current.setEmotion(state.emotion);
       current.setTalking(state.talking);
+      current.setActivity(state.activity);
       current.setFull(state.full);
       current.setVersion(state.version);
     },
@@ -371,6 +391,11 @@ export function createAvatar(host, requestFrames, requestGesture, onError = (err
     setTalking(on) {
       state.talking = on;
       current.setTalking(on);
+    },
+    /** The activity she is doing (a word), or null. Its pictures loop for as long as it lasts, if the pack on has them. */
+    setActivity(name) {
+      state.activity = name;
+      current.setActivity(name);
     },
     setFull(on) {
       state.full = on;

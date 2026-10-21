@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GESTURE_NAMES, type AvatarService } from "./avatar.ts";
-import { findAvatarTags, findImageTags, findOutfitTags, normalizeTags } from "./avatar-tags.ts";
+import { findActivityTags, findAvatarTags, findImageTags, findOutfitTags, normalizeTags } from "./avatar-tags.ts";
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureNote, type FramePack } from "./frame-pack.ts";
@@ -28,6 +28,10 @@ export interface TurnDeps {
   activePack(): FramePack | null;
   /** She wrote `[outfit name]`: change into that outfit of her character, or ask to download it. */
   wearOutfit(name: string): void;
+  /** She wrote `[activity name]` (or `[activity end]`, null): `outfitChosen` is true when the same reply already named an outfit. Chat mode only; the caller decides. */
+  activity(name: string | null, outfitChosen: boolean): void;
+  /** Whether activities are allowed now: chat mode only, as with her notes (a file she reads in work mode must not be able to start one). */
+  chatMode(): boolean;
   /** Her resting picture, once after a pack comes on or a conversation starts, for a brain that can read it; otherwise nothing. */
   takeLookPicture(): ImageInput[];
   /** Why a message cannot be sent right now (no model chosen for Ollama, say), or null. Such a message is not kept in the log. */
@@ -73,6 +77,7 @@ export function createTurnService(deps: TurnDeps) {
   function makeTagApplier(): (reply: string) => void {
     let seen = 0;
     let outfitDone = false;
+    let activityDone = false;
     return (reply) => {
       // One outfit change per reply: the first complete tag counts, so a reply cannot flip between outfits or pile up download questions.
       if (!outfitDone) {
@@ -80,6 +85,14 @@ export function createTurnService(deps: TurnDeps) {
         if (wanted) {
           outfitDone = true;
           deps.wearOutfit(wanted);
+        }
+      }
+      // One activity change per reply as well: the first complete tag counts.
+      if (!activityDone && deps.chatMode()) {
+        const found = findActivityTags(reply);
+        if (found.length) {
+          activityDone = true;
+          deps.activity(found[0], outfitDone);
         }
       }
       const tags = findAvatarTags(reply);

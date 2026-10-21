@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, groupPacks, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
+import { packActivities, frameMime, gestureNote, groupPacks, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -272,7 +272,7 @@ test("a pack can carry its credit and its terms, and packs are found in the user
   }
 });
 
-test("the Risa (dress) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+test("the Risa (dress) pack that ships with the app is complete, with a wave, a cheer and a dancing loop, and carries its credit", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
   const r = await readPack(join(root, "packs"), "risa-dress", names);
@@ -282,7 +282,12 @@ test("the Risa (dress) pack that ships with the app is complete, with a wave and
     assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
   }
   assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
+  const core = [...r.pack.files.keys()].filter((f) => !f.startsWith("activity-"));
+  assert.equal(core.length, names.length * 5 + 4, "rest, blink and three mouths per emotion, plus the four gesture pictures");
+  const loop = [1, 2, 3, 4, 5, 6].map((n) => `activity-dancing-${n}.webp`);
+  const talk = [1, 2, 3, 4, 5, 6].map((n) => `activity-dancing-talk-${n}.webp`);
+  assert.deepEqual(r.pack.activities, { dancing: { loop, talk } }, "a 6-frame dancing loop and the same 6 poses talking");
+  assert.equal(r.pack.files.size, core.length + 12);
   assert.match(r.pack.credit ?? "", /original character/);
   assert.match(r.pack.terms ?? "", /MIT/);
   const notes = r.pack.notes.join("\n");
@@ -536,4 +541,73 @@ test("packs are grouped by character for /frames: the ones here, the ones on off
     ["Risa", ["risa-dress"], []],
     [null, ["my-own"], ["loose"]],
   ]);
+});
+
+test("activity pictures are found by name: a loop, and the same loop with her mouth open; a talking set without a loop is not used", async () => {
+  const img = png(100, 120);
+  await withPack(
+    { "neutral.png": img, "activity-swimming-2.webp": img, "activity-swimming-1.webp": img, "activity-swimming-talk-1.webp": img, "activity-swimming-talk-2.webp": img, "activity-Cooking-1.png": img, "activity-diving-talk-1.webp": img },
+    async (dir) => {
+      const r = await readPack(dir, "mine", emotions);
+      assert.ok(r.ok);
+      assert.deepEqual(r.pack.activities, {
+        cooking: { loop: ["activity-Cooking-1.png"], talk: [] },
+        swimming: { loop: ["activity-swimming-1.webp", "activity-swimming-2.webp"], talk: ["activity-swimming-talk-1.webp", "activity-swimming-talk-2.webp"] },
+      });
+      assert.ok(r.pack.notes.some((n) => /activity-diving-talk has no activity-diving-1/.test(n)));
+      assert.equal(r.pack.files.has("activity-diving-talk-1.webp"), false, "a picture that is not used is never served");
+      const info = packInfo(r.pack);
+      assert.equal(info.activities?.swimming.loop.length, 2);
+      assert.match(info.activities?.swimming.talk[0] ?? "", /^\/frames\/mine\/activity-swimming-talk-1\.webp\?v=/);
+    },
+  );
+});
+
+test("a character file can name an activity with an animation and its outfit; she is told, and suggests those first", async () => {
+  const img = png(100, 120);
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "characters"));
+    await writeFile(join(dir, "characters", "ann.txt"), "Ann\nA swimmer.\nactivity: swimming = swim\nactivity: Not Valid = x\nactivity: hiking = casual\n");
+    for (const pack of ["ann-casual", "ann-swim"]) {
+      await mkdir(join(dir, pack));
+      await writeFile(join(dir, pack, "neutral.png"), img);
+      await writeFile(join(dir, pack, "look.txt"), "character: ann\nYou wear clothes.");
+    }
+    await writeFile(join(dir, "ann-casual", "activity-hiking-1.png"), img);
+    const r = await readPack(dir, "ann-casual", emotions);
+    assert.ok(r.ok);
+    assert.deepEqual(r.pack.character?.activities, { swimming: "swim", hiking: "casual" });
+    assert.equal(r.pack.character?.text, "A swimmer.", "the activity lines are not part of her description");
+    const note = packNote(r.pack, [{ pack: "ann-casual", name: "casual", here: true }, { pack: "ann-swim", name: "swim", here: false }]);
+    assert.match(note, /\[activity <word>\]/);
+    assert.match(note, /prefer suggesting one of them.*swimming \(in the swim outfit\), hiking/);
+    assert.match(note, /Starting one puts you into its outfit/);
+    const plain = await readPack(dir, "ann-swim", emotions);
+    assert.ok(plain.ok);
+    assert.match(packNote(plain.pack), /swimming, hiking \(in the casual outfit\)/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a pack with no animated activity still tells her activities exist, and to pick an emotion instead", async () => {
+  await withPack({ "neutral.png": png(10, 10) }, async (dir) => {
+    const r = await readPack(dir, "mine", emotions);
+    assert.ok(r.ok);
+    assert.match(packNote(r.pack), /\[activity <word>\].*None of them has an animation/);
+  });
+});
+
+test("a pack folder's activities are read from the file names alone, from the first folder that has the pack", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "mine"));
+    for (const f of ["activity-swimming-1.webp", "activity-swimming-2.webp", "Activity-Cooking-1.png", "activity-diving-talk-1.webp", "activity-x.webp", "neutral.png"]) await writeFile(join(dir, "mine", f), "x");
+    assert.deepEqual(await packActivities([join(dir, "nowhere"), dir], "mine"), ["cooking", "swimming"], "a talking set alone is no activity");
+    assert.deepEqual(await packActivities([dir], "nope"), []);
+    assert.deepEqual(await packActivities([dir], "../x"), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

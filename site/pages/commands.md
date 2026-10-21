@@ -26,7 +26,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/rename [name \| reset]` | give her a name of your own (it wins over the name of a pack's character); `reset` goes back to the character's name, or Risa |
 | `/frames [name\|off]` | show her with a [picture pack](picture-packs.html); alone, lists the packs |
 | `/show` | she plays every emotion, a blink, talking and her gestures, naming each |
-| `/phone [new]` | the link and QR code for your [phone](phone.html) (needs `--lan`); `new` makes a new token |
+| `/phone [new\|off]` | the link and QR code for your [phone](phone.html); with phone access off it asks whether to turn it on (until the next start); `new` makes a new token, `off` turns it off |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |

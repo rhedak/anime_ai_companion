@@ -236,6 +236,7 @@ form.composer:focus-within { border-color: var(--focus); }
 .preset-name { text-transform: capitalize; }
 .preset-name.as-written { text-transform: none; }
 .preset-state { font-size: 10px; color: var(--muted); }
+.has-update .preset-state { color: var(--accent); }
 
 /* A phone: the companion above, the chat below, and a bar between them to drag up or down (`#divider`,
    the same control as the vertical line on a wide screen). The column is `minmax(0, 1fr)`, not `1fr`:

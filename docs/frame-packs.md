@@ -25,6 +25,7 @@ The names say what each picture is. There is no manifest.
 | `neutral-talk1.png`, `neutral-talk2.png`, `neutral-talk3.png` | while she speaks, in a changing order together with the rest picture. 1 is the smallest mouth opening, a higher number opens wider |
 | `happy.png`, `happy-blink.png`, `happy-talk1.png` ... | the same for any other emotion |
 | `wave-1.png`, `wave-2.png`, `cheer-1.png`, `cheer-2.png` ... | optional: while she makes that gesture (`[gesture:wave]`, `[gesture:cheer]`) these alternate about three times a second for a couple of seconds, instead of her face. Make them from the picture she is most often in when she gestures (the happy one), keep her face as it is there and move only the arms. One picture is also fine; a gesture with no pictures does nothing |
+| `activity-swimming-1.webp`, `-2` ..., `activity-swimming-talk-1.webp` ... | optional: pictures that loop for as long as an **activity** lasts, instead of her face (see [Activities](#activities)) |
 
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
 `thinking`. Two optional text files describe where the pictures come from:
@@ -57,6 +58,25 @@ A pack is a fixed set of pictures, so with one active:
 `/frames <name>` reads the folder again and tells you what it found, including pictures it did not
 understand and pictures whose size differs from `neutral.png` (they would jump when they swap). Reloading the
 page picks up pictures you replaced on disk.
+
+## Activities
+
+An **activity** is something she does with you for a while (swimming, cooking, a walk). She starts one with `[activity swimming]` when you ask for one or agree to her suggestion, and it lasts until she writes `[activity end]` (when you say you are done), you press **End swimming** under the picture, you start a new chat (`/clear`), or the app restarts. Activities are in memory only, and they are for chat mode: in work mode the tag is ignored, like `[remember …]`.
+
+Any activity works with no pictures at all: she describes it in her own words and shows a fitting emotion. **An activity has an animation when a pack has pictures for it**, and then it loops for as long as it lasts. Her prompt lists the animated ones, so she prefers suggesting them ("let's do something with water" can become swimming). Ask her "how do I add my own activities?" and she points here.
+
+**Adding your own**
+
+1. Make the pictures for the activity in the outfit that suits it (a swimming activity in the bikini, say). Use the same canvas size and framing as the pack's other pictures (a different size jumps when it swaps), and make the last picture lead back into the first, because the loop never stops until the activity ends. Two to four pictures are enough; they play about three times a second.
+2. Put them in that outfit's pack folder (`data/frames/<pack>/`) with these names: `activity-<name>-1.webp`, `activity-<name>-2.webp` ... The name is one lower-case word (`a-z`, digits, `_`), such as `cooking` or `stargazing`. PNG and JPEG work too, and a pack made for downloading uses lossless WebP.
+3. Optional: the same poses with her mouth open, `activity-<name>-talk-1.webp`, `-2` ... with the same number of pictures. They play while she speaks, from the same step as the silent loop, so nothing jumps. Without them the silent loop just goes on while she speaks. A talking picture should differ from its silent partner only around the mouth: in a downloadable pack it is then stored as a small patch of that picture.
+4. Run `/frames <pack>` (or reload the pack from Looks → Packs…), then ask her to do it.
+
+Which outfit goes with an activity is simply which pack holds its pictures. When she starts an activity whose pictures are in another outfit of the same character (`look.txt`'s `character:` line) that is on this computer, she changes into that outfit first, unless the same reply names another one. If the outfit is a download that is not on this computer yet, the page asks first (size and server), and the activity runs with no loop until you say yes. A pack of a character that has a character file can also say it in that file (`characters/<id>.txt`), one line per activity, `activity: swimming = bikini` (the outfit's short name, the folder name without the character in front): that is how she knows about an animation of an outfit you have not downloaded, and Risa's file says it for her swimming.
+
+While she is **drawn** (no pack on) and the drawn character is one that has a character file with such a line (Risa's does), she is told the same, and starting such an activity opens a card that asks whether to switch to that outfit's pack. Animations for the drawn body itself do not exist yet, so without a yes the activity just goes on.
+
+The limits are those of every pack: 8 MB per picture and 120 files per pack. Pictures a pack carries are served by the app only while it is on.
 
 ## The sample pack: Linnea
 
@@ -115,11 +135,18 @@ listed and ignored.
 ## The Risa packs
 
 `packs/risa-dress/` is an original character, so it is MIT like the rest of the repository (`NOTICE.md` says what is and is
-not settled about AI-made pictures). It was made the same way as the Miku pack, from a cropped base (940 × 1070, transparent
-background, hair to hem so that raised arms fit), with the prompts and `python/finish_pack.py` run as
-`--white --mouth-diff --cheek 0.42,0.37 --face-box 0.34,0.2,0.66,0.43 --seam 0.36 --mouth-box 0.43,0.35,0.55,0.42`. `--face-box` keeps the
-neck and arms out of the face search for a taller crop, and `--mouth-diff` pastes only what changed, which stops a wide-open
-mouth near the chin leaving a smear. The pictures are lossless WebP at full size (940 × 1070, about 11 MB for all 39; the PNGs they were made from were 16.5 MB, and the pixels are identical, transparent areas included). Its wave and cheer are two pictures each, edited from the happy picture and made as full-body pictures with a transparent background, then cropped like the base; `finish_pack.py` takes only the skin that appeared or went away from the edit (`wave-1` and the like; `--pose-face` names the picture they came from, `--pose-align body` lines an edit up on her body instead of her head, `--pose-scale 1` keeps its pixels unresampled and so sharp, `--pose-sharpen` softens less, `--pose-keep` keeps a part such as the neck from the base picture when no arm touches it, `--pose-take` takes everything that differs clearly in a box (the straps and hair around a hand at the shoulder, which a skin-only comparison misses); `pose-mask-<name>.png` shows what was taken from the edit) and leaves everything else, hair and dress included, as in the happy picture.
+not settled about AI-made pictures). It shows her adult look and was made the same way as her bikini and school uniform
+(its `PROCESS.md` has the details). The neutral base is a Grok Imagine edit of her adult reference (`ref/risa-adult/00-bikini`
+in the character creator) with only the outfit changed to the green dress. The six other emotions and the four pose pictures
+(`wave-1`, `wave-2`, `cheer-1`, `cheer-2`) are edits of that base, one change each, used as they came, so the hair and outline
+can move a pixel or two between emotions. `cheer-2` came back at 944 × 1088 and was enlarged to 1312 × 1504 first, so it is
+a little softer. The blinks and the three mouth openings of every emotion were made by a script over the emotion picture,
+every other pixel left identical. For six emotions the script drew the open mouths. Her `happy` picture is a toothy grin, so
+its mouths come from one more Grok Imagine edit of `happy` with her mouth open: the script lined it up on the face, pasted
+its mouth in for `happy-talk3`, and squashed that mouth to about 65% and 35% of its height (anchored at the upper lip) for
+`happy-talk2` and `happy-talk1`. The black background was made transparent by a script. None of the pictures was
+retouched by hand, and `python/finish_pack.py` was not used. The pictures are lossless WebP at 940 × 1070 (about 12.5 MB for
+all 39). The first version of the pack, from her earlier design, was made with `finish_pack.py` from a hand-cleaned base.
 
 Risa has two more outfits, the bikini and the school uniform (`packs-src/risa-bikini/` and `packs-src/risa-uniform/` in the [packs repository](https://github.com/rhedak/anime_ai_companion-packs); they are downloaded on request, not shipped). They are the same character: `character: risa` in each `look.txt`, and the shared description is `packs/characters/risa.txt` (`default: risa-dress`, so the gallery's tile is the dress that ships). The gallery previews are `packs/thumbs/risa-bikini.webp` and `packs/thumbs/risa-uniform.webp` in this repository, because she is MIT (Draconia's and Miku's previews stay on the packs site). The short names are `bikini`, the same short name as Franzi's bikini, and `uniform`, the same short name as Draconia's uniform. `[outfit …]` only names an outfit of the character she is already wearing, so while she is wearing Risa `[outfit bikini]` selects `risa-bikini` and `[outfit uniform]` selects `risa-uniform`, while she is wearing Franzi `[outfit bikini]` selects `franzi-bikini`, and while she is wearing Draconia `[outfit uniform]` selects `draconia-uniform`.
 

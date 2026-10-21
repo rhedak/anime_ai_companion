@@ -168,6 +168,12 @@ That is a **placeholder**. The sister repository's GitHub Pages site is not publ
 the gallery only lists packs that are already on disk. Set the variable to another https URL to point somewhere
 else, or to `off` to skip the request.
 
+**Versions and updates.** `version` is the pack's own and goes up whenever the archive's bytes change (republish a changed pack under a higher number). The installer writes
+`.pack-install.json` (`id`, `version`, `sha256`) into every pack it restores, and that is how the app knows what is on disk: when the list's `sha256` for an installed
+pack differs, and the list's version is not lower than the installed one, the pack counts as having an update (`updateFor`, which looks only at the list already
+loaded and makes no request). The page then asks, and a yes runs the same install as below, which replaces the folder only after the new archive has been checked
+(the old one is kept until the swap and put back on a failure). A folder without the marker is never replaced.
+
 Choosing a pack that is not installed (Looks → Packs… shows its preview and **Download**, or `/frames <name>`) does this:
 
 1. Fetch the index and find the entry. A network failure, a missing list, or a list that does not parse is reported

@@ -131,6 +131,52 @@ test("a patch archive restores base frames byte for byte and blink and talk fram
   });
 });
 
+test("an activity's loop is stored whole and its talking set as a patch of the loop frame with the same number", async () => {
+  const width = 8;
+  const height = 6;
+  const neutral = await frame(width, height);
+  const swim1 = await frame(width, height, (data) => setPixel(data, width, 5, 4, [10, 200, 10, 255]));
+  const swim2 = await frame(width, height, (data) => setPixel(data, width, 6, 4, [10, 200, 10, 255]));
+  const talk1 = await frame(width, height, (data) => {
+    setPixel(data, width, 5, 4, [10, 200, 10, 255]);
+    setPixel(data, width, 2, 2, [200, 20, 20, 255]); // the mouth
+  });
+  const talk2 = await frame(width, height, (data) => setPixel(data, width, 6, 4, [10, 200, 10, 255]));
+  await withFolder({ "neutral.webp": neutral, "activity-swimming-1.webp": swim1, "activity-swimming-2.webp": swim2, "activity-swimming-talk-1.webp": talk1, "activity-swimming-talk-2.webp": talk2, ...texts }, async (folder) => {
+    const built = await buildPackArchive(folder, { emotions });
+    assert.equal(built.ok, true, !built.ok ? built.reason : "");
+    if (!built.ok) return;
+    assert.equal(built.report.baseCount, 3);
+    assert.equal(built.report.patchCount, 2);
+    const row = built.report.files.find((file) => file.name === "activity-swimming-talk-1.webp");
+    assert.equal(row?.base, "activity-swimming-1.webp");
+    assert.deepEqual(row?.box, { x: 2, y: 2, width: 1, height: 1 });
+    const empty = built.report.files.find((file) => file.name === "activity-swimming-talk-2.webp");
+    assert.equal(empty?.storedBytes, 0, "a talking frame that equals its loop frame stores nothing");
+
+    const dest = join(folder, "..", "out");
+    const restored = await restorePackArchive(built.archive, dest);
+    assert.equal(restored.ok, true, !restored.ok ? restored.reason : "");
+    for (const [name, original] of [["activity-swimming-1.webp", swim1], ["activity-swimming-talk-1.webp", talk1], ["activity-swimming-talk-2.webp", talk2]] as const) {
+      const a = await decodeRgba(original);
+      const b = await decodeRgba(await readFile(join(dest, name)));
+      assert.ok(a && b && b.data.equals(a.data), `${name} pixels differ`);
+    }
+    const read = await readPack(join(folder, ".."), "out", emotions);
+    assert.ok(read.ok);
+    assert.deepEqual(read.pack.activities.swimming?.talk, ["activity-swimming-talk-1.webp", "activity-swimming-talk-2.webp"]);
+  });
+});
+
+test("a talking frame of an activity with no loop frame to patch is refused", async () => {
+  const neutral = await frame(8, 6);
+  await withFolder({ "neutral.webp": neutral, "activity-swimming-talk-1.webp": await frame(8, 6), ...texts }, async (folder) => {
+    const built = await buildPackArchive(folder, { emotions });
+    assert.equal(built.ok, false);
+    if (!built.ok) assert.match(built.reason, /activity-swimming-talk-1\.webp has no activity-swimming-1\.webp to patch against/);
+  });
+});
+
 test("a pack archive refuses a folder that is not a lossless WebP pack", async () => {
   const neutral = await frame(4, 4);
   const lossy = await sharp(Buffer.alloc(4 * 4 * 4, 255), { raw: { width: 4, height: 4, channels: 4 } }).webp({ quality: 80 }).toBuffer();
@@ -229,10 +275,10 @@ test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4
   assert.equal(report.framesBytes, 14_049_032);
   assert.equal(report.baseBytes, 4_071_740);
   assert.equal(report.patchBytes, 101_078);
-  // Git stores the text as LF (4,211 bytes). A Windows checkout adds one CR per line (4,265). The extra
+  // Git stores the text as LF (4,176 bytes). A Windows checkout adds one CR per line (4,230). The extra
   // bytes fit in the tar's padding or spill into the next block; the pictures are unchanged either way.
-  const textLf = 4_211;
-  const textCrlf = 4_265;
+  const textLf = 4_176;
+  const textCrlf = 4_230;
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
   assert.ok(textOnDisk === textLf || textOnDisk === textCrlf, `text files are ${textOnDisk} bytes`);

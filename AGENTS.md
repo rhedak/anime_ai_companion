@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.5.1 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.6.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -53,8 +53,9 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
-| Her expressions | `emotions.json` | restart the server |
+| Her expressions | `emotions.json` (a character's head cut can tune one emotion over it: `CUT_FACES` in `public/frames.js`, today the two adult cuts' happy) | restart the server |
 | Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
+| An activity she can do with a looping animation | pictures `activity-<name>-N` (and `-talk-N`) in the outfit's folder `data/frames/<pack>/`, optionally `activity: <name> = <outfit>` in `data/frames/characters/<id>.txt` (`docs/frame-packs.md`, "Activities") | `/frames <pack>`, at once |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |
 | Models, pre-approved tools | `data/settings.json`, `COMPANION_MODEL`, `COMPANION_WORK_MODEL` | restart the server |
 | How the body is drawn: shapes, hairstyles, outfits, presets | the **creator repo**, not this one | restart the server (the renderer runs as long as it does) |
@@ -108,6 +109,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
   model), and `franzi-dress` (an original character, made with AI): one outfit per original character,
   so each works offline. Everything in this repository is MIT (keep it so: other people's characters, Crypton's Miku and the unofficial Draconia fan art, stay in the sister repository `anime_ai_companion-packs`, preview pictures included, and are downloaded on request (see Pack archives); only their text descriptions in `packs/characters/` are here). Ship lossless WebP.
+- **Activities** (`[activity swimming]` / `[activity end]`, `setActivity` in `src/server.ts`, `activity-<name>[-talk]-N` pictures in `src/frame-pack.ts` and `public/avatar.js`): any activity works in chat, and the ones a pack has loop pictures for (and the `activity: <name> = <outfit>` lines of a character file, for outfits not on this computer) are listed to her so she prefers them; starting one puts her into its outfit unless the same reply names another. While she is drawn, a character file with `activity:` lines for the drawn preset (`drawnActivityNote`, `offerPackForActivity`) makes the page ask whether to switch to that outfit's pack; drawn-body animations are out of scope. The state is memory only (a restart or `/clear` ends it), the tag is chat mode only, and the stop button (`activity-end`) is allowed from a phone because it only ends. The talking set is a patch of the loop frame with the same number in the archive.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
   frames into a patch archive (rest and pose frames stored whole, blink and talk frames as a lossless crop of the pixels that changed) and
   restores a folder `readPack` already understands. `packs/index.schema.json` is the download index (`id`, name, version, frame count, sizes,
@@ -125,8 +127,10 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 The server can run an agent that edits files and runs commands. These are not optional:
 
 - Listen on `127.0.0.1` only. Reject WebSocket connections from other origins. The one exception is the
-  user's own `--lan` flag (`src/lan.ts`): off at every start, never a default, never an env var or a saved
-  setting. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
+  user's own `--lan` flag (`src/lan.ts`), or the yes to the question `/phone` asks (`setLan` in `src/server.ts`, which moves
+  the listener to `0.0.0.0` without a restart): off at every start, never a default, never an env var or a saved
+  setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
+  can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
   and `Origin`, and such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
   turn on `/setup`, or change the project folder. Any new message type that does one of those must check
   `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
@@ -163,7 +167,11 @@ The server can run an agent that edits files and runs commands. These are not op
   `data/settings.json`) the page shows a card and nothing is written until the user keeps it. `auto` saves it with an Undo and
   `off` ignores it; `/memory auto` is refused from a phone, like any loosening.
 - The desktop shell's update notice (`app/update-check.cjs`) is the one request the shell makes on its own: off until the user says yes in a dialog that names
-  GitHub, notify only (never download or run anything), once a day at most. Keep it that way; installing updates would need signing first.
+  GitHub, notify only (never download or run anything), once a day at most. Keep it that way; installing updates would need signing first. The picture-pack list
+  is the one other request made without the user opening something: `backgroundPackCheck` (`src/server.ts`) needs the same yes plus a separate yes to the pack
+  list (`packs` in `updates.json`, read through `packUpdateChecksOn` in `src/update-setting.ts`; no file, no checks), says in its dialog that `rhedak.github.io` is
+  contacted, looks at most once a day, and only says what it found. A pack is replaced only after the user answers the update card (version, size and host), by the same checked
+  install as a first download, and only a pack the installer itself put there (it has a `.pack-install.json` marker) is ever offered an update.
 - Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
   maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
   sends the text by itself.

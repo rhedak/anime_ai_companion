@@ -91,6 +91,7 @@ function parseReply(text) {
     .replace(/ *\[remember\][^\[]*$/i, "") // a [remember]… that is still being written
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
+    .replace(/ *\[activity\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };
@@ -127,6 +128,33 @@ function setMsgText(el, text) {
 }
 
 /** The /phone card: a QR code for the first link, drawn from the server's rows of 1 and 0, and all the links. */
+/** The question before phone access is turned on: who gets in, and that it stays on until the next start. Nothing changes until "Turn on". */
+function askLan() {
+  document.querySelector(".lan-confirm")?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys lan-confirm";
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "Turn on phone access?");
+  const text = document.createElement("p");
+  text.textContent =
+    "Turn on phone access? Devices on your network (your Wi-Fi) can then open her with a secret link, and anyone who has the link can chat with her and her coding agent, so share it with nobody. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Turn on" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  const answer = (value) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "lan-answer", yes: value }));
+    box.remove();
+  };
+  yes.onclick = () => answer(true);
+  no.onclick = () => answer(false);
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
 function addPhoneCard(links, rows) {
   const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. They work like a password, so keep them to yourself:");
   const ns = "http://www.w3.org/2000/svg";
@@ -1221,6 +1249,7 @@ function handle(msg) {
       packNames = msg.names ?? [];
       packCharacters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
       remotePacks = Array.isArray(msg.remote) ? msg.remote.filter((pack) => pack && typeof pack.id === "string") : [];
+      packUpdates = new Map(Array.isArray(msg.updates) ? msg.updates.filter((u) => u && typeof u.id === "string").map((u) => [u.id, u]) : []);
       // The browser demo names the preview of every pack its list has, also of one it has fetched (it has no previews folder for them); the app has /pack-thumb/<name>.
       packThumbs = msg.thumbs && typeof msg.thumbs === "object" ? Object.fromEntries(Object.entries(msg.thumbs).filter(([, url]) => typeof url === "string" && url.startsWith("https://"))) : {};
       activePackName = msg.active ?? null;
@@ -1230,6 +1259,9 @@ function handle(msg) {
       break;
     case "pack-offer":
       askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, saved: msg.saved });
+      break;
+    case "pack-update-offer":
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, update: { from: String(msg.from), to: String(msg.to) } });
       break;
     case "pack-progress":
       showPackProgress(msg);
@@ -1244,6 +1276,9 @@ function handle(msg) {
       break;
     case "notice":
       addMsg("sys", msg.text);
+      break;
+    case "lan-offer":
+      askLan();
       break;
     case "phone":
       if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String));
@@ -1399,6 +1434,15 @@ function handle(msg) {
       if ((msg.pack?.name ?? null) !== announcedLook && !(msg.pack?.character && msg.pack.character === announcedCharacter)) sayLook();
       announcedLook = msg.pack?.name ?? null;
       announcedCharacter = msg.pack?.character ?? null;
+      break;
+    case "activity-offer":
+      askPackForActivity(msg);
+      break;
+    case "activity":
+      if (!msg.name) document.querySelector(".pack-confirm[data-kind='activity']")?.remove();
+      avatar.setActivity(msg.name);
+      $("activity-stop").hidden = !msg.name;
+      $("activity-stop").textContent = msg.name ? `End ${msg.name}` : "End activity";
       break;
     case "frames":
       avatar.receiveFrames(msg);
@@ -1796,6 +1840,7 @@ setInterval(() => meter && renderMeter(), 60_000);
 let lastLooks = { names: [], presets: [] };
 let packNames = [];
 let remotePacks = []; // { id, name, description?, credit? } for packs the index lists that are not on disk
+let packUpdates = new Map(); // pack id -> { id, name, from, to, bytes, host } for installed packs the pack list has newer files for
 let packThumbs = {}; // pack name -> https address of its preview, when the server names one (the browser demo)
 let activePackName = null; // the picture pack in use, or null for the drawn avatar
 let galleryFill = null; // redraws the open packs gallery when the index arrives
@@ -1843,24 +1888,51 @@ function closeGallery() {
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
 /** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
-function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string }} */ offer) {
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string, update?: { from: string, to: string } }} */ offer) {
   document.querySelector(".pack-confirm")?.remove();
   const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
   const box = document.createElement("div");
   box.className = "pack-confirm";
   box.dataset.pack = offer.id;
   box.setAttribute("role", "alertdialog");
-  box.setAttribute("aria-label", `Download ${offer.name}?`);
+  box.setAttribute("aria-label", offer.update ? `Update ${offer.name}?` : `Download ${offer.name}?`);
   const text = document.createElement("p");
-  text.textContent = `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. ${typeof offer.saved === "string" ? offer.saved : "It is saved on this computer and checked before it is used."}`;
-  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Download ${size}` });
+  text.textContent = offer.update
+    ? `A newer version of ${offer.name} is available (${offer.update.from} to ${offer.update.to}). Update it? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. The copy on this computer is replaced only after the new one has been checked.`
+    : `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. ${typeof offer.saved === "string" ? offer.saved : "It is saved on this computer and checked before it is used."}`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: offer.update ? `Update ${size}` : `Download ${size}` });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
   no.onclick = () => box.remove();
   yes.onclick = () => {
     yes.disabled = true;
     no.disabled = true;
-    text.textContent = `Downloading ${offer.name}…`;
+    text.textContent = offer.update ? `Updating ${offer.name}…` : `Downloading ${offer.name}…`;
     ws?.send(JSON.stringify({ type: "pack-install", name: offer.id }));
+  };
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  (document.querySelector(".gallery") ?? document.querySelector(".stage")).append(box);
+  yes.focus();
+}
+
+/** She started an activity while she is drawn and her character's picture pack animates it: asks whether to switch to the pack (the download question follows if it is not on this computer). */
+function askPackForActivity(/** @type {{ activity: string, pack: string, character: string, outfit: string }} */ offer) {
+  document.querySelector(".pack-confirm")?.remove();
+  const box = document.createElement("div");
+  box.className = "pack-confirm";
+  box.dataset.pack = offer.pack;
+  box.dataset.kind = "activity";
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", `Switch to ${offer.pack}?`);
+  const text = document.createElement("p");
+  text.textContent = `${offer.character} has a ${offer.activity} animation in her ${offer.outfit} picture pack. Switch to it? The drawn body has no animation for this yet.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: `Switch to ${offer.outfit}` });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
+  no.onclick = () => box.remove();
+  yes.onclick = () => {
+    box.remove();
+    ws?.send(JSON.stringify({ type: "pack-select", name: offer.pack }));
   };
   const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
   buttons.append(yes, no);
@@ -1924,13 +1996,18 @@ function packItem(name, remote, shown) {
   }
   item.append(pic, Object.assign(document.createElement("span"), { className: remote ? "preset-name as-written" : "preset-name", textContent: label }));
   if (remote) item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Download" }));
+  else if (name && packUpdates.has(name)) {
+    item.classList.add("has-update");
+    item.title += " — a newer version is available";
+    item.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: "Update available" }));
+  }
   item.onclick = () => {
     if (remote) {
       askPackDownload({ id: name, name: remote.name, bytes: remote.sizes?.archiveBytes, host: remote.host, saved: remote.saved });
       return;
     }
     closeGallery();
-    if (name !== activePackName) ws?.send(JSON.stringify({ type: "pack-select", name }));
+    if (name !== activePackName || packUpdates.has(name)) ws?.send(JSON.stringify({ type: "pack-select", name })); // the one she wears, with an update: picking it again asks about it
   };
   return item;
 }
@@ -1979,7 +2056,8 @@ function packTiles() {
       tile.dataset.character = who.id;
       tile.title = `${who.name}: ${names.length} outfits`;
       tile.setAttribute("aria-expanded", String(open));
-      tile.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: open ? `${names.length} outfits ▴` : `${names.length} outfits ▾` }));
+      const newer = names.filter((name) => packUpdates.has(name)).length;
+      tile.append(Object.assign(document.createElement("span"), { className: "preset-state", textContent: `${open ? `${names.length} outfits ▴` : `${names.length} outfits ▾`}${newer ? " · update" : ""}` }));
       tile.onclick = (ev) => {
         ev.stopPropagation(); // the tile is replaced below, and a click on a node that has left the gallery would be read as a click outside it
         openCharacter = open ? null : who.id;
@@ -2289,6 +2367,7 @@ $("zoom").addEventListener("click", () => {
   document.querySelector(".stage")?.classList.toggle("full-body", full);
   $("zoom").textContent = full ? "Close-up" : "Full body";
 });
+$("activity-stop").addEventListener("click", () => ws?.send(JSON.stringify({ type: "activity-end" })));
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));
 
 connect();

@@ -30,11 +30,30 @@ export interface PackEmotion {
   talk: string[];
 }
 
+/** The loop of an activity (`activity-swimming-1.webp` …) and, when the pack has them, the same loop with her mouth open while she speaks (`activity-swimming-talk-1.webp` …). */
+export interface PackActivity {
+  loop: string[];
+  talk: string[];
+}
+
+/** A character's shared description (characters/<id>.txt), as `readCharacter` reads it. */
+export interface PackCharacter {
+  id: string;
+  name: string;
+  text: string;
+  defaultPack?: string;
+  voice?: string;
+  /** `activity: swimming = bikini` lines: the outfit (short name) that goes with an activity that has an animation, so she can suggest it before that outfit is on this computer. */
+  activities?: Record<string, string>;
+}
+
 export interface FramePack {
   name: string;
   emotions: Record<string, PackEmotion>;
   /** Pictures that alternate while she makes a gesture (`wave-1.png`, `wave-2.png`), in order; only gestures the app knows. */
   gestures: Record<string, string[]>;
+  /** Looping pictures for an activity she is doing (`activity-<name>-<n>`, and `activity-<name>-talk-<n>` for while she speaks). */
+  activities: Record<string, PackActivity>;
   /** Every servable file by its name in the folder. Anything not in here is never sent. */
   files: Map<string, { path: string; mtimeMs: number }>;
   /** Things the user should know: odd sizes, files that were not understood, emotions that fall back. */
@@ -46,7 +65,7 @@ export interface FramePack {
   /** look.txt: what she wears in these pictures, in the pack author's words. Told to her when the pack comes on. */
   look?: string;
   /** The `character: <id>` line of look.txt, and that character's name and shared description (characters/<id>.txt), when there is one. */
-  character?: { id: string; name: string; text: string; defaultPack?: string; voice?: string };
+  character?: PackCharacter;
   /** What look.txt's `character:` line asked for, before the character file has been looked up. */
   characterId?: string;
 }
@@ -62,6 +81,8 @@ export interface PackInfo {
   terms?: string;
   emotions: Record<string, { idle: string; blink?: string; talk: string[] }>;
   gestures: Record<string, string[]>;
+  /** Absent in a static copy made before activities existed. */
+  activities?: Record<string, PackActivity>;
 }
 
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
@@ -75,6 +96,7 @@ export const CHARACTERS_DIR = "characters";
 const MAX_FILES = 120;
 const PACK_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.(png|webp|jpe?g)$/i;
+const ACTIVITY_FILE = /^activity-([a-z][a-z0-9_]{0,23})(-talk)?-(\d{1,2})\.(png|webp|jpe?g)$/i;
 const FRAME_FILE = /^([a-z][a-z0-9_]*)(?:-(blink)|-talk(\d{1,2}))?\.(png|webp|jpe?g)$/i;
 
 export const isPackName = (name: string): boolean => PACK_NAME.test(name) && !name.includes("..");
@@ -107,7 +129,7 @@ export async function listPacks(...dirs: string[]): Promise<string[]> {
 }
 
 /** A character's shared description from `characters/<id>.txt` in the first folder that has it: first line the name, the rest the text. Null when missing or too long. */
-async function readCharacter(dirs: string[], id: string): Promise<{ id: string; name: string; text: string; defaultPack?: string; voice?: string } | undefined> {
+export async function readCharacter(dirs: string[], id: string): Promise<PackCharacter | undefined> {
   for (const dir of dirs) {
     const raw = await readFile(join(dir, CHARACTERS_DIR, `${id}.txt`), "utf8").catch(() => null);
     if (raw === null) continue;
@@ -118,14 +140,51 @@ async function readCharacter(dirs: string[], id: string): Promise<{ id: string; 
     // An optional line `voice: <how she speaks>` is her manner of speaking while the pack is on: it outranks the default persona (see src/persona.ts), not a custom one.
     const voiceLine = rest.find((l) => /^voice:\s*\S/i.test(l));
     const voice = voiceLine?.replace(/^voice:\s*/i, "");
-    const text = rest.filter((l) => l !== defaultLine && l !== voiceLine).join(" ");
+    // Optional lines `activity: swimming = bikini`: an activity with an animation, and the outfit it is in.
+    const activityLines = rest.filter((l) => /^activity:/i.test(l));
+    const activities: Record<string, string> = {};
+    for (const line of activityLines) {
+      const m = /^activity:\s*([a-z][a-z0-9_]{0,23})\s*=\s*([a-z0-9][a-z0-9-]{0,39})\s*$/i.exec(line);
+      if (m) activities[m[1].toLowerCase()] = m[2].toLowerCase();
+    }
+    const text = rest.filter((l) => l !== defaultLine && l !== voiceLine && !activityLines.includes(l)).join(" ");
     const defaultPack = defaultLine?.replace(/^default:\s*/i, "");
     if (name && name.length <= 60 && text && text.length <= MAX_CHARACTER) {
-      return { id, name, text, defaultPack: defaultPack && isPackName(defaultPack) ? defaultPack : undefined, voice: voice && voice.length <= MAX_VOICE ? voice : undefined };
+      return { id, name, text, defaultPack: defaultPack && isPackName(defaultPack) ? defaultPack : undefined, voice: voice && voice.length <= MAX_VOICE ? voice : undefined, ...(Object.keys(activities).length ? { activities } : {}) };
     }
     return undefined;
   }
   return undefined;
+}
+
+/** The activities a pack folder has pictures for (a loop frame `activity-<name>-N`), by name; a folder that is not there has none. Looks at the file names only. */
+export async function packActivities(dirs: string[], name: string): Promise<string[]> {
+  if (!isPackName(name)) return [];
+  for (const dir of dirs) {
+    const entries = await readdir(join(dir, name), { withFileTypes: true }).catch(() => null);
+    if (!entries) continue;
+    const found = new Set<string>();
+    for (const e of entries) {
+      const m = e.isFile() ? ACTIVITY_FILE.exec(e.name) : null;
+      if (m && !m[2]) found.add(m[1].toLowerCase());
+    }
+    return [...found].sort();
+  }
+  return [];
+}
+
+/** Every character file (`characters/<id>.txt`) in these folders, by id: what the drawn character of that name is told about the activities her picture packs animate. */
+export async function readCharacters(dirs: string[]): Promise<Record<string, PackCharacter>> {
+  const out: Record<string, PackCharacter> = {};
+  for (const dir of dirs) {
+    for (const e of await readdir(join(dir, CHARACTERS_DIR), { withFileTypes: true }).catch(() => [])) {
+      const id = /^([a-z0-9][a-z0-9-]{0,39})\.txt$/.exec(e.name)?.[1];
+      if (!e.isFile() || !id || out[id]) continue;
+      const who = await readCharacter(dirs, id);
+      if (who) out[id] = who;
+    }
+  }
+  return out;
 }
 
 /** Which character each pack belongs to (the `character:` line of its look.txt), for the gallery to group outfits. Packs without one are left out. */
@@ -179,12 +238,28 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   const files = new Map<string, { path: string; mtimeMs: number }>();
   const found: Record<string, { idle?: string; blink?: string; talk: [number, string][] }> = {};
   const poses: Record<string, [number, string][]> = {};
+  const acts: Record<string, { loop: [number, string][]; talk: [number, string][] }> = {};
   const sizes = new Map<string, string>();
   const ignored: string[] = [];
 
   const names = entries.filter((e) => e.isFile()).map((e) => e.name).sort();
   if (names.length > MAX_FILES) return { ok: false, reason: `Too many files in the pack (more than ${MAX_FILES}).` };
   for (const file of names) {
+    const act = ACTIVITY_FILE.exec(file);
+    if (act) {
+      const path = join(folder, file);
+      const info = await stat(path);
+      if (info.size > MAX_FRAME_BYTES) {
+        notes.push(`${file} is larger than ${MAX_FRAME_BYTES / 1024 / 1024} MB and was left out.`);
+        continue;
+      }
+      const slot = (acts[act[1].toLowerCase()] ??= { loop: [], talk: [] });
+      (act[2] ? slot.talk : slot.loop).push([Number(act[3]), file]);
+      files.set(file, { path, mtimeMs: info.mtimeMs });
+      const size = await imageSize(path);
+      sizes.set(file, size ? `${size.width}×${size.height}` : "?");
+      continue;
+    }
     const pose = POSE_FILE.exec(file);
     const gesture = pose?.[1].toLowerCase();
     if (pose && gesture && gesture in GESTURES) {
@@ -242,11 +317,21 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   }
   const gestures: Record<string, string[]> = {};
   for (const [gesture, list] of Object.entries(poses)) gestures[gesture] = list.sort((a, b) => a[0] - b[0]).map(([, f]) => f);
+  const activities: Record<string, PackActivity> = {};
+  const inOrder = (list: [number, string][]) => list.sort((a, b) => a[0] - b[0]).map(([, f]) => f);
+  for (const [activity, slot] of Object.entries(acts).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!slot.loop.length) {
+      notes.push(`activity-${activity}-talk has no activity-${activity}-1, so its pictures are not used.`);
+      for (const [, f] of slot.talk) files.delete(f);
+      continue;
+    }
+    activities[activity] = { loop: inOrder(slot.loop), talk: inOrder(slot.talk) };
+  }
   const plain = emotions.filter((e) => !result[e]);
   if (plain.length) notes.push(`No pictures for ${plain.join(", ")}: she shows neutral for those.`);
   const known = new Set(["credit.txt", "NOTICE.md", "look.txt", "PROCESS.md"]);
   const unused = ignored.filter((f) => !known.has(f));
-  if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN] or <gesture>-N, as .png/.webp/.jpg): ${unused.join(", ")}.`);
+  if (unused.length) notes.push(`Not used (the name is not <emotion>[-blink|-talkN], <gesture>-N or activity-<name>[-talk]-N, as .png/.webp/.jpg): ${unused.join(", ")}.`);
   const lines = (await readFile(join(folder, "credit.txt"), "utf8").catch(() => ""))
     .split(/\r?\n/)
     .map((line) => line.replace(/[\u0000-\u001f\u007f]+/g, " ").trim())
@@ -269,6 +354,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
       name,
       emotions: result,
       gestures,
+      activities,
       files,
       notes,
       credit: usable ? credit : undefined,
@@ -290,7 +376,8 @@ export function packInfo(pack: FramePack, staticBase?: string): PackInfo {
     emotions[emotion] = { idle: url(e.idle), blink: e.blink && url(e.blink), talk: e.talk.map(url) };
   }
   const gestures = Object.fromEntries(Object.entries(pack.gestures).map(([name, list]) => [name, list.map(url)]));
-  return { name: pack.name, character: pack.character?.id, credit: pack.credit, terms: pack.terms, emotions, gestures };
+  const activities = Object.fromEntries(Object.entries(pack.activities).map(([name, a]) => [name, { loop: a.loop.map(url), talk: a.talk.map(url) }]));
+  return { name: pack.name, character: pack.character?.id, credit: pack.credit, terms: pack.terms, emotions, gestures, activities };
 }
 
 /** What to tell the model about gestures while this pack is on: which ones show a picture, and that the rest change nothing. */
@@ -328,6 +415,8 @@ export interface Outfit {
   pack: string;
   name: string;
   here: boolean;
+  /** The pack list has newer files for this outfit, which is on this computer. */
+  update?: boolean;
 }
 
 /** A pack's outfit name as she writes it in `[outfit …]`: its folder name without the character in front ("franzi-casual" is "casual"). */
@@ -336,14 +425,57 @@ export function outfitName(pack: string, characterId: string): string {
   return lower.startsWith(`${characterId}-`) ? lower.slice(characterId.length + 1) : lower;
 }
 
-export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? ""): string {
+/** Where to read how to make activities: the documentation page she points the user to when asked. */
+export const ACTIVITY_DOCS = "https://rhedak.github.io/anime_ai_companion/picture-packs.html#activities";
+
+/**
+ * The activities that have an animation, with the outfit each is in: the ones the character's outfits on this computer have pictures for and the ones the character file names
+ * (`known`, which the server works out; without it just the character file), and the ones this pack has pictures for, which win.
+ */
+export function animatedActivities(pack: FramePack, known?: Record<string, string>): Record<string, string> {
+  const id = pack.character?.id ?? "";
+  const out: Record<string, string> = { ...(known ?? pack.character?.activities ?? {}) };
+  for (const name of Object.keys(pack.activities)) out[name] = outfitName(pack.name, id);
+  return out;
+}
+
+const ACTIVITY_HELP = ` If the user asks how to add their own activities, tell them it is explained in the documentation (${ACTIVITY_DOCS}).`;
+
+/** What she is told about activities while a pack is on (the animated ones are suggested first; any other activity still works, without an animation). */
+export function activityNote(pack: FramePack, known?: Record<string, string>): string {
+  const animated = Object.entries(animatedActivities(pack, known));
+  const mine = pack.character ? outfitName(pack.name, pack.character.id) : "";
+  const list = animated.map(([name, outfit]) => (outfit === mine || !pack.character ? name : `${name} (in the ${outfit} outfit)`)).join(", ");
+  return (
+    " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in the very reply in which you start it, one lower-case word such as swimming. It starts at once when the user asks for one (\"let's go swimming\") or agrees to your suggestion: do not announce that you will start or change first and wait for another yes, because without the tag nothing happens (no outfit change, no animation)." +
+    " Describe what you are doing in your own words while it lasts, and write [activity end] when the user says they are done or wants something else. The tag is invisible to the user." +
+    (animated.length
+      ? ` These have an animation, so prefer suggesting one of them when the conversation fits (for example the user wants to do something with water): ${list}.${pack.character ? " Starting one puts you into its outfit if you wear another; the user is asked first if that outfit is not on this computer." : ""} Any other activity works too, with a fitting emotion instead of an animation.`
+      : " None of them has an animation with these pictures: pick an emotion that fits instead.") +
+    ACTIVITY_HELP
+  );
+}
+
+/** What the drawn character is told about activities when her picture packs animate some (`activities`: name to outfit): she can do any, and for those the app offers the pack. Empty when none is. */
+export function drawnActivityNote(activities: Record<string, string> | undefined): string {
+  const animated = Object.entries(activities ?? {});
+  if (!animated.length) return "";
+  const list = animated.map(([name, outfit]) => `${name} (in the ${outfit} picture pack)`).join(", ");
+  return (
+    " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in the very reply in which you start it, one lower-case word such as swimming. It starts at once when the user asks for one or agrees to your suggestion; write [activity end] when they are done. " +
+    `You have no animation for it while you are drawn, but your picture packs have one for ${list}: prefer suggesting those when the conversation fits, and the app then asks the user whether to switch to the pack.` +
+    ACTIVITY_HELP
+  );
+}
+
+export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? "", activities?: Record<string, string>): string {
   // `name` is what she is called now: the character's own name, or the one the user gave her (which wins, see herName in server.ts).
   const who = pack.character ? `You are ${name}. ${pack.character.text} ` : "";
   const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
   const wear =
     outfits.length > 1
       ? ` You can change into another of your outfits by writing [outfit <name>] in a reply when you decide to (or the user asks you to): ${outfits
-          .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? o.name : `${o.name} (not on this computer yet: write the tag anyway, because that is how the user is asked; they decide whether it is downloaded, and you stay in your current outfit until they agree)`))
+          .map((o) => (o.pack === pack.name ? `${o.name} (you wear this now)` : o.here ? (o.update ? `${o.name} (a newer version is available, the user is asked when you change into it)` : o.name) : `${o.name} (not on this computer yet: write the tag anyway, because that is how the user is asked; they decide whether it is downloaded, and you stay in your current outfit until they agree)`))
           .join(", ")}. The tag is invisible to the user; change only when it fits the conversation, not in every reply.`
       : "";
   // A character with a voice: she speaks as that character while these pictures are on, instead of in her usual manner (the tags and rules stay).
@@ -357,7 +489,8 @@ export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string =
     " " +
     gestureNote(pack) +
     " Your emotions and talking still drive which picture is shown." +
-    wear
+    wear +
+    activityNote(pack, activities)
   );
 }
 

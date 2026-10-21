@@ -14,7 +14,7 @@ glasses, please") and she redraws.
   and come back to "ask" at every start.
 - **Your brain, your login.** It runs on your own computer with the agent you already use. Nothing is hosted, and
   there is no telemetry.
-- **Carry on from your phone.** One flag (`--lan`) lets your phone join the session and answer the cards.
+- **Carry on from your phone.** One flag (`--lan`), or `/phone` in the desktop app, lets your phone join the session and answer the cards.
 - **A companion too.** Chat mode is a friend with a face: character cards, her own notes about you, an optional
   microphone, picture packs instead of the drawn character.
 
@@ -45,7 +45,7 @@ day whether a newer version exists (it never installs anything).
 ## Quick start
 
 ```bash
-git clone --branch v0.5.1 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.6.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -145,6 +145,14 @@ or with `/frames <name>`. The page asks first and says how big it is (about 4 to
 fetched until you say yes. It is saved in `data/frames/` and afterwards works like any other pack, including offline.
 The list is fetched from `COMPANION_PACK_INDEX` (by default the list of the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)); if it cannot be reached,
 the packs already on this computer still work. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
+
+**Updated packs.** A pack downloaded from the list remembers which version it came from. When the list has newer files for it (a pack's version goes up whenever
+its pictures change), picking it (Looks → Packs…, `/frames <name>`, or she changes into it with `[outfit …]`) shows what is installed at once and then asks:
+the card gives the two versions, the size and the server, and nothing is fetched until you say yes; the old copy is replaced only after the new one has been
+checked. The gallery marks such a pack **Update available**, `/frames` lists it as `(update available)`, and she is told, so she can mention it. Packs that
+did not come from the list (your own, and the ones that ship with the app) are never touched. The list is looked at when you open the gallery or pick a pack
+of a character; in the desktop app, if you said yes to update checks (and to the pack list in that), it is also looked at about once a day and a notice says
+which packs have updates.
 
 ## Local models with Ollama
 
@@ -246,21 +254,24 @@ for the details. It is also written to the server's log as `[page ...]`, so a pr
 missing and how to fix it; it only looks and changes nothing. `anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
 starts it again in the folder you run it from (use it after an update, or to change folder or mode).
 Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
-that is running in another terminal. Unless you start it with `--lan` (next section), the server only
+that is running in another terminal. Unless you start it with `--lan` or turn phone access on with `/phone` (next section), the server only
 listens on `127.0.0.1`, and a background server is no different.
 
 ## Controlling her from your phone
 
 `anaico --lan` (or `npm start -- --lan`) also lets other devices on your network in, so you can carry on
-a session from your phone while the computer does the work. It is **off at every start**: you ask for it
-each time, like a looser permission mode.
+a session from your phone while the computer does the work. In the desktop app, or any run without the flag, type
+`/phone`: when phone access is off the page asks whether to turn it on, and a yes opens it without a restart. It is **off at
+every start**: you ask for it each time, like a looser permission mode.
 
-1. Start with `--lan`. It prints a few links ending in `?t=<token>`, one per way the phone can reach this
-   computer (the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name). Type
-   `/phone` in the chat to see them again, with a **QR code** for the first one: scan it with the phone's camera.
+1. Start with `--lan`, or type `/phone` and answer **Turn on** (your system may ask once to allow incoming connections).
+   It shows a few links ending in `?t=<token>`, one per way the phone can reach this
+   computer (the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name), with a
+   **QR code** for the first one: scan it with the phone's camera. Type `/phone` again to see them again.
 2. Open the link on the phone, on the same Wi-Fi. The first visit signs the phone in (a cookie) and removes the
    token from the address, so the page stays open without it.
-3. `/phone new` makes a new token and signs every phone out.
+3. `/phone new` makes a new token and signs every phone out. `/phone off` turns phone access off again, until you
+   ask next time.
 
 What a phone can do: chat, answer the approval cards, stop her, switch between chat and work in the saved
 folder, change the look. What it cannot, because these run without a card or reach into the computer: `!commands`,
@@ -546,7 +557,7 @@ Because the server can run Claude Code, it is built to be reachable only by you:
   header, and on a shared computer another user could reach the port. Run it on a computer only you use. If you cannot,
   set `COMPANION_NO_SHELL=1` (turns off `!command`, the one way to run a command without a card) and do not use work
   mode: anyone who can reach the port can also answer the approval cards.
-- `--lan` is the one way past that, and it is opt-in at every start. Then every page, file and WebSocket
+- `--lan`, or a yes to the question `/phone` asks on the computer itself, is the one way past that, and it is opt-in at every start (a phone cannot turn it on or off). Then every page, file and WebSocket
   from another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local
   address or `.local` name (against DNS rebinding), and, for the WebSocket, an `Origin` equal to that address.
   Such a device can still not run `!commands`, loosen the permission mode, load your Claude Code setup or your skills, or change her character.

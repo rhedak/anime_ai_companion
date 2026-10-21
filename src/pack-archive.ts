@@ -35,6 +35,7 @@ const MAX_TEXT_BYTES = 64 * 1024;
 
 /** The same shapes `readPack` uses, limited to WebP: a patch archive is built from lossless WebP only. */
 const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.webp$/i;
+const ACTIVITY_FILE = /^activity-([a-z][a-z0-9_]{0,23})(-talk)?-(\d{1,2})\.webp$/i;
 const FRAME_FILE = /^([a-z][a-z0-9_]*)(?:-(blink)|-talk(\d{1,2}))?\.webp$/i;
 
 export interface PatchBox {
@@ -167,6 +168,13 @@ function classify(names: { name: string; bytes: Buffer }[], emotions: string[]):
       continue;
     }
     if (/\.(png|jpe?g)$/i.test(file.name)) return `${file.name} is not WebP. A patch archive is built from lossless WebP frames.`;
+    // An activity's loop is stored whole; the same loop with her mouth open differs from it only around the mouth, so it is a patch of the loop frame with the same number.
+    const activity = ACTIVITY_FILE.exec(file.name);
+    if (activity) {
+      if (activity[2]) out.push({ name: file.name, bytes: file.bytes, role: "patch", base: `activity-${activity[1]}-${activity[3]}.webp`.toLowerCase() });
+      else out.push({ name: file.name, bytes: file.bytes, role: "base" });
+      continue;
+    }
     const pose = POSE_FILE.exec(file.name);
     const gesture = pose?.[1].toLowerCase();
     if (pose && gesture && gesture in GESTURES) {
@@ -176,7 +184,7 @@ function classify(names: { name: string; bytes: Buffer }[], emotions: string[]):
     const frame = FRAME_FILE.exec(file.name);
     const emotion = frame?.[1].toLowerCase();
     if (!frame || !emotion || !emotionSet.has(emotion)) {
-      return `${file.name} is not a frame (<emotion>[-blink|-talkN].webp), a pose (<gesture>-N.webp), or credit.txt / NOTICE.md / PROCESS.md / look.txt.`;
+      return `${file.name} is not a frame (<emotion>[-blink|-talkN].webp), a pose (<gesture>-N.webp), an activity picture (activity-<name>[-talk]-N.webp), or credit.txt / NOTICE.md / PROCESS.md / look.txt.`;
     }
     if (frame[2] || frame[3]) out.push({ name: file.name, bytes: file.bytes, role: "patch", base: `${emotion}.webp` });
     else out.push({ name: file.name, bytes: file.bytes, role: "base" });

@@ -13,6 +13,7 @@ npm run dist:linux # AppImage for x64 and arm64 (about 210 MB each), buildable o
 npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -mac.zip, one per chip (about 210 MB each)
 ```
 
+- **Trying a change:** `shell/dev-app.sh` (from the repo root) runs `npm start` on its own port (3738) with its own user-data folder (`~/.anaico-dev`, `ANAICO_DEV_HOME` changes it), so the installed app and its data stay as they are. The shell keeps its files in Electron's `userData` folder and ignores `ANAICO_DATA`, which is why the script passes `--user-data-dir`.
 - **User files** are in Electron's `userData` folder (`%APPDATA%\Anime AI Companion` on Windows), as `data/`, `workspace/` and `server.log`
   (`ANAICO_DATA`, `ANAICO_WORKSPACE`). Nothing is written next to the code, and uninstalling leaves them.
 - **A server already running** on the port (3737, or `PORT`) is shown instead of starting another one. Quitting the app stops only a server it started.
@@ -37,7 +38,10 @@ npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -
   offering the page in the user's browser, where it works. A local recogniser would make it work in the window itself.
 - **Update notices (notify only).** The first start asks, in a native dialog that names GitHub (`api.github.com`) and what it sees, whether to look for a
   newer version about once a day, and only once (it is marked as asked before it is shown, so an unanswered dialog does not return); the answer is `updates.json` in
-  the user-data folder. The switch can be changed any time under File, Options; the Help menu has "Check for Updates…" (always asks, whatever was chosen)
+  the user-data folder. The same question covers the picture-pack list (`rhedak.github.io`): with the yes, the server (which is given the file's path in `ANAICO_UPDATES_FILE` and
+  reads it each time, so the switch below takes effect at once) looks at that list about once a day and says which installed packs have newer files (`backgroundPackCheck` in
+  `src/server.ts`); someone who said yes before the packs were part of it is asked about the pack list once, separately (`askAboutPackUpdates`); runs without the desktop app have no
+  such question, so they are off. The switch can be changed any time under File, Options; the Help menu has "Check for Updates…" (always asks, whatever was chosen)
   and the releases page. A newer `vX.Y.Z` tag (pre-releases are ignored) gives a dialog whose button opens the releases
   page in the browser. Nothing is downloaded or installed (`update-check.cjs`, tested in `test/update-check.test.ts`). The check is unauthenticated, so a
   shared network can hit GitHub's rate limit; the manual check then says so. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds the Windows, Mac and Linux installers on GitHub runners and attaches them to that tag's release (a draft if none exists; a hyphenated tag such as `v0.9.1-rc1` makes a pre-release for trying it). `app/package.json` must carry the tag's version or the workflow stops.

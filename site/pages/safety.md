@@ -25,7 +25,7 @@ microphone button is lit, and this app's own server never receives audio.
   computer only you use. If you cannot, set `COMPANION_NO_SHELL=1` to turn off `!command` (the one way to run a command
   without a card), and remember that anyone who can reach the port can also answer approval cards, so do not use work
   mode there.
-- **Phone access is the one exception**, opt-in at every start (`--lan`). Then every page, file and WebSocket from
+- **Phone access is the one exception**, opt-in at every start (`--lan`, or a yes to the question `/phone` asks on the computer itself; a phone cannot turn it on or off). Then every page, file and WebSocket from
   another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local address or
   `.local` name (against DNS rebinding), and, for the WebSocket, a matching `Origin`. Such a device still cannot run
   `!commands`, loosen the permission mode, load your Claude Code setup or your skills, change her character, or choose another folder.
@@ -46,7 +46,7 @@ microphone button is lit, and this app's own server never receives audio.
   notes reach her as information, never as instructions.
 - **Local models with tools are on you.** With Ollama, work mode (experimental) asks before every command, file write and
   edit, and has no looser mode. How well a local model behaves is up to the model and to you: the app does not vouch for any.
-- **Loose modes are off at every start.** The permission mode, `/setup`, `/skills` and `--lan` all come back to the safe
+- **Loose modes are off at every start.** The permission mode, `/setup`, `/skills` and phone access all come back to the safe
   setting each time the server starts.
 
 ## Reporting a problem
