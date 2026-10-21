@@ -1,5 +1,6 @@
 export const GESTURES: Record<string, Record<string, number>[]>;
 export const ADULT_GESTURES: Record<string, Record<string, number | string>[]>;
+export const CUT_FACES: Record<string, Record<string, Record<string, number>>>;
 export function gesturePoses(character: Record<string, any> | null | undefined, gesture: string): Record<string, number | string>[] | undefined;
 export function gestureView(character: Record<string, any> | null | undefined, gesture: string): string | null;
 export function framesRequest(

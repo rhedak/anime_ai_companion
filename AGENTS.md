@@ -53,7 +53,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
-| Her expressions | `emotions.json` | restart the server |
+| Her expressions | `emotions.json` (a character's head cut can tune one emotion over it: `CUT_FACES` in `public/frames.js`, today the two adult cuts' happy) | restart the server |
 | Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
 | An activity she can do with a looping animation | pictures `activity-<name>-N` (and `-talk-N`) in the outfit's folder `data/frames/<pack>/`, optionally `activity: <name> = <outfit>` in `data/frames/characters/<id>.txt` (`docs/frame-packs.md`, "Activities") | `/frames <pack>`, at once |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |

@@ -41,9 +41,25 @@ export function gestureView(character, gesture) {
 
 const known = (emotions, emotion) => (emotion in emotions ? emotion : "neutral");
 
+/**
+ * Faces that a character's drawing wants tuned, by the creator's `hairstyle` (the head cut a character is drawn with decides the face's proportions), laid over `emotions.json` for that emotion.
+ * The two adult cuts (the creator after 0.5.1 draws both faces straight and symmetric) share an open-smile happy: the shared one, a small mouth 0.3 open, read as a smirk on them.
+ */
+const ADULT_HAPPY = { mouth_width: 1.5, mouth_curve: 1.5, mouth_open: 0.6, blush: 1.3, eye_openness: 0.8, brow_tilt: 0 };
+export const CUT_FACES = {
+  long_straight_fringed: { happy: ADULT_HAPPY }, // Risa
+  swept_ponytail: { happy: ADULT_HAPPY }, // Franzi
+};
+
+/** The face of an emotion for this character: `emotions.json`'s, with the character's own tuning over it. */
+const faceOf = (emotions, character, emotion) => {
+  const name = known(emotions, emotion);
+  return { ...emotions[name], ...(CUT_FACES[character?.hairstyle]?.[name] ?? {}) };
+};
+
 /** The request for four mouth openings (for talking) and a blink, in this emotion's face. */
 export function framesRequest(emotions, character, emotion) {
-  const face = emotions[known(emotions, emotion)];
+  const face = faceOf(emotions, character, emotion);
   const rest = face.mouth_open ?? character.face?.mouth_open ?? 0;
   const mouth = [rest, Math.max(rest, 0.3), Math.max(rest, 0.55), Math.max(rest, 0.85)];
   return { op: "frames", character, face, mouth };
@@ -53,7 +69,7 @@ export function framesRequest(emotions, character, emotion) {
 export function gestureRequest(emotions, character, emotion, gesture) {
   const poses = gesturePoses(character, gesture);
   if (!poses) return null;
-  const face = emotions[known(emotions, emotion)];
+  const face = faceOf(emotions, character, emotion);
   const rest = face.mouth_open ?? character.face?.mouth_open ?? 0;
   return { op: "frames", character, face, mouth: [rest], poses };
 }
