@@ -409,7 +409,7 @@ export function activityNote(pack: FramePack): string {
   const mine = pack.character ? outfitName(pack.name, pack.character.id) : "";
   const list = animated.map(([name, outfit]) => (outfit === mine || !pack.character ? name : `${name} (in the ${outfit} outfit)`)).join(", ");
   return (
-    " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in a reply when you start one, one lower-case word such as swimming, only when the user asked for it or agreed to it." +
+    " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in the very reply in which you start it, one lower-case word such as swimming. It starts at once when the user asks for one (\"let's go swimming\") or agrees to your suggestion: do not announce that you will start or change first and wait for another yes, because without the tag nothing happens (no outfit change, no animation)." +
     " Describe what you are doing in your own words while it lasts, and write [activity end] when the user says they are done or wants something else. The tag is invisible to the user." +
     (animated.length
       ? ` These have an animation, so prefer suggesting one of them when the conversation fits (for example the user wants to do something with water): ${list}.${pack.character ? " Starting one puts you into its outfit if you wear another; the user is asked first if that outfit is not on this computer." : ""} Any other activity works too, with a fitting emotion instead of an animation.`
