@@ -13,6 +13,7 @@ npm run dist:linux # AppImage for x64 and arm64 (about 210 MB each), buildable o
 npm run dist:mac # on a Mac: dist/Anime AI Companion-<version>[-arm64].dmg and -mac.zip, one per chip (about 210 MB each)
 ```
 
+- **Trying a change:** `shell/dev-app.sh` (from the repo root) runs `npm start` on its own port (3738) with its own user-data folder (`~/.anaico-dev`, `ANAICO_DEV_HOME` changes it), so the installed app and its data stay as they are. The shell keeps its files in Electron's `userData` folder and ignores `ANAICO_DATA`, which is why the script passes `--user-data-dir`.
 - **User files** are in Electron's `userData` folder (`%APPDATA%\Anime AI Companion` on Windows), as `data/`, `workspace/` and `server.log`
   (`ANAICO_DATA`, `ANAICO_WORKSPACE`). Nothing is written next to the code, and uninstalling leaves them.
 - **A server already running** on the port (3737, or `PORT`) is shown instead of starting another one. Quitting the app stops only a server it started.
