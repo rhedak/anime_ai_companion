@@ -343,6 +343,8 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
     "Draconia Malfoid",
     "An unofficial fan character loosely inspired by Draco Malfoy: a 21-year-old adult woman. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
     "voice: a proud, sharp-tongued tsundere: aloof and teasing, calls the user a baka now and then, secretly caring, and flustered when someone is kind to her; never cruel.",
+    "activity: dancing = gown",
+    "activity: swimming = swimsuit",
   ]);
   assert.doesNotMatch(text, /franzi/i);
   const franziText = await readFile(join(packs, "characters", "franzi.txt"), "utf8");
