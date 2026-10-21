@@ -576,8 +576,8 @@ test("picking a pack with newer files asks to update after showing it; yes repla
     q.send({ type: "pack-install", name: "mina" });
     await q.next((e) => e.type === "notice" && /Updated mina to version 2/.test(e.text), 30_000, yes);
     assert.equal(JSON.parse(readFileSync(join(quiet.dir, "data", "frames", "mina", ".pack-install.json"), "utf8")).version, "2");
-    const after = q.events.filter((e) => e.type === "packs").at(-1);
-    assert.deepEqual(after?.updates, [], "no update is left to offer");
+    const after = await q.next((e) => e.type === "packs" && Array.isArray(e.updates) && e.updates.length === 0, 10_000, yes); // sent right after the notice
+    assert.deepEqual(after.updates, [], "no update is left to offer");
 
     // With the yes (auto and packs), connecting looks at the list by itself, once, and says what it found.
     await writeFile(updatesFile, JSON.stringify({ auto: true, packs: true }));
