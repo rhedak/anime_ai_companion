@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -26,7 +26,8 @@ import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
 import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
-import { createPackInstaller, packIndexUrl } from "./pack-install.ts";
+import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
+import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { demoMessage } from "./demo.ts";
@@ -124,13 +125,37 @@ const packOffer = (entry: PackIndexEntry) => ({
   host: new URL(entry.url).hostname,
   credit: entry.credit,
 });
+/** What the page asks before a pack on this computer is replaced by newer files: the versions, the size and which server is contacted. */
+const packUpdateOffer = (update: PackUpdate) => ({
+  type: "pack-update-offer",
+  id: update.id,
+  name: update.entry.name,
+  from: update.installed,
+  to: update.available,
+  bytes: update.entry.sizes.archiveBytes,
+  host: new URL(update.entry.url).hostname,
+  credit: update.entry.credit,
+});
+/**
+ * Asks about a newer version of an installed pack, if the pack list (as loaded; the page's own actions load it) has one. With the user's yes to daily update
+ * checks the list is refreshed first, so picking a pack notices an update even when the gallery was never opened. Returns the sentence to add to what is said, or "".
+ */
+async function offerUpdate(id: string): Promise<string> {
+  if (await packUpdateChecksOn()) await refreshPackIndex(false);
+  const update = await packInstaller.updateFor(id);
+  if (!update) return "";
+  broadcast(packUpdateOffer(update));
+  notes.push(`A newer version of ${update.entry.name} is available (${update.installed} to ${update.available}); the user is asked on the page whether to update. The pictures on this computer stay in use until they agree.`);
+  return ` A newer version is available (${update.installed} to ${update.available}); the page asks whether to update.`;
+}
 /** The outfits of the character the active pack belongs to (installed ones, and ones the pack list offers), for her note and for `[outfit …]`. */
 async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
   const id = activePack?.character?.id;
   if (!id) return [];
   const names = await listPacks(...packDirs);
   const chars = await packCharacters(packDirs, names);
-  const here = names.filter((name) => chars[name]?.id === id).map((pack) => ({ pack, name: outfitName(pack, id), here: true }));
+  const here: Outfit[] = [];
+  for (const pack of names.filter((name) => chars[name]?.id === id)) here.push({ pack, name: outfitName(pack, id), here: true, update: Boolean(await packInstaller.updateFor(pack)) });
   const offered = remotePacks(names)
     .filter((pack) => pack.character?.id === id)
     .map((pack) => ({ pack: pack.id, name: outfitName(pack.id, id), here: false }));
@@ -169,7 +194,8 @@ function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "de
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
-  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names) };
+  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
+  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names), updates };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
@@ -747,11 +773,12 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());
   broadcast(await packsMessage());
+  const updateLine = await offerUpdate(name); // a pack that came from the pack list may have newer files: asked after switching, never before
   // Another outfit of the character already shown: its credit and terms were seen then, so only the change is said.
-  if (sameCharacter) return say(`Showing the pack "${name}".`);
+  if (sameCharacter) return say(`Showing the pack "${name}".${updateLine}`);
   say(
     [
-      `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.`,
+      `Showing the pack "${name}": ${Object.keys(result.pack.emotions).length} emotions, ${result.pack.files.size} pictures.${updateLine}`,
       ...(result.pack.credit ? [`Credit: ${result.pack.credit}`] : []),
       ...result.pack.notes,
     ].join("\n"),
@@ -785,6 +812,28 @@ async function wearOutfit(wanted: string): Promise<void> {
  * Slash commands typed in the chat box. Only a lone `/word` counts, so paths still reach the
  * model. `copy`, `export` and `voice` run in the browser; they are listed here so /help shows them.
  */
+/**
+ * Looks for newer files of the picture packs the pack list put on this computer, by itself, at most once a day, and only when the user said yes to update
+ * checks in the desktop app (`packUpdateChecksOn`). It fetches the list (the one request this adds) and says what it found; nothing is downloaded: the page asks
+ * per pack when the user picks it or presses Update in the gallery. Runs when a page connects and once an hour while the server is up.
+ */
+const packCheckPath = join(dataDir, "pack-check.json");
+let lastPackUpdateKey = "";
+async function backgroundPackCheck(): Promise<void> {
+  if (!(await packUpdateChecksOn())) return;
+  const last = Number(JSON.parse(await readFile(packCheckPath, "utf8").catch(() => "{}"))?.lastCheck) || 0;
+  if (Date.now() >= last && Date.now() - last < 24 * 3600_000) return;
+  await refreshPackIndex(true);
+  await writeFile(packCheckPath, JSON.stringify({ lastCheck: Date.now() })).catch(() => {});
+  const updates = await packInstaller.updates();
+  const key = updates.map((u) => `${u.id}@${u.entry.hashes.sha256}`).join(",");
+  if (!updates.length || key === lastPackUpdateKey) return;
+  lastPackUpdateKey = key;
+  broadcast(await packsMessage());
+  broadcast({ type: "notice", text: `Newer versions of picture packs on this computer: ${updates.map((u) => `${u.entry.name} (${u.installed} to ${u.available})`).join(", ")}. Looks → Packs… shows an Update on each; picking one asks before anything is downloaded.` });
+}
+setInterval(() => void backgroundPackCheck().catch(() => {}), 3600_000).unref();
+
 /**
  * Moves the listener between this machine only and the whole network without a restart, for `/phone` in the desktop app (which starts the server without `--lan`).
  * The page on this machine stays connected (its WebSocket is already upgraded), and phones are signed out when it goes off. Returns what went wrong, or null.
@@ -987,10 +1036,11 @@ const slashCommands: Record<
         const using = settings.framePack ? `Showing the pack "${settings.framePack}".` : "Showing the drawn avatar.";
         if (!packs.length && !remote.length) return say(`${using} There are no packs in data/frames yet; docs/frame-packs.md says how to make one.`);
         // By character, as the gallery shows them: the packs on this computer (yours in data/frames, and those shipped in packs/), then the ones the pack list offers.
+        const newer = new Set((await packInstaller.updates()).map((u) => u.id));
         const lines = groupPacks(packs, await packCharacters(packDirs, packs), remote).map(
-          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
+          (g) => `- ${g.who?.name ?? "Other"}: ${[g.here.map((n) => (newer.has(n) ? `${n} (update available)` : n)).join(", "), g.offered.length ? `${g.here.length ? "(" : ""}not installed yet: ${g.offered.join(", ")}${g.here.length ? ")" : ""}` : ""].filter(Boolean).join(" ")}`,
         );
-        const hint = remote.length ? "/frames <name> uses one (it asks first when it has to be downloaded), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
+        const hint = remote.length || newer.size ? "/frames <name> uses one (it asks first when it has to be downloaded or updated), /frames off goes back." : "/frames <name> uses one, /frames off goes back.";
         return say(`${using} Packs, by character:\n${lines.join("\n")}\n${hint}`);
       }
       await choosePack(wanted.toLowerCase() === "off" ? null : wanted, say);
@@ -1361,6 +1411,7 @@ for (const p of Object.values(providers)) {
 wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
+  void backgroundPackCheck().catch(() => {});
   ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
   void refreshPack()
     .then(async () => {
@@ -1588,6 +1639,8 @@ wss.on("connection", (ws) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(await packsMessage()));
     } else if (msg.type === "pack-install" && typeof msg.name === "string") {
       const id = msg.name;
+      const before = await packInstaller.installed(id); // set when this is an update of a pack from the list, not a first download
+      const wasShown = settings.framePack === id;
       const installed = await packInstaller.install(id, (event) => {
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "pack-progress", ...event }));
       });
@@ -1597,9 +1650,18 @@ wss.on("connection", (ws) => {
           ws.send(JSON.stringify({ type: "notice", text: installed.reason }));
         }
       } else {
-        await choosePack(id, (text) => {
+        const say: Say = (text) => {
           if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
-        });
+        };
+        const now = before && installed.status === "installed" ? await packInstaller.installed(id) : null;
+        if (now) say(`Updated ${id} to version ${now.version}.`);
+        if (now && !wasShown) {
+          // An update of a pack that is not the one on screen: the files are replaced, and what she is showing stays as it is.
+          broadcast(await packsMessage());
+        } else {
+          if (now) notes.push("Your pictures were just replaced by a newer version of this pack.");
+          await choosePack(id, say);
+        }
       }
     } else if (msg.type === "preset-thumbs") {
       try {

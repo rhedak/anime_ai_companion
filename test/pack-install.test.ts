@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +17,9 @@ import {
   type PackFetch,
   type PackFetchResponse,
   type PackProgress,
+  versionHigher,
 } from "../src/pack-install.ts";
+import { packUpdateChecksOn } from "../src/update-setting.ts";
 import { parsePackIndex } from "../src/pack-index.ts";
 import { decodeRgba, encodeRgba } from "../src/webp-rgba.ts";
 import { cannotRunServer, startServer } from "./helpers/server.ts";
@@ -50,9 +52,9 @@ async function frame(width: number, height: number, pixel?: [number, number, num
   return encoded;
 }
 
-async function tinyArchive(): Promise<{ archive: Buffer; neutral: Buffer; thumb: Buffer }> {
+async function tinyArchive(blinkPixel: [number, number, number, number] = [9, 8, 7, 255]): Promise<{ archive: Buffer; neutral: Buffer; thumb: Buffer }> {
   const neutral = await frame(4, 4);
-  const blink = await frame(4, 4, [9, 8, 7, 255]);
+  const blink = await frame(4, 4, blinkPixel);
   const parent = await mkdtemp(join(tmpdir(), "pack-src-"));
   const folder = join(parent, "mina");
   await mkdir(folder);
@@ -406,6 +408,196 @@ test("the gallery can download a pack that is not installed", { skip: cannotRunS
   } finally {
     await app.stop();
     await closeServer(server);
+  }
+});
+
+function entryFor(archive: Buffer, version: string, url: string) {
+  // The entry check wants https; a test that serves from a local address puts its own url in afterwards, as the download test above does.
+  const made = indexEntryForArchive(archive, { name: "Mina", version, url: "https://example.com/mina.tar", thumbnail: "thumbs/mina.webp", credit: "Mina, an original character." });
+  assert.equal(made.ok, true, !made.ok ? made.reason : "");
+  if (!made.ok) throw new Error("entry");
+  return { ...made.entry, url, character: { id: "mina", name: "Mina" } };
+}
+
+test("versions compare as numbers, and anything else is never 'higher'", () => {
+  assert.equal(versionHigher("2", "1"), true);
+  assert.equal(versionHigher("1.10", "1.9"), true, "numbers, not text");
+  assert.equal(versionHigher("1.0.1", "1"), true);
+  assert.equal(versionHigher("1", "1.0"), false);
+  assert.equal(versionHigher("1", "2"), false);
+  assert.equal(versionHigher("x", "1"), false);
+});
+
+test("an installed pack knows its version, and newer files in the pack list are noticed without a request of their own", async () => {
+  const v1 = await tinyArchive([9, 8, 7, 255]);
+  const v2 = await tinyArchive([90, 80, 70, 255]);
+  const first = entryFor(v1.archive, "1", "https://packs.example.com/mina-1.tar");
+  const second = entryFor(v2.archive, "2", "https://packs.example.com/mina-2.tar");
+  assert.notEqual(first.hashes.sha256, second.hashes.sha256);
+  let listed = first;
+  const calls: string[] = [];
+  const fetchImpl: PackFetch = async (url) => {
+    calls.push(url);
+    if (url === "https://packs.example.com/index.json") return response(200, Buffer.from(JSON.stringify({ format: 1, packs: [listed] })), url);
+    if (url === first.url) return response(200, v1.archive, url);
+    if (url === second.url) return response(200, v2.archive, url);
+    return response(404, Buffer.from("no"), url);
+  };
+  const destDir = await mkdtemp(join(tmpdir(), "pack-dest-"));
+  try {
+    const installer = createPackInstaller({ destDir, indexUrl: "https://packs.example.com/index.json", fetch: fetchImpl });
+    assert.equal(await installer.installed("mina"), null);
+    assert.equal(await installer.updateFor("mina"), null, "nothing is known before the list is loaded");
+    assert.equal((await installer.install("mina")).ok, true);
+    assert.deepEqual(await installer.installed("mina"), { version: "1", sha256: first.hashes.sha256 });
+    assert.equal(await installer.updateFor("mina"), null, "the files are the ones the list names");
+    assert.deepEqual(await installer.updates(), []);
+
+    // A pack the installer did not put there (the user's own, or one that ships) has no marker and is never offered anything.
+    await mkdir(join(destDir, "own"));
+    await writeFile(join(destDir, "own", "neutral.webp"), v1.neutral);
+    assert.equal(await installer.installed("own"), null);
+
+    // The list changes. Until it is loaded again the installer cannot know: asking does not go to the network.
+    listed = second;
+    const before = calls.length;
+    assert.equal(await installer.updateFor("mina"), null);
+    assert.deepEqual(await installer.updates(), []);
+    assert.equal(calls.length, before, "noticing an update never makes a request");
+    assert.equal((await installer.loadIndex(true)).ok, true);
+    const update = await installer.updateFor("mina");
+    assert.deepEqual(update && { id: update.id, installed: update.installed, available: update.available }, { id: "mina", installed: "1", available: "2" });
+    assert.deepEqual((await installer.updates()).map((u) => u.id), ["mina"]);
+
+    // Installing again replaces it (checked first, the old files kept until the new ones are in place), and then nothing is newer.
+    const result = await installer.install("mina");
+    assert.equal(result.ok && result.status, "installed");
+    assert.equal((await installer.installed("mina"))?.version, "2");
+    assert.equal(await installer.updateFor("mina"), null);
+
+    // What is here is never replaced by something older, and the same version number with other files still counts.
+    const marker = join(destDir, "mina", ".pack-install.json");
+    await writeFile(marker, JSON.stringify({ id: "mina", version: "3", sha256: "0".repeat(64) }));
+    assert.equal(await installer.updateFor("mina"), null, "the list's version 2 is older than the installed 3");
+    await writeFile(marker, JSON.stringify({ id: "mina", version: "2", sha256: "0".repeat(64) }));
+    assert.equal((await installer.updateFor("mina"))?.available, "2", "republished under the same number: the files differ, so it is offered");
+  } finally {
+    await rm(destDir, { recursive: true, force: true });
+  }
+});
+
+test("pack update checks on their own need the user's yes to updates and to packs, read from the desktop app's file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "updates-"));
+  try {
+    const file = join(dir, "updates.json");
+    assert.equal(await packUpdateChecksOn({}), false, "no desktop app, no question, no checks");
+    assert.equal(await packUpdateChecksOn({ ANAICO_UPDATES_FILE: file }), false, "no file yet");
+    for (const [saved, expected] of [
+      [{ auto: true, packs: true }, true],
+      [{ auto: true }, false],
+      [{ auto: true, packs: false }, false],
+      [{ auto: false, packs: true }, false],
+      [{ packs: true }, false],
+    ] as const) {
+      await writeFile(file, JSON.stringify(saved));
+      assert.equal(await packUpdateChecksOn({ ANAICO_UPDATES_FILE: file }), expected, JSON.stringify(saved));
+    }
+    await writeFile(file, "{ not json");
+    assert.equal(await packUpdateChecksOn({ ANAICO_UPDATES_FILE: file }), false, "an unreadable file is off");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("picking a pack with newer files asks to update after showing it; yes replaces it; and the daily check needs the yes from the desktop app", { skip: cannotRunServer() ?? false, timeout: 120_000 }, async () => {
+  const v1 = await tinyArchive([9, 8, 7, 255]);
+  const v2 = await tinyArchive([90, 80, 70, 255]);
+  let indexRequests = 0;
+  const archives = new Map<string, Buffer>();
+  let indexBody = Buffer.alloc(0);
+  const index = createServer((req, res) => {
+    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    if (path === "/index.json") indexRequests++;
+    const body = path === "/index.json" ? indexBody : archives.get(path);
+    if (!body) return void res.writeHead(404).end("no");
+    res.writeHead(200).end(body);
+  });
+  await new Promise<void>((resolve) => index.listen(0, "127.0.0.1", () => resolve()));
+  const origin = `http://127.0.0.1:${(index.address() as AddressInfo).port}`;
+  const first = entryFor(v1.archive, "1", `${origin}/mina-1.tar`);
+  const second = entryFor(v2.archive, "2", `${origin}/mina-2.tar`);
+  archives.set("/mina-2.tar", v2.archive);
+  indexBody = Buffer.from(JSON.stringify({ format: 1, packs: [second] }));
+  // Mina 1 is already on this computer, put there by the installer (it has its marker); the list has version 2.
+  const installedV1 = {
+    "frames/mina/neutral.webp": v1.neutral,
+    "frames/mina/credit.txt": texts["credit.txt"],
+    "frames/mina/look.txt": "character: mina\nYou wear a yellow raincoat.\n",
+    "frames/characters/mina.txt": "Mina\nA small cheerful girl.\n",
+    "frames/mina/.pack-install.json": JSON.stringify({ id: "mina", version: first.version, sha256: first.hashes.sha256 }),
+  };
+  const updatesDir = await mkdtemp(join(tmpdir(), "updates-"));
+  const updatesFile = join(updatesDir, "updates.json");
+  const apps: { stop(): Promise<void> }[] = [];
+  try {
+    // Without the yes: no request to the pack list on connecting, and no notice about packs.
+    await writeFile(updatesFile, JSON.stringify({ auto: true, packs: false }));
+    const quiet = await startServer({ dataFiles: installedV1, env: { COMPANION_PACK_INDEX: `${origin}/index.json`, ANAICO_UPDATES_FILE: updatesFile } });
+    apps.push(quiet);
+    const q = await quiet.client();
+    await q.next("history");
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(indexRequests, 0, "the pack list is not asked for without the user's yes");
+    assert.equal(q.events.some((e) => e.type === "notice" && /Newer versions of picture packs/.test(e.text)), false);
+
+    // Picking the pack shows what is installed first, then asks. Nothing is downloaded before the yes.
+    const from = q.mark;
+    q.say("/frames mina");
+    const shown = await q.next((e) => e.type === "notice" && /Showing the pack "mina"/.test(e.text), 10_000, from);
+    await q.next("pack", 10_000, from);
+    // The pack list is fetched when the gallery opens (the user's own action), and the answer is used for the badge and the question.
+    q.send({ type: "pack-catalog" });
+    const catalog = await q.next((e) => e.type === "packs" && e.updates?.some((u: { id: string }) => u.id === "mina"), 10_000, from);
+    assert.deepEqual(catalog.updates.map((u: { id: string; from: string; to: string }) => [u.id, u.from, u.to]), [["mina", "1", "2"]]);
+    q.say("/frames mina");
+    const offer = await q.next((e) => e.type === "pack-update-offer", 10_000, from);
+    assert.deepEqual([offer.id, offer.from, offer.to, offer.bytes, offer.host], ["mina", "1", "2", v2.archive.length, "127.0.0.1"]);
+    assert.match(shown.text, /Showing the pack "mina"/);
+    assert.equal(JSON.parse(readFileSync(join(quiet.dir, "data", "frames", "mina", ".pack-install.json"), "utf8")).version, "1", "nothing was downloaded yet");
+    assert.ok(readFileSync(join(quiet.dir, "data", "frames", "mina", "neutral.webp")).equals(v1.neutral));
+
+    // /frames lists it as having an update.
+    const listing = q.mark;
+    q.say("/frames");
+    assert.match((await q.next((e) => e.type === "notice" && /Packs, by character/.test(e.text), 10_000, listing)).text, /mina \(update available\)/);
+
+    // Yes: it is replaced, and what is shown is the new files.
+    const yes = q.mark;
+    q.send({ type: "pack-install", name: "mina" });
+    await q.next((e) => e.type === "notice" && /Updated mina to version 2/.test(e.text), 30_000, yes);
+    assert.equal(JSON.parse(readFileSync(join(quiet.dir, "data", "frames", "mina", ".pack-install.json"), "utf8")).version, "2");
+    const after = q.events.filter((e) => e.type === "packs").at(-1);
+    assert.deepEqual(after?.updates, [], "no update is left to offer");
+
+    // With the yes (auto and packs), connecting looks at the list by itself, once, and says what it found.
+    await writeFile(updatesFile, JSON.stringify({ auto: true, packs: true }));
+    const eager = await startServer({ dataFiles: installedV1, env: { COMPANION_PACK_INDEX: `${origin}/index.json`, ANAICO_UPDATES_FILE: updatesFile } });
+    apps.push(eager);
+    const before = indexRequests;
+    const e1 = await eager.client();
+    const note = await e1.next((e) => e.type === "notice" && /Newer versions of picture packs/.test(e.text), 15_000);
+    assert.match(note.text, /Mina \(1 to 2\)/);
+    assert.ok(indexRequests > before, "it asked the pack list");
+    assert.ok(existsSync(join(eager.dir, "data", "pack-check.json")), "and remembers when, so it does not ask again today");
+    const asked = indexRequests;
+    const e2 = await eager.client();
+    await e2.next("history");
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(indexRequests, asked, "a second page does not ask again within the day");
+  } finally {
+    for (const app of apps) await app.stop();
+    await closeServer(index);
+    await rm(updatesDir, { recursive: true, force: true });
   }
 });
 

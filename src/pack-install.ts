@@ -11,7 +11,7 @@
  * was not installed by this module is left untouched.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { open, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { open, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isPackName, PACK_THUMBS_DIR } from "./frame-pack.ts";
 import { restorePackArchive } from "./pack-archive.ts";
@@ -66,6 +66,34 @@ export interface PackFetchResponse {
 
 export type PackFetch = (url: string, init?: { signal?: AbortSignal }) => Promise<PackFetchResponse>;
 
+/** What an installed pack says about itself (its marker): the version and archive hash it was installed from. */
+export interface InstalledPack {
+  version: string;
+  sha256: string;
+}
+
+/** A pack on this computer that the pack list has newer files for. */
+export interface PackUpdate {
+  id: string;
+  /** The version on this computer, and the one the pack list offers. They can be equal: a republished archive with the same version number is still an update. */
+  installed: string;
+  available: string;
+  entry: PackIndexEntry;
+}
+
+/** True when `a` is a higher dotted version (1, 1.2, 1.2.3) than `b`. Anything that is not numbers compares as equal. */
+export function versionHigher(a: string, b: string): boolean {
+  const parts = (v: string) => v.split(".").map((n) => Number(n));
+  const x = parts(a);
+  const y = parts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (Number.isNaN(d)) return false;
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
+
 export interface PackInstaller {
   /** Loads and checks the index. A network or parse failure is `{ ok: false }`, never a throw. */
   loadIndex(force?: boolean): Promise<PackIndexResult>;
@@ -75,6 +103,15 @@ export interface PackInstaller {
   indexNote(): string | null;
   /** The entry for `id` in the cached or freshly loaded index, or null. */
   find(id: string): Promise<PackIndexEntry | null>;
+  /** The version a pack on disk was installed as, or null for a pack this installer did not put there (shipped, or the user's own: those are never updated). */
+  installed(id: string): Promise<InstalledPack | null>;
+  /**
+   * Whether the pack list, as last loaded, has other files for an installed pack. Looks only at the list already in memory: it never goes to the network,
+   * so a caller decides when the list is fetched. Null when there is nothing newer, or the pack list has not been loaded.
+   */
+  updateFor(id: string): Promise<PackUpdate | null>;
+  /** `updateFor` for every pack this installer put in `destDir`. */
+  updates(): Promise<PackUpdate[]>;
   /** Downloads and restores one pack. Idempotent for the same archive. Reports progress through `onProgress`. */
   install(id: string, onProgress?: (event: PackProgress) => void): Promise<InstallResult>;
   /**
@@ -348,6 +385,29 @@ export function createPackInstaller(options: PackInstallerOptions): PackInstalle
     loadIndex,
     index: () => cached,
     indexNote: () => (problem === "offline" ? problemReason : null),
+    async installed(id) {
+      if (!isPackName(id)) return null;
+      const marker = await readMarker(join(destDir, id));
+      return marker && marker.id === id ? { version: marker.version, sha256: marker.sha256 } : null;
+    },
+    async updateFor(id) {
+      const entry = cached?.packs.find((pack) => pack.id === id);
+      if (!entry || !isPackName(id)) return null;
+      const marker = await readMarker(join(destDir, id));
+      if (!marker || marker.id !== id || marker.sha256 === entry.hashes.sha256) return null;
+      if (versionHigher(marker.version, entry.version)) return null; // what is here is newer than the list: never offer a step back
+      return { id, installed: marker.version, available: entry.version, entry };
+    },
+    async updates() {
+      const names = await readdir(destDir).catch(() => [] as string[]);
+      const found: PackUpdate[] = [];
+      for (const name of names.sort()) {
+        if (name.startsWith(".")) continue;
+        const update = await this.updateFor(name);
+        if (update) found.push(update);
+      }
+      return found;
+    },
     async find(id) {
       const loaded = await loadIndex(false);
       if (!loaded.ok) return null;

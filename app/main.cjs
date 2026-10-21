@@ -130,6 +130,7 @@ async function startServer() {
     PORT: String(port),
     ANAICO_DATA: data,
     ANAICO_WORKSPACE: workspace,
+    ANAICO_UPDATES_FILE: updateFile(), // the server reads the answer to the update question (auto, packs) from here each time, so File, Options takes effect at once
   };
   if (isMac) env.PATH = macPath();
   if (bundledCreator) env.CREATOR_SRC = bundledCreator;
@@ -216,6 +217,22 @@ async function checkForUpdates(manual) {
     if (manual) dialog.showErrorBox("Could not check for updates", String(err && err.message ? err.message : err));
   }
 }
+/** The separate question for the picture-pack list, which the first-start question did not include: asked once, and only to someone who has update checks on. */
+async function askAboutPackUpdates() {
+  writeUpdateSettings({ packsAsked: true });
+  const { response } = await askUser({
+    type: "question",
+    title: "Anime AI Companion",
+    message: "Also look for picture-pack updates?",
+    detail:
+      "Besides the version number, Anime AI Companion could ask GitHub Pages (rhedak.github.io) about once a day for the list of picture packs, to see whether packs you have downloaded have newer versions. " +
+      "GitHub sees your IP address and that this app asked; nothing else is sent. Nothing is downloaded for you: a newer pack is only offered, and the app asks first.",
+    buttons: ["Check packs too", "No thanks"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  writeUpdateSettings({ packs: response === 0 });
+}
 async function offerUpdateChecks() {
   const settings = readUpdateSettings();
   // Ask once the window has its page, so the question opens over a finished window (and modal to it) instead of beside an empty one.
@@ -233,14 +250,17 @@ async function offerUpdateChecks() {
       title: "Anime AI Companion",
       message: "Tell me when a new version is out?",
       detail:
-        "About once a day Anime AI Companion would ask GitHub (api.github.com) for the newest version number. GitHub sees your IP address and that this app asked; nothing else is sent. " +
-        "Nothing is downloaded or installed for you. You can change this later under File, Options.",
+        "About once a day Anime AI Companion would ask GitHub (api.github.com) for the newest version number, and GitHub Pages (rhedak.github.io) for the list of picture packs, to see whether packs you have downloaded have newer versions. " +
+        "GitHub sees your IP address and that this app asked; nothing else is sent. " +
+        "Nothing is downloaded or installed for you: a newer pack is only offered, and the app asks first. You can change this later under File, Options.",
       buttons: ["Check for updates", "No thanks"],
       defaultId: 1,
       cancelId: 1,
     });
-    writeUpdateSettings({ auto: response === 0 });
+    writeUpdateSettings({ auto: response === 0, packs: response === 0, packsAsked: true });
     buildMenu(); // so the Help menu's tick matches
+  } else if (settings.auto === true && typeof settings.packs !== "boolean" && !settings.packsAsked) {
+    await askAboutPackUpdates(); // said yes before the pack list was part of it: that yes was to the version number only
   }
   if (dueNow(readUpdateSettings())) checkForUpdates(false);
 }
@@ -339,6 +359,7 @@ function buildMenu() {
               click: (item) => {
                 writeUpdateSettings({ auto: item.checked, asked: true });
                 if (item.checked) checkForUpdates(false);
+                if (item.checked && typeof readUpdateSettings().packs !== "boolean") askAboutPackUpdates(); // a tick here is a yes to the version number only
               },
             },
           ],

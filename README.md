@@ -146,6 +146,14 @@ fetched until you say yes. It is saved in `data/frames/` and afterwards works li
 The list is fetched from `COMPANION_PACK_INDEX` (by default the list of the [packs repository](https://github.com/rhedak/anime_ai_companion-packs)); if it cannot be reached,
 the packs already on this computer still work. [`docs/pack-archives.md`](docs/pack-archives.md) describes it.
 
+**Updated packs.** A pack downloaded from the list remembers which version it came from. When the list has newer files for it (a pack's version goes up whenever
+its pictures change), picking it (Looks → Packs…, `/frames <name>`, or she changes into it with `[outfit …]`) shows what is installed at once and then asks:
+the card gives the two versions, the size and the server, and nothing is fetched until you say yes; the old copy is replaced only after the new one has been
+checked. The gallery marks such a pack **Update available**, `/frames` lists it as `(update available)`, and she is told, so she can mention it. Packs that
+did not come from the list (your own, and the ones that ship with the app) are never touched. The list is looked at when you open the gallery or pick a pack
+of a character; in the desktop app, if you said yes to update checks (and to the pack list in that), it is also looked at about once a day and a notice says
+which packs have updates.
+
 ## Local models with Ollama
 
 Pick **Ollama (local)** under *Brain* and she is powered by a model on your own machine: nothing

@@ -165,7 +165,11 @@ The server can run an agent that edits files and runs commands. These are not op
   `data/settings.json`) the page shows a card and nothing is written until the user keeps it. `auto` saves it with an Undo and
   `off` ignores it; `/memory auto` is refused from a phone, like any loosening.
 - The desktop shell's update notice (`app/update-check.cjs`) is the one request the shell makes on its own: off until the user says yes in a dialog that names
-  GitHub, notify only (never download or run anything), once a day at most. Keep it that way; installing updates would need signing first.
+  GitHub, notify only (never download or run anything), once a day at most. Keep it that way; installing updates would need signing first. The picture-pack list
+  is the one other request made without the user opening something: `backgroundPackCheck` (`src/server.ts`) needs the same yes plus a separate yes to the pack
+  list (`packs` in `updates.json`, read through `packUpdateChecksOn` in `src/update-setting.ts`; no file, no checks), says in its dialog that `rhedak.github.io` is
+  contacted, looks at most once a day, and only says what it found. A pack is replaced only after the user answers the update card (version, size and host), by the same checked
+  install as a first download, and only a pack the installer itself put there (it has a `.pack-install.json` marker) is ever offered an update.
 - Speech input is the one place audio leaves the machine (the browser's recognition sends it to the browser
   maker). It stays opt-in, asks first and says who receives it, listens one phrase at a time, and never
   sends the text by itself.
