@@ -77,6 +77,11 @@ const avatar = new AvatarService({
   defaultPreset: process.env.COMPANION_PRESET ?? "risa",
 });
 await avatar.start();
+/** Said once to the first page that connects: an untouched preset look was redrawn because the creator's preset changed. */
+let lookRefreshedNotice: string | null = avatar.refreshed ? `The creator was updated, so ${herName0(avatar.refreshed)}'s drawn look was refreshed to its new version.` : null;
+function herName0(preset: string): string {
+  return preset.charAt(0).toUpperCase() + preset.slice(1);
+}
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
@@ -553,6 +558,7 @@ function renewNotes(): void {
 // A pack was chosen in an earlier run: read her outfits (the pack list included, for at most a moment) so her first message already tells her about them.
 await Promise.race([refreshOutfits().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 1500))]);
 renewNotes();
+if (avatar.refreshed) notes.push(`The creator was updated and your drawn look was redrawn from its new '${avatar.refreshed}' preset: you look a little different now.`);
 
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();
@@ -1497,6 +1503,11 @@ wss.on("connection", (ws) => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
       ws.send(JSON.stringify(activityMessage()));
+      if (lookRefreshedNotice) {
+        ws.send(JSON.stringify({ type: "notice", text: lookRefreshedNotice }));
+        lookRefreshedNotice = null;
+      }
+      if (avatar.refreshOffer) ws.send(JSON.stringify({ type: "look-refresh-offer", preset: avatar.refreshOffer.preset, name: herName0(avatar.refreshOffer.preset) }));
       ws.send(JSON.stringify(await packsMessage()));
       // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
       if (settings.framePack && !activePack) {
@@ -1711,6 +1722,15 @@ wss.on("connection", (ws) => {
       if (failed) return say(failed);
       const links = phoneLinks(port, lanToken);
       ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+    } else if (msg.type === "look-refresh-answer") {
+      const preset = avatar.refreshOffer?.preset;
+      if (preset && (await avatar.answerRefresh(msg.yes === true))) {
+        if (settings.framePack) await choosePack(null, () => {}); // a drawn look was chosen: show it
+        transcript.look([`base=${preset}`]);
+        notes.push(`The creator was updated and the user reloaded your drawn look from the '${preset}' preset.`);
+        broadcast({ type: "avatar", version: avatar.version, applied: [`base=${preset}`] });
+      }
+      broadcast(looksInfo());
     } else if (msg.type === "activity-end") {
       endActivityByUser(); // ending is harmless, so a phone may do it too
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {

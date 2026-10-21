@@ -1435,6 +1435,9 @@ function handle(msg) {
       announcedLook = msg.pack?.name ?? null;
       announcedCharacter = msg.pack?.character ?? null;
       break;
+    case "look-refresh-offer":
+      askLookRefresh(msg);
+      break;
     case "activity-offer":
       askPackForActivity(msg);
       break;
@@ -1909,6 +1912,31 @@ function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, 
     text.textContent = offer.update ? `Updating ${offer.name}…` : `Downloading ${offer.name}…`;
     ws?.send(JSON.stringify({ type: "pack-install", name: offer.id }));
   };
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  (document.querySelector(".gallery") ?? document.querySelector(".stage")).append(box);
+  yes.focus();
+}
+
+/** The creator was updated and the saved drawn look may be an older version of its preset: asks once whether to reload the preset (the look before can be undone; "Keep" is not asked again). */
+function askLookRefresh(/** @type {{ preset: string, name: string }} */ offer) {
+  document.querySelector(".pack-confirm[data-kind='look-refresh']")?.remove();
+  const box = document.createElement("div");
+  box.className = "pack-confirm";
+  box.dataset.kind = "look-refresh";
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", `Reload ${offer.name}'s look?`);
+  const text = document.createElement("p");
+  text.textContent = `The character creator was updated and ${offer.name}'s drawing has changed. Your saved look is the older drawing (or one you changed). Reload ${offer.name} from the new one? Changes you made to her look are lost, but Undo brings the old one back.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Reload" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Keep my look" });
+  const answer = (value) => {
+    box.remove();
+    ws?.send(JSON.stringify({ type: "look-refresh-answer", yes: value }));
+  };
+  yes.onclick = () => answer(true);
+  no.onclick = () => answer(false);
   const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
   buttons.append(yes, no);
   box.append(text, buttons);

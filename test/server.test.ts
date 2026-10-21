@@ -288,6 +288,39 @@ describe("chatting", { skip }, () => {
     }
   });
 
+  test("a drawn look saved before the creator's update asks once whether to reload the preset; Keep is not asked again, Reload redraws her", async () => {
+    const older = JSON.stringify({ character: { hairstyle: "long_fringed", hair_length: 0.716 }, base: "risa" });
+    const kept = await startServer({ dataFiles: { "avatar.json": older } });
+    try {
+      const c = await kept.client();
+      const offer = await c.next("look-refresh-offer", 8000);
+      assert.equal(offer.preset, "risa");
+      assert.equal(offer.name, "Risa");
+      const from = c.mark;
+      c.send({ type: "look-refresh-answer", yes: false });
+      await c.next("looks", 8000, from);
+      assert.equal(JSON.parse(kept.data("avatar.json")!).character.hairstyle, "long_fringed", "Keep leaves the look as it is");
+      const late = await kept.client();
+      await late.next("history");
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(late.events.some((e: any) => e.type === "look-refresh-offer"), false, "it was answered");
+    } finally {
+      await kept.stop();
+    }
+    const reloaded = await startServer({ dataFiles: { "avatar.json": older } });
+    try {
+      const c = await reloaded.client();
+      await c.next("look-refresh-offer", 8000);
+      const from = c.mark;
+      c.send({ type: "look-refresh-answer", yes: true });
+      const look = await c.next("avatar", 8000, from);
+      assert.deepEqual(look.applied, ["base=risa"]);
+      assert.notEqual(JSON.parse(reloaded.data("avatar.json")!).character.hairstyle, "long_fringed");
+    } finally {
+      await reloaded.stop();
+    }
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);
