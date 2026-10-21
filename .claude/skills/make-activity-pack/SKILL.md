@@ -41,6 +41,19 @@ Working folder layout: `$PACK_SRC/cutouts/<emotion>.png` (7), `$PACK_SRC/poses/<
 
 Make a **contact sheet** at every step and read it; make a GIF of the loop (quiet x3, talking x3, quiet x2, 333 ms) with PIL and send it to the owner (`SendUserFile`; the preview shows a still, so say to open it in a browser).
 
+
+## Characters that differ from Risa and Draconia (Franzi: black hair, amber eyes, a white swimsuit)
+
+The scripts have switches for them; set them in the environment of every script that reads the face:
+
+- `IRIS=amber`: brown or amber irises (the default finder looks for teal/green). The iris rim comes in pieces, so the two biggest blobs are the eyes. Measure the new frames against the pack's own `neutral` with it before shifting anything.
+- `HAIR=dark`: black hair. The default hair test is for blonde hair and calls light skin hair, which leaves no skin to fill from, and the mouth/eye erase then paints **black**.
+- `MOUTH_THRESH=4`: a faint smile line (the default 9 only finds its middle). Pieces of a line that sit close together are merged into one mouth; the nose mark above it is not.
+- `compose_swim(..., water_min_blue=18)`: for a **white swimsuit**. The default treats any pale pixel below the waterline as water and cuts holes in a white bikini bottom.
+- Use the character's **own** `cheer-1.webp` as `frames-raw/cheer-1.png` so the open mouth is hers; a plain white `neutral` from the pack is the Grok reference.
+- A base that was **uploaded** has no page of its own: after the first generation click its thumbnail in the strip (the first one) to get the base's post URL, and use that for every later edit.
+- A pose that fails twice (hands clasped at the chest, arms crossed over it) is not worth a third prompt of the same idea: change the idea (a freestyle stroke: one arm forward over the water, the other back) and tell the owner what the two failures were; keep the failed pictures in `other-frame2/`.
+
 ## 4. Package, verify, hand over
 
 - Folder `packs-src/<pack>/` in `../anime_ai_companion-packs` on a branch: frames, `look.txt` (`character: <id>` then what she wears, in second person), `credit.txt`, `NOTICE.md`, `PROCESS.md`, and `packs-src/<pack>.publish.json` (`description` **at most 400 characters**, `credit`, `aiMade`, `thumbnail: thumbs/<pack>.webp`, `character`). Thumbnail: `node src/pack-thumb-cli.ts <dir with the pack's neutral> -o <out>` in the app repo, copy to `site/thumbs/`.

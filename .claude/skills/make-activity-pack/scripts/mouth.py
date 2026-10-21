@@ -23,7 +23,9 @@ def line_pixels(sub):
     sk = skin_like(sub)
     w = sk.astype(float)
     base = gauss(lum * w, 6.0) / np.maximum(gauss(w, 6.0), 1e-3)
-    return (sub[..., 3] > 200) & ((~sk) | (lum < base - 9))
+    import os
+    thr = float(os.environ.get("MOUTH_THRESH", "9"))  # a faint smile line (Franzi's) needs 4 or 5
+    return (sub[..., 3] > 200) & ((~sk) | (lum < base - thr))
 
 def mouth_center(arr, mx, ey, spacing):
     """The closed or open mouth near its expected place: centre and size of the non-skin pieces in a window under the nose."""
@@ -43,7 +45,19 @@ def mouth_center(arr, mx, ey, spacing):
         d = math.hypot(ccx - cx, ccy - cy)
         if best is None or d < best[0]:
             best = (d, (bx0 + x0, by0 + y0, bx1 + x0, by1 + y0))
-    return (cx, cy), best[1] if best else None
+    if not best:
+        return (cx, cy), None
+    # a smile line often comes in two pieces with a gap: take every piece whose centre lies close to the best one (not the nose mark above it)
+    bx0, by0, bx1, by1 = best[1]
+    mcx, mcy = (bx0 + bx1) / 2, (by0 + by1) / 2
+    for k, v in comp.items():
+        area, ax0, ay0, ax1, ay1 = v
+        if area < 6:
+            continue
+        ccx, ccy = (ax0 + ax1) / 2 + x0, (ay0 + ay1) / 2 + y0
+        if abs(ccx - mcx) <= 28 and abs(ccy - mcy) <= 6:
+            bx0, by0, bx1, by1 = min(bx0, ax0 + x0), min(by0, ay0 + y0), max(bx1, ax1 + x0), max(by1, ay1 + y0)
+    return (cx, cy), (bx0, by0, bx1, by1)
 
 def cheer_patch():
     arr = np.asarray(Image.open("frames-raw/cheer-1.png").convert("RGBA")).copy()

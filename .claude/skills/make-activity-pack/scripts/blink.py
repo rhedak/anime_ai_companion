@@ -54,6 +54,9 @@ def skin_fill(arr, mask, box, box_cy):
 
 def is_hair(px):
     r, g, b = px[..., 0].astype(int), px[..., 1].astype(int), px[..., 2].astype(int)
+    if __import__("os").environ.get("HAIR") == "dark":
+        # black or very dark hair (Franzi): the blonde rule below would call light skin hair
+        return (0.3 * r + 0.59 * g + 0.11 * b) < 80
     return (r > 175) & (g > 150) & (b > 105) & (r - b > 25) & (r - b < 90) & ~((r > 235) & (g > 215) & (b > 190))
 
 def skin_color(arr, cx, cy, half_w):

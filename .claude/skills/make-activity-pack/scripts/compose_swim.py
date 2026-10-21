@@ -19,7 +19,7 @@ def gauss_local(a, sigma):
     out = np.apply_along_axis(lambda v: np.convolve(np.pad(v, k // 2, mode="edge"), w, mode="valid"), 0, a)
     return np.apply_along_axis(lambda v: np.convolve(np.pad(v, k // 2, mode="edge"), w, mode="valid"), 1, out)
 
-def compose(orig_path, cut_path, out_path, water_row=900, verbose=True, soften_column=False, y_dry_override=None):
+def compose(orig_path, cut_path, out_path, water_row=900, verbose=True, soften_column=False, y_dry_override=None, water_min_blue=-6):
     orig = np.asarray(Image.open(orig_path).convert("RGB")).astype(np.float64)
     cut = np.asarray(Image.open(cut_path).convert("RGBA")).astype(np.float64)
     H, W = orig.shape[:2]
@@ -28,7 +28,8 @@ def compose(orig_path, cut_path, out_path, water_row=900, verbose=True, soften_c
     r, g, b = cut[..., 0], cut[..., 1], cut[..., 2]
     bright = cut[..., :3].mean(axis=2)
     # what is dry figure: warm skin, the dark green suit, hair-coloured and dark outline pixels stay; pale bluish-white pixels below the waist are water
-    water_like = (rows >= water_row) & (b >= r - 6) & (cut[..., :3].min(axis=2) > 140)
+    # water_min_blue: how much bluer than red a pale pixel must be to count as water. The default also catches near-white; use 18 for a character in a WHITE swimsuit (the bikini bottom is pale and neutral and must stay figure).
+    water_like = (rows >= water_row) & (b >= r + water_min_blue) & (cut[..., :3].min(axis=2) > 140)
     fa2 = np.where(water_like, 0.0, fa)
     # nothing of the figure lower than its lowest dry skin / suit pixel (the cutout can keep the submerged body as an opaque pale column)
     ro, go, bo = orig[..., 0], orig[..., 1], orig[..., 2]

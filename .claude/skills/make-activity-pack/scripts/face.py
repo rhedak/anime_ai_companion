@@ -9,7 +9,12 @@ def irises(arr, ymax=0.26):
     a = arr[..., 3] > 128
     r, g, b = arr[..., 0].astype(int), arr[..., 1].astype(int), arr[..., 2].astype(int)
     H, W = a.shape
-    teal = a & (g > r + 25) & (b > r + 25) & (g > 90)
+    import os
+    if os.environ.get("IRIS") == "amber":
+        # brown/amber eyes (Franzi): the iris rim is brown-orange (about 105,63,16); skin is much lighter and hair has no orange cast
+        teal = a & (r > 70) & (r < 215) & (g < 135) & (r - b > 45) & (r - g > 18)
+    else:
+        teal = a & (g > r + 25) & (b > r + 25) & (g > 90)
     teal[int(H * ymax):] = False
     comp = label_runs(teal)
     big = sorted(((v[0], k, v[1:]) for k, v in comp.items() if v[0] > 40), reverse=True)[:4]
@@ -22,7 +27,11 @@ def measure(path):
     cols = np.nonzero(a[: int(H * 0.2)].any(axis=0))[0]
     top = int(np.nonzero(a.any(axis=1))[0].min())
     irs = irises(arr)
-    eyes = sorted([((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, b[2] - b[0] + 1, b[3] - b[1] + 1, area) for area, b in irs])
+    import os
+    eyes = [((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, b[2] - b[0] + 1, b[3] - b[1] + 1, area) for area, b in irs]
+    if os.environ.get("IRIS") == "amber":
+        eyes = sorted(eyes, key=lambda e: -e[4])[:2]  # the iris rim comes in pieces: the two biggest are the eyes
+    eyes = sorted(eyes)
     return top, eyes
 
 if __name__ == "__main__":
