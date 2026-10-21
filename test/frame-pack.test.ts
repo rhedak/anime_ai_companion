@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { frameMime, gestureNote, groupPacks, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
+import { packActivities, frameMime, gestureNote, groupPacks, isPackName, listPacks, outfitName, packCharacters, packInfo, packNote, readPack, sizeOf } from "../src/frame-pack.ts";
 
 const emotions = ["neutral", "happy", "sad", "thinking"];
 
@@ -592,4 +592,17 @@ test("a pack with no animated activity still tells her activities exist, and to 
     assert.ok(r.ok);
     assert.match(packNote(r.pack), /\[activity <word>\].*None of them has an animation/);
   });
+});
+
+test("a pack folder's activities are read from the file names alone, from the first folder that has the pack", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "frames-"));
+  try {
+    await mkdir(join(dir, "mine"));
+    for (const f of ["activity-swimming-1.webp", "activity-swimming-2.webp", "Activity-Cooking-1.png", "activity-diving-talk-1.webp", "activity-x.webp", "neutral.png"]) await writeFile(join(dir, "mine", f), "x");
+    assert.deepEqual(await packActivities([join(dir, "nowhere"), dir], "mine"), ["cooking", "swimming"], "a talking set alone is no activity");
+    assert.deepEqual(await packActivities([dir], "nope"), []);
+    assert.deepEqual(await packActivities([dir], "../x"), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

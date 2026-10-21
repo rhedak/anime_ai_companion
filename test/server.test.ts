@@ -259,6 +259,35 @@ describe("chatting", { skip }, () => {
     }
   });
 
+  test("an activity's pictures in another outfit of hers that a user made (no character file line) are known to her, she suggests it, and starting it puts her into that outfit", async () => {
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    const mine = await startServer({
+      dataFiles: {
+        "frames/characters/ann.txt": "Ann\nA tall young woman with short red hair.\n",
+        "frames/ann-coat/neutral.png": tiny,
+        "frames/ann-coat/look.txt": "character: ann\nYou wear a coat.\n",
+        "frames/ann-pool/neutral.png": tiny,
+        "frames/ann-pool/look.txt": "character: ann\nYou wear a swimsuit.\n",
+        "frames/ann-pool/activity-diving-1.png": tiny,
+      },
+    });
+    try {
+      const c = await mine.client();
+      await c.next("history");
+      c.send({ type: "user", text: "/frames ann-coat" });
+      await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000);
+      await ask(c, "hello");
+      const told = mine.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+      assert.match(told.text!, /diving \(in the pool outfit\)/);
+      assert.match(told.text!, /picture-packs\.html#activities/, "she can point to the documentation");
+      const from = c.mark;
+      await ask(c, "please ACTIVITY diving");
+      await c.next((e) => e.type === "pack" && e.pack?.name === "ann-pool", 8000, from);
+    } finally {
+      await mine.stop();
+    }
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

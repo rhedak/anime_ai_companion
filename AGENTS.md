@@ -55,6 +55,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
 | Her expressions | `emotions.json` | restart the server |
 | Pictures instead of the drawn avatar | a folder `data/frames/<name>/` (the file names say what each picture is; `docs/frame-packs.md`), then `/frames <name>` or Looks → Packs… | at once |
+| An activity she can do with a looping animation | pictures `activity-<name>-N` (and `-talk-N`) in the outfit's folder `data/frames/<pack>/`, optionally `activity: <name> = <outfit>` in `data/frames/characters/<id>.txt` (`docs/frame-packs.md`, "Activities") | `/frames <pack>`, at once |
 | The interface | `data/custom.css` (variables in `public/theme.css`) | reload the page |
 | Models, pre-approved tools | `data/settings.json`, `COMPANION_MODEL`, `COMPANION_WORK_MODEL` | restart the server |
 | How the body is drawn: shapes, hairstyles, outfits, presets | the **creator repo**, not this one | restart the server (the renderer runs as long as it does) |

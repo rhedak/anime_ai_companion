@@ -25,7 +25,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { animatedActivities, drawnActivityNote, gestureNote, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { animatedActivities, drawnActivityNote, gestureNote, packActivities, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
@@ -162,10 +162,28 @@ async function outfitsOfActiveCharacter(): Promise<Outfit[]> {
   return [...here, ...offered];
 }
 let outfitCache: Outfit[] = [];
+/**
+ * Per character id, the activities that have an animation and the outfit (short name) each is in: what the character's file says (`activity: swimming = bikini`, for an outfit that
+ * is not on this computer yet) and what the outfits on this computer have pictures for (a pack a user made counts, with no file written). Read again whenever the outfits are.
+ */
+let activityIndex: Record<string, Record<string, string>> = {};
+async function refreshActivityIndex(): Promise<void> {
+  const index: Record<string, Record<string, string>> = {};
+  for (const [id, who] of Object.entries(await readCharacters(packDirs))) if (who.activities) index[id] = { ...who.activities };
+  const names = await listPacks(...packDirs);
+  const characters = await packCharacters(packDirs, names);
+  for (const name of names) {
+    const who = characters[name];
+    if (who) for (const activity of await packActivities(packDirs, name)) (index[who.id] ??= {})[activity] = outfitName(name, who.id);
+  }
+  activityIndex = index;
+}
 const refreshOutfits = async () => {
   if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
   outfitCache = await outfitsOfActiveCharacter();
+  await refreshActivityIndex();
 };
+const drawnActivities = () => activityIndex[avatar.basePreset?.toLowerCase() ?? ""];
 const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 const packMessage = () => ({ type: "pack", pack: activePack ? packInfo(activePack) : null });
 /** Downloads a pack from the index into data/frames. The default address is a placeholder until the packs site exists. */
@@ -518,21 +536,17 @@ function persistTranscript(): void {
   }, 300);
 }
 
-/** The character files (`characters/<id>.txt`), read once: a drawn character that has one (Risa) is told which activities her picture packs animate. */
-let characterFiles: Awaited<ReturnType<typeof readCharacters>> = {};
-characterFiles = await readCharacters(packDirs).catch(() => ({}));
-
 // Problems with the model's avatar tags, passed back to it with the next user message.
 const notes = createNotes();
 /** A new conversation starts with nothing waiting, except what she must know about her pictures while a pack is on (they replace the look her prompt describes). */
 function renewNotes(): void {
   notes.clear();
   lookPictureDue = false;
-  if (!activePack) notes.pushLazy(() => drawnActivityNote(characterFiles[avatar.basePreset?.toLowerCase() ?? ""]));
+  if (!activePack) notes.pushLazy(() => drawnActivityNote(drawnActivities()));
   if (activePack) {
     // Worked out when the message goes out: at a server start the pack list has not been read yet, and she must be told her outfits all the same.
     const pack = activePack;
-    notes.pushLazy(() => packNote(pack, outfitCache, herName()));
+    notes.pushLazy(() => packNote(pack, outfitCache, herName(), activityIndex[pack.character?.id ?? ""]));
     lookPictureDue = true;
   }
 }
@@ -749,7 +763,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
     await saveSettings(settingsPath, settings);
     await refreshPack();
     lookPictureDue = false;
-    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}${drawnActivityNote(characterFiles[avatar.basePreset?.toLowerCase() ?? ""])}`);
+    notes.push(`The user switched you back to your drawn avatar: [avatar ...] tags and gestures work again.${hadVoice ? " Your usual manner of speaking is back too: you no longer speak as the character of the pictures." : ""}${hadName ? ` Your name is ${herName()} again.` : ""}${drawnActivityNote(drawnActivities())}`);
     broadcast(modeInfo());
     broadcast(packMessage());
     broadcast(await packsMessage());
@@ -773,7 +787,7 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
   activePack = result.pack;
   await loadLookPicture();
   await refreshOutfits();
-  notes.push(packNote(result.pack, outfitCache, herName()));
+  notes.push(packNote(result.pack, outfitCache, herName(), activityIndex[result.pack.character?.id ?? ""]));
   lookPictureDue = true;
   broadcast(modeInfo()); // her name may be the character's now
   broadcast(packMessage());
@@ -828,7 +842,7 @@ function setActivity(name: string | null, outfitChosen: boolean): void {
   activity = name;
   broadcast(activityMessage());
   if (!name) return;
-  const outfit = (activePack ? animatedActivities(activePack) : {})[name];
+  const outfit = (activePack ? animatedActivities(activePack, activityIndex[activePack.character?.id ?? ""]) : {})[name];
   // Worked out when the message goes out: by then the outfit that goes with it is on (or the user said no), and whether the animation plays is known.
   notes.pushLazy(() => {
     const playing = Boolean(activePack?.activities[name]);
@@ -850,8 +864,8 @@ function setActivity(name: string | null, outfitChosen: boolean): void {
  */
 async function offerPackForActivity(name: string): Promise<void> {
   const id = avatar.basePreset?.toLowerCase() ?? "";
-  const who = characterFiles[id];
-  const outfit = who?.activities?.[name];
+  const outfit = drawnActivities()?.[name];
+  const who = (await readCharacters(packDirs))[id];
   if (!who || !outfit) return;
   const pack = `${id}-${outfit}`;
   if (!isPackName(pack)) return;

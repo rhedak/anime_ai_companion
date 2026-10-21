@@ -157,6 +157,22 @@ export async function readCharacter(dirs: string[], id: string): Promise<PackCha
   return undefined;
 }
 
+/** The activities a pack folder has pictures for (a loop frame `activity-<name>-N`), by name; a folder that is not there has none. Looks at the file names only. */
+export async function packActivities(dirs: string[], name: string): Promise<string[]> {
+  if (!isPackName(name)) return [];
+  for (const dir of dirs) {
+    const entries = await readdir(join(dir, name), { withFileTypes: true }).catch(() => null);
+    if (!entries) continue;
+    const found = new Set<string>();
+    for (const e of entries) {
+      const m = e.isFile() ? ACTIVITY_FILE.exec(e.name) : null;
+      if (m && !m[2]) found.add(m[1].toLowerCase());
+    }
+    return [...found].sort();
+  }
+  return [];
+}
+
 /** Every character file (`characters/<id>.txt`) in these folders, by id: what the drawn character of that name is told about the activities her picture packs animate. */
 export async function readCharacters(dirs: string[]): Promise<Record<string, PackCharacter>> {
   const out: Record<string, PackCharacter> = {};
@@ -409,17 +425,25 @@ export function outfitName(pack: string, characterId: string): string {
   return lower.startsWith(`${characterId}-`) ? lower.slice(characterId.length + 1) : lower;
 }
 
-/** The activities that have an animation, with the outfit each is in: the ones this pack has pictures for, and the ones the character file names for her other outfits. */
-export function animatedActivities(pack: FramePack): Record<string, string> {
+/** Where to read how to make activities: the documentation page she points the user to when asked. */
+export const ACTIVITY_DOCS = "https://rhedak.github.io/anime_ai_companion/picture-packs.html#activities";
+
+/**
+ * The activities that have an animation, with the outfit each is in: the ones the character's outfits on this computer have pictures for and the ones the character file names
+ * (`known`, which the server works out; without it just the character file), and the ones this pack has pictures for, which win.
+ */
+export function animatedActivities(pack: FramePack, known?: Record<string, string>): Record<string, string> {
   const id = pack.character?.id ?? "";
-  const out: Record<string, string> = { ...(pack.character?.activities ?? {}) };
+  const out: Record<string, string> = { ...(known ?? pack.character?.activities ?? {}) };
   for (const name of Object.keys(pack.activities)) out[name] = outfitName(pack.name, id);
   return out;
 }
 
+const ACTIVITY_HELP = ` If the user asks how to add their own activities, tell them it is explained in the documentation (${ACTIVITY_DOCS}).`;
+
 /** What she is told about activities while a pack is on (the animated ones are suggested first; any other activity still works, without an animation). */
-export function activityNote(pack: FramePack): string {
-  const animated = Object.entries(animatedActivities(pack));
+export function activityNote(pack: FramePack, known?: Record<string, string>): string {
+  const animated = Object.entries(animatedActivities(pack, known));
   const mine = pack.character ? outfitName(pack.name, pack.character.id) : "";
   const list = animated.map(([name, outfit]) => (outfit === mine || !pack.character ? name : `${name} (in the ${outfit} outfit)`)).join(", ");
   return (
@@ -427,22 +451,24 @@ export function activityNote(pack: FramePack): string {
     " Describe what you are doing in your own words while it lasts, and write [activity end] when the user says they are done or wants something else. The tag is invisible to the user." +
     (animated.length
       ? ` These have an animation, so prefer suggesting one of them when the conversation fits (for example the user wants to do something with water): ${list}.${pack.character ? " Starting one puts you into its outfit if you wear another; the user is asked first if that outfit is not on this computer." : ""} Any other activity works too, with a fitting emotion instead of an animation.`
-      : " None of them has an animation with these pictures: pick an emotion that fits instead.")
+      : " None of them has an animation with these pictures: pick an emotion that fits instead.") +
+    ACTIVITY_HELP
   );
 }
 
-/** What the drawn character is told about activities when her picture packs animate some: she can do any, and for those the app offers the pack. Empty when none is. */
-export function drawnActivityNote(who: PackCharacter | undefined): string {
-  const animated = Object.entries(who?.activities ?? {});
-  if (!who || !animated.length) return "";
+/** What the drawn character is told about activities when her picture packs animate some (`activities`: name to outfit): she can do any, and for those the app offers the pack. Empty when none is. */
+export function drawnActivityNote(activities: Record<string, string> | undefined): string {
+  const animated = Object.entries(activities ?? {});
+  if (!animated.length) return "";
   const list = animated.map(([name, outfit]) => `${name} (in the ${outfit} picture pack)`).join(", ");
   return (
     " You can do an activity with the user (cooking, a walk, swimming, anything that fits): write [activity <word>] in the very reply in which you start it, one lower-case word such as swimming. It starts at once when the user asks for one or agrees to your suggestion; write [activity end] when they are done. " +
-    `You have no animation for it while you are drawn, but your picture packs have one for ${list}: prefer suggesting those when the conversation fits, and the app then asks the user whether to switch to the pack.`
+    `You have no animation for it while you are drawn, but your picture packs have one for ${list}: prefer suggesting those when the conversation fits, and the app then asks the user whether to switch to the pack.` +
+    ACTIVITY_HELP
   );
 }
 
-export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? ""): string {
+export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string = pack.character?.name ?? "", activities?: Record<string, string>): string {
   // `name` is what she is called now: the character's own name, or the one the user gave her (which wins, see herName in server.ts).
   const who = pack.character ? `You are ${name}. ${pack.character.text} ` : "";
   const look = who || pack.look ? ` The pictures show you like this: ${who}${pack.look ?? ""} Describe yourself that way, not as the drawn character you were before. If a picture of you is attached, it is how you look now.` : "";
@@ -464,7 +490,7 @@ export function packNote(pack: FramePack, outfits: Outfit[] = [], name: string =
     gestureNote(pack) +
     " Your emotions and talking still drive which picture is shown." +
     wear +
-    activityNote(pack)
+    activityNote(pack, activities)
   );
 }
 

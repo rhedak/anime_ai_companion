@@ -25,7 +25,7 @@ The names say what each picture is. There is no manifest.
 | `neutral-talk1.png`, `neutral-talk2.png`, `neutral-talk3.png` | while she speaks, in a changing order together with the rest picture. 1 is the smallest mouth opening, a higher number opens wider |
 | `happy.png`, `happy-blink.png`, `happy-talk1.png` ... | the same for any other emotion |
 | `wave-1.png`, `wave-2.png`, `cheer-1.png`, `cheer-2.png` ... | optional: while she makes that gesture (`[gesture:wave]`, `[gesture:cheer]`) these alternate about three times a second for a couple of seconds, instead of her face. Make them from the picture she is most often in when she gestures (the happy one), keep her face as it is there and move only the arms. One picture is also fine; a gesture with no pictures does nothing |
-| `activity-swimming-1.webp`, `-2` ... | optional: an **activity** she does with the user (`[activity swimming]`, ended by `[activity end]`, the user's "End swimming" button, `/clear` or a restart). These loop about three times a second for as long as the activity lasts, instead of her face, and `activity-swimming-talk-1.webp`, `-2` ... (the same poses with her mouth open, the same number of frames) take over while she speaks, from the same step so nothing jumps; without a talking set the loop just goes on. The name is one lower-case word (`a-z`, digits, `_`). Make them in the outfit that suits the activity (the swimming frames are in the bikini pack): that is how the app knows which outfit goes with it. The frames carry their own scene (water around her, say) on the same transparent canvas as the other pictures |
+| `activity-swimming-1.webp`, `-2` ..., `activity-swimming-talk-1.webp` ... | optional: pictures that loop for as long as an **activity** lasts, instead of her face (see [Activities](#activities)) |
 
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
 `thinking`. Two optional text files describe where the pictures come from:
@@ -49,8 +49,6 @@ she does not blink in that emotion; missing talk pictures mean she only bobs whi
 JPEG work, each up to 8 MB. (SVG is refused on purpose: a picture the server hands out must not be able to
 run script.)
 
-**Activities.** Any activity works in chat (she describes it in her own words and picks a fitting emotion); the ones that have an animation are the ones a pack has `activity-<name>-N` pictures for. Her prompt lists those so she prefers suggesting them (the user wants something with water: swimming). A character file (`characters/<id>.txt`) can also say `activity: swimming = bikini` (one line per activity, the outfit's short name), so she knows about the animation of an outfit that is not on this computer yet; starting that activity puts her into the outfit (a download the user has not agreed to is asked first, and the activity runs without the loop until then). While she is drawn (no pack on) and the drawn character has a character file with such a line (Risa's does), she is told the same, and starting one asks, in a card, whether to switch to that outfit's pack (the download question follows if it is not on this computer); animations for the drawn body itself do not exist yet, so without a yes the activity just goes on. Activities are in memory only: a restart or `/clear` ends one. They are for chat mode: in work mode the tag is ignored, like `[remember …]`.
-
 A pack is a fixed set of pictures, so with one active:
 
 - `[avatar ...]` tags do nothing, and gestures (`wave`, `cheer`) do something only if the pack has pose pictures for them (above). She is told which;
@@ -60,6 +58,25 @@ A pack is a fixed set of pictures, so with one active:
 `/frames <name>` reads the folder again and tells you what it found, including pictures it did not
 understand and pictures whose size differs from `neutral.png` (they would jump when they swap). Reloading the
 page picks up pictures you replaced on disk.
+
+## Activities
+
+An **activity** is something she does with you for a while (swimming, cooking, a walk). She starts one with `[activity swimming]` when you ask for one or agree to her suggestion, and it lasts until she writes `[activity end]` (when you say you are done), you press **End swimming** under the picture, you start a new chat (`/clear`), or the app restarts. Activities are in memory only, and they are for chat mode: in work mode the tag is ignored, like `[remember …]`.
+
+Any activity works with no pictures at all: she describes it in her own words and shows a fitting emotion. **An activity has an animation when a pack has pictures for it**, and then it loops for as long as it lasts. Her prompt lists the animated ones, so she prefers suggesting them ("let's do something with water" can become swimming). Ask her "how do I add my own activities?" and she points here.
+
+**Adding your own**
+
+1. Make the pictures for the activity in the outfit that suits it (a swimming activity in the bikini, say). Use the same canvas size and framing as the pack's other pictures (a different size jumps when it swaps), and make the last picture lead back into the first, because the loop never stops until the activity ends. Two to four pictures are enough; they play about three times a second.
+2. Put them in that outfit's pack folder (`data/frames/<pack>/`) with these names: `activity-<name>-1.webp`, `activity-<name>-2.webp` ... The name is one lower-case word (`a-z`, digits, `_`), such as `cooking` or `stargazing`. PNG and JPEG work too, and a pack made for downloading uses lossless WebP.
+3. Optional: the same poses with her mouth open, `activity-<name>-talk-1.webp`, `-2` ... with the same number of pictures. They play while she speaks, from the same step as the silent loop, so nothing jumps. Without them the silent loop just goes on while she speaks. A talking picture should differ from its silent partner only around the mouth: in a downloadable pack it is then stored as a small patch of that picture.
+4. Run `/frames <pack>` (or reload the pack from Looks → Packs…), then ask her to do it.
+
+Which outfit goes with an activity is simply which pack holds its pictures. When she starts an activity whose pictures are in another outfit of the same character (`look.txt`'s `character:` line) that is on this computer, she changes into that outfit first, unless the same reply names another one. If the outfit is a download that is not on this computer yet, the page asks first (size and server), and the activity runs with no loop until you say yes. A pack of a character that has a character file can also say it in that file (`characters/<id>.txt`), one line per activity, `activity: swimming = bikini` (the outfit's short name, the folder name without the character in front): that is how she knows about an animation of an outfit you have not downloaded, and Risa's file says it for her swimming.
+
+While she is **drawn** (no pack on) and the drawn character is one that has a character file with such a line (Risa's does), she is told the same, and starting such an activity opens a card that asks whether to switch to that outfit's pack. Animations for the drawn body itself do not exist yet, so without a yes the activity just goes on.
+
+The limits are those of every pack: 8 MB per picture and 120 files per pack. Pictures a pack carries are served by the app only while it is on.
 
 ## The sample pack: Linnea
 
