@@ -272,7 +272,7 @@ test("a pack can carry its credit and its terms, and packs are found in the user
   }
 });
 
-test("the Risa (dress) pack that ships with the app is complete, with a wave and a cheer, and carries its credit", async () => {
+test("the Risa (dress) pack that ships with the app is complete, with a wave, a cheer and a dancing loop, and carries its credit", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const names = Object.keys(JSON.parse(await readFile(join(root, "emotions.json"), "utf8")));
   const r = await readPack(join(root, "packs"), "risa-dress", names);
@@ -282,7 +282,12 @@ test("the Risa (dress) pack that ships with the app is complete, with a wave and
     assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
   }
   assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4);
+  const core = [...r.pack.files.keys()].filter((f) => !f.startsWith("activity-"));
+  assert.equal(core.length, names.length * 5 + 4, "rest, blink and three mouths per emotion, plus the four gesture pictures");
+  const loop = [1, 2, 3, 4, 5, 6].map((n) => `activity-dancing-${n}.webp`);
+  const talk = [1, 2, 3, 4, 5, 6].map((n) => `activity-dancing-talk-${n}.webp`);
+  assert.deepEqual(r.pack.activities, { dancing: { loop, talk } }, "a 6-frame dancing loop and the same 6 poses talking");
+  assert.equal(r.pack.files.size, core.length + 12);
   assert.match(r.pack.credit ?? "", /original character/);
   assert.match(r.pack.terms ?? "", /MIT/);
   const notes = r.pack.notes.join("\n");
