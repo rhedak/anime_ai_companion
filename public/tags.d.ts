@@ -4,3 +4,5 @@ export const OUTFIT_TAG: RegExp;
 export function normalizeTags(text: string): string;
 export function findOutfitTags(text: string): string[];
 export function findAvatarTags(text: string): Record<string, string>[];
+export const ACTIVITY_TAG: RegExp;
+export function findActivityTags(text: string): (string | null)[];

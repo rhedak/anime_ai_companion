@@ -257,3 +257,60 @@ test("switching to another pack keeps what was on the stage until its first pict
     page.restore();
   }
 });
+
+test("an activity loops its pictures until it ends, and the talking set takes over from the same step while she speaks", () => {
+  const page = fakePage();
+  try {
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    const swimming = { loop: ["a1.png", "a2.png", "a3.png"], talk: ["t1.png", "t2.png", "t3.png"] };
+    avatar.usePack({ ...pack, activities: { swimming } });
+    page.frame(100);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    avatar.setActivity("diving"); // a pack with no pictures for it: she keeps her emotions
+    page.frame(200);
+    assert.deepEqual(page.visible(), ["n.png"]);
+    avatar.setActivity("swimming");
+    const start = performance.now() - performance.timeOrigin; // the loop counts from when the activity began
+    void start;
+    page.frame(300);
+    assert.deepEqual(page.visible(), ["a1.png"]);
+    page.frame(300 + 340);
+    assert.deepEqual(page.visible(), ["a2.png"]);
+    avatar.setTalking(true);
+    page.frame(300 + 345);
+    assert.deepEqual(page.visible(), ["t2.png"], "same step, mouth open: the arms do not jump");
+    page.frame(300 + 680);
+    assert.deepEqual(page.visible(), ["t3.png"]);
+    page.frame(300 + 1010); // and it wraps
+    assert.deepEqual(page.visible(), ["t1.png"]);
+    avatar.setTalking(false);
+    page.frame(300 + 1015);
+    assert.deepEqual(page.visible(), ["a1.png"]);
+    avatar.setActivity(null);
+    page.frame(300 + 1400);
+    assert.deepEqual(page.visible(), ["n.png"]);
+  } finally {
+    page.restore();
+  }
+});
+
+test("without a talking set the loop goes on while she speaks, and the activity survives a change of outfit", () => {
+  const page = fakePage();
+  try {
+    const avatar = createAvatar(page.host, () => {}, () => {});
+    avatar.usePack({ ...pack, activities: { swimming: { loop: ["a1.png", "a2.png"], talk: [] } } });
+    avatar.setActivity("swimming");
+    avatar.setTalking(true);
+    page.frame(100);
+    assert.deepEqual(page.visible().length, 1);
+    assert.match(page.visible()[0], /^a[12]\.png$/);
+    avatar.usePack({ ...pack, name: "q" }); // another outfit with no such pictures: the neutral face, the activity is still on
+    page.frame(200);
+    assert.deepEqual(page.visible().length, 1);
+    avatar.usePack({ ...pack, activities: { swimming: { loop: ["b1.png"], talk: [] } } });
+    page.frame(300);
+    assert.deepEqual(page.visible(), ["b1.png"]);
+  } finally {
+    page.restore();
+  }
+});

@@ -91,6 +91,7 @@ function parseReply(text) {
     .replace(/ *\[remember\][^\[]*$/i, "") // a [remember]… that is still being written
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
+    .replace(/ *\[activity\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };
@@ -1434,6 +1435,11 @@ function handle(msg) {
       announcedLook = msg.pack?.name ?? null;
       announcedCharacter = msg.pack?.character ?? null;
       break;
+    case "activity":
+      avatar.setActivity(msg.name);
+      $("activity-stop").hidden = !msg.name;
+      $("activity-stop").textContent = msg.name ? `End ${msg.name}` : "End activity";
+      break;
     case "frames":
       avatar.receiveFrames(msg);
       break;
@@ -2332,6 +2338,7 @@ $("zoom").addEventListener("click", () => {
   document.querySelector(".stage")?.classList.toggle("full-body", full);
   $("zoom").textContent = full ? "Close-up" : "Full body";
 });
+$("activity-stop").addEventListener("click", () => ws?.send(JSON.stringify({ type: "activity-end" })));
 $("reset-look").addEventListener("click", () => ws?.send(JSON.stringify({ type: "reset-look" })));
 
 connect();

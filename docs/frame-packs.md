@@ -25,6 +25,7 @@ The names say what each picture is. There is no manifest.
 | `neutral-talk1.png`, `neutral-talk2.png`, `neutral-talk3.png` | while she speaks, in a changing order together with the rest picture. 1 is the smallest mouth opening, a higher number opens wider |
 | `happy.png`, `happy-blink.png`, `happy-talk1.png` ... | the same for any other emotion |
 | `wave-1.png`, `wave-2.png`, `cheer-1.png`, `cheer-2.png` ... | optional: while she makes that gesture (`[gesture:wave]`, `[gesture:cheer]`) these alternate about three times a second for a couple of seconds, instead of her face. Make them from the picture she is most often in when she gestures (the happy one), keep her face as it is there and move only the arms. One picture is also fine; a gesture with no pictures does nothing |
+| `activity-swimming-1.webp`, `-2` ... | optional: an **activity** she does with the user (`[activity swimming]`, ended by `[activity end]`, the user's "End swimming" button, `/clear` or a restart). These loop about three times a second for as long as the activity lasts, instead of her face, and `activity-swimming-talk-1.webp`, `-2` ... (the same poses with her mouth open, the same number of frames) take over while she speaks, from the same step so nothing jumps; without a talking set the loop just goes on. The name is one lower-case word (`a-z`, digits, `_`). Make them in the outfit that suits the activity (the swimming frames are in the bikini pack): that is how the app knows which outfit goes with it. The frames carry their own scene (water around her, say) on the same transparent canvas as the other pictures |
 
 The emotions are the keys of `emotions.json`: `neutral`, `happy`, `sad`, `angry`, `surprised`, `shy`,
 `thinking`. Two optional text files describe where the pictures come from:
@@ -47,6 +48,8 @@ When she shows an emotion the pack has no picture for, she shows `neutral`. A mi
 she does not blink in that emotion; missing talk pictures mean she only bobs while she speaks. PNG, WebP and
 JPEG work, each up to 8 MB. (SVG is refused on purpose: a picture the server hands out must not be able to
 run script.)
+
+**Activities.** Any activity works in chat (she describes it in her own words and picks a fitting emotion); the ones that have an animation are the ones a pack has `activity-<name>-N` pictures for. Her prompt lists those so she prefers suggesting them (the user wants something with water: swimming). A character file (`characters/<id>.txt`) can also say `activity: swimming = bikini` (one line per activity, the outfit's short name), so she knows about the animation of an outfit that is not on this computer yet; starting that activity puts her into the outfit (a download the user has not agreed to is asked first, and the activity runs without the loop until then). Activities are in memory only: a restart or `/clear` ends one. They are for chat mode: in work mode the tag is ignored, like `[remember …]`.
 
 A pack is a fixed set of pictures, so with one active:
 

@@ -14,11 +14,12 @@ export function createAvatar(
   onError?: (error: unknown) => void,
 ): {
   /** Show a user's picture pack, or the drawn avatar again for null. */
-  usePack(info: { name: string; emotions: Record<string, PackEmotionInfo>; gestures?: Record<string, string[]> } | null): void;
+  usePack(info: { name: string; emotions: Record<string, PackEmotionInfo>; gestures?: Record<string, string[]>; activities?: Record<string, { loop: string[]; talk: string[] }> } | null): void;
   readonly packed: boolean;
   setVersion(version: number): void;
   setEmotion(name: string): void;
   setTalking(on: boolean): void;
+  setActivity(name: string | null): void;
   setFull(on: boolean): void;
   gesture(name: string, ms?: number): void;
   blink(ms?: number): void;

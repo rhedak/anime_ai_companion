@@ -1,3 +1,4 @@
 Risa
 A 21-year-old adult woman with a small, slight build. Soft round face, shy and gentle manner, fair skin, very long straight dark red hair with blunt bangs, and large green eyes.
 default: risa-dress
+activity: swimming = bikini

@@ -7,7 +7,7 @@ import { createDemo } from "../public/demo.js";
 const emotions = ["neutral", "happy", "sad", "thinking"];
 const gestures = ["wave", "cheer"];
 
-const packOf = (emotionPictures: FramePack["emotions"], poses: FramePack["gestures"] = {}): FramePack => ({ name: "p", emotions: emotionPictures, gestures: poses, files: new Map(), notes: [] });
+const packOf = (emotionPictures: FramePack["emotions"], poses: FramePack["gestures"] = {}): FramePack => ({ name: "p", emotions: emotionPictures, gestures: poses, activities: {}, files: new Map(), notes: [] });
 
 test("the drawn avatar shows every emotion, a blink, talking and each gesture, in that order", () => {
   const m = demoMessage(emotions, gestures, null);

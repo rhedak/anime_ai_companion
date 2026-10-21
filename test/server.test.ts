@@ -164,6 +164,63 @@ describe("chatting", { skip }, () => {
     await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
   });
 
+  test("an activity she starts with [activity word] is shown to the page and told to her; it ends with [activity end], the stop button, /clear, and is for chat mode only", async () => {
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(join(frames, "characters"), { recursive: true });
+    writeFileSync(join(frames, "characters", "ann.txt"), "Ann\nA tall young woman with short red hair.\nactivity: swimming = swim\n");
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    for (const [pack, wear] of [["ann-coat", "You wear a coat."], ["ann-swim", "You wear a swimsuit."]]) {
+      mkdirSync(join(frames, pack), { recursive: true });
+      writeFileSync(join(frames, pack, "neutral.png"), tiny);
+      writeFileSync(join(frames, pack, "look.txt"), `character: ann\n${wear}\n`);
+    }
+    writeFileSync(join(frames, "ann-swim", "activity-swimming-1.png"), tiny);
+    writeFileSync(join(frames, "ann-swim", "activity-swimming-talk-1.png"), tiny);
+    const c = await server.client();
+    await c.next("history");
+    assert.equal((await c.next("activity")).name, null, "a page that connects is told there is none");
+    c.send({ type: "user", text: "/frames ann-coat" });
+    await c.next((e) => e.type === "notice" && /Showing the pack "ann-coat"/.test(e.text), 8000);
+    await ask(c, "hello");
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /\[activity <word>\]/);
+    assert.match(told.text!, /prefer suggesting one of them.*swimming/, "she is told which activities have an animation");
+
+    // she starts one: the page is told, the outfit that goes with it is put on, and she is told she is doing it
+    const from = c.mark;
+    await ask(c, "please ACTIVITY swimming");
+    assert.equal((await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, from)).name, "swimming");
+    const packMsg = await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+    assert.deepEqual(Object.keys(packMsg.pack.activities), ["swimming"]);
+    await ask(c, "how is the water?");
+    const doing = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(doing.text!, /You are doing "swimming" with the user now/);
+    assert.match(doing.text!, /animation keeps looping/);
+
+    // the stop button ends it, and she is told
+    const stopped = c.mark;
+    c.send({ type: "activity-end" });
+    assert.equal((await c.next((e) => e.type === "activity", 8000, stopped)).name, null);
+    await ask(c, "thanks");
+    const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(after.text!, /The user ended the activity "swimming"/);
+
+    // /clear ends one too, and work mode does not take the tag at all
+    await ask(c, "please ACTIVITY walking");
+    await c.next((e) => e.type === "activity" && e.name === "walking", 8000);
+    c.send({ type: "reset" });
+    await c.next((e) => e.type === "activity" && e.name === null, 8000);
+    const work = c.mark;
+    c.send({ type: "mode", mode: "work", projectDir: server.project });
+    await c.next((e) => e.type === "mode" && e.mode === "work", 8000, work);
+    await ask(c, "please ACTIVITY cooking");
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(c.events.slice(work).some((e: any) => e.type === "activity" && e.name), false, "a file she reads in work mode cannot start one");
+    c.send({ type: "mode", mode: "chat" });
+    c.send({ type: "user", text: "/frames off" });
+    await c.next((e) => e.type === "notice" && /drawn avatar/.test(e.text), 8000);
+  });
+
   test("the page names its icon, and the server serves it as a PNG (no 404 for a favicon)", async () => {
     const html = await (await fetch(`http://127.0.0.1:${server.port}/`)).text();
     assert.match(html, /rel="icon"[^>]*href="favicon\.png"/);

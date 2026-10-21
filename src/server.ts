@@ -25,7 +25,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
 import { randomUUID } from "node:crypto";
-import { gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
+import { animatedActivities, gestureNote, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
@@ -790,6 +790,8 @@ async function choosePack(name: string | null, say: Say): Promise<void> {
  * name any other pack. An outfit that is on this computer is shown at once; one that is not raises the same question the gallery asks (size and host),
  * and nothing is fetched until the user says yes, after which it is shown.
  */
+let outfitAsked: { pack: string; at: number } | null = null;
+
 async function wearOutfit(wanted: string): Promise<void> {
   if (!activePack?.character) return notes.push("You have no other outfits: [outfit …] changes nothing.");
   const outfits = await outfitsOfActiveCharacter();
@@ -802,10 +804,46 @@ async function wearOutfit(wanted: string): Promise<void> {
     if (activePack?.name !== choice.pack) notes.push(`You could not change into ${choice.name}.`);
     return;
   }
+  // The same reply can ask twice (the activity's outfit and her own tag): one question is enough.
+  if (outfitAsked?.pack === choice.pack && Date.now() - outfitAsked.at < 60_000) return;
+  outfitAsked = { pack: choice.pack, at: Date.now() };
   const entry = await packInstaller.find(choice.pack);
   if (!entry) return notes.push(`${choice.name} is not available right now (the pack list could not be reached), so you stay in ${outfitName(activePack.name, activePack.character.id)}.`);
   broadcast(packOffer(entry));
   notes.push(`${choice.name} is not on this computer yet. The user was asked whether to download it (${formatMegabytes(entry.sizes.archiveBytes)}); you stay in your current outfit until they agree, and then you wear it.`);
+}
+
+// --- activities: what she is doing with the user (`[activity swimming]`); in memory only, so a restart or /clear ends it ---
+let activity: string | null = null;
+const activityMessage = () => ({ type: "activity", name: activity });
+
+/** She started an activity (or, with null, ended it). The outfit that goes with it is put on unless she named another one in the same reply. */
+function setActivity(name: string | null, outfitChosen: boolean): void {
+  if (name === activity) return;
+  activity = name;
+  broadcast(activityMessage());
+  if (!name) return;
+  const outfit = (activePack ? animatedActivities(activePack) : {})[name];
+  // Worked out when the message goes out: by then the outfit that goes with it is on (or the user said no), and whether the animation plays is known.
+  notes.pushLazy(() => {
+    const playing = Boolean(activePack?.activities[name]);
+    return (
+      `You are doing "${name}" with the user now (the tag is invisible to them). ` +
+      (playing ? "Its animation keeps looping until the activity ends. " : "No animation plays for it with the pictures you wear now: use emotions that fit. ") +
+      "Write [activity end] when the user is done; they can also end it with the stop button."
+    );
+  });
+  if (outfit && !outfitChosen && activePack?.character && outfit !== outfitName(activePack.name, activePack.character.id)) {
+    void wearOutfit(outfit).catch((err) => console.error("outfit change failed:", err));
+  }
+}
+
+function endActivityByUser(): void {
+  if (!activity) return;
+  const was = activity;
+  activity = null;
+  broadcast(activityMessage());
+  notes.push(`The user ended the activity "${was}".`);
 }
 
 /**
@@ -1339,8 +1377,10 @@ function resetConversation(): void {
   transcript.clear();
   persistTranscript();
   renewNotes();
+  activity = null;
   pendingPermissions.clear();
   broadcast({ type: "reset" });
+  broadcast(activityMessage());
   broadcast(modeInfo());
   cards.greet();
   greetBasic();
@@ -1362,6 +1402,8 @@ const turns = createTurnService({
   transcript,
   activePack: () => activePack,
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
+  activity: setActivity,
+  chatMode: () => mode === "chat",
   takeLookPicture: () => {
     const picture = lookPictureDue && lookPicture ? lookPicture : null;
     lookPictureDue = false;
@@ -1417,6 +1459,7 @@ wss.on("connection", (ws) => {
     .then(async () => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
+      ws.send(JSON.stringify(activityMessage()));
       ws.send(JSON.stringify(await packsMessage()));
       // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
       if (settings.framePack && !activePack) {
@@ -1631,6 +1674,8 @@ wss.on("connection", (ws) => {
       if (failed) return say(failed);
       const links = phoneLinks(port, lanToken);
       ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+    } else if (msg.type === "activity-end") {
+      endActivityByUser(); // ending is harmless, so a phone may do it too
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "pack-catalog") {
