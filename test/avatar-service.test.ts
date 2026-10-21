@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -262,4 +262,120 @@ test("close() ends the renderer thread, and a call after it starts a fresh one",
   s.version++; // not the cached frames
   assert.equal((await s.frames("neutral"))[0], first);
   s.close();
+});
+
+/** The state file a look has after a creator update redrew its preset: `changed` is what an older creator's preset looked like (here, one field different). */
+async function oldState(state: Record<string, unknown>) {
+  const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
+  const probe = new AvatarService({ creatorSrc, statePath: join(dir, "x.json"), looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "risa" });
+  await probe.start();
+  const fresh = JSON.parse(readFileSync(join(dir, "x.json"), "utf8")).character as Record<string, any>;
+  probe.close();
+  const older = { ...fresh, hair_length: 0.716, hairstyle: "long_fringed" };
+  await writeFile(join(dir, "avatar.json"), JSON.stringify({ character: older, base: "risa", ...state }));
+  const make = () => new AvatarService({ creatorSrc, statePath: join(dir, "avatar.json"), looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "risa" });
+  return { dir, fresh, older, make, saved: () => JSON.parse(readFileSync(join(dir, "avatar.json"), "utf8")) };
+}
+
+test("a look that is still exactly its preset is redrawn when the creator's preset has changed; the state records what the preset was", { skip }, async () => {
+  const t = await oldState({ baseHash: "an older creator's preset", pristine: true });
+  const s = t.make();
+  await s.start();
+  try {
+    assert.equal(s.refreshed, "risa");
+    assert.equal(s.refreshOffer, null);
+    assert.deepEqual((s as any).character, t.fresh, "the new drawing is on");
+    assert.equal(t.saved().pristine, true);
+    assert.notEqual(t.saved().baseHash, "an older creator's preset");
+  } finally {
+    s.close();
+  }
+  const again = t.make();
+  await again.start();
+  try {
+    assert.equal(again.refreshed, null, "nothing to refresh the second time");
+  } finally {
+    again.close();
+  }
+});
+
+test("a look the user changed is left alone when the creator's preset changes", { skip }, async () => {
+  const t = await oldState({ baseHash: "an older creator's preset", pristine: false });
+  const s = t.make();
+  await s.start();
+  try {
+    assert.equal(s.refreshed, null);
+    assert.equal(s.refreshOffer, null);
+    assert.deepEqual((s as any).character, t.older);
+  } finally {
+    s.close();
+  }
+});
+
+test("a look saved before presets were tracked is not touched but asks once: Keep is remembered, Reload can be undone", { skip }, async () => {
+  const t = await oldState({});
+  let s = t.make();
+  await s.start();
+  try {
+    assert.equal(s.refreshOffer?.preset, "risa");
+    assert.deepEqual((s as any).character, t.older, "nothing changes before the answer");
+    assert.equal(await s.answerRefresh(false), false);
+    assert.equal(s.refreshOffer, null);
+    assert.deepEqual((s as any).character, t.older);
+  } finally {
+    s.close();
+  }
+  s = t.make();
+  await s.start();
+  try {
+    assert.equal(s.refreshOffer, null, "kept: not asked again");
+    assert.deepEqual((s as any).character, t.older);
+  } finally {
+    s.close();
+  }
+  const u = await oldState({});
+  const r = u.make();
+  await r.start();
+  try {
+    assert.equal(await r.answerRefresh(true), true);
+    assert.deepEqual((r as any).character, u.fresh);
+    assert.equal(r.version > 0, true);
+    assert.equal(await r.undo(), true, "the look before comes back");
+    assert.deepEqual((r as any).character, u.older);
+  } finally {
+    r.close();
+  }
+});
+
+test("a look that already is the creator's current preset is only marked, and a change makes it no longer untouched", { skip }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aic-avatar-"));
+  const statePath = join(dir, "avatar.json");
+  const make = () => new AvatarService({ creatorSrc, statePath, looksDir: join(dir, "looks"), emotions: { neutral: {} }, defaultPreset: "risa" });
+  let s = make();
+  await s.start();
+  try {
+    const first = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(first.pristine, true);
+    assert.match(first.baseHash, /^[0-9a-f]{64}$/);
+    await s.applyPatch({ hair_color: "#123456" });
+    const tweaked = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(tweaked.pristine, false);
+    assert.equal(tweaked.baseHash, first.baseHash, "the preset it came from is still the same one");
+    await s.applyPatch({ base: "gero" });
+    assert.equal(JSON.parse(readFileSync(statePath, "utf8")).pristine, true, "a whole preset is untouched again");
+    await s.applyPatch({ base: "risa", hair_color: "#123456" });
+    const mixed = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(mixed.pristine, false);
+    assert.equal(mixed.baseHash, first.baseHash);
+  } finally {
+    s.close();
+  }
+  s = make();
+  await s.start();
+  try {
+    assert.equal(s.refreshed, null);
+    assert.equal(s.refreshOffer, null);
+  } finally {
+    s.close();
+  }
 });

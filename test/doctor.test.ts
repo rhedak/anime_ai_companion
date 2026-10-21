@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkAll, formatDoctor, type Probe } from "../src/doctor.ts";
+import { OPENCODE_PIN, opencodeAsset, opencodeFolder } from "../src/install-opencode.ts";
 
 /** The tests name paths the POSIX way; on Windows the code under test builds them with backslashes and a drive letter, so a path is read back in the POSIX form. */
 const posix = (path: string): string => path.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/");
@@ -115,4 +116,58 @@ test("a checkout of the creator that is not at the pinned release is a warning w
   const exact = await checkAll(machine({ programs: { "claude --version": "2", "git --version": "git version 2.45", [git]: "v0.2.2" } }));
   assert.ok(exact.some((l) => l.level === "ok" && /the checkout next to this repo/.test(l.text)));
   assert.ok(!exact.some((l) => /not the release/.test(l.text)));
+});
+
+const noAsset = opencodeAsset() === null && "there is no pinned opencode build for this platform";
+
+test("opencode: the app's own pinned copy is the one used, and another one on the PATH is named as not used", { skip: noAsset }, async () => {
+  const asset = opencodeAsset()!;
+  const own = `${opencodeFolder("/repo/data")}/${asset.program}`;
+  const ownRun = posixLine(own);
+  const lines = await checkAll(machine({ files: [posix(own)], programs: { "claude --version": "2", "git --version": "git 2", [`${ownRun} --version`]: "1.19.3", "opencode --version": "0.9.9" } }));
+  const line = lines.find((l) => /^opencode:/.test(l.text))!;
+  assert.equal(line.level, "ok");
+  assert.match(line.text, new RegExp(`the app's own copy is used \\(1\\.19\\.3\\), the pinned version ${OPENCODE_PIN.version.replace(/\./g, "\\.")}`));
+  assert.match(line.text, /another opencode on the PATH \(0\.9\.9\) is not used/);
+});
+
+test("opencode: one found only on the PATH is named as not the pinned version, with the way to get that one; none at all says how too", { skip: noAsset }, async () => {
+  const onPath = await checkAll(machine({ programs: { "claude --version": "2", "git --version": "git 2", "opencode --version": "0.9.9" } }));
+  const found = onPath.find((l) => /^opencode:/.test(l.text))!;
+  assert.equal(found.level, "ok");
+  assert.match(found.text, /0\.9\.9, found on the PATH/);
+  assert.match(found.hint!, /\/install-opencode/);
+  assert.ok(found.hint!.includes(OPENCODE_PIN.version));
+  const none = (await checkAll(machine())).find((l) => /^opencode:/.test(l.text))!;
+  assert.equal(none.level, "warn");
+  assert.match(none.hint!, /\/install-opencode/);
+  assert.match(none.hint!, new RegExp(OPENCODE_PIN.version.replace(/\./g, "\\.")));
+  assert.match(none.hint!, /github\.com\/anomalyco\/opencode\/releases\/download/, "and the file to fetch by hand");
+});
+
+test("opencode: OPENCODE_BIN wins over the app's own copy, and the doctor says so", async () => {
+  const lines = await checkAll(machine({ env: { OPENCODE_BIN: "/mine/opencode" }, programs: { "claude --version": "2", "git --version": "git 2", "/mine/opencode --version": "3.0.0" } }));
+  const line = lines.find((l) => /^opencode:/.test(l.text))!;
+  assert.equal(line.level, "ok");
+  assert.match(line.text, /OPENCODE_BIN \(\/mine\/opencode\) is used, 3\.0\.0; it wins over the app's own copy/);
+  const dead = (await checkAll(machine({ env: { OPENCODE_BIN: "/mine/opencode" } }))).find((l) => /^opencode:/.test(l.text))!;
+  assert.equal(dead.level, "warn");
+  assert.match(dead.text, /does not answer/);
+});
+
+test("inside the app: the port is its own (not tested), her data folder is named, and a program may answer later", async () => {
+  let portAsked = false;
+  const lines = await checkAll(
+    machine({
+      app: true,
+      env: { ANAICO_DATA: "/appdata/data" },
+      files: ["/appdata/data"],
+      portFree: async () => ((portAsked = true), false),
+      run: async (command, args) => (command === "claude" ? "2.1.296 (Claude Code)" : command === "git" ? "git 2" : args.length ? null : null),
+    }),
+  );
+  assert.equal(portAsked, false, "the app's own server holds the port, so asking would always say in use");
+  assert.ok(lines.some((l) => l.level === "ok" && /Running on port 3737/.test(l.text)));
+  assert.ok(lines.some((l) => l.level === "ok" && /Her data folder is writable \(\/appdata\/data/.test(posixLine(l.text))));
+  assert.ok(lines.some((l) => /Claude Code 2\.1\.296/.test(l.text)), "an answer that arrives as a promise is awaited");
 });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -34,6 +35,8 @@ interface Schema {
   outfit: Record<string, { type: string }>;
 }
 
+const hashOf = (character: Character): string => createHash("sha256").update(JSON.stringify(character)).digest("hex");
+
 /** Owns the renderer thread (the creator's TypeScript, run by src/render-worker.ts), the current character and its rendered frames. */
 export class AvatarService {
   character: Character = {};
@@ -47,7 +50,17 @@ export class AvatarService {
   private pending = new Map<number, { worker: Worker; resolve: (v: any) => void; reject: (e: Error) => void }>();
   private frameCache = new Map<string, string[]>();
   /** Earlier looks, newest last, so a redesign can be undone. */
-  private history: { character: Character; base: string | null }[] = [];
+  private history: { character: Character; base: string | null; baseHash: string | null; pristine: boolean }[] = [];
+  /**
+   * Hash of what the creator's preset `basePreset` was when this look came from it, and whether the look is still exactly that preset (no change since). A creator update
+   * that redraws the preset is then noticed: an untouched look is refreshed, any other is left as the user made it. Null for a look saved before this was kept.
+   */
+  private baseHash: string | null = null;
+  private pristine = false;
+  /** Set at start when the saved look came before presets were tracked and the creator's preset is not that look: the page asks once whether to reload it. */
+  refreshOffer: { preset: string; hash: string } | null = null;
+  /** Set at start when an untouched preset look was redrawn because the creator's preset changed (the preset's name); the server tells her and the user once. */
+  refreshed: string | null = null;
   /** The built-in character the look started from (a tweak keeps it), or null: a saved look, or one from before this was kept. */
   basePreset: string | null = null;
   lookNames: string[] = [];
@@ -63,11 +76,61 @@ export class AvatarService {
       const state = JSON.parse(await readFile(this.opts.statePath, "utf8"));
       this.character = state.character;
       this.basePreset = typeof state.base === "string" ? state.base : null;
+      this.baseHash = typeof state.baseHash === "string" ? state.baseHash : null;
+      this.pristine = state.pristine === true;
+      await this.checkPreset(Boolean(state.baseHash)).catch(() => {}); // a failed comparison must not cost the saved look
     } catch {
       this.character = (await this.call("base", { name: this.opts.defaultPreset })).character;
       this.basePreset = this.opts.defaultPreset;
+      this.baseHash = hashOf(this.character);
+      this.pristine = true;
+      await this.persist(); // so the preset it came from is known when the creator changes
     }
     await this.listLooks();
+  }
+
+  /**
+   * The saved look is a whole character, so a creator update that redraws the preset it came from changed nothing on screen. Compare it with the preset as the creator draws it now:
+   * the same look is only marked; an untouched one is redrawn; one the user changed is kept; one saved before this was tracked cannot be told apart, so the page is to ask.
+   */
+  private async checkPreset(tracked: boolean): Promise<void> {
+    const preset = this.basePreset;
+    if (!preset || !this.presetNames.includes(preset)) return;
+    const fresh = (await this.call("base", { name: preset })).character as Character;
+    const hash = hashOf(fresh);
+    if (hashOf(this.character) === hash) {
+      this.baseHash = hash;
+      this.pristine = true;
+      return this.persist();
+    }
+    if (this.baseHash === hash) return; // the preset is unchanged: the look is the user's own
+    if (!tracked) {
+      this.refreshOffer = { preset, hash };
+      return;
+    }
+    if (this.pristine) {
+      this.character = fresh;
+      this.baseHash = hash;
+      this.refreshed = preset;
+      this.version++;
+      return this.persist();
+    }
+  }
+
+  /** The answer to the card: reload the preset (the look before can be undone), or keep the look as it is (and do not ask again). */
+  async answerRefresh(yes: boolean): Promise<boolean> {
+    await this.settled();
+    const offer = this.refreshOffer;
+    if (!offer) return false;
+    this.refreshOffer = null;
+    if (yes) {
+      await this.adopt((await this.call("base", { name: offer.preset })).character, offer.preset);
+      return true;
+    }
+    this.baseHash = offer.hash;
+    this.pristine = false;
+    await this.persist();
+    return false;
   }
 
   get canUndo(): boolean {
@@ -75,19 +138,35 @@ export class AvatarService {
   }
 
   /** Replace the current look, remembering the old one for undo. */
-  private async adopt(character: Character, base: string | null | undefined = undefined): Promise<void> {
-    this.history.push({ character: this.character, base: this.basePreset });
+  private async adopt(character: Character, base: string | null | undefined = undefined, kind: "preset" | "changed" = base === undefined || base === null ? "changed" : "preset"): Promise<void> {
+    this.history.push({ character: this.character, base: this.basePreset, baseHash: this.baseHash, pristine: this.pristine });
     if (this.history.length > 20) this.history.shift();
     this.character = character;
     if (base !== undefined) this.basePreset = base; // undefined: a tweak, the base stays
+    if (kind === "preset") {
+      this.baseHash = hashOf(character);
+      this.pristine = true;
+    } else {
+      this.pristine = false;
+      if (base === null) this.baseHash = null; // a saved look
+      else if (typeof base === "string") this.baseHash = await this.presetHash(base); // a preset with changes made in the same tag
+    }
     this.version++;
     this.frameCache.clear();
     await this.persist();
   }
 
+  private async presetHash(name: string): Promise<string | null> {
+    try {
+      return hashOf((await this.call("base", { name })).character);
+    } catch {
+      return null;
+    }
+  }
+
   private async persist(): Promise<void> {
     await mkdir(dirname(this.opts.statePath), { recursive: true });
-    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character, base: this.basePreset }, null, 2));
+    await writeFile(this.opts.statePath, JSON.stringify({ character: this.character, base: this.basePreset, baseHash: this.baseHash, pristine: this.pristine }, null, 2));
   }
 
   /** Go back to the look before the last change. */
@@ -97,6 +176,8 @@ export class AvatarService {
       if (!previous) return false;
       this.character = previous.character;
       this.basePreset = previous.base;
+      this.baseHash = previous.baseHash;
+      this.pristine = previous.pristine;
       this.version++;
       this.frameCache.clear();
       await this.persist();
@@ -219,7 +300,8 @@ export class AvatarService {
       if (applied.length > 0) {
         const based = applied.find((a) => a.startsWith("base="));
         const loaded = loadedName ? null : undefined; // a saved look is not a preset
-        await this.adopt(res.character, based ? based.slice("base=".length) : loaded);
+        const others = applied.filter((a) => !a.startsWith("base=")).length > 0 || Boolean(loadedName);
+        await this.adopt(res.character, based ? based.slice("base=".length) : loaded, based && !others ? "preset" : "changed");
       }
       return { applied, rejected: [...rejected, ...res.rejected] } as PatchResult;
     });

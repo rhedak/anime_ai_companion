@@ -213,7 +213,8 @@ export class OpenCodeProvider implements Provider {
 
   /** Everything about the launch that must match, or the process is restarted (config, mode, folder). */
   private launchKey(): string {
-    return `${this.cwd()}\n${opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools)}`;
+    // The program is part of it: installing the app's own copy while another opencode is running restarts her on the installed one.
+    return `${brainProgram("opencode") ?? "opencode"}\n${this.cwd()}\n${opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools)}`;
   }
 
   /**

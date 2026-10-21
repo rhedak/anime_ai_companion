@@ -23,7 +23,8 @@ import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
 import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
-import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, opencodeAsset, opencodeFolder } from "./install-opencode.ts";
+import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, managedOpencode, opencodeAsset, opencodeFolder, opencodeUrl } from "./install-opencode.ts";
+import { checkAll, formatDoctor, realProbe } from "./doctor.ts";
 import { randomUUID } from "node:crypto";
 import { animatedActivities, drawnActivityNote, gestureNote, packActivities, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
@@ -77,6 +78,11 @@ const avatar = new AvatarService({
   defaultPreset: process.env.COMPANION_PRESET ?? "risa",
 });
 await avatar.start();
+/** Said once to the first page that connects: an untouched preset look was redrawn because the creator's preset changed. */
+let lookRefreshedNotice: string | null = avatar.refreshed ? `The creator was updated, so ${herName0(avatar.refreshed)}'s drawn look was refreshed to its new version.` : null;
+function herName0(preset: string): string {
+  return preset.charAt(0).toUpperCase() + preset.slice(1);
+}
 
 const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
@@ -553,6 +559,7 @@ function renewNotes(): void {
 // A pack was chosen in an earlier run: read her outfits (the pack list included, for at most a moment) so her first message already tells her about them.
 await Promise.race([refreshOutfits().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 1500))]);
 renewNotes();
+if (avatar.refreshed) notes.push(`The creator was updated and your drawn look was redrawn from its new '${avatar.refreshed}' preset: you look a little different now.`);
 
 /** How many problems the page may report to the log per minute. */
 const pageErrorLimit = perMinute();
@@ -1100,6 +1107,31 @@ const slashCommands: Record<
           `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
       ),
   },
+  doctor: {
+    help: "check what the app needs (Node, the character creator, the brains, opencode, her data folder) and say what is missing; it only looks, nothing is changed",
+    run: async ({ say, remote }) => {
+      if (remote) return say(remoteRefusal); // it names folders and programs on this computer
+      say("Looking at what the app needs… (nothing is changed)");
+      try {
+        say(formatDoctor(await checkAll(realProbe(root, port, true))));
+      } catch (err) {
+        say(`The check could not finish: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  },
+  "install-opencode": {
+    help: "install the opencode this app was made for (a fixed version, checked against a known checksum) into the app's own folder; it asks first, is used instead of any other opencode, and leaves yours alone",
+    run: ({ say, reply, remote }) => {
+      if (remote) return say(remoteRefusal); // it fetches and runs a program
+      const asset = opencodeAsset();
+      if (!asset) return say(`There is no pinned opencode download for this computer (${process.platform} ${process.arch}). Install opencode from https://opencode.ai, or set OPENCODE_BIN to its program.`);
+      if (process.env.OPENCODE_BIN) return say(`OPENCODE_BIN (${process.env.OPENCODE_BIN}) is set, and it wins over a copy the app installs, so installing one would change nothing. Unset OPENCODE_BIN to use the app's own copy.`);
+      const have = managedOpencode();
+      if (have) return say(`The app's own opencode ${OPENCODE_PIN.version} is already installed (${have}) and is the one she uses; any other opencode on this computer is ignored. To fetch it again, delete the folder ${opencodeFolder()} and run /install-opencode.`);
+      reply(opencodeOffer(true) as Record<string, unknown>);
+      say(`The page asks whether to install opencode ${OPENCODE_PIN.version} for the app only (${Math.round(asset.bytes / 1048576)} MB from github.com, into ${opencodeFolder()}). Nothing is fetched until you say yes. By hand: ${opencodeUrl(asset)}, unpacked into that folder.`);
+    },
+  },
   frames: {
     help: "show her with pictures instead of the drawn avatar: /frames lists the packs, /frames <name> uses one (when the pack list has it and it is not installed, the page asks first, with the size, before downloading it), /frames off goes back",
     run: async ({ args, say }) => {
@@ -1196,10 +1228,12 @@ void cleanInstallLeftovers(); // a scratch folder from an install that was cut s
  * The question shown before anything is fetched, saying who is contacted, how much and where it goes. Null when opencode is already there, or when
  * there is no pinned build for this machine (then the page falls back to saying how to install it by hand).
  */
-function opencodeOffer(): Record<string, unknown> | null {
+function opencodeOffer(force = false): Record<string, unknown> | null {
   const asset = opencodeAsset();
   // OPENCODE_BIN is the user's own choice and wins over a copy we install, so installing one would not make it start: no offer then.
-  if (!asset || process.env.OPENCODE_BIN || isInstalled(brainProgram("opencode") ?? "opencode")) return null;
+  if (!asset || process.env.OPENCODE_BIN || managedOpencode()) return null;
+  // Another opencode on the PATH is enough for the automatic offers (nothing is missing), but `/install-opencode` asks for the pinned one all the same: the app's own copy is then used instead.
+  if (!force && isInstalled("opencode")) return null;
   return {
     type: "install-offer",
     brain: "opencode",
@@ -1207,6 +1241,7 @@ function opencodeOffer(): Record<string, unknown> | null {
     host: "github.com",
     megabytes: Math.round(asset.bytes / 1048576),
     folder: opencodeFolder(),
+    others: isInstalled("opencode"), // another opencode is on this computer: the card says the app's own copy is used instead and the other stays untouched
   };
 }
 
@@ -1497,6 +1532,11 @@ wss.on("connection", (ws) => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(packMessage()));
       ws.send(JSON.stringify(activityMessage()));
+      if (lookRefreshedNotice) {
+        ws.send(JSON.stringify({ type: "notice", text: lookRefreshedNotice }));
+        lookRefreshedNotice = null;
+      }
+      if (avatar.refreshOffer) ws.send(JSON.stringify({ type: "look-refresh-offer", preset: avatar.refreshOffer.preset, name: herName0(avatar.refreshOffer.preset) }));
       ws.send(JSON.stringify(await packsMessage()));
       // The pack she was last shown with is not on this computer (it is downloaded on demand now): ask, rather than silently showing the drawn avatar.
       if (settings.framePack && !activePack) {
@@ -1711,6 +1751,15 @@ wss.on("connection", (ws) => {
       if (failed) return say(failed);
       const links = phoneLinks(port, lanToken);
       ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+    } else if (msg.type === "look-refresh-answer") {
+      const preset = avatar.refreshOffer?.preset;
+      if (preset && (await avatar.answerRefresh(msg.yes === true))) {
+        if (settings.framePack) await choosePack(null, () => {}); // a drawn look was chosen: show it
+        transcript.look([`base=${preset}`]);
+        notes.push(`The creator was updated and the user reloaded your drawn look from the '${preset}' preset.`);
+        broadcast({ type: "avatar", version: avatar.version, applied: [`base=${preset}`] });
+      }
+      broadcast(looksInfo());
     } else if (msg.type === "activity-end") {
       endActivityByUser(); // ending is harmless, so a phone may do it too
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
