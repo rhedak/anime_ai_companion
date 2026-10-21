@@ -46,6 +46,34 @@ by hand. This one shows her adult look, and none of its pictures was retouched b
    as lossless WebP, with the same file names as before and as the other Risa and Franzi packs: 39 pictures, plus
    `NOTICE.md`, `credit.txt`, `look.txt` and this file.
 
+## Dancing activity frames
+
+The pack also has two 6-frame loops of her dancing, `activity-dancing-1` to `-6` (silent) and `activity-dancing-talk-1`
+to `-6` (talking, with the same poses), 940 × 1070 lossless WebP like the other frames. Unlike the 4-frame swimming and
+cooking loops, this one has 6 frames, meant to play at about 3 frames a second.
+
+1. **Pictures.** Two poses were made by editing the pack's dress base picture in Grok Imagine, on the same black
+   background at 1312 × 1504: B, swaying to one side with both arms raised and the skirt swinging out, and A, centred with
+   her arms raised at head height and the skirt nearly straight. Her mirrored poses, Bm and Am, were made by a script that
+   flips the pictures horizontally. The loop order is B, A, B, Bm, Am, Bm, so frames 1 and 3 are the same picture, and so are
+   frames 4 and 6. In the mirrored frames her gold hair clip is on the other side of her head.
+2. **Scale and position.** One common scale and shift, the same for all frames, makes her head the size and position of
+   the `neutral` frame: scale 1.02 at 1312 × 1504, measured by matching her head in B to `neutral`, then the same scaling
+   to 940 × 1070 as the rest of the pack. The mirrored frames are flipped about the centre of her head, so her head stays
+   in the same place. Her raised hands stay well inside the frame in every pose.
+3. **One face.** B's head (face, bangs and clip, inside a feathered oval) was pasted onto A, so the face is the same in
+   the unmirrored frames, and its mirror image is in the mirrored frames. The hair at the sides stays each picture's own.
+4. **Transparent background.** The black was made transparent with the same method as the rest of the pack (step 4), in
+   the version that also clears the JPEG's lifted black and the red-tinted black beside her hair, with one more rule: the
+   dark outlines of the dress and of her skin are never taken for background.
+5. **Cleanup.** A scan cleared stray specks away from her figure, faint haze around her outline and white flecks at the
+   edge, and, after the scaling to 940 × 1070, faint loose pixels that had split off her outline.
+6. **Talking loop.** The talking frames are the six silent frames with an open mouth cut in. The mouths are the pack's own
+   `neutral-talk2`, `neutral-talk3`, `neutral-talk2`, `neutral-talk1`, `neutral-talk2` and `neutral-talk3` mouths (frames 1 to
+   6), turned to match the slight tilt of her head, with a feathered mask that covers the closed mouth fully and the skin tone
+   matched. In the mirrored frames the mouth is mirrored with the picture. Every other pixel is the same as in the silent
+   frame.
+
 ## Licence
 
 MIT, the same as the repository. The pictures were made with AI, so whether and by whom
