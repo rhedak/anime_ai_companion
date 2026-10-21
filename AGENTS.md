@@ -137,6 +137,7 @@ The server can run an agent that edits files and runs commands. These are not op
   `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
 - The origin check keeps websites out, not other programs on the machine (a local process can forge `Origin`), and
   there is no stronger boundary on loopback: do not describe it as one. `COMPANION_NO_SHELL=1` turns off `!command`.
+- `/claude-login` (`src/claude-login.ts`) only runs the user's own `claude auth login` and `claude auth status`; it never reads or stores credentials, and it is refused from a phone. Auth errors from `claude` are rewritten to point at it (`describeAuthError`).
 - Work mode shows the exact command or file change and waits, unless the user has chosen a
   looser mode. Do not add a skip-permissions flag, and do not make a loose mode the default.
 - Permission mode is memory only. Every server start comes back to Ask.

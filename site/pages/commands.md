@@ -29,6 +29,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/phone [new\|off]` | the link and QR code for your [phone](phone.html); with phone access off it asks whether to turn it on (until the next start); `new` makes a new token, `off` turns it off |
 | `/status` | brain, model, mode, folder and session id |
 | `/doctor` | check what the app needs (Node, the character creator, the brains, which opencode it uses, her data folder) and say what is missing and how to fix it; it only looks, changes nothing and is not available from a phone. Paste its output into a bug report |
+| `/claude-login` | sign in to Claude Code again: it runs Claude Code's own `claude auth login`, which opens your browser (the app never sees your credentials), then checks `claude auth status`. When her login has expired the error says to use it; not available from a phone |
 | `/install-opencode` | install the opencode this app was made for (a fixed version, checked against a known checksum) into the app's own folder, for the app only: it asks first, is used instead of any other opencode on the computer, and leaves yours untouched |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |

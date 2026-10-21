@@ -25,6 +25,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, managedOpencode, opencodeAsset, opencodeFolder, opencodeUrl } from "./install-opencode.ts";
 import { checkAll, formatDoctor, realProbe } from "./doctor.ts";
+import { runClaudeLogin } from "./claude-login.ts";
 import { randomUUID } from "node:crypto";
 import { animatedActivities, drawnActivityNote, gestureNote, packActivities, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
@@ -1116,6 +1117,19 @@ const slashCommands: Record<
         say(formatDoctor(await checkAll(realProbe(root, port, true))));
       } catch (err) {
         say(`The check could not finish: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  },
+  "claude-login": {
+    help: "sign in to Claude Code again (runs `claude auth login`, which opens your browser); use it when she says Claude Code is not signed in",
+    claudeOnly: true,
+    run: async ({ say, remote }) => {
+      if (remote) return say(remoteRefusal); // it opens a sign-in on this computer
+      say("Starting Claude Code's own sign-in (`claude auth login`)…");
+      const ok = await runClaudeLogin(say, brainProgram("claude") ?? "claude");
+      if (ok) {
+        if (settings.provider === "claude") provider.close(); // the next message starts claude again with the new login and resumes the conversation
+        say("Done. Send your message again.");
       }
     },
   },
