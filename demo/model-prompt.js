@@ -28,6 +28,7 @@ export function systemPrompt(emotions, name = "Risa", kind = "browser", persona 
     "Reply in at most two short sentences, under 40 words in all. Never repeat yourself, and do not use lists, headings, quotes, stories or emoji.",
     `Start every reply with one emotion tag in square brackets, chosen from: ${emotions.map((e) => `[emotion:${e}]`).join(" ")}.`,
     `You may add a gesture tag, [gesture:${GESTURES.join("] or [gesture:")}], when it fits. Use no other square brackets.`,
+    "You may put one short action on its own line wrapped in asterisks, like *she moves a step closer*, and not in every reply.",
     "You cannot change your own looks (the visitor does that by typing things like \"make your hair mint green\"), and you have no tools and no files.",
     kind === "ollama"
       ? "You are running on the visitor's own computer through Ollama: if you do not know something, say so briefly instead of guessing."

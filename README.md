@@ -256,9 +256,9 @@ A problem in the page itself (a script error, an animation frame that failed) sh
 for the details. It is also written to the server's log as `[page ...]`, so a problem on your phone can be read on the computer.
 `anaico --doctor` checks what the companion needs (Node, a brain, the character creator, the port) and says what is
 missing and how to fix it; it only looks and changes nothing. In the page, `/doctor` does the same for the running app (it names the opencode in use and her data folder, and is not available from a phone: paste its output into a bug report), `/claude-login` signs in to Claude Code again when its login has expired (it runs `claude auth login`, which opens your browser), and `/install-opencode` installs the opencode this app was made for, for the app only (it asks first, and is used instead of any other opencode on the computer). `anaico --status` says whether it is running, `anaico --stop` stops it, and `anaico --restart` stops and
-starts it again in the folder you run it from (use it after an update, or to change folder or mode).
-Only a server started with `--daemon` is managed this way: `--stop` and `--restart` will not touch one
-that is running in another terminal. Unless you start it with `--lan` or turn phone access on with `/phone` (next section), the server only
+starts it again in the folder you run it from (use it after an update, or to change folder or mode). In the page, `/restart` does the same for the running server: the page reconnects, the conversation stays, and phone access and permissions go back to a fresh start. It is not available from a phone.
+Only a server started with `--daemon` is managed by `anaico --stop` and `anaico --restart`: those will not touch one
+that is running in another terminal. `/restart` in the page works for whichever way the server was started. Unless you start it with `--lan` or turn phone access on with `/phone` (next section), the server only
 listens on `127.0.0.1`, and a background server is no different.
 
 ## Controlling her from your phone
@@ -300,7 +300,7 @@ incoming connections: allow it.
 
 ## Her name
 
-Click her name at the top (or use `/rename Hana`) to rename her: Enter saves, Esc cancels. The name is
+Click her name at the top (or use `/rename Hana`) to rename her: Enter saves, Esc cancels. The reset beside the name (or `/rename reset`) forgets that name, so she follows the character of the pack that is on again, or Risa when none is. The name is
 saved in `data/settings.json`, shown in the page title and exports, used in her system prompt
 (`persona.md` has a `{{name}}` placeholder), and she is told about the change right away. Names are 1 to 24
 letters, numbers, spaces and `. ' - _`, so a name cannot carry instructions into her prompt.
@@ -499,7 +499,9 @@ Type these in the chat box (`/help` lists them):
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |
 | `/frames [name\|off]` | show her with the pictures in `data/frames/<name>` instead of the drawn avatar; alone, lists the packs |
+| `/play [name] [end]` | play a short scene in chat (`/play` lists them; `/play key` is The spare key; `/play room` is a short story you are both trapped in, and the page asks you to wait while she writes it; `/play room 5 1 3 1` sets steps, hints, herrings and traps; a trap starts that room over; she explains the thread when you finish or `/play end`). In work mode, `/play` switches to chat |
 | `/show` | she shows all her emotions, a blink, talking and her gestures, a second each, naming every one (no model call); asking her "show me all your animations" does the same |
+| `/restart` | restart the server (the page reconnects; the conversation stays; phone access and permissions go back to a fresh start). Not from a phone |
 | `/status` | brain, model, mode, folder and session id |
 | `/copy` | copy her last reply to the clipboard |
 | `/export` | download the conversation as a Markdown file |
@@ -523,6 +525,8 @@ so plainly when another brain, such as Ollama, is active, instead of pretending 
 - **Emotions:** she starts replies with tags like `[emotion:happy]`; `emotions.json` maps each to
   face settings. The server renders a few mouth openings and a blink per emotion and the browser
   flips between them while text streams.
+- **Narration (chat only):** a line that is only an action, written `*she moves a step closer*`, is shown in its own italic bubble.
+  The voice and the speech bubble over her picture skip it. In work mode those asterisks stay ordinary emphasis.
 - **Looks:** she writes `[avatar hair_color=#ff88cc outfit.hat_color=#222 glasses=true]`.
   `src/render-ops.ts` validates every key; rejected ones are reported back to her on her next
   turn. Your current look is saved in `data/avatar.json` (git-ignored).

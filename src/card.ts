@@ -73,7 +73,8 @@ export function cleanText(input: unknown, limit: number, userAs = "the user"): s
   let text = input
     .replace(/\r\n?/g, "\n")
     // Bracketed tags our page and server act on: a card must not be able to write them into her instructions.
-    .replace(/\[\s*(?:emotion|gesture|avatar|image|demo|remember)\b[^\]]*\]/gi, "")
+    .replace(/\[\s*narration\s*\][\s\S]*?\[\s*\/\s*narration\s*\]/gi, "")
+    .replace(/\[\s*(?:emotion|gesture|avatar|image|demo|remember|narration)\b[^\]]*\]/gi, "")
     .replace(/<\/?[a-z!][^>]*>/gi, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")

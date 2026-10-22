@@ -30,6 +30,8 @@ any brain can use them.
 | `[image path/to/file.png]` | shows a picture from the project folder under her message |
 | `[demo]` | starts the same sequence as `/show`; the page plays it, because tags in a streaming reply would all fire at once |
 
+In chat, a line that is only an action wrapped in asterisks, such as `*she moves a step closer*`, is shown in its own italic bubble instead of with what she says. The voice and the speech bubble over her picture skip it. Work mode leaves those asterisks as ordinary emphasis. `[narration] she moves a step closer [/narration]` is the same bubble in either mode.
+
 Her current look is saved in `data/avatar.json`. With a picture pack on, `[avatar ...]` tags are
 ignored, and so are gestures unless the pack has pose pictures for them; she is told which.
 

@@ -44,12 +44,12 @@ log is `data/server.log`.
 
 ## Customise it
 
-Keep the user's changes where updates do not overwrite them, and tell them when a change needs a restart.
+Keep the user's changes where updates do not overwrite them, and tell them when a change needs a restart. `/restart` in the page does that (not from a phone): the page reconnects, the conversation stays, and phone access and permissions go back to a fresh start. For Claude, an existing conversation still keeps its old persona until `/clear`.
 
 | To change | Edit | Takes effect |
 | --- | --- | --- |
 | Her personality and voice | `persona.md` (chat; the default), `data/persona.md` (the user's own, wins over everything), `persona-work.md` (work-mode rules); a character's `voice:` line sits between them (`src/persona.ts`) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
-| Her name | click it, or `/rename Hana`; with no name of your own (`nameSet` in settings) she goes by the character's name while a pack of a character is on (`herName` in `src/server.ts`) | at once |
+| Her name | click it, or `/rename Hana`; the reset beside it (or `/rename reset`) unsets it (`nameSet` in settings) so she goes by the character's name while a pack of a character is on (`herName` in `src/server.ts`) | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
@@ -60,8 +60,8 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | Models, pre-approved tools | `data/settings.json`, `COMPANION_MODEL`, `COMPANION_WORK_MODEL` | restart the server |
 | How the body is drawn: shapes, hairstyles, outfits, presets | the **creator repo**, not this one | restart the server (the renderer runs as long as it does) |
 
-- `persona.md` carries the tag protocol (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`) that drives
-  her face. Keep it, and keep its emotion list in step with `emotions.json`.
+- `persona.md` carries the tag protocol (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`, and chat narration lines) that drives
+ her face. Keep it, and keep its emotion list in step with `emotions.json`.
 - To change drawing, work in the creator checkout next to this repo (or wherever `CREATOR_SRC` points). Do not
   install it: the renderer imports it by path, so edits are picked up on the next server start, and an
   installed copy would only be a second source of truth. This repo's `package.json` pins a creator tag, and a
@@ -74,12 +74,12 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 ### How it is built
 
-- Node runs the TypeScript directly. There is no build step for the app (only the browser demo's staging compiles, below). `npm start` is `node src/server.ts`;
+- Node runs the TypeScript directly. There is no build step for the app (only the browser demo's staging compiles, below). `npm start` is `node bin/serve.js` (after the Node check), which runs `src/server.ts` and starts it again when the page's `/restart` asks;
   the `anaico` command is `src/cli.ts`, which starts (or reuses) that server and opens the browser.
 - `src/providers/types.ts` is the brain interface. A new brain implements `Provider` and nothing
   in the page should need to know how that process speaks.
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
-  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`). The server strips them. Keep that
+  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`, `[play end]`). The server strips them. A short scene (`/play`, `src/scenes.ts`) is chat only and memory only: its note rides on each message until she ends it, `/play end`, `/clear`, or a switch to work mode. `/play` from work mode switches to chat and then starts. `/play` lists them. `/play key` is The spare key. `/play room` is an improvised locked room (five steps, one hint, three red herrings and one trap, unless the command names other counts): the page says to wait and shows her thinking while she writes the whole story once in an invisible `[play plan …]` tag, which the page strips the same way as `[play end]`. Each object of the current step is its own narration sentence, the correct choices share a thread she explains when the last step is done or the user stops with `/play end`, and a trap or being asked to choose starts that room over from step one. In chat, a line wrapped in asterisks (`*she moves a step closer*`) is its own italic bubble on the page (`public/narration.js`); work mode leaves it as emphasis. Keep that
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
   server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by the creator's TypeScript

@@ -11,6 +11,10 @@ She blinks every few seconds and her mouth moves while she talks. She can also w
 she plays every emotion, a blink, talking and both gestures, one second each, naming each one, without calling the
 model. Asking her "show me all your animations" does the same.
 
+## A short scene
+
+Type `/play` in chat and she lists the scenes. `/play key` starts **The spare key**: you are locked out, and it is over in a few replies. `/play room` starts **The locked room**: she writes a short story about the two of you, trapped, and the page says to wait, with her thinking, while she sets it up. The default is five scenes. Each scene has one hint, three red herrings and one trap, and each of those is its own sentence. The right choices share a thread you can reason out. She says what it was when you get out or stop. A red herring does nothing. A trap, or asking her to choose, fails and starts the story over from the first scene. `/play room 4 1 2 1` changes the counts, in the order steps, hints, herrings, traps, and `steps=4 hints=1 herrings=2 traps=1` is the same thing. `/play end` stops it early, and she then explains the thread. A new chat stops it too. In work mode, `/play` switches to chat first.
+
 ## Voice
 
 The **Voice** button makes her read her replies aloud with your browser's own speech synthesis. She speaks sentence
@@ -101,5 +105,5 @@ message waits and a card asks what to do:
 
 ## Her name
 
-Click her name at the top, or use `/rename Hana`. A name you give her is yours: it stays whatever picture pack is on. Until you do, she goes by the name of the pack's character (Draconia Malfoid, Franzi, …) while it is on, and `/rename reset` takes your name away again. Names are 1 to 24 letters, numbers, spaces and `. ' - _`, so a
+Click her name at the top, or use `/rename Hana`. A name you give her is yours: it stays whatever picture pack is on. Until you do, she goes by the name of the pack's character (Draconia Malfoid, Franzi, …) while it is on. The reset beside the name, or `/rename reset`, takes your name away again. Names are 1 to 24 letters, numbers, spaces and `. ' - _`, so a
 name cannot carry instructions into her prompt. She is told about the change right away.

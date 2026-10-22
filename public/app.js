@@ -6,6 +6,7 @@ import { BUBBLE_LINGER_MS, bubbleText } from "./bubble.js";
 import { createDemo } from "./demo.js";
 import { GESTURES } from "./frames.js";
 import { normalizeTags } from "./tags.js";
+import { splitNarration } from "./narration.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 
@@ -66,7 +67,8 @@ let refreshVoices = () => {}; // set once the voice menus exist
 let spoken = 0; // characters of the current reply already handed to the voice
 
 let busy = false;
-let botEl = null;
+/** The bubbles of the reply being written. A narration line is its own bubble, so one reply can be several. */
+let replyEls = [];
 let raw = "";
 let calmTimer = null;
 let talkTimer = null;
@@ -94,6 +96,7 @@ function parseReply(text) {
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
     .replace(/ *\[activity\s[^\]]*\]/g, "")
+    .replace(/ *\[play\s[^\]]*\]/g, "")
     .replace(/\[[^\]]*$/, "")
     .replace(/^\s+/, "");
   return { clean, emotion, gestures };
@@ -181,6 +184,78 @@ function addPhoneCard(links, rows) {
   list.style.whiteSpace = "pre-wrap";
   div.append(svg, list);
   log.scrollTop = log.scrollHeight;
+}
+
+/** What she says, for the voice and the bubble over her picture. Narration is left out: it is shown, not spoken. */
+function spokenOf(clean) {
+  return splitNarration(clean, { asterisks: state.mode !== "work" })
+    .filter((part) => part.kind === "speech" && part.text.trim())
+    .map((part) => part.text.trim())
+    .join("\n\n");
+}
+
+function fillReply(el, part, clean, lead) {
+  el.className = part.kind === "narration" ? "msg narration" : "msg bot";
+  if (lead) {
+    el.dataset.lead = "1";
+    el.dataset.raw = clean;
+  } else {
+    delete el.dataset.lead;
+    delete el.dataset.raw;
+  }
+  renderMarkdown(part.text, el);
+}
+
+/** Show a reply, reusing `els` while it streams. The first bubble keeps the source, for /copy and /export. */
+function showReply(clean, els) {
+  const parts = splitNarration(clean, { asterisks: state.mode !== "work" }).filter((part) => part.text.trim());
+  while (els.length > parts.length) els.pop().remove();
+  for (let i = 0; i < parts.length; i++) {
+    let el = els[i];
+    if (!el) {
+      el = document.createElement("div");
+      // Stay with this reply. A card that arrived mid-reply (a tool, a notice) must not end up between its parts.
+      const prev = els[i - 1];
+      if (prev) prev.after(el);
+      else log.append(el);
+      els.push(el);
+    }
+    fillReply(el, parts[i], clean, i === 0);
+  }
+  log.scrollTop = log.scrollHeight;
+  return spokenOf(clean);
+}
+
+/** Mode changed: asterisk actions are narration in chat and ordinary emphasis in work, so redraw replies from their source. */
+function rerenderReplies() {
+  const top = log.scrollTop;
+  for (const lead of [...log.querySelectorAll(".msg[data-lead]")]) {
+    if (!lead.classList.contains("bot") && !lead.classList.contains("narration")) continue;
+    const clean = lead.dataset.raw ?? "";
+    const old = [lead];
+    let next = lead.nextElementSibling;
+    while (next?.classList.contains("msg") && (next.classList.contains("bot") || next.classList.contains("narration")) && next.dataset.lead !== "1") {
+      old.push(next);
+      next = next.nextElementSibling;
+    }
+    const parts = splitNarration(clean, { asterisks: state.mode !== "work" }).filter((part) => part.text.trim());
+    const anchor = old[0];
+    for (let i = 0; i < parts.length; i++) {
+      const el = document.createElement("div");
+      fillReply(el, parts[i], clean, i === 0);
+      anchor.before(el);
+    }
+    for (const el of old) el.remove();
+  }
+  log.scrollTop = top;
+}
+
+let narrationOn = true; // state.mode starts as chat, where action lines are narration
+function syncNarrationMode() {
+  const on = state.mode !== "work";
+  if (on === narrationOn) return;
+  narrationOn = on;
+  rerenderReplies();
 }
 
 function addMsg(kind, text) {
@@ -442,32 +517,32 @@ function lingerBubble() {
 function onDelta(text) {
   markActivity();
   clearTimeout(calmTimer);
-  if (!botEl) {
+  if (!raw) {
     spoken = 0;
-    botEl = addMsg("bot", "");
     avatar.setEmotion("thinking");
   }
   raw += text;
   const { clean, emotion, gestures } = parseReply(raw);
   if (emotion) avatar.setEmotion(emotion);
   for (; gesturesDone < gestures.length; gesturesDone++) avatar.gesture(gestures[gesturesDone]);
-  if (!voice.enabled) avatar.setTalking(clean.length > 0);
+  const speech = showReply(clean, replyEls);
+  if (spoken > speech.length) spoken = speech.length;
+  if (!voice.enabled) avatar.setTalking(speech.length > 0);
   else {
-    const { ready } = takeSentences(clean.slice(spoken));
+    const { ready } = takeSentences(speech.slice(spoken));
     if (ready) {
       voice.speak(ready);
       spoken += ready.length;
     }
   }
-  setMsgText(botEl, clean);
-  showBubble(clean);
+  showBubble(speech);
   log.scrollTop = log.scrollHeight;
 }
 
 /** Hand whatever is left of the current reply to the voice. */
 function speakRest() {
   if (!voice.enabled || !raw) return;
-  const rest = parseReply(raw).clean.slice(spoken);
+  const rest = spokenOf(parseReply(raw).clean).slice(spoken);
   if (rest.trim()) voice.speak(rest);
   spoken = 0;
 }
@@ -480,7 +555,7 @@ function endTurn() {
   statusText = null;
   for (const id of [...permEls.keys()]) resolvePermission(id, "Cancelled");
   if (!voice.enabled) avatar.setTalking(false);
-  botEl = null;
+  replyEls = [];
   raw = "";
   gesturesDone = 0;
   setBusy(false);
@@ -667,11 +742,15 @@ function renderBrain() {
   menuRefreshers.forEach((refresh) => refresh());
 }
 
+/** Set while the pointer is going for the reset, so leaving the name box does not save first. */
+let nameResetClick = false;
+
 function renderName() {
   const name = state.name ?? "Risa";
   const heading = $("name");
   if (heading.tagName === "H1") heading.textContent = name;
   document.title = name;
+  $("name-reset").hidden = !state.nameSet;
 }
 
 function startRename() {
@@ -685,9 +764,10 @@ function startRename() {
   input.setAttribute("aria-label", "Companion name");
   input.size = Math.max(4, input.value.length + 1);
   let done = false;
-  const finish = (save) => {
+  const finish = (save, keepFocus = false) => {
     if (done) return;
     done = true;
+    nameResetClick = false;
     const value = input.value.trim();
     const back = document.createElement("h1");
     back.id = "name";
@@ -699,14 +779,17 @@ function startRename() {
     wireName(back);
     renderName();
     if (save && value && value !== (state.name ?? "Risa")) ws?.send(JSON.stringify({ type: "rename", name: value }));
-    back.focus();
+    if (!keepFocus) back.focus();
   };
   input.addEventListener("input", () => (input.size = Math.max(4, input.value.length + 1)));
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !composing(e)) finish(true);
     else if (e.key === "Escape") finish(false);
   });
-  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("blur", (e) => {
+    const toReset = e.relatedTarget === $("name-reset") || nameResetClick;
+    finish(!toReset, toReset);
+  });
   heading.replaceWith(input);
   input.focus();
   input.select();
@@ -722,6 +805,18 @@ function wireName(heading) {
   });
 }
 wireName($("name"));
+$("name-reset").addEventListener("mousedown", (e) => {
+  e.preventDefault(); // leave the name box focused so its blur does not save before this click
+  nameResetClick = true;
+});
+document.addEventListener("mouseup", (e) => {
+  if (e.target !== $("name-reset")) nameResetClick = false;
+});
+$("name-reset").addEventListener("click", () => {
+  if ($("name").tagName !== "H1") $("name").blur();
+  nameResetClick = false;
+  ws?.send(JSON.stringify({ type: "rename", name: "reset" }));
+});
 
 function renderMode() {
   renderName();
@@ -1228,7 +1323,7 @@ function handle(msg) {
         if (item.type === "user") addUserMsg(item.text, [], item.images ?? 0);
         else if (item.type === "bot") {
           const { clean } = parseReply(item.text);
-          if (clean) addMsg("bot", clean);
+          if (clean.trim()) showReply(clean, []);
         } else if (item.type === "images") addImageStrip(item.images);
         else if (item.type === "shell") addShell(item.command, item.output, item.code);
         else if (item.type === "look") addMsg("look", `✨ new look: ${item.applied.join(", ")}`);
@@ -1244,6 +1339,7 @@ function handle(msg) {
       if (msg.mode === "work") wantWork = false;
       renderMode();
       renderAttachAvailability();
+      syncNarrationMode();
       break;
     case "looks":
       $("undo-look").disabled = !msg.canUndo;
@@ -1305,7 +1401,7 @@ function handle(msg) {
       if (!el) {
         // text after a tool call belongs in a new message, so the log keeps its order
         speakRest();
-        botEl = null;
+        replyEls = [];
         raw = "";
         gesturesDone = 0;
         el = document.createElement("div");
@@ -1593,14 +1689,18 @@ function renderAttachments() {
 
 const browserCommands = {
   "/copy": () => {
-    const last = [...log.querySelectorAll(".msg.bot")].pop();
+    const last = [...log.querySelectorAll(".msg.bot[data-lead], .msg.narration[data-lead]")].pop();
     if (last) navigator.clipboard?.writeText(last.dataset.raw ?? last.textContent).then(() => addMsg("sys", "Copied her last reply."));
     else addMsg("sys", "She has not said anything yet.");
   },
   "/export": () => {
-    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.tool, .msg.shell, .msg.pic-strip")].map((el) =>
-      el.classList.contains("user") ? `**You:** ${el.textContent}` : el.classList.contains("bot") ? `**${state.name ?? "Risa"}:** ${el.dataset.raw ?? el.textContent}` : el.classList.contains("pic-strip") ? el.dataset.raw : el.classList.contains("shell") ? "```\n" + (el.dataset.raw ?? el.textContent) + "\n```" : `> ${el.textContent}`,
-    );
+    const lines = [...log.querySelectorAll(".msg.user, .msg.bot, .msg.narration, .msg.tool, .msg.shell, .msg.pic-strip")].flatMap((el) => {
+      if (el.classList.contains("user")) return [`**You:** ${el.textContent}`];
+      if (el.classList.contains("bot") || el.classList.contains("narration")) return el.dataset.lead === "1" ? [`**${state.name ?? "Risa"}:** ${el.dataset.raw ?? el.textContent}`] : [];
+      if (el.classList.contains("pic-strip")) return [el.dataset.raw];
+      if (el.classList.contains("shell")) return ["```\n" + (el.dataset.raw ?? el.textContent) + "\n```"];
+      return [`> ${el.textContent}`];
+    });
     if (!lines.length) return addMsg("sys", "Nothing to export yet.");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([lines.join("\n\n") + "\n"], { type: "text/markdown" }));
