@@ -301,6 +301,7 @@ main[data-view="behind"] .status { position: fixed; z-index: 5; top: calc(25px +
 main[data-view="behind"] .pack-credit { position: fixed; z-index: 6; top: 0; left: 0; right: 0; bottom: auto; max-width: none; padding: 3px 10px; text-align: center; background: rgba(0, 0, 0, .6); }
 main[data-view="behind"] .panel { position: relative; z-index: 1; padding-top: var(--credit-h, 0px); background: color-mix(in srgb, var(--panel) 55%, transparent); border-left: 0; }
 main[data-view="behind"] .msg.bot { background: color-mix(in srgb, var(--panel) 72%, transparent); padding: 6px 10px; border-radius: var(--radius-md); }
+main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surface) 72%, transparent); }
 @media (min-width: 801px) {
   main[data-view="behind"] .panel { align-items: center; }
   main[data-view="behind"] .panel > * { width: min(100%, 780px); }
