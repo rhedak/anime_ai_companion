@@ -267,3 +267,14 @@ export const CURSOR_UNRESTRICTED_TEXT =
 /** Said when the app starts in Run everything because Cursor's own CLI never asks. The choice is still memory only. */
 export const CURSOR_EVERYTHING_NOTICE =
   'Run everything, because your Cursor CLI is set to run without asking ("approvalMode": "unrestricted" in ~/.cursor/cli-config.json). This resets to Ask the next time the server starts.';
+
+/**
+ * What the page shows when cursor-agent dies. It says why in its own output (stderr), which used to go only to the server log, so
+ * the chat showed a bare "exited (1)". The causes a user can fix themselves get the step to take; anything else is shown as it was said.
+ */
+export function cursorErrorText(message: string): string {
+  if (/keychain is locked/i.test(message)) {
+    return "Cursor cannot read its login because your macOS login keychain is locked. Run `security unlock-keychain` in a terminal and enter your Mac password (or unlock it in Keychain Access), then send your message again. Nothing is wrong with the app or with your Cursor login.";
+  }
+  return message;
+}

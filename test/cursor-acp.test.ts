@@ -257,3 +257,12 @@ test("the Cursor CLI's own approval setting is read (and only read): 'unrestrict
   assert.match(CURSOR_UNRESTRICTED_TEXT, /Nothing was sent/);
   assert.match(CURSOR_UNRESTRICTED_TEXT, /Everything in the permission menu/);
 });
+
+test("cursorErrorText names the locked keychain and the step to take, and leaves other errors alone", async () => {
+  const { cursorErrorText } = await import("../src/providers/cursor-acp.ts");
+  const locked = cursorErrorText("cursor-agent exited (1). Error: Your macOS login keychain is locked.\nRun security unlock-keychain and try again.");
+  assert.match(locked, /security unlock-keychain/);
+  assert.match(locked, /send your message again/);
+  assert.doesNotMatch(locked, /exited \(1\)/);
+  assert.equal(cursorErrorText("cursor-agent exited (2). Something else broke"), "cursor-agent exited (2). Something else broke");
+});
