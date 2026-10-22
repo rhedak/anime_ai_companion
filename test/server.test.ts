@@ -1669,8 +1669,8 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       ws.send(JSON.stringify({ type: "user", text: "/phone off" }));
       await new Promise((r) => setTimeout(r, 400));
       assert.ok(heard.some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), "a phone cannot turn phone access off");
-      // /doctor names folders and programs on this computer and /install-opencode fetches and runs a program: neither is for a phone.
-      for (const command of ["/doctor", "/install-opencode"]) {
+      // /doctor names folders and programs, /install-opencode fetches and runs a program, /restart stops the server: none of these is for a phone.
+      for (const command of ["/doctor", "/install-opencode", "/restart"]) {
         const before = heard.length;
         ws.send(JSON.stringify({ type: "user", text: command }));
         await new Promise((r) => setTimeout(r, 300));
@@ -1953,7 +1953,9 @@ describe("her name: the user's own, else the character's of the pack that is on"
 
   test("with a pack on and no name of her own she goes by the character's; /rename is the user's and wins; /rename reset goes back; the pack off gives the default", async () => {
     const c = await server.client();
-    assert.equal((await c.next("mode")).name, "Ann");
+    const opened = await c.next("mode");
+    assert.equal(opened.name, "Ann");
+    assert.equal(opened.nameSet, false, "no name of her own: the reset beside the name stays hidden");
     const said = async (text: string): Promise<string> => {
       const mark = c.mark;
       c.say(text);
@@ -1962,7 +1964,9 @@ describe("her name: the user's own, else the character's of the pack that is on"
     assert.match(await said("/rename"), /She is called Ann \(the name of the character of the pack that is on\)/);
     let from = c.mark;
     c.say("/rename Hana");
-    assert.equal((await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from)).name, "Hana");
+    const renamed = await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from);
+    assert.equal(renamed.name, "Hana");
+    assert.equal(renamed.nameSet, true, "a name of her own shows the reset beside it");
     assert.match((await c.next("notice", 5000, from)).text, /She is called Hana now\. \/rename reset goes back\./, "a rename is confirmed in the chat, as a reset is");
     assert.match(await said("/rename Hana"), /She is already called Hana\./, "the same name is answered too, not ignored");
     from = c.mark;
@@ -1974,11 +1978,119 @@ describe("her name: the user's own, else the character's of the pack that is on"
     await c.next("packs", 5000, from);
     from = c.mark;
     c.say("/rename reset");
-    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Ann", "reset: the character's name again");
+    const reset = await c.next((e) => e.type === "mode", 5000, from);
+    assert.equal(reset.name, "Ann", "reset: the character's name again");
+    assert.equal(reset.nameSet, false);
     assert.equal(server.data("settings.json")?.includes('"nameSet": false'), true);
     from = c.mark;
     c.say("/frames off");
     assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Risa", "no pack: the default");
+  });
+});
+
+describe("a short scene in chat", { skip }, () => {
+  test("/play starts The spare key and keeps telling her until it ends", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const work = c.mark;
+      c.send({ type: "mode", mode: "work", projectDir: server.project });
+      await c.next((e) => e.type === "mode" && e.mode === "work", 8000, work);
+      c.say("/play");
+      assert.equal((await c.next((e) => e.type === "mode" && e.mode === "chat", 8000, work)).mode, "chat", "/play leaves work mode");
+      assert.match((await c.next("notice", 5000, work)).text, /Switched to chat\. Scenes: The spare key \(\/play key\); The locked room \(\/play room\)/);
+      assert.equal(server.claudeLog().some((e) => e.kind === "in"), false, "listing scenes does not start one");
+
+      const listed = c.mark;
+      c.say("/play");
+      assert.match((await c.next("notice", 5000, listed)).text, /^Scenes: The spare key \(\/play key\); The locked room \(\/play room\)/);
+      assert.equal(server.claudeLog().some((e) => e.kind === "in"), false, "listing scenes does not start one");
+
+      const from = c.mark;
+      c.say("/play key");
+      assert.match((await c.next("notice", 5000, from)).text, /The spare key\. You're locked out/);
+      await c.done(from);
+      assert.equal(c.since(from).some((e) => e.type === "user"), false, "she opens it; /play is not a message of the user's");
+      const opened = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+      assert.match(opened.text!, /The spare key/);
+      assert.match(opened.text!, /Open it now/);
+
+      await ask(c, "I look under the mat");
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "the scene stays for the next message");
+      c.say("/play");
+      assert.match((await c.next((e) => e.type === "notice" && /Already playing/.test(e.text), 5000)).text, /\/play end/);
+
+      await ask(c, "please PLAYEND");
+      await ask(c, "hello again");
+      assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "when she ends it, the next message is ordinary");
+
+      const again = c.mark;
+      c.say("/play key");
+      await c.done(again);
+      const stopped = c.mark;
+      c.say("/play end");
+      assert.match((await c.next("notice", 5000, stopped)).text, /Stopped The spare key/);
+      await ask(c, "so, tea?");
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /ended the scene "The spare key"/);
+
+      const bad = c.mark;
+      c.say("/play room 9");
+      assert.match((await c.next("notice", 5000, bad)).text, /Steps must be from 1 to 8/);
+      const beforeRoom = server.claudeLog().filter((e) => e.kind === "in").length;
+      const room = c.mark;
+      c.say("/play room 4 1 2 1");
+      assert.match(
+        (await c.next("notice", 5000, room)).text,
+        /The locked room\. Four steps\. Each has one hint, two red herrings and one trap\. A trap, or asking her to choose, starts the room over/,
+      );
+      assert.match((await c.next((e) => e.type === "notice" && /Setting up the game/.test(e.text), 5000, room)).text, /Please wait/);
+      await c.next((e) => e.type === "auto-turn", 5000, room);
+      await c.done(room);
+      const roomNote = server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!;
+      assert.equal(server.claudeLog().filter((e) => e.kind === "in").length, beforeRoom + 1);
+      assert.match(roomNote, /short story/);
+      assert.match(roomNote, /four scenes/);
+      assert.match(roomNote, /two red herrings/);
+      assert.match(roomNote, /starts over at step one/);
+      assert.match(roomNote, /\[play plan/);
+      assert.match(roomNote, /explain the thread/);
+      const roomEnd = c.mark;
+      c.say("/play end");
+      assert.match((await c.next("notice", 5000, roomEnd)).text, /Stopped The locked room/);
+      await c.done(roomEnd);
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /Explain the thread now/);
+
+      const started = c.mark;
+      c.say("/play key");
+      await c.done(started);
+      c.say("/clear");
+      await c.next("reset", 5000);
+      await ask(c, "hello");
+      assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "a new chat drops the scene");
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe("/restart", { skip }, () => {
+  test("on this computer it says so and exits so the parent can start the server again", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("/restart");
+      assert.match((await c.next("notice", 5000, from)).text, /Restarting\. The page reconnects/);
+      const started = Date.now();
+      while (server.exitCode() !== 75) {
+        if (Date.now() - started > 5000) throw new Error(`the server did not hand off (exit ${server.exitCode()})`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    } finally {
+      await server.stop();
+    }
   });
 });
 

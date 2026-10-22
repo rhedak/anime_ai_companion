@@ -32,6 +32,10 @@ export interface TurnDeps {
   activity(name: string | null, outfitChosen: boolean): void;
   /** Whether activities are allowed now: chat mode only, as with her notes (a file she reads in work mode must not be able to start one). */
   chatMode(): boolean;
+  /** The short scene that is on, told again with each message, or null. */
+  sceneNote(): string | null;
+  /** She wrote `[play end]`: the scene is over. Chat only; the caller decides. */
+  sceneEndedByHer(): void;
   /** Her resting picture, once after a pack comes on or a conversation starts, for a brain that can read it; otherwise nothing. */
   takeLookPicture(): ImageInput[];
   /** Why a message cannot be sent right now (no model chosen for Ollama, say), or null. Such a message is not kept in the log. */
@@ -135,7 +139,7 @@ export function createTurnService(deps: TurnDeps) {
 
   /** The message as the brain gets it: with a note in front when something waits to be said. */
   function withNotes(userText: string): string {
-    const background = [deps.memory.note(userText), deps.persona.note(), deps.cards.loreNote(userText)].filter((n): n is string => Boolean(n));
+    const background = [deps.memory.note(userText), deps.persona.note(), deps.cards.loreNote(userText), deps.sceneNote()].filter((n): n is string => Boolean(n));
     const waiting = [...background, ...deps.notes.take()];
     return waiting.length ? `(system note, not from the user: ${waiting.join(" ")})\n\n${userText}` : userText;
   }
@@ -200,6 +204,7 @@ export function createTurnService(deps: TurnDeps) {
           deps.broadcast(deps.meterInfo()); // the context grew
           // She was asked to show off: the page plays the sequence once her reply is done.
           if (event.type === "done" && DEMO_TAG.test(reply)) deps.broadcast(demoMessage(deps.emotionNames(), GESTURE_NAMES, deps.activePack()));
+          if (event.type === "done" && deps.chatMode() && /\[play\s+end\]/i.test(reply)) deps.sceneEndedByHer();
           opts.onFinish?.(event);
           deps.skills.applyPending();
           // A failed reply does not send what was queued behind it; a good one lets the next message go.

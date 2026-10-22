@@ -59,6 +59,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
       out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } });
       delta("[emotion:thinking] I will read it by hand.");
       result();
+    } else if (text.includes("PLAYEND")) {
+      delta("[emotion:happy] We're in. [play end]");
+      result();
     } else if (/ACTIVITY [a-z]+/.test(text)) {
       delta("[emotion:happy] Sure, let's go. [activity " + /ACTIVITY ([a-z]+)/.exec(text)[1] + "] Here we are.");
       result();
@@ -166,6 +169,8 @@ export interface RunningServer {
   /** The system prompt of the latest `claude` start. */
   systemPrompt(): string;
   data(name: string): string | null;
+  /** Null while the process is still running. */
+  exitCode(): number | null;
   client(origin?: string | null): Promise<Client>;
   stop(): Promise<void>;
 }
@@ -260,6 +265,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
       COMPANION_PACK_INDEX: "off", // tests never fetch the real pack list; one that needs it points this at a local server
+      ANAICO_PARENT_RESTARTS: "1", // /restart exits 75 instead of spawning a server the test would leak
       ...options.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -299,6 +305,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const args = starts.at(-1)?.args ?? [];
       return args[args.indexOf("--append-system-prompt") + 1] ?? "";
     },
+    exitCode: () => child.exitCode,
     data(name) {
       try {
         return readFileSync(join(app, "data", name), "utf8");

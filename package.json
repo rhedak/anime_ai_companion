@@ -32,8 +32,8 @@
     "ref": "v0.6.0"
   },
   "scripts": {
-    "start": "node bin/check-node.js && node src/server.ts",
-    "open": "node bin/check-node.js && node src/server.ts --open",
+    "start": "node bin/check-node.js && node bin/serve.js",
+    "open": "node bin/check-node.js && node bin/serve.js --open",
     "dev": "node bin/check-node.js && node --watch src/server.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.frontend.json && tsc --noEmit -p tsconfig.demo.json",
     "test": "node --test \"test/**/*.test.ts\"",

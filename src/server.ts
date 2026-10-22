@@ -12,7 +12,7 @@ import { resolveCreatorSrc } from "./creator.ts";
 import { brainProgram, isInstalled, programLabel } from "./programs.ts";
 import { MAX_IMAGE_BYTES, MAX_MESSAGE_BYTES, parseImages, sniffImageType, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
-import type { ConversationState } from "./cache-guard.ts";
+import { coldCache, type ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
@@ -39,6 +39,7 @@ import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
 import { createTurnService } from "./turn-service.ts";
+import { SCENES, sceneById, sceneList, startPlay } from "./scenes.ts";
 import { createMemoryService } from "./memory-service.ts";
 import { createPersonaService } from "./persona-service.ts";
 import { createNotes } from "./notes.ts";
@@ -49,6 +50,7 @@ import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from ".
 import { checkProjectDir, cleanName, DEFAULT_NAME, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 import { dataDir, workspaceDir } from "./paths.ts";
+import { handOff } from "./restart.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
@@ -227,6 +229,15 @@ await refreshPack();
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
 // pre-filled here, not saved, until the user picks one in the UI.
 let mode: Mode = "chat";
+/** The short scene `/play` started, if one is on. Memory only: a restart, /clear, work mode or the scene ending clears it. */
+let sceneId: string | null = null;
+/** That scene's note, with the locked room's counts filled in. Cleared with `sceneId`. */
+let sceneNoteText: string | null = null;
+
+function stopScene(): void {
+  sceneId = null;
+  sceneNoteText = null;
+}
 {
   const flag = process.argv.indexOf("--project-dir");
   const wanted = flag >= 0 ? process.argv[flag + 1] : settings.projectDir;
@@ -435,6 +446,8 @@ const shownModel = () => acpBrain()?.modelLabel || sessionConfig().model;
 const modeInfo = () => ({
   type: "mode",
   name: herName(),
+  // True when the name is the user's: the reset beside it is shown, and a pack's character does not take over.
+  nameSet: settings.nameSet,
   mode,
   // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
   provider: basicMode ? "basic" : settings.provider,
@@ -604,6 +617,11 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
     await saveSettings(settingsPath, settings);
   }
   const before = { mode, cwd: sessionConfig().cwd };
+  if (wanted === "work" && before.mode !== "work" && sceneId) {
+    const title = sceneById(sceneId)?.title ?? "the scene";
+    stopScene();
+    notes.push(`The scene "${title}" stopped because this is work mode. Talk normally again.`);
+  }
   mode = wanted;
   provider.configure(sessionConfig());
   // Claude Code sends the system prompt it recorded when the conversation began, which keeps the prompt cache
@@ -790,6 +808,7 @@ const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === 
 /** The slash commands that would turn on Auto or Accept edits, load the user's hooks, or drive Chrome on this computer. `/work <path>` and `/permissions everything` are allowed. */
 function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
+  if (name === "restart") return true; // it stops and starts the server on this computer
   if (name === "setup") return a === "on";
   if (name === "chrome") return a === "on"; // it drives the browser on this computer
   if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
@@ -984,6 +1003,88 @@ async function setLan(on: boolean): Promise<string | null> {
   return null;
 }
 
+/** `/play` lists the scenes or starts the one named; `/play end` stops it. She opens it herself. Work mode switches to chat first. */
+async function playCommand(args: string, say: Say): Promise<void> {
+  const arg = args.trim();
+  if (/^(end|stop|off)$/i.test(arg)) {
+    if (!sceneId) return say("No scene is on.");
+    const title = sceneById(sceneId)?.title ?? sceneId;
+    const room = sceneId === "room";
+    stopScene();
+    say(`Stopped ${title}.`);
+    if (room) {
+      notes.push(
+        `The user gave up on "The locked room". The plan you wrote is still in the conversation. Explain the thread that tied the correct choices together, and name each correct choice in order. A few sentences, then talk normally. If you never wrote a plan, say the room was not set up.`,
+      );
+      // She is still writing the opening: the note rides on the next message. Otherwise she explains now.
+      if (!provider.busy) {
+        broadcast({ type: "auto-turn" });
+        turns.run("The user stopped the locked room. Explain the thread now.");
+      }
+      return;
+    }
+    notes.push(`The user ended the scene "${title}". Talk normally again.`);
+    return;
+  }
+  if (basicMode) return say("A scene needs a real brain. This is the built-in script, so pick a brain in the menu and then /play.");
+  const blocked = cannotChange();
+  if (blocked) return say(blocked);
+  if (turns.holding()) return say("Decide what to do with your earlier message first (the question above).");
+  if (settings.provider === "claude" && coldCache(convo)) {
+    return say("This chat has gone cold, so starting a scene would reread all of it. Send a message first (you will be asked), then /play.");
+  }
+  const switched = mode !== "chat";
+  if (switched) {
+    await switchMode("chat", undefined, say);
+    if (mode !== "chat") return;
+  }
+  const lead = switched ? "Switched to chat. " : "";
+  if (!arg) {
+    if (sceneId) return say(`Already playing ${sceneById(sceneId)?.title ?? sceneId}. /play end stops it.`);
+    if (SCENES.length !== 1) return say(`${lead}Scenes: ${sceneList()}`);
+  }
+  const started = startPlay(arg || SCENES[0].id);
+  if (!started.ok) return say(`${lead}${started.text}`);
+  if (sceneId === started.scene.id) return say(`Already playing ${started.scene.title}. /play end stops it.`);
+  sceneId = started.scene.id;
+  sceneNoteText = started.note;
+  say(`${lead}${started.scene.title}. ${started.blurb} /play end stops it.`);
+  // The first reply writes the whole story before any of it can be shown, so the page says so at once.
+  if (started.scene.id === "room") {
+    say("Setting up the game. Please wait.");
+    broadcast({ type: "auto-turn" });
+  }
+  turns.run("The user started a short scene with /play. Open it now.");
+}
+
+/** True once `/restart` has been accepted, so a second one does not start another hand-off. */
+let restarting = false;
+
+/** Close what this process holds, then let the parent (or this process, for a daemon) start a new server. */
+function beginRestart(): void {
+  let left = false;
+  const leave = () => {
+    if (left) return;
+    left = true;
+    provider.close();
+    avatar.close();
+    handOff({
+      execPath: process.execPath,
+      argv: process.argv,
+      env: process.env,
+      cwd: process.cwd(),
+      pidFile: join(dataDir, "server.pid"),
+      logFile: join(dataDir, "server.log"),
+      ownPid: process.pid,
+      exit: (code) => process.exit(code),
+    });
+  };
+  for (const c of clients) c.close();
+  server.closeAllConnections();
+  server.close(leave);
+  setTimeout(leave, 1000).unref();
+}
+
 const slashCommands: Record<
   string,
   {
@@ -1153,6 +1254,22 @@ const slashCommands: Record<
           `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
       ),
   },
+  restart: {
+    help: "restart the server (the page reconnects; the conversation stays; phone access and permissions go back to a fresh start). Not from a phone",
+    run: async ({ say, remote }) => {
+      if (remote) return say(remoteRefusal);
+      if (restarting) return say("Already restarting.");
+      restarting = true;
+      say("Restarting. The page reconnects in a moment. Phone access and permissions go back to how they are at every start, and the conversation stays.");
+      try {
+        await transcript.save({ provider: basicMode ? "basic" : settings.provider, sessionId: provider.sessionId, ...convo });
+      } catch (err) {
+        console.error("could not save the transcript:", err);
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      beginRestart();
+    },
+  },
   doctor: {
     help: "check what the app needs (Node, the character creator, the brains, opencode, her data folder) and say what is missing; it only looks, nothing is changed",
     run: async ({ say, remote }) => {
@@ -1239,6 +1356,10 @@ const slashCommands: Record<
       const links = phoneLinks(port, lanToken);
       reply({ type: "phone", links, qr: qrRows(links[0]) });
     },
+  },
+  play: {
+    help: "play a short scene in chat (work mode switches to chat): /play lists them; /play key or /play room (counts: /play room 5 1 3 1); the room asks you to wait while she writes it, and she explains the thread when you finish or stop; /play end stops it",
+    run: ({ args, say }) => playCommand(args, say),
   },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
   export: { help: "download the conversation as a Markdown file", run: () => {} },
@@ -1508,6 +1629,7 @@ function resetConversation(): void {
   transcript.clear();
   persistTranscript();
   renewNotes();
+  stopScene();
   activity = null;
   pendingPermissions.clear();
   broadcast({ type: "reset" });
@@ -1535,6 +1657,10 @@ const turns = createTurnService({
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
   activity: setActivity,
   chatMode: () => mode === "chat",
+  sceneNote: () => (mode === "chat" && sceneId ? sceneNoteText : null),
+  sceneEndedByHer: () => {
+    stopScene();
+  },
   takeLookPicture: () => {
     const picture = lookPictureDue && lookPicture ? lookPicture : null;
     lookPictureDue = false;
