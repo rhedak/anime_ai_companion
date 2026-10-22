@@ -52,7 +52,9 @@ Pick **Cursor** and she is driven by `cursor-agent` (Composer, Grok, or any mode
 with `cursor-agent login`, or set `CURSOR_API_KEY`. The conversation goes to Cursor; files stay on this machine.
 Chat mode is read-only. Work mode asks with the same approval card as Claude, and the permissions menu adds **Run
 everything** (`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets to
-Ask every time the server starts. Auto and Accept edits stay Claude Code modes.
+Ask every time the server starts. If Cursor's own CLI is set to run without asking (`"approvalMode": "unrestricted"`
+in `~/.cursor/cli-config.json`), this app starts in Run everything too and says so. Auto and Accept edits stay Claude
+Code modes.
 
 ## opencode
 

@@ -17,7 +17,7 @@ import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
-import { CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
+import { CURSOR_EVERYTHING_NOTICE, CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
 import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -242,8 +242,10 @@ let mode: Mode = "chat";
   }
 }
 
-// Not saved: loosening approvals (auto, accept edits) is a choice made again each run.
+// Not saved: every start is Ask, except when Cursor's own CLI never asks, in which case Run everything so the menu matches it.
 let permissionMode: PermissionMode = "manual";
+/** Why Run everything is on, when Cursor's CLI chose it. Told to each new page until the mode is changed. */
+let cursorEverythingNotice: string | null = null;
 /** Like the permission mode, never saved: hooks run commands, so each start begins isolated. */
 let claudeSetup = false;
 
@@ -266,6 +268,11 @@ if (settings.provider !== "ollama" && !brainThere(settings.provider)) {
   else basicMode = true;
 }
 if (basicMode) mode = "chat"; // no tools to work with
+// Cursor's own "unrestricted" never sends an approval request, so Ask would be a lie. Start in Run everything instead.
+if (!basicMode && settings.provider === "cursor" && cursorApprovalMode() === "unrestricted") {
+  permissionMode = "everything";
+  cursorEverythingNotice = CURSOR_EVERYTHING_NOTICE;
+}
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
 
@@ -718,6 +725,7 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
     );
   } else {
     permissionMode = value;
+    if (value !== "everything") cursorEverythingNotice = null;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
     else provider.configure(sessionConfig());
     if (value === "everything") {
@@ -747,16 +755,17 @@ interface CommandContext {
   remote: boolean;
 }
 
-/** What a phone may not do: anything that loosens approvals, or that runs on this machine without a card. Naming a project folder by its path is allowed. */
+/** What a phone may not do: anything that loosens approvals past Run everything, or that runs on this machine without a card. Naming a project folder by its path, and Run everything, are allowed. */
 const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
-const looserThanAsk = (mode: unknown) => mode !== "manual" && mode !== "plan";
+/** Auto and Accept edits stay on the computer. Run everything may be chosen from a phone. */
+const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === "auto";
 
-/** The slash commands that would loosen approvals or load the user's hooks. `/work <path>` is allowed: the folder still has to exist, and home and `/` are refused. */
+/** The slash commands that would turn on Auto or Accept edits, or load the user's hooks. `/work <path>` and `/permissions everything` are allowed. */
 function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
   if (name === "setup") return a === "on";
   if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
-  if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
+  if (name === "permissions") return Object.hasOwn(permissionNames, a) && remoteBlockedMode(permissionNames[a]);
   return false;
 }
 
@@ -1560,6 +1569,7 @@ wss.on("connection", (ws) => {
     })
     .catch((err) => console.error("could not send the packs:", err));
   ws.send(JSON.stringify(modeInfo()));
+  if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify(backgroundMessage()));
@@ -1634,7 +1644,7 @@ wss.on("connection", (ws) => {
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
-      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && looserThanAsk(msg.mode)) && request.tool !== "ExitPlanMode") {
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && remoteBlockedMode(msg.mode)) && request.tool !== "ExitPlanMode") {
         changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
@@ -1664,7 +1674,7 @@ wss.on("connection", (ws) => {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
-      if (remote && looserThanAsk(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+      if (remote && remoteBlockedMode(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
@@ -1698,6 +1708,12 @@ wss.on("connection", (ws) => {
       const switching = settings.provider !== msg.provider || basicMode;
       basicMode = false;
       settings.provider = msg.provider;
+      // Cursor's CLI already runs without asking: match it when she is switched onto Cursor, and say so once.
+      if (switching && settings.provider === "cursor" && cursorApprovalMode() === "unrestricted") {
+        permissionMode = "everything";
+        cursorEverythingNotice = CURSOR_EVERYTHING_NOTICE;
+        broadcast({ type: "notice", text: CURSOR_EVERYTHING_NOTICE });
+      } else if (settings.provider !== "cursor") cursorEverythingNotice = null;
       await saveSettings(settingsPath, settings);
       if (switching) {
         queue.drop();

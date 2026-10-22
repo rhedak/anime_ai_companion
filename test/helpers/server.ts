@@ -184,6 +184,10 @@ export interface ServerOptions {
   firstStart?: boolean;
   /** Files to have in data/ before the server starts, by path relative to data/ (frames/<pack>/neutral.png, say). */
   dataFiles?: Record<string, string | Buffer>;
+  /** Files under the throwaway home, by relative path (~/.cursor/cli-config.json, say). */
+  homeFiles?: Record<string, string | Buffer>;
+  /** Extra stand-in programs on the server's PATH, by name. The script is Node; a #! line is optional. */
+  standIns?: Record<string, string>;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -203,6 +207,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const bin = join(dir, "bin");
   mkdirSync(bin);
   writeStandIn(bin, "claude", STAND_IN);
+  for (const [name, script] of Object.entries(options.standIns ?? {})) writeStandIn(bin, name, script);
   const config = join(dir, "claude-config");
   for (const skill of options.userSkills ?? []) {
     mkdirSync(join(config, "skills", skill), { recursive: true });
@@ -210,6 +215,11 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   }
   mkdirSync(config, { recursive: true });
   mkdirSync(join(dir, "home"));
+  for (const [name, body] of Object.entries(options.homeFiles ?? {})) {
+    const file = join(dir, "home", name);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, body);
+  }
   if (options.coldConversation) {
     const sessionId = "11111111-2222-4333-8444-555555555555";
     mkdirSync(join(config, "projects", "earlier"), { recursive: true });

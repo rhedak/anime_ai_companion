@@ -263,3 +263,7 @@ export function cursorApprovalMode(configPath: string = join(homedir(), ".cursor
 export const CURSOR_UNRESTRICTED_TEXT =
   'Your Cursor CLI is set to run everything without asking ("approvalMode": "unrestricted" in ~/.cursor/cli-config.json), so the approval cards here could never appear and Ask would not ask. Nothing was sent. ' +
   "Change that setting in Cursor (or delete the line, which brings the default back) so that it asks again, or choose Everything in the permission menu if you do want it to run without asking, or use another brain for work mode.";
+
+/** Said when the app starts in Run everything because Cursor's own CLI never asks. The choice is still memory only. */
+export const CURSOR_EVERYTHING_NOTICE =
+  'Run everything, because your Cursor CLI is set to run without asking ("approvalMode": "unrestricted" in ~/.cursor/cli-config.json). This resets to Ask the next time the server starts.';

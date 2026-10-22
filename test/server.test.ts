@@ -1704,6 +1704,16 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       ws.send(JSON.stringify({ type: "user", text: "!true" }));
       assert.match((await waitHeard(from, (e) => e.type === "notice")).text, /only possible on the computer itself/, "a phone still cannot run !command");
 
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn on Auto");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "/permissions everything" }));
+      const ever = await waitHeard(from, (e) => e.type === "notice");
+      assert.doesNotMatch(ever.text, /only possible on the computer itself/, "Run everything is not refused just because it came from a phone");
+      assert.match(ever.text, /Cursor or opencode/, "this brain is Claude, which has no Run everything");
+
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
     }
@@ -1939,5 +1949,94 @@ describe("her name: the user's own, else the character's of the pack that is on"
     from = c.mark;
     c.say("/frames off");
     assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Risa", "no pack: the default");
+  });
+});
+
+/** Answers the few ACP calls a Cursor start makes, and records the argv it was given. */
+const CURSOR_STUB = `
+const fs = require("fs");
+const send = (o) => console.log(JSON.stringify(o));
+if (process.env.STANDIN_LOG) fs.appendFileSync(process.env.STANDIN_LOG, JSON.stringify({ kind: "cursor-argv", args: process.argv.slice(2) }) + "\\n");
+require("readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.method === "initialize") return send({ id: msg.id, result: { protocolVersion: 1 } });
+  if (msg.method === "authenticate") return send({ id: msg.id, result: {} });
+  if (msg.method === "session/new" || msg.method === "session/load") {
+    return send({ id: msg.id, result: { sessionId: "cursor-stand-in", models: { currentModelId: "m", availableModels: [{ modelId: "m", name: "Test" }] } } });
+  }
+  if (msg.id != null) send({ id: msg.id, result: {} });
+});
+`;
+
+describe("Cursor's own unrestricted setting", { skip }, () => {
+  test("the app starts in Run everything and says why, and work mode then passes --force", async () => {
+    const server = await startServer({
+      settings: { provider: "cursor" },
+      homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "unrestricted" }) },
+      standIns: { "cursor-agent": CURSOR_STUB },
+    });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.provider, "cursor");
+      assert.equal(mode.permissionMode, "everything");
+      assert.match((await c.next((e) => e.type === "notice" && /unrestricted/.test(e.text))).text, /Run everything/);
+      const from = c.mark;
+      c.send({ type: "mode", mode: "work", projectDir: server.project });
+      assert.equal((await c.next((e) => e.type === "mode" && e.mode === "work", 8000, from)).permissionMode, "everything");
+      await waitFor(() => server.claudeLog().some((e) => e.kind === "cursor-argv" && e.args?.includes("--force")));
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a phone can choose Run everything; Auto stays on the computer", async () => {
+    const server = await startServer({
+      settings: { provider: "cursor" },
+      homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "allowlist" }) },
+      standIns: { "cursor-agent": CURSOR_STUB },
+    });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      assert.equal((await c.next("mode")).permissionMode, "manual", "allowlist still starts on Ask");
+      const lanIp = Object.values(networkInterfaces()).flatMap((list) => list ?? []).find((i) => i.family === "IPv4" && !i.internal)?.address;
+      if (!lanIp) return;
+      let from = c.mark;
+      c.say("/phone");
+      await c.next("lan-offer", 5000, from);
+      from = c.mark;
+      c.send({ type: "lan-answer", yes: true });
+      const card = await c.next("phone", 8000, from);
+      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
+      assert.ok(token);
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const heard: any[] = [];
+      ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
+      await new Promise<void>((resolve, reject) => {
+        ws.once("open", () => resolve());
+        ws.once("error", reject);
+      });
+      const waitHeard = async (start: number, test: (e: any) => boolean, ms = 5000) => {
+        const begun = Date.now();
+        for (;;) {
+          const found = heard.slice(start).find(test);
+          if (found) return found;
+          if (Date.now() - begun > ms) throw new Error(`timed out; saw: ${heard.slice(start).map((e) => e.type).join(", ") || "nothing"}`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+      let at = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /only possible on the computer itself/);
+      at = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "everything" }));
+      assert.equal((await waitHeard(at, (e) => e.type === "mode" && e.permissionMode === "everything")).permissionMode, "everything");
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Run everything/.test(e.text))).text, /without a card/);
+      ws.close();
+    } finally {
+      await server.stop();
+    }
   });
 });

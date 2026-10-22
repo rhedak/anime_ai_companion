@@ -190,7 +190,9 @@ any other model that agent lists). Sign in once with `cursor-agent login`, or se
 The conversation still goes to Cursor; files stay on this machine. Chat mode is read-only. Work mode
 asks with the same approval card as Claude, and the Permissions menu adds **Run everything**
 (`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets
-to Ask every time the server starts. Auto and Accept edits stay Claude Code modes.
+to Ask every time the server starts. If Cursor's own CLI is set to run without asking
+(`"approvalMode": "unrestricted"` in `~/.cursor/cli-config.json`), this app starts in Run everything
+too and says so. Auto and Accept edits stay Claude Code modes.
 
 ## opencode
 
@@ -214,7 +216,8 @@ there, like a regular Claude Code session. She asks first:
   (file edits no longer ask; commands still do), and *Auto* (Claude Code's own classifier approves
   routine actions and blocks risky ones, so fewer cards reach you). With Cursor, the menu is Ask,
   Plan and **Run everything** instead of Accept edits and Auto. It resets to *Ask* on every start
-  and can be changed at any time, even while an approval card is waiting; the conversation carries on.
+  (unless Cursor's own CLI is set to run without asking, in which case this app starts in Run everything
+  and says so) and can be changed at any time, even while an approval card is waiting; the conversation carries on.
   Approval cards also offer *Allow, and accept all edits* (for file edits) and *Allow, and switch to
   Auto*, like the terminal's "yes, and don't ask again".
 - Pre-approved without asking: `Read`, `Grep`, `Glob` (edit in `data/settings.json`).
@@ -274,10 +277,10 @@ every start**: you ask for it each time, like a looser permission mode.
    ask next time.
 
 What a phone can do: chat, answer the approval cards, stop her, switch between chat and work, set the project
-folder by typing its path (`/work ~/project`, or the folder field), change the look. What it cannot, because these
-run without a card or reach into the computer: `!commands`, the loose permission modes (Auto, Accept edits, Run
-everything), `/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the
-system folder dialog (it opens on the computer). The home folder and `/` still cannot be chosen.
+folder by typing its path (`/work ~/project`, or the folder field), choose **Run everything**, change the look.
+What it cannot, because these run without a card or reach into the computer: `!commands`, Auto and Accept edits,
+`/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the system folder
+dialog (it opens on the computer). The home folder and `/` still cannot be chosen.
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The
 button in the chat's header puts her behind the chat instead: the chat takes the whole screen and she shows

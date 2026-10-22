@@ -132,11 +132,12 @@ The server can run an agent that edits files and runs commands. These are not op
   the listener to `0.0.0.0` without a restart): off at every start, never a default, never an env var or a saved
   setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
   can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
-  and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
-  turn on `/setup`, or open the system folder dialog (`pick-folder` runs on this computer). It may set
-  the work folder by a typed path (`/work <path>` or the folder field); `checkProjectDir` still refuses
-  the home folder and `/`. Any new message type that does one of the forbidden things must check
-  `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
+  and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
+  turn on `/setup`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
+  Run everything, and it may set the work folder by a typed path (`/work <path>` or the folder field);
+  `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the
+  forbidden things must check `remote` too, and loopback must keep working unchanged (a local proxy would
+  otherwise be a way in).
 - The origin check keeps websites out, not other programs on the machine (a local process can forge `Origin`), and
   there is no stronger boundary on loopback: do not describe it as one. `COMPANION_NO_SHELL=1` turns off `!command`.
 - `/claude-login` (`src/claude-login.ts`) only runs the user's own `claude auth login` and `claude auth status`; it never reads or stores credentials, and it is refused from a phone. Auth errors from `claude` are rewritten to point at it (`describeAuthError`).
@@ -211,8 +212,7 @@ stdin/stdout. Spawn `cursor-agent`. A command named `agent` is not necessarily t
   `reject-once`. Those are the existing card buttons. No answer means the tool does not run.
 - Chat is ACP mode `ask` (read-only). Plan is `plan`. Anything else in work mode is `agent`.
 - **The CLI's own `approvalMode` decides whether it asks at all.** With `"approvalMode": "unrestricted"` in `~/.cursor/cli-config.json` cursor-agent never sends `session/request_permission` (measured with
-  2026.10.14: an Ask-mode edit changed the file with no card), so the app's Ask would be a lie. `cursorApprovalMode()` (`src/providers/cursor-acp.ts`) reads that file (never writes it) and `notReady` in `src/server.ts`
-  refuses to send in work mode + Ask while it says "unrestricted", saying how to fix it; choosing Everything is the explicit way to run without asking. ACP has no mode that asks every time to switch to.
+  2026.10.14: an Ask-mode edit changed the file with no card), so the app's Ask would be a lie. `cursorApprovalMode()` (`src/providers/cursor-acp.ts`) reads that file (never writes it). When Cursor is the brain and that file says `"unrestricted"`, the app starts in Run everything and says so (`CURSOR_EVERYTHING_NOTICE`); it is still memory only, so the next start is Ask again unless the file still says unrestricted. `notReady` in `src/server.ts` still refuses to send in work mode + Ask while it says "unrestricted". ACP has no mode that asks every time to switch to.
 - **Run Everything** is `cursor-agent --force`, work mode only, chosen in the menu, not saved.
   `--auto-review` is not honoured by ACP, so Auto and Accept edits stay Claude-only. Do not
   pretend they work for Cursor.

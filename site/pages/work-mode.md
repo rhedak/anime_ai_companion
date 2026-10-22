@@ -15,8 +15,10 @@ Every action that is not pre-approved shows an **approval card** with the exact 
 *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried. With a local (Ollama) model, *for this session* covers later file writes and edits in the project folder, but a shell command only as written. `Read`, `Grep` and `Glob` are
 pre-approved (change that in `data/settings.json`).
 
-The **Permissions** menu changes how approvals work. It resets to *Ask* every time the server starts, and can be
-changed at any time, even while a card is waiting.
+The **Permissions** menu changes how approvals work. It resets to *Ask* every time the server starts (when Cursor's
+own CLI is set to run without asking, this app starts in **Run everything** instead and says so), and can be
+changed at any time, even while a card is waiting. A phone can choose Run everything; Auto and Accept edits stay on
+the computer.
 
 | Mode | What it does | Brains |
 | --- | --- | --- |

@@ -23,11 +23,11 @@ at every start**: you ask for it each time, like a looser permission mode.
 ## What a phone can do
 
 Chat, answer the approval cards, stop her, switch between chat and work, type a project folder (`/work ~/project` or
-the folder field), and change her look.
+the folder field), choose **Run everything**, and change her look.
 
-What it cannot do, because these run without a card or reach into the computer: `!commands`, the loose permission
-modes (Auto, Accept edits, Run everything), `/setup on`, `/skills on`, importing or resetting a character card, opening
-her notes file, and the system's folder dialog (that opens on the computer). The home folder and `/` still cannot be a
+What it cannot do, because these run without a card or reach into the computer: `!commands`, Auto and Accept edits,
+`/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the system's folder
+dialog (that opens on the computer). The home folder and `/` still cannot be a
 project folder. Typing while she answers (the queue) works from a phone; the microphone button does not, because
 browsers only allow a microphone on `localhost` or HTTPS.
 
