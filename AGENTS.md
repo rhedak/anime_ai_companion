@@ -133,7 +133,7 @@ The server can run an agent that edits files and runs commands. These are not op
   setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
   can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
   and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
-  turn on `/setup`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
+  turn on `/setup` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
   Run everything, and it may set the work folder by a typed path (`/work <path>` or the folder field);
   `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the
   forbidden things must check `remote` too, and loopback must keep working unchanged (a local proxy would
@@ -151,6 +151,10 @@ The server can run an agent that edits files and runs commands. These are not op
   loads only the user's own settings source (`--setting-sources user`) with hooks switched off
   (`--settings {"disableAllHooks":true}`). A folder's own skills still need `/setup on`, because a skill's
   frontmatter can pre-approve tools.
+  `/chrome on` is the same kind of opt-in (off at every start, refused from a phone, work mode only): it passes
+  Claude Code's own `--chrome` so the Claude in Chrome extension can drive the user's browser. It does not load
+  any other MCP server. `--strict-mcp-config` stays unless `/setup` is on. Each browser action still comes through
+  the approval card. The extension must already be installed and signed into the same account.
 - A character card is text from a stranger that ends up in her prompt (`src/card.ts`). Strip markup and our
   own tags, cap lengths, show a preview and ask before it applies. Importing and resetting are not available
   from a phone. Name, description, personality, scenario and example lines are always used; ignore `extensions`.

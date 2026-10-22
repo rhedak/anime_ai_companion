@@ -70,6 +70,11 @@ export interface SessionConfig {
    * settings but not their hooks; a folder's own skills stay off. Ignored when claudeSetup is on.
    */
   claudeSkills: boolean;
+  /**
+   * Work mode only: pass Claude Code's own `--chrome`, so she can drive the user's browser through the
+   * Claude in Chrome extension. Off by default. Other MCP servers stay out unless claudeSetup is on.
+   */
+  claudeChrome: boolean;
   /** How hard Claude thinks (`--effort`); null leaves it to Claude Code's default. */
   effort: Effort | null;
 }

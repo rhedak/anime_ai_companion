@@ -19,6 +19,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/permissions [ask\|plan\|accept\|auto\|everything]`, `/plan` | the permissions menu, from the keyboard |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/chrome [on\|off]` | work mode: let her use your Chrome through the Claude in Chrome extension (off at every start; the extension must already be installed and signed into the same account) |
 | `/persona [show \| edit \| reset]` | whose voice she speaks in (your own persona, the character of the pack that is on, or the default); `edit` opens your own `data/persona.md`, `reset` removes it (kept as `persona.md.bak`); both only on the computer |
 | `/memory [add <note> \| forget <number\|all> \| edit \| ask \| auto \| off]` | her notes about you (`data/memory.md`); in chat she asks before saving one (`auto` saves with an Undo, `off` saves nothing), never in work mode |
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |

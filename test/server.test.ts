@@ -903,6 +903,27 @@ describe("work mode", { skip }, () => {
     assert.equal(asked, 1, "asked once, not on every failure");
   });
 
+  test("/chrome on passes Claude's own flag and leaves other MCP servers out", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    await fresh(c);
+    const from = c.mark;
+    c.say("/chrome on");
+    try {
+      await c.next((e) => e.type === "mode" && e.claudeChrome === true, 5000, from);
+      await c.next((e) => e.type === "notice" && /Claude in Chrome/.test(e.text), 5000, from);
+      await ask(c, "look");
+      const args = server.claudeLog().filter((e) => e.kind === "argv").at(-1)!.args!;
+      assert.ok(args.includes("--chrome"));
+      assert.ok(args.includes("--strict-mcp-config"));
+    } finally {
+      c.say("/chrome off");
+      await c.next((e) => e.type === "mode" && e.claudeChrome === false, 5000, from);
+      await ask(c, "done"); // the off note must not ride into the next test
+    }
+  });
+
   test("she cannot save a note in work mode, and the user can add one by hand", async () => {
     const c = await server.client();
     await c.next("history");
@@ -1707,6 +1728,15 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       from = heard.length;
       ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
       assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn on Auto");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "/chrome on" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn Chrome on");
+      assert.equal(heard.slice(from).some((e) => e.type === "mode" && e.claudeChrome), false, "Chrome stays off");
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "claude-chrome", value: true }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot tick Use my Chrome");
+      assert.equal((await waitHeard(from, (e) => e.type === "mode")).claudeChrome, false, "the checkbox is told to snap back");
 
       from = heard.length;
       ws.send(JSON.stringify({ type: "user", text: "/permissions everything" }));

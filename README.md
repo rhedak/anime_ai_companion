@@ -233,6 +233,7 @@ there, like a regular Claude Code session. She asks first:
   in a terminal; hooks run commands, so it is off at every start. The home directory or `/` cannot be
   chosen as a folder.
 - **Skills.** Skills are not loaded by default either, so she cannot call one by name and would have to read its file by hand. The **Use my skills** checkbox, or `/skills on`, lets her use your own skills (`~/.claude/skills`) by name. It loads your user settings but keeps hooks off, and a folder's own skills stay off: those only load with the whole setup above. It is off at every start. When she reaches for one of your skills while they are off, she asks first, and a folder with its own skills says so once.
+- **Chrome.** The **Use my Chrome** checkbox, or `/chrome on`, lets her drive your own Chrome through the [Claude in Chrome](https://code.claude.com/docs/en/chrome) extension. It passes Claude Code's own `--chrome` and nothing else: your other MCP servers stay unloaded unless the setup above is on. The extension has to be installed already and signed into the same Claude account (an API-key login keeps it off). Browser actions use the same approvals as her other tools. It is off at every start, and a phone cannot turn it on.
 - With Claude Code, helpers (subagents) can keep running after her reply ends: a line above the message box says
   **Waiting for N background agents to finish…** (hover for what each is doing), and a reply she gives when one finishes
   appears in the chat like any other.
@@ -279,7 +280,7 @@ every start**: you ask for it each time, like a looser permission mode.
 What a phone can do: chat, answer the approval cards, stop her, switch between chat and work, set the project
 folder by typing its path (`/work ~/project`, or the folder field), choose **Run everything**, change the look.
 What it cannot, because these run without a card or reach into the computer: `!commands`, Auto and Accept edits,
-`/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the system folder
+`/setup on`, `/skills on`, `/chrome on`, importing or resetting a character card, opening her notes file, and the system folder
 dialog (it opens on the computer). The home folder and `/` still cannot be chosen.
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The
@@ -493,6 +494,7 @@ Type these in the chat box (`/help` lists them):
 | `/rewind` | not available in the companion: prints the terminal command to continue there and rewind |
 | `/effort [level]` | show or set how hard she thinks (restarts her process; the conversation continues) |
 | `/setup [on\|off]` | work mode: load your own Claude Code settings, hooks and MCP servers (off at every start) |
+| `/chrome [on\|off]` | work mode: let her use your Chrome through the Claude in Chrome extension (off at every start; the extension must already be installed) |
 | `/memory [add <note> \| forget <number\|all> \| edit \| ask \| auto \| off]` | her notes about you (`data/memory.md`); in chat she asks before saving one (`auto` saves with an Undo, `off` saves nothing), never in work mode |
 | `/card import <file>` \| `apply` \| `cancel` \| `export` \| `reset` | character cards: use a card's personality, or export hers (`/card import` shows a preview first) |
 | `/skills [on\|off]` | work mode: let her use your own skills by name; your user settings apply, hooks stay off (off at every start) |

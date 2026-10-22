@@ -195,6 +195,7 @@ export function createLocalSocket({
     permissionMode: "manual",
     claudeSetup: false,
     claudeSkills: false,
+    claudeChrome: false,
     effort: "default",
     effortNow: null,
     shellOff: true,

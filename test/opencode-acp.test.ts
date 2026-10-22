@@ -190,6 +190,7 @@ function config(over: Partial<SessionConfig> = {}): SessionConfig {
     permissionMode: "manual",
     claudeSetup: false,
     claudeSkills: false,
+    claudeChrome: false,
     effort: null,
     ...over,
   };

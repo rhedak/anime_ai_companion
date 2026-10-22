@@ -26,7 +26,7 @@ Chat, answer the approval cards, stop her, switch between chat and work, type a 
 the folder field), choose **Run everything**, and change her look.
 
 What it cannot do, because these run without a card or reach into the computer: `!commands`, Auto and Accept edits,
-`/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the system's folder
+`/setup on`, `/skills on`, `/chrome on`, importing or resetting a character card, opening her notes file, and the system's folder
 dialog (that opens on the computer). The home folder and `/` still cannot be a
 project folder. Typing while she answers (the queue) works from a phone; the microphone button does not, because
 browsers only allow a microphone on `localhost` or HTTPS.

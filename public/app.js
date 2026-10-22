@@ -732,6 +732,8 @@ function renderMode() {
   // The whole setup already includes the skills, so the narrower switch only matters without it.
   $("skillsrow").hidden = $("setuprow").hidden || Boolean(state.claudeSetup);
   $("use-skills").checked = Boolean(state.claudeSkills);
+  $("chromerow").hidden = state.mode !== "work" || state.provider !== "claude";
+  $("use-chrome").checked = Boolean(state.claudeChrome);
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
   permissionMenu.hidden = !work;
@@ -1700,6 +1702,9 @@ $("use-setup").addEventListener("change", () => {
 });
 $("use-skills").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "claude-skills", value: $("use-skills").checked }));
+});
+$("use-chrome").addEventListener("change", () => {
+  ws?.send(JSON.stringify({ type: "claude-chrome", value: $("use-chrome").checked }));
 });
 $("effort").addEventListener("change", () => {
   ws?.send(JSON.stringify({ type: "effort", value: $("effort").value }));

@@ -248,6 +248,8 @@ let permissionMode: PermissionMode = "manual";
 let cursorEverythingNotice: string | null = null;
 /** Like the permission mode, never saved: hooks run commands, so each start begins isolated. */
 let claudeSetup = false;
+/** Like the permission mode, never saved: it drives the user's real Chrome, so each start begins without it. */
+let claudeChrome = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 
@@ -298,6 +300,7 @@ const sessionConfig = (): SessionConfig => ({
   permissionMode,
   claudeSetup,
   claudeSkills: skills.enabled(),
+  claudeChrome,
   effort: effectiveEffort(),
 });
 
@@ -452,6 +455,7 @@ const modeInfo = () => ({
   permissionMode,
   claudeSetup,
   claudeSkills: skills.enabled(),
+  claudeChrome,
   effort: settings.effort,
   effortNow: effectiveEffort(),
   shellOff: shellDisabled(),
@@ -642,6 +646,29 @@ function changeClaudeSetup(on: boolean, say: Say): void {
   broadcast(modeInfo());
 }
 
+function changeClaudeChrome(on: boolean, say: Say): void {
+  const blocked = cannotChange();
+  if (blocked) say(blocked);
+  else if (settings.provider !== "claude") say("Chrome is a Claude Code feature.");
+  else if (!provider.canUseTools) say("This model cannot use tools, so there is no browser to connect.");
+  else {
+    claudeChrome = on;
+    provider.configure(sessionConfig()); // restarts claude; the conversation carries on
+    // She only hears about it with the next message: the running conversation keeps its first prompt.
+    notes.push(
+      on
+        ? "the user turned Chrome on for this session: Claude in Chrome is connected, so you can use the browser tools in their real Chrome. Each action still needs their approval, and a site they have not allowed will ask them."
+        : "the user turned Chrome off: the browser tools are gone.",
+    );
+    say(
+      on
+        ? "Chrome is on in work mode: she can use your browser through the Claude in Chrome extension. It needs that extension, signed into the same Claude account. Browser actions use the same approvals as her other tools, and this turns off the next time the server starts."
+        : "Chrome is off again.",
+    );
+  }
+  broadcast(modeInfo());
+}
+
 // --- her notes about the user (data/memory.md): see memory-service.ts ---
 const memory = createMemoryService({
   file: join(dataDir, "memory.md"),
@@ -760,10 +787,11 @@ const remoteRefusal = "That is only possible on the computer itself, not from a 
 /** Auto and Accept edits stay on the computer. Run everything may be chosen from a phone. */
 const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === "auto";
 
-/** The slash commands that would turn on Auto or Accept edits, or load the user's hooks. `/work <path>` and `/permissions everything` are allowed. */
+/** The slash commands that would turn on Auto or Accept edits, load the user's hooks, or drive Chrome on this computer. `/work <path>` and `/permissions everything` are allowed. */
 function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
   if (name === "setup") return a === "on";
+  if (name === "chrome") return a === "on"; // it drives the browser on this computer
   if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
   if (name === "permissions") return Object.hasOwn(permissionNames, a) && remoteBlockedMode(permissionNames[a]);
   return false;
@@ -1081,6 +1109,15 @@ const slashCommands: Record<
       const wanted = args.toLowerCase();
       if (wanted === "on" || wanted === "off") return changeClaudeSetup(wanted === "on", say);
       say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
+    },
+  },
+  chrome: {
+    help: "work mode: let her use your Chrome through the Claude in Chrome extension (the extension must already be installed and signed into the same account): /chrome on | off",
+    claudeOnly: true,
+    run: ({ args, say }) => {
+      const wanted = args.toLowerCase();
+      if (wanted === "on" || wanted === "off") return changeClaudeChrome(wanted === "on", say);
+      say(`Chrome is ${claudeChrome ? "on" : "off"} in work mode. Use /chrome on | off`);
     },
   },
   persona: {
@@ -1673,6 +1710,13 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "claude-setup" && typeof msg.value === "boolean") {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "claude-chrome" && typeof msg.value === "boolean") {
+      if (remote && msg.value) {
+        ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+        ws.send(JSON.stringify(modeInfo())); // the checkbox snaps back; turning it on stays on the computer
+        return;
+      }
+      changeClaudeChrome(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
       if (remote && remoteBlockedMode(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));

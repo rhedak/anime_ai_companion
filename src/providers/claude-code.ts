@@ -215,7 +215,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools, permissionMode, effort, claudeSetup, claudeSkills } = this.config;
+    const { mode, model, allowedTools, permissionMode, effort, claudeSetup, claudeSkills, claudeChrome } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -253,6 +253,8 @@ export class ClaudeCodeProvider implements Provider {
       );
       if (allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
       if (permissionMode !== "manual") args.push("--permission-mode", permissionMode);
+      // Her own opt-in, separate from /setup: the extension and its tools, not the user's other MCP servers.
+      if (claudeChrome) args.push("--chrome");
     }
     return args;
   }

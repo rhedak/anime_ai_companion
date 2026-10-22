@@ -59,6 +59,14 @@ load with the whole setup above. It is off at every start.
 When she reaches for one of your skills while they are off, she asks before anything is turned on. A folder that has its
 own skills says so once.
 
+### Chrome
+
+The **Use my Chrome** checkbox, or `/chrome on`, lets her drive your own Chrome through the
+[Claude in Chrome](https://code.claude.com/docs/en/chrome) extension. It passes Claude Code's own `--chrome` and nothing
+else, so your other MCP servers stay unloaded unless the whole setup above is on. The extension has to be installed
+already and signed into the same Claude account. An API-key login keeps Chrome off even with the flag. Browser
+actions use the same approvals as her other tools. It is off at every start, and a phone cannot turn it on.
+
 ## Helpers running in the background
 
 Claude Code can start helpers (subagents) that keep working after her reply ends. While any are running, a line above the
