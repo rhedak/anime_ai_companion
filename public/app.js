@@ -12,6 +12,8 @@ import { createErrorReporter, installErrorReporting } from "./errors.js";
 /** An element of the page by its id. Typed loosely on purpose: the markup is index.html's, and each id is one kind of element. @type {(id: string) => any} */
 const $ = (id) => document.getElementById(id);
 let ws = null;
+/** This page is open on another device. The folder dialog runs on the computer, so a phone types the path instead. */
+let onPhone = false;
 
 // A problem in the page shows up in the chat (tap the line for details) and in the server's log, instead of
 // only in a browser console nobody has open; see errors.js.
@@ -743,7 +745,9 @@ function renderMode() {
   const info = $("workinfo");
   info.replaceChildren();
   if (!work) {
-    info.textContent = "Pick the folder she may work in. She asks before changing anything.";
+    info.textContent = onPhone
+      ? "Type the folder she may work in. She asks before changing anything."
+      : "Pick the folder she may work in. She asks before changing anything.";
     return;
   }
   if (state.provider === "ollama") {
@@ -1369,6 +1373,7 @@ function handle(msg) {
       resolveColdCache(msg.choice);
       break;
     case "hello":
+      onPhone = msg.remote === true;
       $("status").textContent = "connected";
       $("status").title = msg.provider;
       $("dot").classList.add("on");
@@ -1752,7 +1757,8 @@ try {
 $("worksummary-text").addEventListener("click", () => setWorkbarCollapsed(false));
 
 // "Work here" applies what is typed. With nothing typed, or once she already works in that folder, the same button opens a
-// folder dialog instead: a new user needs a way to pick a folder without knowing its path.
+// folder dialog instead: a new user needs a way to pick a folder without knowing its path. A phone cannot open that
+// dialog (it runs on the computer), so there the button stays "Work here" and only a typed path applies.
 let picking = false;
 const folderUnchanged = () =>
   !$("folder").value.trim() || (state.mode === "work" && Boolean(state.projectDir) && $("folder").value.trim().replace(/(?<=.)\/+$/, "") === state.projectDir);
@@ -1760,9 +1766,10 @@ const folderUnchanged = () =>
 function renderFolderButton() {
   const button = $("folder-set");
   const choose = folderUnchanged();
-  button.textContent = picking ? "Choosing…" : choose ? "Choose folder…" : "Work here";
-  button.disabled = picking;
-  button.title = choose ? "Pick a folder in a dialog" : "Work in the folder typed here";
+  const typeIt = onPhone && choose;
+  button.textContent = picking ? "Choosing…" : typeIt || !choose ? "Work here" : "Choose folder…";
+  button.disabled = picking || typeIt;
+  button.title = typeIt ? "Type the folder's path. The folder dialog opens only on the computer." : choose ? "Pick a folder in a dialog" : "Work in the folder typed here";
 }
 $("folder").addEventListener("input", renderFolderButton);
 
@@ -1770,6 +1777,10 @@ function applyTypedFolder() {
   ws?.send(JSON.stringify({ type: "mode", mode: "work", projectDir: $("folder").value }));
 }
 $("folder-set").addEventListener("click", () => {
+  if (onPhone) {
+    if (!folderUnchanged()) applyTypedFolder();
+    return;
+  }
   if (folderUnchanged()) ws?.send(JSON.stringify({ type: "pick-folder" }));
   else applyTypedFolder();
 });

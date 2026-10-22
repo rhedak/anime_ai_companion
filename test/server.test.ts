@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -1655,6 +1656,54 @@ describe("/phone turns phone access on after a question, and /phone off turns it
         assert.ok(heard.slice(before).some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), `a phone cannot run ${command}`);
         assert.ok(!heard.slice(before).some((e) => e.type === "install-offer" || (e.type === "notice" && /Running on port|Looking at what/.test(e.text))), `${command} did nothing for a phone`);
       }
+      assert.equal(heard.find((e) => e.type === "hello")?.remote, true, "a phone is told it is one, so the page types a path instead of opening the folder dialog");
+
+      // A typed path is enough: the folder must exist, and home is still refused. The system dialog stays on the computer.
+      const project = await realpath(server.project);
+      const other = join(server.project, "phone-work");
+      mkdirSync(other);
+      const otherReal = await realpath(other);
+      const waitHeard = async (from: number, test: (e: any) => boolean, ms = 5000) => {
+        const started = Date.now();
+        for (;;) {
+          const found = heard.slice(from).find(test);
+          if (found) return found;
+          if (Date.now() - started > ms) throw new Error(`timed out; saw: ${heard.slice(from).map((e) => e.type).join(", ") || "nothing"}`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+      let from = heard.length;
+      const page = c.mark;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: server.project }));
+      assert.equal((await waitHeard(from, (e) => e.type === "mode" && e.mode === "work")).projectDir, project, "a phone can set the work folder by its path");
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, project);
+      assert.equal((await c.next((e) => e.type === "mode" && e.projectDir === project, 5000, page)).mode, "work", "the computer hears the folder the phone set");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: `/work ${other}` }));
+      assert.equal((await waitHeard(from, (e) => e.type === "mode" && e.projectDir === otherReal)).mode, "work", "/work <path> works from a phone");
+      assert.equal(heard.slice(from).some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), false);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: "~" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /home directory|disk root/.test(e.text))).text, /home directory/, "home is still refused from a phone");
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: join(server.project, "no-such-folder") }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /does not exist/.test(e.text))).text, /does not exist/);
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "pick-folder" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "the folder dialog stays on the computer");
+      assert.equal(heard.slice(from).some((e) => e.type === "picking"), false);
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "!true" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice")).text, /only possible on the computer itself/, "a phone still cannot run !command");
+
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
     }

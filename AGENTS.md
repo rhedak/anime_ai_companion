@@ -132,8 +132,10 @@ The server can run an agent that edits files and runs commands. These are not op
   the listener to `0.0.0.0` without a restart): off at every start, never a default, never an env var or a saved
   setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
   can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
-  and `Origin`, and such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
-  turn on `/setup`, or change the project folder. Any new message type that does one of those must check
+  and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
+  turn on `/setup`, or open the system folder dialog (`pick-folder` runs on this computer). It may set
+  the work folder by a typed path (`/work <path>` or the folder field); `checkProjectDir` still refuses
+  the home folder and `/`. Any new message type that does one of the forbidden things must check
   `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
 - The origin check keeps websites out, not other programs on the machine (a local process can forge `Origin`), and
   there is no stronger boundary on loopback: do not describe it as one. `COMPANION_NO_SHELL=1` turns off `!command`.

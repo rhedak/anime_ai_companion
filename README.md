@@ -273,10 +273,11 @@ every start**: you ask for it each time, like a looser permission mode.
 3. `/phone new` makes a new token and signs every phone out. `/phone off` turns phone access off again, until you
    ask next time.
 
-What a phone can do: chat, answer the approval cards, stop her, switch between chat and work in the saved
-folder, change the look. What it cannot, because these run without a card or reach into the computer: `!commands`,
-the loose permission modes (Auto, Accept edits, Run everything), `/setup on`, `/skills on`, importing or resetting a
-character card, opening her notes file, picking another project folder. Those are done on the computer itself.
+What a phone can do: chat, answer the approval cards, stop her, switch between chat and work, set the project
+folder by typing its path (`/work ~/project`, or the folder field), change the look. What it cannot, because these
+run without a card or reach into the computer: `!commands`, the loose permission modes (Auto, Accept edits, Run
+everything), `/setup on`, `/skills on`, importing or resetting a character card, opening her notes file, and the
+system folder dialog (it opens on the computer). The home folder and `/` still cannot be chosen.
 
 On a narrow screen she is above the chat, with a bar between them to drag up or down (double-tap resets it). The
 button in the chat's header puts her behind the chat instead: the chat takes the whole screen and she shows

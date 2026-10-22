@@ -34,7 +34,8 @@ terminal's "yes, and don't ask again".
 **Work here** applies the folder you typed. Once she already works in that folder, the same button reads **Choose
 folder…** and opens your system's folder dialog (macOS, or Linux with `zenity` or `kdialog`; elsewhere type the
 path). The home folder and `/` cannot be chosen. On a phone the folder bar starts folded away to save room, and the
-**−** and **+** buttons fold and unfold it on any screen.
+**−** and **+** buttons fold and unfold it on any screen. A phone sets the folder by typing its path (or `/work ~/project`);
+the folder dialog stays on the computer.
 
 `anaico` starts in work mode for the folder you ran it from. A server that is already running keeps its mode and
 folder.

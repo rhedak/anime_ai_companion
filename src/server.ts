@@ -747,14 +747,13 @@ interface CommandContext {
   remote: boolean;
 }
 
-/** What a phone may not do: anything that loosens approvals or reaches into this machine without a card. */
+/** What a phone may not do: anything that loosens approvals, or that runs on this machine without a card. Naming a project folder by its path is allowed. */
 const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
 const looserThanAsk = (mode: unknown) => mode !== "manual" && mode !== "plan";
 
-/** The slash commands that would loosen approvals, load the user's hooks, or point her at another folder. */
+/** The slash commands that would loosen approvals or load the user's hooks. `/work <path>` is allowed: the folder still has to exist, and home and `/` are refused. */
 function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
-  if (name === "work") return a !== ""; // /work alone returns to the saved folder
   if (name === "setup") return a === "on";
   if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
   if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
@@ -1540,7 +1539,8 @@ wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
   void backgroundPackCheck().catch(() => {});
-  ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
+  // `remote` is only for this socket: the page then types a folder instead of opening the dialog, which runs on this computer.
+  ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version, ...(remote ? { remote: true } : {}) }));
   void refreshPack()
     .then(async () => {
       if (ws.readyState !== ws.OPEN) return;
@@ -1643,7 +1643,8 @@ wss.on("connection", (ws) => {
         broadcast(modeInfo());
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
-      await switchMode(msg.mode, remote ? undefined : msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      // A phone may name the folder (it must exist; home and `/` are still refused). The system dialog stays on the computer (`pick-folder`).
+      await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "install-brain" && msg.brain === "opencode" && (msg.choice === "yes" || msg.choice === "stop")) {
       // It fetches and runs a program, so it is a decision for the person at the computer, never a phone.
       if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
