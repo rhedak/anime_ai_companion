@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Starts the companion server from this checkout in the foreground (Ctrl+C stops it), without the desktop shell.
+# Starts the companion server from this checkout without the desktop shell: in the foreground (Ctrl+C stops it), or in the background.
 #
 #   shell/server.sh              this computer only, http://127.0.0.1:3737
 #   shell/server.sh --lan        also reachable from other devices on the network (a phone); needs the token the server prints
 #   PORT=3739 shell/server.sh    another port
+#   shell/server.sh --daemon     in the background, and it keeps running after the terminal closes (log: data/server.log)
+#   shell/server.sh --status     whether that background server runs
+#   shell/server.sh --stop       stops it
+#   shell/server.sh --restart    stops it and starts it again in the background
+#   shell/server.sh --daemon --lan   the background server, also on the network
 #
 # Its data is this checkout's data/ and workspace/ (the owner's own), unless ANAICO_DATA / ANAICO_WORKSPACE say otherwise.
 # Any arguments are passed to the server, so --lan is only on for the start that asks for it.
@@ -30,6 +35,16 @@ if [[ ! -d node_modules ]]; then
   echo "Installing the packages (once)…"
   npm install
 fi
+
+# --daemon, --restart, --status and --stop go to the anaico command's own code (src/cli.ts), which keeps the background
+# server's pid in data/server.pid and its log in data/server.log. It does not open a browser here.
+for arg in "$@"; do
+  case "$arg" in
+    --daemon | --restart | --status | --stop)
+      exec node src/cli.ts "$@" --no-open
+      ;;
+  esac
+done
 
 echo "Companion server on port $PORT${*:+ ($*)}"
 exec node src/server.ts "$@"
