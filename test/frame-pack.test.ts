@@ -304,10 +304,10 @@ test("the Franzi (dirndl) pack that ships with the app is complete, with a wave 
     assert.ok(e?.blink && e.talk.length === 3, `${emotion}: rest, blink and three mouth openings`);
   }
   assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
-  assert.equal(r.pack.files.size, names.length * 5 + 4 + 8); // plus the dancing loop and its talking set
+  assert.equal(r.pack.files.size, names.length * 5 + 4 + 54); // plus the dancing loop and its talking set
   assert.deepEqual(Object.keys(r.pack.activities ?? {}), ["dancing"]);
-  assert.equal(r.pack.activities?.dancing.loop.length, 4);
-  assert.equal(r.pack.activities?.dancing.talk.length, 4);
+  assert.equal(r.pack.activities?.dancing.loop.length, 27);
+  assert.equal(r.pack.activities?.dancing.talk.length, 27);
   assert.match(r.pack.credit ?? "", /original character/);
   assert.match(r.pack.terms ?? "", /Made with AI/);
   const notes = r.pack.notes.join("\n");

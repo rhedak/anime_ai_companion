@@ -67,8 +67,8 @@ Any activity works with no pictures at all: she describes it in her own words an
 
 **Adding your own**
 
-1. Make the pictures for the activity in the outfit that suits it (a swimming activity in the bikini, say). Use the same canvas size and framing as the pack's other pictures (a different size jumps when it swaps), and make the last picture lead back into the first, because the loop never stops until the activity ends. Two to four pictures are enough; they play about three times a second.
-2. Put them in that outfit's pack folder (`data/frames/<pack>/`) with these names: `activity-<name>-1.webp`, `activity-<name>-2.webp` ... The name is one lower-case word (`a-z`, digits, `_`), such as `cooking` or `stargazing`. PNG and JPEG work too, and a pack made for downloading uses lossless WebP.
+1. Make the pictures for the activity in the outfit that suits it (a swimming activity in the bikini, say). Use the same canvas size and framing as the pack's other pictures (a different size jumps when it swaps), and make the last picture lead back into the first, because the loop never stops until the activity ends. Two to four pictures are enough; they play about three times a second. For real motion use a longer loop: **more than eight pictures play twelve a second**, so a two-second cycle is about 24 to 27 pictures (cut from a few seconds of video, picking the stretch where the last picture leads back into the first).
+2. Put them in that outfit's pack folder (`data/frames/<pack>/`) with these names: `activity-<name>-1.webp`, `activity-<name>-2.webp` ... The name is one lower-case word (`a-z`, digits, `_`), such as `cooking` or `stargazing`. PNG and JPEG work too, and a pack made for downloading uses lossless WebP, except for the pictures of an activity: a long loop may be **lossy WebP** (quality 90, lossless transparency), about a quarter of the size, and the archive tool accepts that for `activity-*` files only (they are stored whole, not as patches).
 3. Optional: the same poses with her mouth open, `activity-<name>-talk-1.webp`, `-2` ... with the same number of pictures. They play while she speaks, from the same step as the silent loop, so nothing jumps. Without them the silent loop just goes on while she speaks. A talking picture should differ from its silent partner only around the mouth: in a downloadable pack it is then stored as a small patch of that picture.
 4. Run `/frames <pack>` (or reload the pack from Looks → Packs…), then ask her to do it.
 
@@ -76,7 +76,7 @@ Which outfit goes with an activity is simply which pack holds its pictures. When
 
 While she is **drawn** (no pack on) and the drawn character is one that has a character file with such a line (Risa's does), she is told the same, and starting such an activity opens a card that asks whether to switch to that outfit's pack. Animations for the drawn body itself do not exist yet, so without a yes the activity just goes on.
 
-The limits are those of every pack: 8 MB per picture and 120 files per pack. Pictures a pack carries are served by the app only while it is on.
+The limits are those of every pack: 8 MB per picture and 120 files per pack (a long loop and its talking set use 54 of them). Pictures a pack carries are served by the app only while it is on.
 
 ## The sample pack: Linnea
 

@@ -72,7 +72,7 @@ separate packs repository, the same fields still work: only the URL changes.
 
 ## The archive
 
-`node src/pack-archive-cli.ts build` reads a folder of lossless WebP frames and writes one uncompressed tar.
+`node src/pack-archive-cli.ts build` reads a folder of lossless WebP frames and writes one uncompressed tar. The one exception is an activity's pictures (`activity-<name>-N.webp`, `-talk-N`): those may be lossy WebP, and a lossy one is stored whole, byte for byte, like a rest frame (a lossy talking picture cannot be a patch of its loop picture, because the two encodes differ everywhere by a little noise).
 `restore` turns that tar back into a folder `readPack` already understands.
 
 Stored whole, byte for byte:
