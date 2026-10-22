@@ -56,3 +56,8 @@ Say what happens to the owner's checkout: it stays on the old `main` until they 
 - Do not skip `--full` because a smaller run passed; do not release over a failure.
 - Do not re-tag or move a pushed tag. Do not delete a published release without being asked.
 - Do not announce the site pages (`picture-packs.html#activities`, etc.) as live before the Pages run succeeds.
+
+## Packs waiting for the next release (as of 2026-10-22)
+
+New or changed since 0.15.0, all committed locally and not pushed: the app's `franzi-dress` (bundled) has a 27-frame lossy dancing loop; the packs repo branch `franzi-activities` has `franzi-bikini` (swimming, 4 frames) and `franzi-casual` (24-frame lossy cooking loop). Before the release: push the packs branch and merge it to the packs repo's `main`, publish `franzi-bikini` and `franzi-casual` with a higher version than the live index entry (one at a time, see section 2), and check the archive builds (the build tool accepts lossy WebP for `activity-*` pictures only). The app side (`packs/characters/franzi.txt` lines, the 12 fps playback for loops over 8 frames, `/claude-login`, the archive exception) is on `dev`; a minor version (new commands and activity support).
+
