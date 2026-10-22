@@ -3,3 +3,4 @@ A 26-year-old woman, slim, of average height, with a graceful upright posture an
 default: franzi-dress
 activity: swimming = bikini
 activity: dancing = dress
+activity: cooking = casual

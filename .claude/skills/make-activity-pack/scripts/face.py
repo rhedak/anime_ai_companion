@@ -12,10 +12,11 @@ def irises(arr, ymax=0.26):
     import os
     if os.environ.get("IRIS") == "amber":
         # brown/amber eyes (Franzi): the iris rim is brown-orange (about 105,63,16); skin is much lighter and hair has no orange cast
-        teal = a & (r > 70) & (r < 215) & (g < 135) & (r - b > 45) & (r - g > 18)
+        teal = a & (r > 70) & (r < 215) & (g < 135) & (r - b > 45) & (r - g > 18) & (r - g < int(os.environ.get("IRIS_RG_MAX", "999")))  # IRIS_RG_MAX=90 keeps a red hair bow (r - g about 120) out
     else:
         teal = a & (g > r + 25) & (b > r + 25) & (g > 90)
     teal[int(H * ymax):] = False
+    teal[: int(H * float(os.environ.get("IRIS_YMIN", "0")))] = False  # IRIS_YMIN=0.15 skips a hair bow high on the head
     comp = label_runs(teal)
     big = sorted(((v[0], k, v[1:]) for k, v in comp.items() if v[0] > 40), reverse=True)[:4]
     return [(area, box) for area, k, box in big]
