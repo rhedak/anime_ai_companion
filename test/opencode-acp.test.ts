@@ -27,18 +27,18 @@ const models = [
 ];
 
 test("opencode args: plain ACP without plugins, never a skip-permissions flag", () => {
-  assert.deepEqual(opencodeArgs(), ["acp", "--pure"]);
-  assert.deepEqual(opencodeArgs(true), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
+  assert.deepEqual(opencodeArgs(true), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
 });
 
 test("--pure is only passed where it still exists: opencode 2.x dropped it and exits 1 on launch", () => {
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("1.19.3")), ["acp", "--pure"]);
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode 1.18.35")), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("1.19.3")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode 1.18.35")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode v2.0.32")), ["acp"]); // what 2.x really prints
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("2.0.32")), ["acp"]);
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("v2.1.0")), ["acp"]);
   // An unreadable answer keeps opencode's default (the flag), so a 1.x install is never started differently by mistake.
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("")), ["acp", "--pure"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
 });
 
 test("chat asks about every tool (and is refused each time); work asks with reads pre-approved, or lets everything through", () => {
@@ -222,7 +222,7 @@ test("the provider streams a reply, starts with plain ACP, and forces Ask in the
         if (event.type === "error") reject(new Error(event.message));
       });
     });
-    assert.deepEqual(seen[0], ["acp", "--pure"]);
+    assert.deepEqual(seen[0], ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
     assert.equal(events.some((event) => event.type === "delta" && event.text.includes("hello")), true);
     assert.equal(provider.modelLabel, "big-pickle");
     assert.equal(provider.sessionId, "sess-oc-1");
@@ -284,7 +284,7 @@ test("a version that cannot be read keeps --pure", async () => {
         if (event.type === "error") reject(new Error(event.message));
       });
     });
-    assert.deepEqual(seen[0], ["acp", "--pure"]);
+    assert.deepEqual(seen[0], ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
   } finally {
     unreadable.close();
     removeDir(dir);
@@ -412,6 +412,43 @@ test("when opencode dies at start, the page gets what it printed, not just the e
   }
 });
 
+test("a prompt opencode never answers ends with the quota error from its log, and the next message starts a fresh process", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  // Like the real one with its free quota used up: the prompt gets no answer, and the reason is only in the log on stderr.
+  await writeFile(script, fakeAgent.replace('if (msg.method === "session/prompt") {', `if (msg.method === "session/prompt") {
+    process.stderr.write('timestamp=2026-10-22T23:00:19.330Z level=ERROR message="stream error" session.id=sess-oc-1 small=false agent=build error.error="AI_APICallError: Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go"\\n');
+    return;`));
+  let starts = 0;
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "1.19.3",
+    spawnAgent: (_args, cwd) => {
+      starts++;
+      return spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  });
+  try {
+    const ask = () =>
+      new Promise<string>((resolve) => {
+        provider.send("hello", (event) => {
+          if (event.type === "error") resolve(event.message);
+        });
+      });
+    const first = await ask();
+    assert.match(first, /^Free usage limit reached\./);
+    assert.match(first, /Choose another model in the model menu/);
+    assert.equal(provider.busy, false);
+    assert.match(await ask(), /^Free usage limit reached\./);
+    assert.equal(starts, 2, "the stuck process was replaced");
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+});
+
 test("in chat mode a tool request is refused without a card, and the turn goes on", async () => {
   const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
   const script = join(dir, "fake.mjs");
@@ -454,6 +491,22 @@ test("opencode's own refusal of a network is said as that, and any other error i
   assert.doesNotMatch(refused, /Internal error/);
   assert.match(refused, /another brain in the Brain menu/);
   assert.equal(opencodeErrorText("Something else broke"), "Something else broke");
+});
+
+test("a failed model call in opencode's log becomes the turn's error, and the quota case says what to do", async () => {
+  const { opencodeStreamError, opencodeErrorText } = await import("../src/providers/opencode-acp.ts");
+  const line = (small: string, sid: string, error: string) =>
+    `timestamp=2026-10-22T23:00:19.330Z level=ERROR run=e9747a8a message="stream error" providerID=opencode modelID=big-pickle session.id=${sid} small=${small} agent=build mode=primary error.error="${error}"`;
+  const quota = "AI_APICallError: Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go";
+  assert.equal(opencodeStreamError(line("false", "ses_a", quota), "ses_a"), "Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go");
+  assert.equal(opencodeStreamError(line("true", "ses_a", quota), "ses_a"), null); // the title agent's call
+  assert.equal(opencodeStreamError(line("false", "ses_b", quota), "ses_a"), null); // another session
+  assert.equal(opencodeStreamError("timestamp=x level=INFO message=loop session.id=ses_a", "ses_a"), null);
+  assert.equal(opencodeStreamError(line("false", "ses_a", "AI_RetryError: Failed after 3 attempts. Last error: Rate limited"), "ses_a"), "Rate limited");
+  const said = opencodeErrorText("Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go");
+  assert.match(said, /^Free usage limit reached\./);
+  assert.match(said, /Choose another model in the model menu/);
+  assert.match(said, /https:\/\/opencode\.ai\/go\.$/);
 });
 
 test("a data folder written by another opencode version is explained, with opencode's own words kept", async () => {

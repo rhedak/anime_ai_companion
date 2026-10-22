@@ -38,7 +38,24 @@ export interface AcpEffect {
  * so it is only passed when the installed version still takes it.
  */
 export function opencodeArgs(supportsPure = true): string[] {
-  return supportsPure ? ["acp", "--pure"] : ["acp"];
+  // The log flags are for 1.x only (checked there). A failed model call (quota used up, a bad key) never answers the prompt over ACP; the error goes to
+  // opencode's log only, so it is printed to stderr to be read there (see opencodeStreamError).
+  return supportsPure ? ["acp", "--pure", "--print-logs", "--log-level", "ERROR"] : ["acp"];
+}
+
+/**
+ * The reason a model call failed, if this stderr text (opencode's log, see opencodeArgs) says so for this session's own reply. `small=false` leaves out the
+ * title agent's call, which fails the same way a moment later. The retry wrapper's "Failed after N attempts. Last error:" and the error class are dropped.
+ */
+export function opencodeStreamError(log: string, sessionId: string): string | null {
+  for (const line of log.split("\n")) {
+    if (!/level=ERROR/.test(line) || !/message="stream error"/.test(line) || !/\bsmall=false\b/.test(line)) continue;
+    if (!line.includes(`session.id=${sessionId}`)) continue;
+    const said = /\berror\.error="(.*)"\s*$/.exec(line.replace(/\r/g, ""))?.[1];
+    if (!said) continue;
+    return said.replace(/^AI_\w+:\s*/, "").replace(/^Failed after \d+ attempts\. Last error:\s*/i, "").trim() || null;
+  }
+  return null;
 }
 
 /**
@@ -254,6 +271,9 @@ export { permissionResult };
 export function opencodeErrorText(message: string): string {
   if (/free models? (aren'?t|are not) available|abusive traffic/i.test(message)) {
     return `opencode's service refused this request, so this is not a problem in the app or in your install: ${message.replace(/^\s*Internal error:?\s*/i, "").trim()} It tends to happen on shared or cloud network addresses. Try again later or from another network, or choose another brain in the Brain menu (Ollama runs on your own computer).`;
+  }
+  if (/free usage limit reached/i.test(message)) {
+    return `${message.replace(/\s+$/, "")} The free quota for this model is used up, which is neither the app's doing nor a broken install. Choose another model in the model menu (the other free ones may still have quota, and so may your own providers), or subscribe to OpenCode Go at https://opencode.ai/go.`;
   }
   if (/database is not empty|no session table/i.test(message)) {
     return `${message} opencode keeps its data in one folder shared by every version, and a different version (1.x and 2.x differ) has written to it. Use the same opencode version as before, or move that folder aside (\`opencode debug paths\` names it on the "data" line) to start fresh; this removes its saved logins and sessions.`;
