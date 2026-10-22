@@ -23,6 +23,24 @@ Like the rest of this repository and the `risa-dress` pack, these pictures are u
 5. **Packaging.** All pictures were scaled to 940 × 1070 (the size of `risa-dress`) and saved as lossless WebP,
    with the same file names as `risa-dress`: 39 pictures, plus `NOTICE.md`, `credit.txt` and this file.
 
+## Dancing activity frames
+
+The pack has two 4-frame loops, `activity-dancing-1` to `-4` (silent) and `activity-dancing-talk-1` to `-4` (talking, the same poses with her
+mouth open), 940 × 1070 lossless WebP, meant to play at about 3 frames a second.
+
+1. **A video, then pictures.** A key picture was made with xAI's Grok Imagine from the `neutral` picture (on white): she holds the sides of her
+   apron and skirt out and sways her hips, with her mouth closed (a first try came back with an open smile, which the talking set cannot use, so
+   it was redone asking for a closed mouth). Grok Imagine then made a six-second video from that picture (she dances in place, same face and
+   outfit, static camera), and three distinct poses were picked from its frames: a symmetric sway, a sway to the other side with the skirt swinging,
+   and a stride with one hand lifted. Frame 4 is a copy of frame 2.
+2. **Transparent background.** Each picked frame went through Grok Imagine's *Remove Background* (a full-size RGBA cutout, with a faint light edge on the
+   skirt hem and the lace). A script then scaled each frame so her eyes match the `neutral` picture's (the eye finder picked a hair blob for the third
+   frame, so its eyes were set by hand), and removed stray flecks of transparent haze.
+3. **Talking loop.** The open mouths were made by script, from the open mouth of `franzi-bikini`'s `cheer-1`, pasted over each frame's own closed
+   mouth (erased), 24 × 15, 30 × 21, 24 × 15 and 18 × 10 pixels (frames 1 to 4); every other pixel is the same as the silent frame.
+4. **Faults left.** Her dress and lacing differ slightly from the `neutral` picture (the video redraws them), the video's frames were 896 × 1024, so they are
+   a little softer than the other pictures, and the third frame's leg ends in a flat cut at the picture's bottom edge.
+
 ## Licence
 
 MIT, the same as the repository and the `risa-dress` pack. The pictures were made with AI, so whether and by whom

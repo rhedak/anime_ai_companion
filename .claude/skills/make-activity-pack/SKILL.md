@@ -61,3 +61,12 @@ The scripts have switches for them; set them in the environment of every script 
 - Verify with the app's own tools in the app repo: `readPack` (the activities and no size notes), `node src/pack-archive-cli.ts build <folder> -o x.tar` then `restore` and compare visible pixels (colour under fully transparent pixels does not matter). Expect about 5 to 8 MB for 47 frames; talk frames are about 1 KB patches.
 - Install it into the dev app (`cp -R` into `~/.anaico-dev/data/frames/`), restart `shell/dev-app.sh`, and let the owner try it (see `record-app-demo` for a video). Open the packs PR only when asked; **publishing** belongs to `release-companion` and waits for the app release.
 - Keep the Grok originals and cutouts in an untracked `ref/` folder of the packs repo (do not commit them; they are the owner's working files).
+
+## Motion from a Grok video (worked for Franzi's dancing)
+
+For a lively loop (dancing) a video beats four separate edits: the poses are consistent and the motion is real.
+
+- Make the key picture first (closed mouth: **an open smile cannot take the talking set**). On its post: right panel "Make Video" > "Add Prompt", set the resolution chip to 720p (the video is 896 x 1024, 6 s, 24 fps), prompt "she dances ... in place, static camera, plain white background, mouth stays closed, same face and outfit". Download the video (find "Download", it lands as `grok-video-<conversation>.mp4`).
+- `ffmpeg -i v.mp4 -vf fps=4 all/f%02d.png`, tile a contact sheet, pick three distinct, front-facing poses with the face the size of the base. Upload each to `grok.com/imagine` (file input ref, then wait 9 s for the post), **Remove Background**, wait for it to finish (15 s), download the full image.
+- Scale each cutout so the eye spacing matches the pack's `neutral` and place the eye midpoint on it (`align.py` pattern: `face.measure` on both). The eye finder can pick a hair blob on a tilted head: set that frame's eyes by hand, and give `mouth.head_geometry` the same eyes (monkeypatch it in the build script). Then `despeck` (drop alpha components under 200 px), talk frames from a **neutral-sized** `cheer-1` of the same character (the dress pack's own cheer-1 is tilted 30 degrees and gives a broken patch: use the bikini pack's).
+- Python here has no Pillow: `uv run --with pillow --with numpy python -I script.py`.
