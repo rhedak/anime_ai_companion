@@ -135,6 +135,12 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (msg.method === "session/prompt") {
     promptId = msg.id;
     const text = (msg.params.prompt ?? []).map((block) => block.text ?? "").join("\\n");
+    if (text.includes("FAIL-INTERNAL")) {
+      // cursor-agent says the reason on stderr, then answers the prompt with a bare "Internal error"
+      process.stderr.write("Error: Your macOS login keychain is locked.\\n");
+      setTimeout(() => send({ jsonrpc: "2.0", id: promptId, error: { code: -32603, message: "Internal error" } }), 100);
+      return;
+    }
     if (text.includes("PLEASE-ASK")) {
       send({
         jsonrpc: "2.0",
@@ -200,6 +206,31 @@ test("the provider streams a reply, and Run Everything spawns with --force", asy
     assert.equal(events.some((event) => event.type === "delta" && event.text.includes("hello")), true);
     assert.equal(provider.modelLabel, "composer-2.5");
     assert.equal(provider.sessionId, "sess-1");
+  } finally {
+    provider.close();
+    removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
+  }
+});
+
+test("a bare 'Internal error' from cursor-agent shows the reason it wrote on stderr", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cursor-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  const provider = new CursorProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] }),
+  });
+  try {
+    const message = await new Promise<string>((resolve, reject) => {
+      provider.send("FAIL-INTERNAL", (event) => {
+        if (event.type === "error") resolve(event.message);
+        if (event.type === "done") reject(new Error("the failed prompt finished as a success"));
+      });
+    });
+    assert.notEqual(message, "Internal error");
+    assert.match(message, /keychain/i);
   } finally {
     provider.close();
     removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
