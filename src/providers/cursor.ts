@@ -270,7 +270,7 @@ export class CursorProvider implements Provider {
       this.proc = null;
       const said = this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim(); // colour codes and CRs are noise in a chat bubble
       this.recentStderr = [];
-      const message = cursorErrorText(`cursor-agent exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`);
+      const message = cursorErrorText(`cursor-agent exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`, process.env);
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
     });
@@ -454,6 +454,8 @@ function defaultSpawn(args: string[], cwd: string): ChildProcessWithoutNullStrea
 
 function loginHint(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
+  // The keychain explanation already says what to do, and it contains the word "login", which would otherwise add a sign-in hint.
+  if (/keychain/i.test(message)) return message;
   if (/auth|login|sign/i.test(message)) return `${message} Run \`cursor-agent login\` in a terminal, or set CURSOR_API_KEY.`;
   return message;
 }
