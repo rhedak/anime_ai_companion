@@ -381,7 +381,7 @@ export class CursorProvider implements Provider {
   }
 
   private onLine(line: string): void {
-    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { message?: string } };
+    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { message?: string; data?: { message?: unknown } } };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -391,7 +391,9 @@ export class CursorProvider implements Provider {
       const waiter = typeof msg.id === "number" || typeof msg.id === "string" ? this.waiters.get(msg.id) : undefined;
       if (!waiter || (typeof msg.id !== "number" && typeof msg.id !== "string")) return;
       this.waiters.delete(msg.id);
-      if (msg.error) waiter.reject(new Error(msg.error.message ?? "Cursor agent error"));
+      // cursor-agent often says the real reason in error.data.message ("Authentication required. Please run 'agent login' ..."); the bare message is only "Internal error" or similar
+      const detail = typeof msg.error?.data?.message === "string" ? msg.error.data.message.trim() : "";
+      if (msg.error) waiter.reject(new Error(detail || msg.error.message || "Cursor agent error"));
       else waiter.resolve(msg.result);
       return;
     }

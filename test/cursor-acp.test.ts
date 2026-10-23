@@ -141,6 +141,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       setTimeout(() => send({ jsonrpc: "2.0", id: promptId, error: { code: -32603, message: "Internal error" } }), 100);
       return;
     }
+    if (text.includes("FAIL-AUTH")) {
+      // the reason is in error.data, next to the bare message
+      return send({ jsonrpc: "2.0", id: promptId, error: { code: -32603, message: "Internal error", data: { message: "Authentication required. Please run 'agent login' first." } } });
+    }
     if (text.includes("PLEASE-ASK")) {
       send({
         jsonrpc: "2.0",
@@ -231,6 +235,31 @@ test("a bare 'Internal error' from cursor-agent shows the reason it wrote on std
     });
     assert.notEqual(message, "Internal error");
     assert.match(message, /keychain/i);
+  } finally {
+    provider.close();
+    removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
+  }
+});
+
+test("the reason in an ACP error's data reaches the chat, not the bare 'Internal error'", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cursor-acp-"));
+  const script = join(dir, "fake.mjs");
+  await writeFile(script, fakeAgent);
+  const provider = new CursorProvider({
+    config: config({ cwd: dir }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"] }),
+  });
+  try {
+    const message = await new Promise<string>((resolve, reject) => {
+      provider.send("FAIL-AUTH", (event) => {
+        if (event.type === "error") resolve(event.message);
+        if (event.type === "done") reject(new Error("the failed prompt finished as a success"));
+      });
+    });
+    assert.match(message, /agent login/);
+    assert.doesNotMatch(message, /^Internal error$/);
   } finally {
     provider.close();
     removeDir(dir); // the script may be a moment from gone; Windows will not delete the folder it runs in until it is
