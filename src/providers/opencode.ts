@@ -238,7 +238,10 @@ export class OpenCodeProvider implements Provider {
       ...process.env,
       OPENCODE_CONFIG_CONTENT: opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools),
       // A project's own opencode.json, plugins and MCP servers can run code; keep them unloaded.
+      // v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first and falls back to the v1 name; send both.
       OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+      OPENCODE_CONFIG_PROJECT_DISABLE: "1",
+      // 1.x only: 2.x has no equivalent (and no --pure), so a plugin in the user's own global config is left to their own install.
       OPENCODE_DISABLE_DEFAULT_PLUGINS: "1",
     };
   }

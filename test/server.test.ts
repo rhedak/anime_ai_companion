@@ -1291,7 +1291,7 @@ describe("switching to a brain whose program is missing", { skip }, () => {
       const notice = await c.next((e) => e.type === "notice" && e.text.includes("opencode"), 5000, from);
       assert.match(notice.text, /not installed, so she stays on claude[^]*install it for you/);
       const offer = await c.next("install-offer", 5000, from);
-      assert.deepEqual([offer.brain, offer.host, offer.version], ["opencode", "github.com", OPENCODE_PIN.version]);
+      assert.deepEqual([offer.brain, offer.host, offer.version], ["opencode", "registry.npmjs.org", OPENCODE_PIN.version]);
       assert.ok(offer.megabytes > 10 && String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
       assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
     } finally {
@@ -1347,10 +1347,10 @@ describe("/doctor and /install-opencode", { skip }, () => {
       const from = c.mark;
       c.say("/install-opencode");
       const offer = await c.next("install-offer", 5000, from);
-      assert.deepEqual([offer.brain, offer.host, offer.version, offer.others], ["opencode", "github.com", OPENCODE_PIN.version, true]);
+      assert.deepEqual([offer.brain, offer.host, offer.version, offer.others], ["opencode", "registry.npmjs.org", OPENCODE_PIN.version, true]);
       assert.ok(String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
       const notice = await c.next((e) => e.type === "notice" && /opencode/.test(e.text) && /Nothing is fetched until you say yes/.test(e.text), 5000, from);
-      assert.match(notice.text, /releases\/download\/v/);
+      assert.match(notice.text, /registry\.npmjs\.org\/@opencode\/cli-/);
       assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
     } finally {
       await server.stop();

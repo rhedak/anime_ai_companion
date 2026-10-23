@@ -124,10 +124,10 @@ test("opencode: the app's own pinned copy is the one used, and another one on th
   const asset = opencodeAsset()!;
   const own = `${opencodeFolder("/repo/data")}/${asset.program}`;
   const ownRun = posixLine(own);
-  const lines = await checkAll(machine({ files: [posix(own)], programs: { "claude --version": "2", "git --version": "git 2", [`${ownRun} --version`]: "1.19.3", "opencode --version": "0.9.9" } }));
+  const lines = await checkAll(machine({ files: [posix(own)], programs: { "claude --version": "2", "git --version": "git 2", [`${ownRun} --version`]: OPENCODE_PIN.version, "opencode --version": "0.9.9" } }));
   const line = lines.find((l) => /^opencode:/.test(l.text))!;
   assert.equal(line.level, "ok");
-  assert.match(line.text, new RegExp(`the app's own copy is used \\(1\\.19\\.3\\), the pinned version ${OPENCODE_PIN.version.replace(/\./g, "\\.")}`));
+  assert.match(line.text, new RegExp(`the app's own copy is used \\(${OPENCODE_PIN.version.replace(/\./g, "\\.")}\\), the pinned version ${OPENCODE_PIN.version.replace(/\./g, "\\.")}`));
   assert.match(line.text, /another opencode on the PATH \(0\.9\.9\) is not used/);
 });
 
@@ -142,7 +142,7 @@ test("opencode: one found only on the PATH is named as not the pinned version, w
   assert.equal(none.level, "warn");
   assert.match(none.hint!, /\/install-opencode/);
   assert.match(none.hint!, new RegExp(OPENCODE_PIN.version.replace(/\./g, "\\.")));
-  assert.match(none.hint!, /github\.com\/anomalyco\/opencode\/releases\/download/, "and the file to fetch by hand");
+  assert.match(none.hint!, /registry\.npmjs\.org\/@opencode\/cli-/, "and the file to fetch by hand");
 });
 
 test("opencode: OPENCODE_BIN wins over the app's own copy, and the doctor says so", async () => {
