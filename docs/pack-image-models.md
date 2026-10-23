@@ -67,3 +67,20 @@ Blind visual check, by the owner: Qwen fast and Qwen default were comparable in 
 ## Licences and pins
 
 Revisions used: FLUX.2 klein 4B `e7b7dc2`, Qwen-Image-Edit `ac7f931`, Z-Image-Turbo `f332072`, DINOv2-small `ed25f3a`. Check each model's licence file in the pinned revision before shipping any picture made with it.
+
+## Safety and responsibility
+
+What the weights do, as far as the files show:
+
+- The pinned FLUX.2 klein 4B download has no safety-checker component. Its pipeline (`Flux2KleinPipeline`) lists only the text encoder, transformer, VAE and scheduler, so nothing in the pipeline refuses or blocks an output.
+- The model card says the pre-training data was filtered for NSFW and CSAM, and that the repository includes inference filters for NSFW and protected content. The downloaded files don't include those filters, and the card asks deployers to add their own mitigations for the 4B model.
+- We have not tested whether the model refuses explicit prompts, and the benchmark prompts were chosen to avoid that. Do not read a refusal, or the lack of one, as a property of the model.
+
+Position for the app:
+
+- **Users bring their own model.** Image generation in the app, if it is built, runs against a local model the user has installed and chosen. The app does not download or ship generation weights for that path.
+- **No content refusals from the app.** The app adds no filter of its own on what the user's model produces, and it does not tune any character toward explicit output.
+- **Warn, and ask first.** Before generation is turned on, show a notice that the user is responsible for what they generate and for which image model they use, and say which model is set up. Turning it on is opt-in, off at every start, and refused from a phone, like the other opt-ins in `AGENTS.md`.
+- **Shipped packs stay SFW.** The packs in this repository, and any pack the app downloads, are not made for explicit content, and the notice does not change that.
+
+A remaining risk to weigh before shipping: the warning and the opt-in put the responsibility on the user, but they don't stop the app from showing whatever a user's model produces. If that ever matters more than the local-only framing, a separate decision is needed; it is not settled here.
