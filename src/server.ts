@@ -1305,7 +1305,7 @@ const slashCommands: Record<
       const have = managedOpencode();
       if (have) return say(`The app's own opencode ${OPENCODE_PIN.version} is already installed (${have}) and is the one she uses; any other opencode on this computer is ignored. To fetch it again, delete the folder ${opencodeFolder()} and run /install-opencode.`);
       reply(opencodeOffer(true) as Record<string, unknown>);
-      say(`The page asks whether to install opencode ${OPENCODE_PIN.version} for the app only (${Math.round(asset.bytes / 1048576)} MB from github.com, into ${opencodeFolder()}). Nothing is fetched until you say yes. By hand: ${opencodeUrl(asset)}, unpacked into that folder.`);
+      say(`The page asks whether to install opencode ${OPENCODE_PIN.version} for the app only (${Math.round(asset.bytes / 1048576)} MB from registry.npmjs.org, into ${opencodeFolder()}). Nothing is fetched until you say yes. By hand: ${opencodeUrl(asset)}, unpacked into that folder.`);
     },
   },
   frames: {
@@ -1418,7 +1418,7 @@ function opencodeOffer(force = false): Record<string, unknown> | null {
     type: "install-offer",
     brain: "opencode",
     version: OPENCODE_PIN.version,
-    host: "github.com",
+    host: "registry.npmjs.org",
     megabytes: Math.round(asset.bytes / 1048576),
     folder: opencodeFolder(),
     others: isInstalled("opencode"), // another opencode is on this computer: the card says the app's own copy is used instead and the other stays untouched

@@ -301,15 +301,14 @@ Switching brains starts a new conversation. The brains do not share memory.
   clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
   unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new
   tag in the release commit.
-- **Before a release, sanity check the opencode pin** (`OPENCODE_PIN` in `src/install-opencode.ts`: the one version, file names, sizes and SHA-256 the
+- **Before a release, sanity check the opencode pin** (`OPENCODE_PIN` in `src/install-opencode.ts`: the one version, package names, sizes and SHA-256 the
   one-click install fetches). It is pinned on purpose, so it does not move by itself and nothing checks it for you. Look at whether the pinned release is
-  still the one you want: `gh release view v<pinned> -R anomalyco/opencode` (it must still exist and the assets and checksums must still match; compare
-  `gh api repos/anomalyco/opencode/releases/tags/v<pinned> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'` with the table), the newest release's notes
-  (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to move the pin), and that the pinned
-  program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick opencode, send a message). To move the
-  pin: change the version and, for each asset (`win32-*`, `darwin-*`, `linux-*`), the name, `bytes` and `sha256` (the digest GitHub shows for the asset), run
-  `node --test test/install-opencode.test.ts`, and do the install by hand once. Never point it at `latest`. A new platform is a new row in the table,
-  tried on that platform.
+  still the one you want: `npm view @opencode/cli@<pinned> version` (it must still exist; the platform packages, `@opencode/cli-*`, are what the installer
+  fetches), the newest release's notes (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to
+  move the pin), and that the pinned program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick
+  opencode, send a message). To move the pin: change the version and, for each asset (`win32-*`, `darwin-*`, `linux-*`), the npm package, tarball name,
+  `bytes` and `sha256` (download the tarball once and hash it), run `node --test test/install-opencode.test.ts`, and do the install by hand once. Never
+  point it at `latest`. A new platform is a new row in the table, tried on that platform.
 - **The documentation site and the README describe released behaviour.** The site (`site/`) is built from
   `main` by `.github/workflows/pages.yml`, together with the demo (staged into `demo/` with the creator at its pinned release), so write a
   change's documentation on `dev` and let the release publish it. The clone commands in the README and on the getting-started page take the

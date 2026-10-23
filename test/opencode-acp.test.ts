@@ -34,9 +34,9 @@ test("opencode args: plain ACP without plugins, never a skip-permissions flag", 
 test("--pure is only passed where it still exists: opencode 2.x dropped it and exits 1 on launch", () => {
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("1.19.3")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode 1.18.35")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode v2.0.32")), ["acp"]); // what 2.x really prints
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("2.0.32")), ["acp"]);
-  assert.deepEqual(opencodeArgs(opencodeSupportsPure("v2.1.0")), ["acp"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("opencode v2.0.32")), ["acp", "--print-logs", "--log-level", "error"]); // what 2.x really prints
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("2.0.32")), ["acp", "--print-logs", "--log-level", "error"]);
+  assert.deepEqual(opencodeArgs(opencodeSupportsPure("v2.1.0")), ["acp", "--print-logs", "--log-level", "error"]);
   // An unreadable answer keeps opencode's default (the flag), so a 1.x install is never started differently by mistake.
   assert.deepEqual(opencodeArgs(opencodeSupportsPure("")), ["acp", "--pure", "--print-logs", "--log-level", "ERROR"]);
 });
@@ -260,7 +260,7 @@ test("an opencode 2.x install is started without --pure", async () => {
         if (event.type === "error") reject(new Error(event.message));
       });
     });
-    assert.deepEqual(seen[0], ["acp"]);
+    assert.deepEqual(seen[0], ["acp", "--print-logs", "--log-level", "error"]);
   } finally {
     provider.close();
     removeDir(dir);
@@ -507,6 +507,18 @@ test("a failed model call in opencode's log becomes the turn's error, and the qu
   assert.match(said, /^Free usage limit reached\./);
   assert.match(said, /Choose another model in the model menu/);
   assert.match(said, /https:\/\/opencode\.ai\/go\.$/);
+});
+
+test("a step opencode 2.x could not run is read from its log too, with the retry stack left out", async () => {
+  const { opencodeStreamError } = await import("../src/providers/opencode-acp.ts");
+  const v2 = (sid: string, cause: string) =>
+    `timestamp=2026-10-23T07:43:54.326Z level=ERROR run=71a31c39 message="Failed to drain Session" cause="${cause}" role=server sessionID=${sid}`;
+  const quota = "AI.Error: Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go\\n    at ServerProcess.start (/$bunfs/root/chunk.mjs:2:7529)";
+  assert.equal(opencodeStreamError(v2("ses_a", quota), "ses_a"), "Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go");
+  assert.equal(opencodeStreamError(v2("ses_b", quota), "ses_a"), null); // another session
+  assert.equal(opencodeStreamError(v2("ses_a", "AI.Error.Authentication: probe: invalid api key\\n    at <anonymous>"), "ses_a"), "probe: invalid api key");
+  assert.equal(opencodeStreamError(v2("ses_a", "Other: not a model call"), "ses_a"), null); // not a provider failure
+  assert.equal(opencodeStreamError('timestamp=x level=ERROR message="Failed to drain Session" sessionID=ses_a', "ses_a"), null);
 });
 
 test("a data folder written by another opencode version is explained, with opencode's own words kept", async () => {

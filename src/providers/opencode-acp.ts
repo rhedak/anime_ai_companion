@@ -36,24 +36,44 @@ export interface AcpEffect {
  * below. Run Everything stays a Cursor-only mode. `--pure` keeps external plugins out of the run,
  * but opencode 2.x removed that flag (the ACP command then exits 1 with "Unrecognized flag: --pure"),
  * so it is only passed when the installed version still takes it.
+ * 
+ * v2 accepts `--print-logs` with lowercase `--log-level error` (and logs go to stderr when run as acp).
  */
 export function opencodeArgs(supportsPure = true): string[] {
-  // The log flags are for 1.x only (checked there). A failed model call (quota used up, a bad key) never answers the prompt over ACP; the error goes to
-  // opencode's log only, so it is printed to stderr to be read there (see opencodeStreamError).
-  return supportsPure ? ["acp", "--pure", "--print-logs", "--log-level", "ERROR"] : ["acp"];
+  // The log flags are on both. A failed model call (quota used up, a bad key) may never answer the prompt over ACP; the error goes to opencode's log
+  // only, so it is printed to stderr to be read there (see opencodeStreamError).
+  if (supportsPure) return ["acp", "--pure", "--print-logs", "--log-level", "ERROR"];
+  return ["acp", "--print-logs", "--log-level", "error"];
 }
 
 /**
  * The reason a model call failed, if this stderr text (opencode's log, see opencodeArgs) says so for this session's own reply. `small=false` leaves out the
  * title agent's call, which fails the same way a moment later. The retry wrapper's "Failed after N attempts. Last error:" and the error class are dropped.
+ *
+ * 1.x logs `message="stream error" ... error.error="..."`; 2.x logs a step that died as `message="Failed to drain Session" cause="AI.Error: ..."`
+ * with `sessionID=` (v2's prompt then rejects too, but its ACP message is only "Authentication required" or "provider error").
  */
 export function opencodeStreamError(log: string, sessionId: string): string | null {
-  for (const line of log.split("\n")) {
-    if (!/level=ERROR/.test(line) || !/message="stream error"/.test(line) || !/\bsmall=false\b/.test(line)) continue;
-    if (!line.includes(`session.id=${sessionId}`)) continue;
-    const said = /\berror\.error="(.*)"\s*$/.exec(line.replace(/\r/g, ""))?.[1];
+  for (const raw of log.split("\n")) {
+    const line = raw.replace(/\r/g, "");
+    if (!/level=ERROR/.test(line)) continue;
+    let said: string | undefined;
+    if (/message="stream error"/.test(line) && /\bsmall=false\b/.test(line) && line.includes(`session.id=${sessionId}`)) {
+      said = /\berror\.error="(.*)"\s*$/.exec(line)?.[1];
+    } else if (/message="Failed to drain Session"/.test(line) && line.includes(`sessionID=${sessionId}`)) {
+      const cause = /\bcause="(.*)"\s+role=/.exec(line)?.[1];
+      said = cause && /AI\.Error(?:\.[A-Za-z]+)?:\s*(.+)/.exec(cause)?.[1];
+    }
     if (!said) continue;
-    return said.replace(/^AI_\w+:\s*/, "").replace(/^Failed after \d+ attempts\. Last error:\s*/i, "").trim() || null;
+    const text = said
+      .replace(/\\n/g, "\n")
+      .replace(/\\"/g, '"')
+      .split("\n")[0]
+      .replace(/^AI_\w+:\s*/, "")
+      .replace(/^AI\.Error(?:\.[A-Za-z]+)?:\s*/, "")
+      .replace(/^Failed after \d+ attempts\. Last error:\s*/i, "")
+      .trim();
+    if (text) return text;
   }
   return null;
 }
