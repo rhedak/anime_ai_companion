@@ -6,6 +6,7 @@ import { parseAutocompact } from "../cache-guard.ts";
 import { parseStreamLine, permissionResponse, summarizeTool, type BackgroundTask, type StreamItem } from "./claude-stream.ts";
 import type { ImageInput } from "../images.ts";
 import type { Decision, PermissionMode, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
+import { describeAuthError } from "../claude-login.ts";
 
 export interface ClaudeCodeOptions {
   config: SessionConfig;
@@ -214,7 +215,7 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   private args(): string[] {
-    const { mode, model, allowedTools, permissionMode, effort, claudeSetup, claudeSkills } = this.config;
+    const { mode, model, allowedTools, permissionMode, effort, claudeSetup, claudeSkills, claudeChrome } = this.config;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -252,6 +253,8 @@ export class ClaudeCodeProvider implements Provider {
       );
       if (allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
       if (permissionMode !== "manual") args.push("--permission-mode", permissionMode);
+      // Her own opt-in, separate from /setup: the extension and its tools, not the user's other MCP servers.
+      if (claudeChrome) args.push("--chrome");
     }
     return args;
   }
@@ -358,7 +361,7 @@ export class ClaudeCodeProvider implements Provider {
         if (this.interrupted) {
           this.interrupted = false;
           this.finish({ type: "done" }); // she was stopped; what she said so far stays
-        } else this.finish(item.isError ? { type: "error", message: item.text || "Unknown error from claude." } : { type: "done" });
+        } else this.finish(item.isError ? { type: "error", message: describeAuthError(item.text || "Unknown error from claude.") } : { type: "done" });
         break;
       case "limits":
         this.listener?.({ type: "limits", session: item.session, week: item.week });

@@ -33,6 +33,9 @@ const TEXT_FILES = ["NOTICE.md", "PROCESS.md", "credit.txt", "look.txt"] as cons
 const TEXT_SET = new Set<string>(TEXT_FILES);
 const MAX_TEXT_BYTES = 64 * 1024;
 
+/** An activity picture (`activity-<name>-N`, `-talk-N`): the only frames a pack archive accepts as lossy WebP. */
+const ACTIVITY_FRAME = /^activity-[a-z0-9_]+-(talk-)?\d+\.webp$/i;
+
 /** The same shapes `readPack` uses, limited to WebP: a patch archive is built from lossless WebP only. */
 const POSE_FILE = /^([a-z][a-z0-9_]*)-(\d{1,2})\.webp$/i;
 const ACTIVITY_FILE = /^activity-([a-z][a-z0-9_]{0,23})(-talk)?-(\d{1,2})\.webp$/i;
@@ -346,21 +349,29 @@ export async function buildPackArchive(folder: string, opts: { id?: string; emot
   if (!classified.some((file) => file.name === "credit.txt") || !classified.some((file) => file.name === "NOTICE.md")) {
     return { ok: false, reason: "A pack archive needs credit.txt and NOTICE.md, so the credit and the terms travel with the pictures." };
   }
-  const baseFiles = classified.filter((file): file is Classified & { role: "base" } => file.role === "base");
-  const patchFiles = classified.filter((file): file is Classified & { role: "patch"; base: string } => file.role === "patch");
+  let baseFiles = classified.filter((file): file is Classified & { role: "base" } => file.role === "base");
+  let patchFiles = classified.filter((file): file is Classified & { role: "patch"; base: string } => file.role === "patch");
   const textFiles = classified.filter((file): file is Classified & { role: "text" } => file.role === "text");
-  const bases = new Map(baseFiles.map((file) => [file.name.toLowerCase(), file]));
   const neutral = baseFiles.find((file) => /^neutral\.webp$/i.test(file.name));
   if (!neutral) return { ok: false, reason: "The pack needs a neutral.webp (her face at rest)." };
 
   const decoded = new Map<string, RgbaImage>();
+  const lossyActivity = new Set<string>();
   for (const file of classified) {
     if (file.role === "text") continue;
-    if (!isLosslessWebp(file.bytes)) return { ok: false, reason: `${file.name} is not a lossless WebP.` };
+    if (!isLosslessWebp(file.bytes)) {
+      // The one exception: the long loops of an activity may be lossy (a lossless 27-frame loop is about 11 MB). They are stored whole, never as patches.
+      if (!ACTIVITY_FRAME.test(file.name)) return { ok: false, reason: `${file.name} is not a lossless WebP.` };
+      lossyActivity.add(file.name);
+    }
     const image = await decodeRgba(file.bytes);
     if (!image) return { ok: false, reason: `${file.name} could not be read as a WebP picture.` };
     decoded.set(file.name, image);
   }
+  const lossyPatches = patchFiles.filter((file) => lossyActivity.has(file.name));
+  baseFiles = [...baseFiles, ...lossyPatches.map((file) => ({ ...file, role: "base" as const }))];
+  patchFiles = patchFiles.filter((file) => !lossyActivity.has(file.name));
+  const bases = new Map(baseFiles.map((file) => [file.name.toLowerCase(), file]));
   const size = decoded.get(neutral.name)!;
   for (const [name, image] of decoded) {
     if (image.width !== size.width || image.height !== size.height) {

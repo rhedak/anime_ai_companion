@@ -131,15 +131,27 @@ async function startServer() {
     ANAICO_DATA: data,
     ANAICO_WORKSPACE: workspace,
     ANAICO_UPDATES_FILE: updateFile(), // the server reads the answer to the update question (auto, packs) from here each time, so File, Options takes effect at once
+    ANAICO_PARENT_RESTARTS: "1", // /restart exits 75 and this shell starts the server again, on the same port
   };
   if (isMac) env.PATH = macPath();
   if (bundledCreator) env.CREATOR_SRC = bundledCreator;
   const log = fs.openSync(logPath(), "a");
-  server = spawn(process.execPath, [path.join(appRoot, "src", "server.ts")], { cwd: appRoot, env, stdio: ["ignore", log, log], windowsHide: true });
-  server.on("exit", (code) => {
-    server = null;
-    if (!quitting) fail(`The server stopped (exit code ${code}). Its log is in ${logPath()}`);
-  });
+  const launch = { args: [path.join(appRoot, "src", "server.ts")], env };
+  server = spawn(process.execPath, launch.args, { cwd: appRoot, env: launch.env, stdio: ["ignore", log, log], windowsHide: true });
+  watchServer(launch);
+  function watchServer(spawned) {
+    server.on("exit", (code) => {
+      server = null;
+      // 75 is RESTART_EXIT in src/restart.ts: the page's /restart, so start the same server again.
+      if (code === 75 && !quitting) {
+        const next = fs.openSync(logPath(), "a");
+        server = spawn(process.execPath, spawned.args, { cwd: appRoot, env: spawned.env, stdio: ["ignore", next, next], windowsHide: true });
+        watchServer(spawned);
+        return;
+      }
+      if (!quitting) fail(`The server stopped (exit code ${code}). Its log is in ${logPath()}`);
+    });
+  }
   const url = `http://${HOST}:${port}`;
   await waitUntilServing(url + "/", server);
   return url;

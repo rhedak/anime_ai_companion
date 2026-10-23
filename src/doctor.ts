@@ -2,6 +2,7 @@
  * `anaico --doctor`: looks at what the app needs and says what is missing, in plain words. It only looks: nothing is installed,
  * started or signed in. Every check goes through a `Probe`, so the checks can be tested without this machine's real setup.
  */
+import { parseAuthStatus } from "./claude-login.ts";
 import { OPENCODE_PIN, opencodeAsset, opencodeFolder, opencodeUrl } from "./install-opencode.ts";
 import { spawnCli, spawnCliSync } from "./spawn-cli.ts";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
@@ -192,6 +193,11 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   const brain = (name: string, version: string | null, note: string) =>
     version ? add("ok", `${name} ${firstLine(version)}`, note) : add("warn", `${name}: not found`, `Only needed if you want to use it. ${note}`);
   brain("Claude Code", claude, "Sign in once by running `claude` in a terminal.");
+  if (claude) {
+    const status = parseAuthStatus(await p.run("claude", ["auth", "status"]));
+    if (status?.loggedIn) add("ok", `Claude Code is signed in${status.method ? ` (${status.method})` : ""}`);
+    else if (status) add("warn", "Claude Code is not signed in", p.app ? "Type /claude-login in the app." : "Run `claude auth login` in a terminal.");
+  }
   brain("Cursor", cursor, "Sign in once with `cursor-agent login`, or set CURSOR_API_KEY.");
   if (p.env.OPENCODE_BIN) {
     add(opencode ? "ok" : "warn", `opencode: OPENCODE_BIN (${p.env.OPENCODE_BIN}) is used${opencode ? `, ${firstLine(opencode)}` : ", but it does not answer"}; it wins over the app's own copy`, "Unset OPENCODE_BIN to use the app's own copy (/install-opencode installs it).");

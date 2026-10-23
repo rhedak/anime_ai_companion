@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -14,11 +14,14 @@ before(() => {
 after(() => rmSync(root, { recursive: true, force: true }));
 
 // A stand-in release file: its own bytes and hash, so nothing is downloaded and the real pin is not touched.
-const bytes = Buffer.from("not really a zip, but it hashes the same every time".repeat(2000));
-const asset: OpencodeAsset = { name: "opencode-test.zip", sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length, program: "opencode.exe" };
+const bytes = Buffer.from("not really a tarball, but it hashes the same every time".repeat(2000));
+const asset: OpencodeAsset = { package: "@opencode/cli-test", name: "cli-test-0.0.0.tgz", sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length, folder: "package", program: "bin/opencode.exe" };
 const fakeFetch = (body: Buffer, status = 200): typeof fetch =>
   (async () => new Response(status === 200 ? new Blob([new Uint8Array(body)]).stream() : null, { status })) as unknown as typeof fetch;
-const fakeExtract = async (_archive: string, into: string) => writeFileSync(join(into, "opencode.exe"), "program");
+const fakeExtract = async (_archive: string, into: string) => {
+  mkdirSync(join(into, "package", "bin"), { recursive: true });
+  writeFileSync(join(into, "package", "bin", "opencode.exe"), "program");
+};
 const says = (version: string) => async () => `opencode ${version}`;
 const leftovers = () => readdirSync(join(root, "tools")).filter((n) => n.startsWith(".installing-"));
 
@@ -29,26 +32,28 @@ describe("the pin", () => {
       assert.match(key, /^(win32|darwin|linux)-(x64|arm64)$/);
       assert.match(a.sha256, /^[0-9a-f]{64}$/, key);
       assert.ok(a.bytes > 1_000_000 && a.bytes < 500_000_000, key);
-      assert.ok(a.name.endsWith(key.startsWith("linux") ? ".tar.gz" : ".zip"), key);
-      assert.equal(a.program, key.startsWith("win32") ? "opencode.exe" : "opencode", key);
+      assert.ok(a.name.endsWith(".tgz"), key);
+      assert.match(a.package, /^@opencode\/cli-/, key);
+      assert.equal(a.folder, "package", key);
+      assert.equal(a.program, key.startsWith("win32") ? "bin/opencode.exe" : "bin/opencode", key);
       assert.ok(!/musl/.test(a.name), `${key}: the glibc build, which runs on the common distributions`);
     }
   });
 
-  test("Windows x64 gets the baseline build (it needs no AVX2); machines with no pinned build (another system, or a 32-bit one) get null", () => {
-    assert.equal(opencodeAsset("win32", "x64")?.name, "opencode-windows-x64-baseline.zip");
-    assert.equal(opencodeAsset("win32", "arm64")?.name, "opencode-windows-arm64.zip");
-    assert.equal(opencodeAsset("linux", "x64")?.name, "opencode-linux-x64-baseline.tar.gz");
-    assert.equal(opencodeAsset("linux", "arm64")?.name, "opencode-linux-arm64.tar.gz");
-    assert.equal(opencodeAsset("darwin", "arm64")?.name, "opencode-darwin-arm64.zip");
-    assert.equal(opencodeAsset("darwin", "x64")?.name, "opencode-darwin-x64-baseline.zip");
+  test("Windows and Linux x64 get the baseline build (it needs no AVX2); machines with no pinned build (another system, or a 32-bit one) get null", () => {
+    assert.equal(opencodeAsset("win32", "x64")?.package, "@opencode/cli-windows-x64-baseline");
+    assert.equal(opencodeAsset("win32", "arm64")?.package, "@opencode/cli-windows-arm64");
+    assert.equal(opencodeAsset("linux", "x64")?.package, "@opencode/cli-linux-x64-baseline");
+    assert.equal(opencodeAsset("linux", "arm64")?.package, "@opencode/cli-linux-arm64");
+    assert.equal(opencodeAsset("darwin", "arm64")?.package, "@opencode/cli-darwin-arm64");
+    assert.equal(opencodeAsset("darwin", "x64")?.package, "@opencode/cli-darwin-x64-baseline");
     assert.equal(opencodeAsset("freebsd", "x64"), null);
     assert.equal(opencodeAsset("linux", "ia32"), null);
   });
 
-  test("the download address is the pinned tag on GitHub, never 'latest'", () => {
+  test("the download address is the pinned version on npm, never 'latest'", () => {
     const url = opencodeUrl(opencodeAsset("win32", "x64")!);
-    assert.equal(url, `https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_PIN.version}/opencode-windows-x64-baseline.zip`);
+    assert.equal(url, `https://registry.npmjs.org/@opencode/cli-windows-x64-baseline/-/cli-windows-x64-baseline-${OPENCODE_PIN.version}.tgz`);
     assert.ok(!url.includes("latest"));
   });
 });
@@ -57,13 +62,13 @@ describe("installing", () => {
   test("downloads, checks the hash, unpacks, tries the program and puts it in its own folder; progress is reported", async () => {
     const seen: InstallProgress[] = [];
     const program = await installOpencode({ root, platform: "win32", arch: "x64", asset, fetchFn: fakeFetch(bytes), extract: fakeExtract, versionOf: says(OPENCODE_PIN.version), onProgress: (p) => seen.push(p) });
-    assert.equal(program, join(opencodeFolder(root), "opencode.exe"));
+    assert.equal(program, join(opencodeFolder(root), "bin", "opencode.exe"));
     assert.ok(existsSync(program));
     assert.equal(managedOpencode(root, "win32", "x64"), program);
     assert.deepEqual(seen.map((p) => p.stage).filter((s, i, all) => all.indexOf(s) === i), ["download", "unpack", "check"]);
     assert.equal(seen.filter((p) => p.stage === "download").at(-1)?.received, bytes.length);
     assert.deepEqual(leftovers(), [], "the scratch folder is gone");
-    assert.deepEqual(readdirSync(opencodeFolder(root)), ["opencode.exe"], "the zip itself is not kept");
+    assert.deepEqual(readdirSync(opencodeFolder(root)), ["bin"], "the tarball and its package folder are not kept");
   });
 
   test("a second install replaces the first", async () => {
@@ -78,7 +83,7 @@ describe("installing", () => {
 
     test("a file with a different hash is thrown away", async () => {
       const r = fresh();
-      const other = Buffer.from(bytes.toString().replace("zip", "zzz"));
+      const other = Buffer.from(bytes.toString().replace("tarball", "zzzzzzz"));
       await assert.rejects(run(r, { fetchFn: fakeFetch(other), asset: { ...asset, bytes: other.length } }), (e: Error) => e instanceof InstallError && /checksum differs/.test(e.message));
       assert.equal(managedOpencode(r, "win32", "x64"), null);
       assert.deepEqual(readdirSync(join(r, "tools")), []);
@@ -92,9 +97,9 @@ describe("installing", () => {
       rmSync(r, { recursive: true, force: true });
     });
 
-    test("GitHub answering with an error", async () => {
+    test("the package registry answering with an error", async () => {
       const r = fresh();
-      await assert.rejects(run(r, { fetchFn: fakeFetch(bytes, 404) }), /GitHub answered 404/);
+      await assert.rejects(run(r, { fetchFn: fakeFetch(bytes, 404) }), /registry answered 404/);
       rmSync(r, { recursive: true, force: true });
     });
 
@@ -103,7 +108,7 @@ describe("installing", () => {
       const down = (async () => {
         throw new TypeError("fetch failed");
       }) as unknown as typeof fetch;
-      await assert.rejects(run(r, { fetchFn: down }), /Could not reach GitHub: fetch failed/);
+      await assert.rejects(run(r, { fetchFn: down }), /Could not reach the package registry: fetch failed/);
       rmSync(r, { recursive: true, force: true });
     });
 
@@ -118,7 +123,7 @@ describe("installing", () => {
 
     test("an archive without the program", async () => {
       const r = fresh();
-      await assert.rejects(run(r, { fetchFn: fakeFetch(bytes), extract: async () => {} }), /did not contain opencode\.exe/);
+      await assert.rejects(run(r, { fetchFn: fakeFetch(bytes), extract: async () => {} }), /did not contain .*opencode\.exe/);
       rmSync(r, { recursive: true, force: true });
     });
 

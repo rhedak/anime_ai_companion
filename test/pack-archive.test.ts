@@ -3,7 +3,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { readPack } from "../src/frame-pack.ts";
@@ -168,6 +168,26 @@ test("an activity's loop is stored whole and its talking set as a patch of the l
   });
 });
 
+test("the pictures of an activity may be lossy WebP: stored whole, restored byte for byte; any other lossy frame is still refused", async () => {
+  const lossy = (shade: number) => sharp(Buffer.alloc(8 * 6 * 4, shade), { raw: { width: 8, height: 6, channels: 4 } }).webp({ quality: 80 }).toBuffer();
+  const [loop, talk] = [await lossy(90), await lossy(120)];
+  await withFolder({ "neutral.webp": await frame(8, 6), "activity-dancing-1.webp": loop, "activity-dancing-talk-1.webp": talk, ...texts }, async (folder) => {
+    const built = await buildPackArchive(folder, { emotions });
+    assert.equal(built.ok, true, !built.ok ? built.reason : "");
+    if (!built.ok) return;
+    assert.equal(built.report.patchCount, 0, "a lossy talking frame is a whole picture, not a patch");
+    const dest = join(folder, "..", "out");
+    const restored = await restorePackArchive(built.archive, dest);
+    assert.equal(restored.ok, true, !restored.ok ? restored.reason : "");
+    assert.ok((await readFile(join(dest, "activity-dancing-1.webp"))).equals(loop));
+    assert.ok((await readFile(join(dest, "activity-dancing-talk-1.webp"))).equals(talk));
+  });
+  await withFolder({ "neutral.webp": await frame(8, 6), "happy.webp": await lossy(90), ...texts }, async (folder) => {
+    const built = await buildPackArchive(folder, { emotions });
+    assert.equal(built.ok, false);
+  });
+});
+
 test("a talking frame of an activity with no loop frame to patch is refused", async () => {
   const neutral = await frame(8, 6);
   await withFolder({ "neutral.webp": neutral, "activity-swimming-talk-1.webp": await frame(8, 6), ...texts }, async (folder) => {
@@ -275,14 +295,14 @@ test("franzi-dress round-trips pixel for pixel, and the patch archive is about 4
   assert.equal(report.framesBytes, 14_049_032);
   assert.equal(report.baseBytes, 4_071_740);
   assert.equal(report.patchBytes, 101_078);
-  // Git stores the text as LF (4,176 bytes). A Windows checkout adds one CR per line (4,230). The extra
+  // Git stores the text as LF (6,817 bytes). A Windows checkout adds one CR per line (6,894). The extra
   // bytes fit in the tar's padding or spill into the next block; the pictures are unchanged either way.
-  const textLf = 4_176;
-  const textCrlf = 4_230;
+  const textLf = 6817;
+  const textCrlf = 6894;
   const textOnDisk = await textFileBytes(folder);
   assert.equal(report.textBytes, textOnDisk);
   assert.ok(textOnDisk === textLf || textOnDisk === textCrlf, `text files are ${textOnDisk} bytes`);
-  const archiveBytes = 4_221_440;
+  const archiveBytes = 4_224_000;
   assert.ok(report.archiveBytes >= archiveBytes && report.archiveBytes <= archiveBytes + 2048, `the archive is ${report.archiveBytes} bytes`);
   const other = await packWithLineEndings(folder, textOnDisk !== textLf);
   try {
@@ -353,10 +373,22 @@ async function packWithLineEndings(folder: string, lf: boolean): Promise<string>
 }
 
 /** The Franzi dirndl pack ships in `packs/` (the one outfit of Franzi that stays bundled), so it is the real-pack fixture. */
-async function franziPack(): Promise<string> {
-  const shipped = join(root, "packs", "franzi-dress");
-  assert.equal(await isPack(shipped), true, "packs/franzi-dress ships with the app");
-  return shipped;
+let franziCopy: Promise<string> | undefined;
+after(async () => {
+  if (franziCopy) await rm(dirname(await franziCopy), { recursive: true, force: true });
+});
+
+/** The shipped pack without its activity pictures (those are lossy and have their own test), so the numbers below stay about the emotions, blinks, mouths and poses. */
+function franziPack(): Promise<string> {
+  franziCopy ??= (async () => {
+    const shipped = join(root, "packs", "franzi-dress");
+    assert.equal(await isPack(shipped), true, "packs/franzi-dress ships with the app");
+    const out = join(await mkdtemp(join(tmpdir(), "pack-franzi-")), "franzi-dress");
+    await mkdir(out);
+    for (const name of await readdir(shipped)) if (!name.startsWith("activity-")) await writeFile(join(out, name), await readFile(join(shipped, name)));
+    return out;
+  })();
+  return franziCopy;
 }
 
 async function isPack(folder: string): Promise<boolean> {
@@ -394,7 +426,7 @@ test("the manifest command describes a pack folder for a static host: which pict
   const dir = await mkdtemp(join(tmpdir(), "pack-manifest-"));
   try {
     const out = join(dir, "pack.json");
-    execFileSync(process.execPath, [join(root, "src", "pack-archive-cli.ts"), "manifest", await franziPack(), "-o", out], { stdio: "pipe" });
+    execFileSync(process.execPath, [join(root, "src", "pack-archive-cli.ts"), "manifest", join(root, "packs", "franzi-dress"), "-o", out], { stdio: "pipe" });
     const info = JSON.parse(await readFile(out, "utf8"));
     assert.equal(info.name, "franzi-dress");
     assert.equal(info.character, "franzi");

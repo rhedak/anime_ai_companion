@@ -42,7 +42,12 @@
 
     <section class="panel">
       <header>
-        <h1 id="name" class="name" tabindex="0" role="button" title="Click to rename">Risa</h1>
+        <div class="name-row">
+          <h1 id="name" class="name" tabindex="0" role="button" title="Click to rename">Risa</h1>
+          <button id="name-reset" type="button" class="icon name-reset" hidden title="Forget this name and follow the character again" aria-label="Reset name">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5V9H9"/></svg>
+          </button>
+        </div>
         <div class="seg-group" role="group" aria-label="Mode">
           <button id="mode-chat" class="seg on" title="Just chat: no tools">Chat</button>
           <button id="mode-work" class="seg" title="Let her work in a project folder; you approve each action">Work</button>
@@ -69,6 +74,9 @@
         </label>
         <label id="skillsrow" class="setuprow" title="Let her use your own skills (~/.claude/skills) by name. This loads your user settings, but not their hooks. A folder's own skills stay off unless you use your whole Claude Code setup. Off until you turn it on.">
           <input type="checkbox" id="use-skills"> Use my skills <span class="muted">(your user settings apply, hooks stay off)</span>
+        </label>
+        <label id="chromerow" class="setuprow" title="Let her use your Chrome through the Claude in Chrome extension. The extension must already be installed and signed into the same Claude account. Browser actions use the same approvals as her other tools. Off until you turn it on, and off again when the server restarts.">
+          <input type="checkbox" id="use-chrome"> Use my Chrome <span class="muted">(Claude in Chrome, same approvals as her other tools)</span>
         </label>
         <div id="workinfo" class="workinfo"></div>
         </div>

@@ -68,9 +68,9 @@ test("our own tags and HTML never survive, even inside the example lines", () =>
   assert.ok(result.ok);
   assert.doesNotMatch(result.card.example, /\[emotion/);
   assert.doesNotMatch(result.card.example, /<START>/);
-  const hostile = cleanText('Hi <script>alert(1)</script> [avatar hair=red] [image /etc/passwd] [gesture:wave] [demo] bye', 500);
+  const hostile = cleanText('Hi <script>alert(1)</script> [avatar hair=red] [image /etc/passwd] [gesture:wave] [demo] [narration] she moves [/narration] bye', 500);
   assert.match(hostile, /^Hi alert\(1\)\s+bye$/);
-  assert.doesNotMatch(hostile, /<|\[avatar|\[image|\[gesture|\[demo/);
+  assert.doesNotMatch(hostile, /<|\[avatar|\[image|\[gesture|\[demo|\[narration|she moves/);
 });
 
 test("V1 cards (fields at the top level) and V3 cards work", () => {

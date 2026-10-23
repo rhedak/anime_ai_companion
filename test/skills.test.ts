@@ -56,7 +56,7 @@ function argvOf(config: Partial<SessionConfig>): string[] {
   const saved = process.env.PATH;
   process.env.PATH = dir; // only the stand-in: a real claude cannot start here
   const claude = new ClaudeCodeProvider({
-    config: { mode: "work", cwd: dir, model: "haiku", allowedTools: [], permissionMode: "manual", claudeSetup: false, claudeSkills: false, effort: null, ...config },
+    config: { mode: "work", cwd: dir, model: "haiku", allowedTools: [], permissionMode: "manual", claudeSetup: false, claudeSkills: false, claudeChrome: false, effort: null, ...config },
     chatCwd: dir,
     persona: () => "persona",
   });
@@ -85,6 +85,17 @@ test("skills on: the user's settings source loads, with hooks switched off, and 
   assert.equal(sources(args), "user");
   assert.equal(args[args.indexOf("--settings") + 1], '{"disableAllHooks":true}');
   assert.ok(args.includes("--strict-mcp-config"));
+});
+
+test("chrome on passes --chrome and still keeps other MCP servers out", () => {
+  const args = argvOf({ claudeChrome: true });
+  assert.ok(args.includes("--chrome"));
+  assert.ok(args.includes("--strict-mcp-config"));
+  assert.ok(!argvOf({}).includes("--chrome"));
+  assert.ok(!argvOf({ mode: "chat", claudeChrome: true }).includes("--chrome"));
+  const setup = argvOf({ claudeSetup: true, claudeChrome: true });
+  assert.ok(setup.includes("--chrome"), "the whole setup still gets the flag");
+  assert.ok(!setup.includes("--strict-mcp-config"));
 });
 
 test("skills off, or chat mode, or the whole setup: nothing new is loaded", () => {

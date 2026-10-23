@@ -44,12 +44,12 @@ log is `data/server.log`.
 
 ## Customise it
 
-Keep the user's changes where updates do not overwrite them, and tell them when a change needs a restart.
+Keep the user's changes where updates do not overwrite them, and tell them when a change needs a restart. `/restart` in the page does that (not from a phone): the page reconnects, the conversation stays, and phone access and permissions go back to a fresh start. For Claude, an existing conversation still keeps its old persona until `/clear`.
 
 | To change | Edit | Takes effect |
 | --- | --- | --- |
 | Her personality and voice | `persona.md` (chat; the default), `data/persona.md` (the user's own, wins over everything), `persona-work.md` (work-mode rules); a character's `voice:` line sits between them (`src/persona.ts`) | restart the server; for Claude also start a new conversation (`/clear`), because an existing one keeps the prompt it began with |
-| Her name | click it, or `/rename Hana`; with no name of your own (`nameSet` in settings) she goes by the character's name while a pack of a character is on (`herName` in `src/server.ts`) | at once |
+| Her name | click it, or `/rename Hana`; the reset beside it (or `/rename reset`) unsets it (`nameSet` in settings) so she goes by the character's name while a pack of a character is on (`herName` in `src/server.ts`) | at once |
 | A ready-made character | `/card import <file.png\|.json>` (a V1, V2 or V3 character card); `/card export`, `/card reset` | a new conversation (`/clear`) |
 | What she remembers about the user | `data/memory.md` (she proposes notes in chat and you keep or decline them; `/memory`, `/memory ask\|auto\|off`) | with her next message |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character. Every starting character is drawn in the creator's soft finish (`finish=soft`; `finish=flat` and `highlight_strength` are hers and yours to change) | at once |
@@ -60,8 +60,8 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 | Models, pre-approved tools | `data/settings.json`, `COMPANION_MODEL`, `COMPANION_WORK_MODEL` | restart the server |
 | How the body is drawn: shapes, hairstyles, outfits, presets | the **creator repo**, not this one | restart the server (the renderer runs as long as it does) |
 
-- `persona.md` carries the tag protocol (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`) that drives
-  her face. Keep it, and keep its emotion list in step with `emotions.json`.
+- `persona.md` carries the tag protocol (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[image …]`, and chat narration lines) that drives
+ her face. Keep it, and keep its emotion list in step with `emotions.json`.
 - To change drawing, work in the creator checkout next to this repo (or wherever `CREATOR_SRC` points). Do not
   install it: the renderer imports it by path, so edits are picked up on the next server start, and an
   installed copy would only be a second source of truth. This repo's `package.json` pins a creator tag, and a
@@ -74,12 +74,12 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
 
 ### How it is built
 
-- Node runs the TypeScript directly. There is no build step for the app (only the browser demo's staging compiles, below). `npm start` is `node src/server.ts`;
+- Node runs the TypeScript directly. There is no build step for the app (only the browser demo's staging compiles, below). `npm start` is `node bin/serve.js` (after the Node check), which runs `src/server.ts` and starts it again when the page's `/restart` asks;
   the `anaico` command is `src/cli.ts`, which starts (or reuses) that server and opens the browser.
 - `src/providers/types.ts` is the brain interface. A new brain implements `Provider` and nothing
   in the page should need to know how that process speaks.
 - Her face, voice, and the chat log are driven by plain-text tags in the reply
-  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`). The server strips them. Keep that
+  (`[emotion:…]`, `[gesture:…]`, `[avatar …]`, `[outfit …]` (another outfit of her picture pack's character; `wearOutfit` in `src/server.ts`), `[image …]`, `[play end]`). The server strips them. A short scene (`/play`, `src/scenes.ts`) is chat only and memory only: its note rides on each message until she ends it, `/play end`, `/clear`, or a switch to work mode. `/play` from work mode switches to chat and then starts. `/play` lists them. `/play key` is The spare key. `/play room` is an improvised locked room (five steps, one hint, three red herrings and one trap, unless the command names other counts): the page says to wait and shows her thinking while she writes the whole story once in an invisible `[play plan …]` tag, which the page strips the same way as `[play end]`. Each object of the current step is its own narration sentence, the correct choices share a thread she explains when the last step is done or the user stops with `/play end`, and a trap or being asked to choose starts that room over from step one. In chat, a line wrapped in asterisks (`*she moves a step closer*`) is its own italic bubble on the page (`public/narration.js`); work mode leaves it as emphasis. Keep that
   protocol provider-agnostic.
 - **The browser demo** (`demo/`, `demo/README.md`, step 3 of `docs/plan.md`) is the real page running with no server: a stand-in for the
   server (`demo/local-socket.js`) answers the messages the page sends, the character is drawn in the visitor's browser by the creator's TypeScript
@@ -108,7 +108,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   gesture. `python/finish_pack.py` turns an image tool's edits into a consistent pack, with only the face (or, for a pose, only the arm)
   changed; its docstring and the docs say how. Packs that ship are in `packs/`: `risa-dress` (an original character, MIT, made with an image
   model), and `franzi-dress` (an original character, made with AI): one outfit per original character,
-  so each works offline. Everything in this repository is MIT (keep it so: other people's characters, Crypton's Miku and the unofficial Draconia fan art, stay in the sister repository `anime_ai_companion-packs`, preview pictures included, and are downloaded on request (see Pack archives); only their text descriptions in `packs/characters/` are here). Ship lossless WebP.
+  so each works offline. Everything in this repository is MIT (keep it so: other people's characters, Crypton's Miku and the unofficial Draconia fan art, stay in the sister repository `anime_ai_companion-packs`, preview pictures included, and are downloaded on request (see Pack archives); only their text descriptions in `packs/characters/` are here). Ship lossless WebP, except for the pictures of an activity: a long loop (more than eight pictures, played at twelve a second) is lossy q90 with lossless alpha, because lossless would be about 11 MB for one loop. Keep the lossless masters in the packs repository's `ref/` folder.
 - **Activities** (`[activity swimming]` / `[activity end]`, `setActivity` in `src/server.ts`, `activity-<name>[-talk]-N` pictures in `src/frame-pack.ts` and `public/avatar.js`): any activity works in chat, and the ones a pack has loop pictures for (and the `activity: <name> = <outfit>` lines of a character file, for outfits not on this computer) are listed to her so she prefers them; starting one puts her into its outfit unless the same reply names another. While she is drawn, a character file with `activity:` lines for the drawn preset (`drawnActivityNote`, `offerPackForActivity`) makes the page ask whether to switch to that outfit's pack; drawn-body animations are out of scope. The state is memory only (a restart or `/clear` ends it), the tag is chat mode only, and the stop button (`activity-end`) is allowed from a phone because it only ends. The talking set is a patch of the loop frame with the same number in the archive.
 - **The saved drawn look** (`data/avatar.json`, `src/avatar.ts`) is a whole character, so a creator update that redraws its preset changed nothing on screen. The file also keeps the hash of the preset it came from (`baseHash`) and whether the look is still exactly that preset (`pristine`): at start an untouched look is redrawn from the creator's new preset (`refreshed`, said once), a look the user changed is left alone, and a look saved before this was tracked asks once with a card (`look-refresh-offer`; Keep is remembered, Reload can be undone). A failed comparison never costs the saved look.
 - **Pack archives** (`src/pack-archive.ts`, `src/pack-index.ts`, `src/pack-install.ts`, `docs/pack-archives.md`): a build tool turns a folder of lossless WebP
@@ -132,11 +132,15 @@ The server can run an agent that edits files and runs commands. These are not op
   the listener to `0.0.0.0` without a restart): off at every start, never a default, never an env var or a saved
   setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
   can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
-  and `Origin`, and such a socket (`remoteSockets`) may not run `!command`, loosen the permission mode,
-  turn on `/setup`, or change the project folder. Any new message type that does one of those must check
-  `remote` too, and loopback must keep working unchanged (a local proxy would otherwise be a way in).
+  and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
+  turn on `/setup` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
+  Run everything, and it may set the work folder by a typed path (`/work <path>` or the folder field);
+  `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the
+  forbidden things must check `remote` too, and loopback must keep working unchanged (a local proxy would
+  otherwise be a way in).
 - The origin check keeps websites out, not other programs on the machine (a local process can forge `Origin`), and
   there is no stronger boundary on loopback: do not describe it as one. `COMPANION_NO_SHELL=1` turns off `!command`.
+- `/claude-login` (`src/claude-login.ts`) only runs the user's own `claude auth login` and `claude auth status`; it never reads or stores credentials, and it is refused from a phone. Auth errors from `claude` are rewritten to point at it (`describeAuthError`).
 - Work mode shows the exact command or file change and waits, unless the user has chosen a
   looser mode. Do not add a skip-permissions flag, and do not make a loose mode the default.
 - Permission mode is memory only. Every server start comes back to Ask.
@@ -147,6 +151,10 @@ The server can run an agent that edits files and runs commands. These are not op
   loads only the user's own settings source (`--setting-sources user`) with hooks switched off
   (`--settings {"disableAllHooks":true}`). A folder's own skills still need `/setup on`, because a skill's
   frontmatter can pre-approve tools.
+  `/chrome on` is the same kind of opt-in (off at every start, refused from a phone, work mode only): it passes
+  Claude Code's own `--chrome` so the Claude in Chrome extension can drive the user's browser. It does not load
+  any other MCP server. `--strict-mcp-config` stays unless `/setup` is on. Each browser action still comes through
+  the approval card. The extension must already be installed and signed into the same account.
 - A character card is text from a stranger that ends up in her prompt (`src/card.ts`). Strip markup and our
   own tags, cap lengths, show a preview and ask before it applies. Importing and resetting are not available
   from a phone. Name, description, personality, scenario and example lines are always used; ignore `extensions`.
@@ -208,8 +216,7 @@ stdin/stdout. Spawn `cursor-agent`. A command named `agent` is not necessarily t
   `reject-once`. Those are the existing card buttons. No answer means the tool does not run.
 - Chat is ACP mode `ask` (read-only). Plan is `plan`. Anything else in work mode is `agent`.
 - **The CLI's own `approvalMode` decides whether it asks at all.** With `"approvalMode": "unrestricted"` in `~/.cursor/cli-config.json` cursor-agent never sends `session/request_permission` (measured with
-  2026.10.14: an Ask-mode edit changed the file with no card), so the app's Ask would be a lie. `cursorApprovalMode()` (`src/providers/cursor-acp.ts`) reads that file (never writes it) and `notReady` in `src/server.ts`
-  refuses to send in work mode + Ask while it says "unrestricted", saying how to fix it; choosing Everything is the explicit way to run without asking. ACP has no mode that asks every time to switch to.
+  2026.10.14: an Ask-mode edit changed the file with no card), so the app's Ask would be a lie. `cursorApprovalMode()` (`src/providers/cursor-acp.ts`) reads that file (never writes it). When Cursor is the brain and that file says `"unrestricted"`, the app starts in Run everything and says so (`CURSOR_EVERYTHING_NOTICE`); it is still memory only, so the next start is Ask again unless the file still says unrestricted. `notReady` in `src/server.ts` still refuses to send in work mode + Ask while it says "unrestricted". ACP has no mode that asks every time to switch to.
 - **Run Everything** is `cursor-agent --force`, work mode only, chosen in the menu, not saved.
   `--auto-review` is not honoured by ACP, so Auto and Accept edits stay Claude-only. Do not
   pretend they work for Cursor.
@@ -294,15 +301,14 @@ Switching brains starts a new conversation. The brains do not share memory.
   clone gets `main`. The creator has the same `dev` and `main` flow and tags its own releases. Work that needs
   unreleased creator code runs against the creator's `dev` through `CREATOR_SRC`, and the pin moves to the new
   tag in the release commit.
-- **Before a release, sanity check the opencode pin** (`OPENCODE_PIN` in `src/install-opencode.ts`: the one version, file names, sizes and SHA-256 the
+- **Before a release, sanity check the opencode pin** (`OPENCODE_PIN` in `src/install-opencode.ts`: the one version, package names, sizes and SHA-256 the
   one-click install fetches). It is pinned on purpose, so it does not move by itself and nothing checks it for you. Look at whether the pinned release is
-  still the one you want: `gh release view v<pinned> -R anomalyco/opencode` (it must still exist and the assets and checksums must still match; compare
-  `gh api repos/anomalyco/opencode/releases/tags/v<pinned> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'` with the table), the newest release's notes
-  (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to move the pin), and that the pinned
-  program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick opencode, send a message). To move the
-  pin: change the version and, for each asset (`win32-*`, `darwin-*`, `linux-*`), the name, `bytes` and `sha256` (the digest GitHub shows for the asset), run
-  `node --test test/install-opencode.test.ts`, and do the install by hand once. Never point it at `latest`. A new platform is a new row in the table,
-  tried on that platform.
+  still the one you want: `npm view @opencode/cli@<pinned> version` (it must still exist; the platform packages, `@opencode/cli-*`, are what the installer
+  fetches), the newest release's notes (a breaking change to `opencode acp`, which `src/providers/opencode.ts` speaks, or a security fix is a reason to
+  move the pin), and that the pinned program still works with this version of the app (install it through the page on a clean `ANAICO_DATA`, pick
+  opencode, send a message). To move the pin: change the version and, for each asset (`win32-*`, `darwin-*`, `linux-*`), the npm package, tarball name,
+  `bytes` and `sha256` (download the tarball once and hash it), run `node --test test/install-opencode.test.ts`, and do the install by hand once. Never
+  point it at `latest`. A new platform is a new row in the table, tried on that platform.
 - **The documentation site and the README describe released behaviour.** The site (`site/`) is built from
   `main` by `.github/workflows/pages.yml`, together with the demo (staged into `demo/` with the creator at its pinned release), so write a
   change's documentation on `dev` and let the release publish it. The clone commands in the README and on the getting-started page take the

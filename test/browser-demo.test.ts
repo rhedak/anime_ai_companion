@@ -474,6 +474,7 @@ test("what the small model is told: her faces, the tags it may use, and the last
   const system = systemPrompt(names);
   for (const name of names) assert.ok(system.includes(`[emotion:${name}]`), name);
   assert.match(system, /\[gesture:wave\] or \[gesture:cheer\]/);
+  assert.match(system, /\*she moves a step closer\*/);
   assert.match(system, /cannot change your own looks/);
   const history = [
     { type: "bot", text: "[emotion:happy] [gesture:wave] Hi! [avatar hair_color=#fff] Welcome." },

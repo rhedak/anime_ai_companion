@@ -166,6 +166,7 @@ function config(over: Partial<SessionConfig> = {}): SessionConfig {
     permissionMode: "manual",
     claudeSetup: false,
     claudeSkills: false,
+    claudeChrome: false,
     effort: null,
     ...over,
   };
@@ -255,4 +256,23 @@ test("the Cursor CLI's own approval setting is read (and only read): 'unrestrict
   }
   assert.match(CURSOR_UNRESTRICTED_TEXT, /Nothing was sent/);
   assert.match(CURSOR_UNRESTRICTED_TEXT, /Everything in the permission menu/);
+});
+
+test("cursorErrorText names the locked keychain and the step to take, and leaves other errors alone", async () => {
+  const { cursorErrorText } = await import("../src/providers/cursor-acp.ts");
+  const raw = "cursor-agent exited (1). Error: Your macOS login keychain is locked.\nRun security unlock-keychain and try again.";
+  const locked = cursorErrorText(raw);
+  assert.match(locked, /security unlock-keychain/);
+  assert.match(locked, /send your message again/);
+  assert.doesNotMatch(locked, /exited \(1\)/);
+  assert.equal(cursorErrorText("cursor-agent exited (2). Something else broke"), "cursor-agent exited (2). Something else broke");
+  // An inherited SSH session makes cursor-agent print the same sentence when macOS refuses the keychain prompt.
+  const ssh = cursorErrorText(raw, { SSH_CONNECTION: "203.0.113.5 1 192.0.2.1 22" });
+  assert.match(ssh, /SSH session/);
+  assert.match(ssh, /anaico --restart/);
+  assert.doesNotMatch(ssh, /security unlock-keychain/);
+  assert.match(cursorErrorText(raw, { SSH_TTY: "/dev/ttys001" }), /SSH session/);
+  assert.match(cursorErrorText(raw, { TERM: "xterm-256color" }), /security unlock-keychain/);
+  assert.match(cursorErrorText(raw, { SSH_CONNECTION: "1", CURSOR_ASSUME_SSH: "0" }), /security unlock-keychain/);
+  assert.match(cursorErrorText(raw, { CURSOR_ASSUME_SSH: "1" }), /SSH session/);
 });
