@@ -83,4 +83,4 @@ Position for the app:
 - **Warn, and ask first.** Before generation is turned on, show a notice that the user is responsible for what they generate and for which image model they use, and say which model is set up. Turning it on is opt-in, off at every start, and refused from a phone, like the other opt-ins in `AGENTS.md`.
 - **Shipped packs stay SFW.** The packs in this repository, and any pack the app downloads, are not made for explicit content, and the notice does not change that.
 
-A remaining risk to weigh before shipping: the warning and the opt-in put the responsibility on the user, but they don't stop the app from showing whatever a user's model produces. If that ever matters more than the local-only framing, a separate decision is needed; it is not settled here.
+Decided by the owner: the project's SFW policy is the default. The maintainers control what is committed and pushed. Users can only change their own local checkout or install, or fork the repository, and what they do there is their own responsibility. The app does not add a content filter for the user's own model.
