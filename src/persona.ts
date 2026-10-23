@@ -13,7 +13,10 @@ import { splitPersona } from "./card.ts";
  * The SHA-256 of every `persona.md` this project has shipped (line ends as LF). A `persona.md` that is not one of them has been edited by
  * the user, which makes it custom. Add the new hash when the shipped file changes; `test/persona.test.ts` fails until you do.
  */
-export const SHIPPED_PERSONA_SHA256 = ["24a44844867df78d35381346d4ab698046db82c81f9c3ef1b69aaae4de0c386d"];
+export const SHIPPED_PERSONA_SHA256 = [
+  "24a44844867df78d35381346d4ab698046db82c81f9c3ef1b69aaae4de0c386d",
+  "c70348c5d8494b03196ce5f1e2ea455ab1728eedcd6d16dce42a4ae24e5a0ca1",
+];
 
 export const personaSha256 = (text: string): string => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
 
@@ -85,7 +88,8 @@ export const MIN_PROPOSAL_CHARS = 30;
 export function cleanProposal(input: string): string | null {
   const text = input
     .replace(/<\/?[a-z!][^>]*>/gi, "")
-    .replace(/\[\s*(?:emotion|gesture|avatar|image|demo|remember|outfit|persona)\b[^\]]*\]/gi, "")
+    .replace(/\[\s*narration\s*\][\s\S]*?\[\s*\/\s*narration\s*\]/gi, "")
+    .replace(/\[\s*(?:emotion|gesture|avatar|image|demo|remember|outfit|persona|narration)\b[^\]]*\]/gi, "")
     // the tag ends at the first `]`, so one of her own tags written inside it leaves its start behind: cut that fragment
     .replace(/\[[^\]]*$/, "")
     // eslint-disable-next-line no-control-regex

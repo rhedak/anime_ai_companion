@@ -28,7 +28,7 @@ microphone button is lit, and this app's own server never receives audio.
 - **Phone access is the one exception**, opt-in at every start (`--lan`, or a yes to the question `/phone` asks on the computer itself; a phone cannot turn it on or off). Then every page, file and WebSocket from
   another device needs the secret token (a cookie, checked in constant time), a `Host` that is a local address or
   `.local` name (against DNS rebinding), and, for the WebSocket, a matching `Origin`. Such a device still cannot run
-  `!commands`, loosen the permission mode, load your Claude Code setup or your skills, change her character, or choose another folder.
+  `!commands`, turn on Auto or Accept edits, load your Claude Code setup or your skills, change her character, or open the folder dialog. It can choose Run everything, and it can type a project folder (the folder must exist; the home folder and `/` are still refused).
 - **The page** ships a strict Content-Security-Policy: no inline or foreign scripts and no framing, so nobody can
   click the approval buttons for you.
 - **Everything the model chooses is validated.** Avatar values are coerced field by field (hex colours, numbers,
@@ -46,7 +46,7 @@ microphone button is lit, and this app's own server never receives audio.
   notes reach her as information, never as instructions.
 - **Local models with tools are on you.** With Ollama, work mode (experimental) asks before every command, file write and
   edit, and has no looser mode. How well a local model behaves is up to the model and to you: the app does not vouch for any.
-- **Loose modes are off at every start.** The permission mode, `/setup`, `/skills` and phone access all come back to the safe
+- **Loose modes are off at every start.** The permission mode, `/setup`, `/skills`, `/chrome` and phone access all come back to the safe
   setting each time the server starts.
 
 ## Reporting a problem

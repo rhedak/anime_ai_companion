@@ -18,6 +18,7 @@ import {
   type AcpPermission,
   type OpenCodeModel,
   opencodeErrorText,
+  opencodeStreamError,
 } from "./opencode-acp.ts";
 import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
 
@@ -237,7 +238,10 @@ export class OpenCodeProvider implements Provider {
       ...process.env,
       OPENCODE_CONFIG_CONTENT: opencodeConfig(this.config.mode, this.config.permissionMode, this.config.allowedTools),
       // A project's own opencode.json, plugins and MCP servers can run code; keep them unloaded.
+      // v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first and falls back to the v1 name; send both.
       OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+      OPENCODE_CONFIG_PROJECT_DISABLE: "1",
+      // 1.x only: 2.x has no equivalent (and no --pure), so a plugin in the user's own global config is left to their own install.
       OPENCODE_DISABLE_DEFAULT_PLUGINS: "1",
     };
   }
@@ -292,6 +296,7 @@ export class OpenCodeProvider implements Provider {
       if (this.proc === proc) {
         this.recentStderr.push(text);
         if (this.recentStderr.length > 20) this.recentStderr.shift();
+        this.onLogged(text);
       }
     });
     proc.on("error", (err) => {
@@ -437,6 +442,19 @@ export class OpenCodeProvider implements Provider {
       const shown = event.type === "tool" ? this.rememberTool(event) : event;
       this.listener?.(shown);
     }
+  }
+
+  /**
+   * A model call that failed (free quota used up, a bad key) leaves session/prompt unanswered: opencode only logs it. When the log says so for this
+   * session, the turn ends with that reason, and the process is dropped because the prompt it is stuck on will never finish; the next message starts a new one.
+   */
+  private onLogged(text: string): void {
+    if (!this.listener || !this.sessionIdValue) return;
+    const reason = opencodeStreamError(text, this.sessionIdValue);
+    if (!reason) return;
+    this.token++; // the turn waiting on the dead prompt gives up quietly, even if a new message has taken the listener by then
+    this.finish({ type: "error", message: opencodeErrorText(reason) });
+    this.kill();
   }
 
   private rememberTool(event: Extract<ProviderEvent, { type: "tool" }>): Extract<ProviderEvent, { type: "tool" }> {

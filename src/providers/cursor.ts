@@ -13,6 +13,7 @@ import {
   planResult,
   promptBlocks,
   type AcpPermission,
+  cursorErrorText,
   type CursorModel,
 } from "./cursor-acp.ts";
 import type { Decision, Provider, ProviderEvent, SessionConfig, Usage } from "./types.ts";
@@ -46,6 +47,8 @@ export class CursorProvider implements Provider {
   private readonly persona: (config: SessionConfig) => string;
   private readonly spawnAgent: SpawnAgent;
   private proc: ChildProcessWithoutNullStreams | null = null;
+  /** The last of cursor-agent's own words, so an exit can say why. */
+  private recentStderr: string[] = [];
   private appliedCwd = "";
   private appliedForce = false;
   /** Bumped on reset so a sync that was already running gives up. */
@@ -236,6 +239,7 @@ export class CursorProvider implements Provider {
     if (this.proc && this.appliedCwd === cwd && this.appliedForce === force) return;
     const token = this.token;
     this.kill();
+    this.recentStderr = [];
     const proc = this.spawnAgent(cursorArgs(this.config.mode, force ? "everything" : this.config.permissionMode), cwd);
     this.proc = proc;
     this.appliedCwd = cwd;
@@ -244,7 +248,13 @@ export class CursorProvider implements Provider {
     createInterface({ input: proc.stdout }).on("line", (line) => {
       if (this.proc === proc) this.onLine(line);
     });
-    proc.stderr.on("data", (chunk) => process.stderr.write(`[cursor] ${chunk}`));
+    proc.stderr.on("data", (chunk) => {
+      process.stderr.write(`[cursor] ${chunk}`);
+      if (this.proc === proc) {
+        this.recentStderr.push(String(chunk));
+        if (this.recentStderr.length > 20) this.recentStderr.shift();
+      }
+    });
     proc.on("error", (err) => {
       if (this.proc !== proc) return;
       this.proc = null;
@@ -254,10 +264,13 @@ export class CursorProvider implements Provider {
       this.failWaiters(message);
       if (this.listener) this.finish({ type: "error", message });
     });
-    proc.on("exit", (code) => {
+    // "close", not "exit": exit can come before stderr is read, and a process that dies on launch is the case where it matters.
+    proc.on("close", (code) => {
       if (this.proc !== proc) return;
       this.proc = null;
-      const message = `cursor-agent exited (${code ?? "signal"}).`;
+      const said = this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim(); // colour codes and CRs are noise in a chat bubble
+      this.recentStderr = [];
+      const message = cursorErrorText(`cursor-agent exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`, process.env);
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
     });
@@ -441,6 +454,8 @@ function defaultSpawn(args: string[], cwd: string): ChildProcessWithoutNullStrea
 
 function loginHint(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
+  // The keychain explanation already says what to do, and it contains the word "login", which would otherwise add a sign-in hint.
+  if (/keychain/i.test(message)) return message;
   if (/auth|login|sign/i.test(message)) return `${message} Run \`cursor-agent login\` in a terminal, or set CURSOR_API_KEY.`;
   return message;
 }

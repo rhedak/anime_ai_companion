@@ -5,12 +5,12 @@ description: Make it yours: her name, personality, expressions, the interface co
 # Customising
 
 Keep your changes where updates do not overwrite them. `data/` and `workspace/` are yours: git ignores them, and
-updates never touch them.
+updates never touch them. Where the table says to restart the server, type `/restart`. The page reconnects. For Claude, also `/clear` when the row says so.
 
 | To change | Edit | Takes effect |
 | --- | --- | --- |
 | Her voice | the **Voice** menus; `public/speech.js` for more | at once; reload after editing |
-| Her name | click it, or `/rename Hana` (`/rename reset` goes back to the character's name) | at once |
+| Her name | click it, or `/rename Hana` (the reset beside the name, or `/rename reset`, goes back to the character's name) | at once |
 | Her look | ask her in chat, or `COMPANION_PRESET` for the starting character | at once |
 | Her personality and voice | `persona.md` (chat) and `persona-work.md` (work-mode rules) | restart the server; for Claude also `/clear`, because an existing conversation keeps the prompt it began with |
 | Her expressions | `emotions.json` | restart the server |

@@ -59,6 +59,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
       out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } });
       delta("[emotion:thinking] I will read it by hand.");
       result();
+    } else if (text.includes("PLAYEND")) {
+      delta("[emotion:happy] We're in. [play end]");
+      result();
     } else if (/ACTIVITY [a-z]+/.test(text)) {
       delta("[emotion:happy] Sure, let's go. [activity " + /ACTIVITY ([a-z]+)/.exec(text)[1] + "] Here we are.");
       result();
@@ -166,6 +169,8 @@ export interface RunningServer {
   /** The system prompt of the latest `claude` start. */
   systemPrompt(): string;
   data(name: string): string | null;
+  /** Null while the process is still running. */
+  exitCode(): number | null;
   client(origin?: string | null): Promise<Client>;
   stop(): Promise<void>;
 }
@@ -184,6 +189,10 @@ export interface ServerOptions {
   firstStart?: boolean;
   /** Files to have in data/ before the server starts, by path relative to data/ (frames/<pack>/neutral.png, say). */
   dataFiles?: Record<string, string | Buffer>;
+  /** Files under the throwaway home, by relative path (~/.cursor/cli-config.json, say). */
+  homeFiles?: Record<string, string | Buffer>;
+  /** Extra stand-in programs on the server's PATH, by name. The script is Node; a #! line is optional. */
+  standIns?: Record<string, string>;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -203,6 +212,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const bin = join(dir, "bin");
   mkdirSync(bin);
   writeStandIn(bin, "claude", STAND_IN);
+  for (const [name, script] of Object.entries(options.standIns ?? {})) writeStandIn(bin, name, script);
   const config = join(dir, "claude-config");
   for (const skill of options.userSkills ?? []) {
     mkdirSync(join(config, "skills", skill), { recursive: true });
@@ -210,6 +220,11 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   }
   mkdirSync(config, { recursive: true });
   mkdirSync(join(dir, "home"));
+  for (const [name, body] of Object.entries(options.homeFiles ?? {})) {
+    const file = join(dir, "home", name);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, body);
+  }
   if (options.coldConversation) {
     const sessionId = "11111111-2222-4333-8444-555555555555";
     mkdirSync(join(config, "projects", "earlier"), { recursive: true });
@@ -250,6 +265,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
       COMPANION_PACK_INDEX: "off", // tests never fetch the real pack list; one that needs it points this at a local server
+      ANAICO_PARENT_RESTARTS: "1", // /restart exits 75 instead of spawning a server the test would leak
       ...options.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -289,6 +305,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const args = starts.at(-1)?.args ?? [];
       return args[args.indexOf("--append-system-prompt") + 1] ?? "";
     },
+    exitCode: () => child.exitCode,
     data(name) {
       try {
         return readFileSync(join(app, "data", name), "utf8");

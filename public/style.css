@@ -83,7 +83,9 @@ button:disabled.seg { opacity: .4; }
 /* ---- chat panel ---- */
 .panel { display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); min-height: 0; }
 .panel header { display: flex; justify-content: space-between; align-items: center; padding: 14px var(--panel-padding); border-bottom: 1px solid var(--line); }
+.name-row { display: flex; align-items: center; min-width: 0; }
 .panel h1.name { cursor: text; border-radius: var(--radius-sm); padding: 2px 6px; margin-left: -6px; }
+button.name-reset { width: 28px; height: 28px; flex: none; }
 .panel h1.name:hover, .panel h1.name:focus-visible { background: var(--hover); outline: none; }
 input.name-edit { font: 500 22px/1 var(--font-heading); color: var(--text); background: var(--fill-1); border: 1px solid var(--focus); border-radius: var(--radius-sm); padding: 2px 6px; margin-left: -6px; outline: none; max-width: 14em; }
 .panel h1 { margin: 0; font: 500 22px/1 var(--font-heading); color: var(--text); }
@@ -131,6 +133,14 @@ button.icon.small { width: 26px; height: 26px; flex: none; font-size: 16px; line
 .msg.look { align-self: center; color: var(--accent); font-size: var(--font-size-small); }
 .msg.sys { align-self: center; color: var(--muted); font-size: var(--font-size-small); }
 .msg.sys a { color: inherit; }
+/* An action, apart from what she says: its own small italic bubble. Chat only; work mode keeps the asterisks as emphasis. */
+.msg.narration {
+  align-self: center; width: fit-content; max-width: 86%;
+  padding: 5px 14px; background: var(--fill-1); border: 1px solid var(--line); border-radius: var(--radius-pill);
+  color: var(--muted); font-family: var(--font-heading); font-style: italic; font-size: var(--font-size-small);
+  text-align: center; white-space: normal;
+}
+.msg.narration p { margin: 0; }
 /* A problem in the page itself (errors.js): tap for the details. */
 .msg.sys.problem { align-self: stretch; max-width: 100%; text-align: left; cursor: pointer; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-line); padding: 6px 10px; border-radius: var(--radius-md); overflow-wrap: anywhere; }
 .msg.sys.problem pre { display: none; margin: 6px 0 0; font: 11px/1.4 var(--font-mono); white-space: pre-wrap; color: var(--text); }
@@ -301,6 +311,8 @@ main[data-view="behind"] .status { position: fixed; z-index: 5; top: calc(25px +
 main[data-view="behind"] .pack-credit { position: fixed; z-index: 6; top: 0; left: 0; right: 0; bottom: auto; max-width: none; padding: 3px 10px; text-align: center; background: rgba(0, 0, 0, .6); }
 main[data-view="behind"] .panel { position: relative; z-index: 1; padding-top: var(--credit-h, 0px); background: color-mix(in srgb, var(--panel) 55%, transparent); border-left: 0; }
 main[data-view="behind"] .msg.bot { background: color-mix(in srgb, var(--panel) 72%, transparent); padding: 6px 10px; border-radius: var(--radius-md); }
+main[data-view="behind"] .msg.narration { background: color-mix(in srgb, var(--panel) 72%, transparent); }
+main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surface) 72%, transparent); }
 @media (min-width: 801px) {
   main[data-view="behind"] .panel { align-items: center; }
   main[data-view="behind"] .panel > * { width: min(100%, 780px); }

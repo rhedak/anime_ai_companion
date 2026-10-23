@@ -15,6 +15,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statS
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dataDir } from "./paths.ts";
+import { PARENT_RESTARTS, RESTART_EXIT } from "./restart.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT ?? 3737);
@@ -190,13 +191,25 @@ if (status || stop || restart || daemon) {
 }
 
 let server: ChildProcess | null = null;
-if (!(await serverUp())) {
-  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(open ? ["--open"] : []), ...(lan ? ["--lan"] : [])];
-  server = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], { stdio: "inherit" });
-  const started = server;
-  started.on("exit", (code) => {
-    if (server === started) process.exit(code ?? 1);
+/** Start the server in this terminal. `again` is a `/restart`: do not open another browser tab. Exit 75 asks for another start. */
+function launchForeground(again = false): ChildProcess {
+  const serverArgs = ["--project-dir", process.cwd(), ...(chat ? ["--chat"] : []), ...(!again && open ? ["--open"] : []), ...(lan ? ["--lan"] : [])];
+  const child = spawn(process.execPath, [join(root, "src/server.ts"), ...serverArgs], {
+    stdio: "inherit",
+    env: { ...process.env, [PARENT_RESTARTS]: "1" },
   });
+  child.on("exit", (code) => {
+    if (server !== child) return;
+    if (code === RESTART_EXIT) {
+      server = launchForeground(true);
+      return;
+    }
+    process.exit(code ?? 1);
+  });
+  return child;
+}
+if (!(await serverUp())) {
+  server = launchForeground();
   for (let i = 0; i < 60 && !(await serverUp()); i++) await new Promise((r) => setTimeout(r, 500));
   if (!(await serverUp())) {
     console.error("The companion server did not come up; see the messages above.");

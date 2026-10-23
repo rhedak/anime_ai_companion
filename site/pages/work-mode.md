@@ -15,8 +15,10 @@ Every action that is not pre-approved shows an **approval card** with the exact 
 *Allow once*, *Allow for this session*, or *Deny*; a denial is not retried. With a local (Ollama) model, *for this session* covers later file writes and edits in the project folder, but a shell command only as written. `Read`, `Grep` and `Glob` are
 pre-approved (change that in `data/settings.json`).
 
-The **Permissions** menu changes how approvals work. It resets to *Ask* every time the server starts, and can be
-changed at any time, even while a card is waiting.
+The **Permissions** menu changes how approvals work. It resets to *Ask* every time the server starts (when Cursor's
+own CLI is set to run without asking, this app starts in **Run everything** instead and says so), and can be
+changed at any time, even while a card is waiting. A phone can choose Run everything; Auto and Accept edits stay on
+the computer.
 
 | Mode | What it does | Brains |
 | --- | --- | --- |
@@ -34,7 +36,8 @@ terminal's "yes, and don't ask again".
 **Work here** applies the folder you typed. Once she already works in that folder, the same button reads **Choose
 folder…** and opens your system's folder dialog (macOS, or Linux with `zenity` or `kdialog`; elsewhere type the
 path). The home folder and `/` cannot be chosen. On a phone the folder bar starts folded away to save room, and the
-**−** and **+** buttons fold and unfold it on any screen.
+**−** and **+** buttons fold and unfold it on any screen. A phone sets the folder by typing its path (or `/work ~/project`);
+the folder dialog stays on the computer.
 
 `anaico` starts in work mode for the folder you ran it from. A server that is already running keeps its mode and
 folder.
@@ -55,6 +58,14 @@ load with the whole setup above. It is off at every start.
 
 When she reaches for one of your skills while they are off, she asks before anything is turned on. A folder that has its
 own skills says so once.
+
+### Chrome
+
+The **Use my Chrome** checkbox, or `/chrome on`, lets her drive your own Chrome through the
+[Claude in Chrome](https://code.claude.com/docs/en/chrome) extension. It passes Claude Code's own `--chrome` and nothing
+else, so your other MCP servers stay unloaded unless the whole setup above is on. The extension has to be installed
+already and signed into the same Claude account. An API-key login keeps Chrome off even with the flag. Browser
+actions use the same approvals as her other tools. It is off at every start, and a phone cannot turn it on.
 
 ## Helpers running in the background
 

@@ -12,12 +12,12 @@ import { resolveCreatorSrc } from "./creator.ts";
 import { brainProgram, isInstalled, programLabel } from "./programs.ts";
 import { MAX_IMAGE_BYTES, MAX_MESSAGE_BYTES, parseImages, sniffImageType, type ImageInput } from "./images.ts";
 import { listSessions, loadSessionItems, sessionContext, sessionPath, type SessionInfo } from "./sessions.ts";
-import type { ConversationState } from "./cache-guard.ts";
+import { coldCache, type ConversationState } from "./cache-guard.ts";
 import { ClaudeCodeProvider } from "./providers/claude-code.ts";
 import { CursorProvider } from "./providers/cursor.ts";
 import { OpenCodeProvider } from "./providers/opencode.ts";
 import { ScriptedProvider } from "./providers/scripted.ts";
-import { CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
+import { CURSOR_EVERYTHING_NOTICE, CURSOR_UNRESTRICTED_TEXT, cursorApprovalMode } from "./providers/cursor-acp.ts";
 import { choosePersona } from "./persona.ts";
 import { basicGreeting } from "../public/script.js";
 import { listOllamaModels, OllamaProvider } from "./providers/ollama.ts";
@@ -25,6 +25,7 @@ import { prettyModel, type Limit } from "./providers/claude-stream.ts";
 import { pickFolder } from "./folder-picker.ts";
 import { InstallError, OPENCODE_PIN, cleanInstallLeftovers, installOpencode, managedOpencode, opencodeAsset, opencodeFolder, opencodeUrl } from "./install-opencode.ts";
 import { checkAll, formatDoctor, realProbe } from "./doctor.ts";
+import { runClaudeLogin } from "./claude-login.ts";
 import { randomUUID } from "node:crypto";
 import { animatedActivities, drawnActivityNote, gestureNote, packActivities, readCharacters, groupPacks, isPackName, outfitName, packCharacters, packNote, listPacks, packInfo, readPack, type FramePack, type Outfit } from "./frame-pack.ts";
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
@@ -38,6 +39,7 @@ import { runShell, shellDisabled } from "./shell.ts";
 import { createCardService } from "./card-service.ts";
 import { createRequestHandler } from "./http-routes.ts";
 import { createTurnService } from "./turn-service.ts";
+import { SCENES, sceneById, sceneList, startPlay } from "./scenes.ts";
 import { createMemoryService } from "./memory-service.ts";
 import { createPersonaService } from "./persona-service.ts";
 import { createNotes } from "./notes.ts";
@@ -48,6 +50,7 @@ import { loadUserEffort, resolveEffort, efforts, isEffort, type Effort } from ".
 import { checkProjectDir, cleanName, DEFAULT_NAME, loadSettings, saveSettings, type ProviderName } from "./settings.ts";
 import { permissionModes, type Decision, type Mode, type PermissionMode, type PermissionRequest, type Provider, type SessionConfig } from "./providers/types.ts";
 import { dataDir, workspaceDir } from "./paths.ts";
+import { handOff } from "./restart.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicDir = join(root, "public");
@@ -226,6 +229,15 @@ await refreshPack();
 // `anaico` passes the folder it was started from as --project-dir; that folder is only
 // pre-filled here, not saved, until the user picks one in the UI.
 let mode: Mode = "chat";
+/** The short scene `/play` started, if one is on. Memory only: a restart, /clear, work mode or the scene ending clears it. */
+let sceneId: string | null = null;
+/** That scene's note, with the locked room's counts filled in. Cleared with `sceneId`. */
+let sceneNoteText: string | null = null;
+
+function stopScene(): void {
+  sceneId = null;
+  sceneNoteText = null;
+}
 {
   const flag = process.argv.indexOf("--project-dir");
   const wanted = flag >= 0 ? process.argv[flag + 1] : settings.projectDir;
@@ -241,10 +253,14 @@ let mode: Mode = "chat";
   }
 }
 
-// Not saved: loosening approvals (auto, accept edits) is a choice made again each run.
+// Not saved: every start is Ask, except when Cursor's own CLI never asks, in which case Run everything so the menu matches it.
 let permissionMode: PermissionMode = "manual";
+/** Why Run everything is on, when Cursor's CLI chose it. Told to each new page until the mode is changed. */
+let cursorEverythingNotice: string | null = null;
 /** Like the permission mode, never saved: hooks run commands, so each start begins isolated. */
 let claudeSetup = false;
+/** Like the permission mode, never saved: it drives the user's real Chrome, so each start begins without it. */
+let claudeChrome = false;
 
 const ollamaHost = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
 
@@ -265,6 +281,11 @@ if (settings.provider !== "ollama" && !brainThere(settings.provider)) {
   else basicMode = true;
 }
 if (basicMode) mode = "chat"; // no tools to work with
+// Cursor's own "unrestricted" never sends an approval request, so Ask would be a lie. Start in Run everything instead.
+if (!basicMode && settings.provider === "cursor" && cursorApprovalMode() === "unrestricted") {
+  permissionMode = "everything";
+  cursorEverythingNotice = CURSOR_EVERYTHING_NOTICE;
+}
 /** Installed Ollama models, refreshed when a browser connects; null when Ollama is not reachable. */
 let ollamaModels: string[] | null = null;
 
@@ -290,6 +311,7 @@ const sessionConfig = (): SessionConfig => ({
   permissionMode,
   claudeSetup,
   claudeSkills: skills.enabled(),
+  claudeChrome,
   effort: effectiveEffort(),
 });
 
@@ -424,6 +446,8 @@ const shownModel = () => acpBrain()?.modelLabel || sessionConfig().model;
 const modeInfo = () => ({
   type: "mode",
   name: herName(),
+  // True when the name is the user's: the reset beside it is shown, and a pack's character does not take over.
+  nameSet: settings.nameSet,
   mode,
   // "basic": no brain is installed and she runs the built-in script (the page says so in her first message); the menu shows it, and it is not a choice.
   provider: basicMode ? "basic" : settings.provider,
@@ -444,6 +468,7 @@ const modeInfo = () => ({
   permissionMode,
   claudeSetup,
   claudeSkills: skills.enabled(),
+  claudeChrome,
   effort: settings.effort,
   effortNow: effectiveEffort(),
   shellOff: shellDisabled(),
@@ -592,6 +617,11 @@ async function switchMode(wanted: Mode, dir: unknown, say: Say): Promise<void> {
     await saveSettings(settingsPath, settings);
   }
   const before = { mode, cwd: sessionConfig().cwd };
+  if (wanted === "work" && before.mode !== "work" && sceneId) {
+    const title = sceneById(sceneId)?.title ?? "the scene";
+    stopScene();
+    notes.push(`The scene "${title}" stopped because this is work mode. Talk normally again.`);
+  }
   mode = wanted;
   provider.configure(sessionConfig());
   // Claude Code sends the system prompt it recorded when the conversation began, which keeps the prompt cache
@@ -630,6 +660,29 @@ function changeClaudeSetup(on: boolean, say: Say): void {
     if (on && mode === "work") {
       say("Using your Claude Code setup in work mode: your user and project settings, hooks, rules and MCP servers now apply.");
     }
+  }
+  broadcast(modeInfo());
+}
+
+function changeClaudeChrome(on: boolean, say: Say): void {
+  const blocked = cannotChange();
+  if (blocked) say(blocked);
+  else if (settings.provider !== "claude") say("Chrome is a Claude Code feature.");
+  else if (!provider.canUseTools) say("This model cannot use tools, so there is no browser to connect.");
+  else {
+    claudeChrome = on;
+    provider.configure(sessionConfig()); // restarts claude; the conversation carries on
+    // She only hears about it with the next message: the running conversation keeps its first prompt.
+    notes.push(
+      on
+        ? "the user turned Chrome on for this session: Claude in Chrome is connected, so you can use the browser tools in their real Chrome. Each action still needs their approval, and a site they have not allowed will ask them."
+        : "the user turned Chrome off: the browser tools are gone.",
+    );
+    say(
+      on
+        ? "Chrome is on in work mode: she can use your browser through the Claude in Chrome extension. It needs that extension, signed into the same Claude account. Browser actions use the same approvals as her other tools, and this turns off the next time the server starts."
+        : "Chrome is off again.",
+    );
   }
   broadcast(modeInfo());
 }
@@ -717,6 +770,7 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
     );
   } else {
     permissionMode = value;
+    if (value !== "everything") cursorEverythingNotice = null;
     if (provider.setPermissionMode) provider.setPermissionMode(value);
     else provider.configure(sessionConfig());
     if (value === "everything") {
@@ -746,17 +800,19 @@ interface CommandContext {
   remote: boolean;
 }
 
-/** What a phone may not do: anything that loosens approvals or reaches into this machine without a card. */
+/** What a phone may not do: anything that loosens approvals past Run everything, or that runs on this machine without a card. Naming a project folder by its path, and Run everything, are allowed. */
 const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
-const looserThanAsk = (mode: unknown) => mode !== "manual" && mode !== "plan";
+/** Auto and Accept edits stay on the computer. Run everything may be chosen from a phone. */
+const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === "auto";
 
-/** The slash commands that would loosen approvals, load the user's hooks, or point her at another folder. */
+/** The slash commands that would turn on Auto or Accept edits, load the user's hooks, or drive Chrome on this computer. `/work <path>` and `/permissions everything` are allowed. */
 function remoteBlocked(name: string, args: string): boolean {
   const a = args.trim().toLowerCase();
-  if (name === "work") return a !== ""; // /work alone returns to the saved folder
+  if (name === "restart") return true; // it stops and starts the server on this computer
   if (name === "setup") return a === "on";
+  if (name === "chrome") return a === "on"; // it drives the browser on this computer
   if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
-  if (name === "permissions") return Object.hasOwn(permissionNames, a) && looserThanAsk(permissionNames[a]);
+  if (name === "permissions") return Object.hasOwn(permissionNames, a) && remoteBlockedMode(permissionNames[a]);
   return false;
 }
 
@@ -947,6 +1003,88 @@ async function setLan(on: boolean): Promise<string | null> {
   return null;
 }
 
+/** `/play` lists the scenes or starts the one named; `/play end` stops it. She opens it herself. Work mode switches to chat first. */
+async function playCommand(args: string, say: Say): Promise<void> {
+  const arg = args.trim();
+  if (/^(end|stop|off)$/i.test(arg)) {
+    if (!sceneId) return say("No scene is on.");
+    const title = sceneById(sceneId)?.title ?? sceneId;
+    const room = sceneId === "room";
+    stopScene();
+    say(`Stopped ${title}.`);
+    if (room) {
+      notes.push(
+        `The user gave up on "The locked room". The plan you wrote is still in the conversation. Explain the thread that tied the correct choices together, and name each correct choice in order. A few sentences, then talk normally. If you never wrote a plan, say the room was not set up.`,
+      );
+      // She is still writing the opening: the note rides on the next message. Otherwise she explains now.
+      if (!provider.busy) {
+        broadcast({ type: "auto-turn" });
+        turns.run("The user stopped the locked room. Explain the thread now.");
+      }
+      return;
+    }
+    notes.push(`The user ended the scene "${title}". Talk normally again.`);
+    return;
+  }
+  if (basicMode) return say("A scene needs a real brain. This is the built-in script, so pick a brain in the menu and then /play.");
+  const blocked = cannotChange();
+  if (blocked) return say(blocked);
+  if (turns.holding()) return say("Decide what to do with your earlier message first (the question above).");
+  if (settings.provider === "claude" && coldCache(convo)) {
+    return say("This chat has gone cold, so starting a scene would reread all of it. Send a message first (you will be asked), then /play.");
+  }
+  const switched = mode !== "chat";
+  if (switched) {
+    await switchMode("chat", undefined, say);
+    if (mode !== "chat") return;
+  }
+  const lead = switched ? "Switched to chat. " : "";
+  if (!arg) {
+    if (sceneId) return say(`Already playing ${sceneById(sceneId)?.title ?? sceneId}. /play end stops it.`);
+    if (SCENES.length !== 1) return say(`${lead}Scenes: ${sceneList()}`);
+  }
+  const started = startPlay(arg || SCENES[0].id);
+  if (!started.ok) return say(`${lead}${started.text}`);
+  if (sceneId === started.scene.id) return say(`Already playing ${started.scene.title}. /play end stops it.`);
+  sceneId = started.scene.id;
+  sceneNoteText = started.note;
+  say(`${lead}${started.scene.title}. ${started.blurb} /play end stops it.`);
+  // The first reply writes the whole story before any of it can be shown, so the page says so at once.
+  if (started.scene.id === "room") {
+    say("Setting up the game. Please wait.");
+    broadcast({ type: "auto-turn" });
+  }
+  turns.run("The user started a short scene with /play. Open it now.");
+}
+
+/** True once `/restart` has been accepted, so a second one does not start another hand-off. */
+let restarting = false;
+
+/** Close what this process holds, then let the parent (or this process, for a daemon) start a new server. */
+function beginRestart(): void {
+  let left = false;
+  const leave = () => {
+    if (left) return;
+    left = true;
+    provider.close();
+    avatar.close();
+    handOff({
+      execPath: process.execPath,
+      argv: process.argv,
+      env: process.env,
+      cwd: process.cwd(),
+      pidFile: join(dataDir, "server.pid"),
+      logFile: join(dataDir, "server.log"),
+      ownPid: process.pid,
+      exit: (code) => process.exit(code),
+    });
+  };
+  for (const c of clients) c.close();
+  server.closeAllConnections();
+  server.close(leave);
+  setTimeout(leave, 1000).unref();
+}
+
 const slashCommands: Record<
   string,
   {
@@ -1074,6 +1212,15 @@ const slashCommands: Record<
       say(`Your Claude Code setup is ${claudeSetup ? "on" : "off"} in work mode. Use /setup on | off`);
     },
   },
+  chrome: {
+    help: "work mode: let her use your Chrome through the Claude in Chrome extension (the extension must already be installed and signed into the same account): /chrome on | off",
+    claudeOnly: true,
+    run: ({ args, say }) => {
+      const wanted = args.toLowerCase();
+      if (wanted === "on" || wanted === "off") return changeClaudeChrome(wanted === "on", say);
+      say(`Chrome is ${claudeChrome ? "on" : "off"} in work mode. Use /chrome on | off`);
+    },
+  },
   persona: {
     help: "whose voice she speaks in (your own persona, the character of the pack that is on, or the default): /persona | show | edit | reset",
     run: async ({ args, say, remote }) => personaVoice.command(args, say, remote),
@@ -1107,6 +1254,22 @@ const slashCommands: Record<
           `To use it, continue this conversation in a terminal${resumeCommandLine()} and run /rewind there. Only one side should write at a time.`,
       ),
   },
+  restart: {
+    help: "restart the server (the page reconnects; the conversation stays; phone access and permissions go back to a fresh start). Not from a phone",
+    run: async ({ say, remote }) => {
+      if (remote) return say(remoteRefusal);
+      if (restarting) return say("Already restarting.");
+      restarting = true;
+      say("Restarting. The page reconnects in a moment. Phone access and permissions go back to how they are at every start, and the conversation stays.");
+      try {
+        await transcript.save({ provider: basicMode ? "basic" : settings.provider, sessionId: provider.sessionId, ...convo });
+      } catch (err) {
+        console.error("could not save the transcript:", err);
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      beginRestart();
+    },
+  },
   doctor: {
     help: "check what the app needs (Node, the character creator, the brains, opencode, her data folder) and say what is missing; it only looks, nothing is changed",
     run: async ({ say, remote }) => {
@@ -1116,6 +1279,19 @@ const slashCommands: Record<
         say(formatDoctor(await checkAll(realProbe(root, port, true))));
       } catch (err) {
         say(`The check could not finish: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  },
+  "claude-login": {
+    help: "sign in to Claude Code again (runs `claude auth login`, which opens your browser); use it when she says Claude Code is not signed in",
+    claudeOnly: true,
+    run: async ({ say, remote }) => {
+      if (remote) return say(remoteRefusal); // it opens a sign-in on this computer
+      say("Starting Claude Code's own sign-in (`claude auth login`)…");
+      const ok = await runClaudeLogin(say, brainProgram("claude") ?? "claude");
+      if (ok) {
+        if (settings.provider === "claude") provider.close(); // the next message starts claude again with the new login and resumes the conversation
+        say("Done. Send your message again.");
       }
     },
   },
@@ -1129,7 +1305,7 @@ const slashCommands: Record<
       const have = managedOpencode();
       if (have) return say(`The app's own opencode ${OPENCODE_PIN.version} is already installed (${have}) and is the one she uses; any other opencode on this computer is ignored. To fetch it again, delete the folder ${opencodeFolder()} and run /install-opencode.`);
       reply(opencodeOffer(true) as Record<string, unknown>);
-      say(`The page asks whether to install opencode ${OPENCODE_PIN.version} for the app only (${Math.round(asset.bytes / 1048576)} MB from github.com, into ${opencodeFolder()}). Nothing is fetched until you say yes. By hand: ${opencodeUrl(asset)}, unpacked into that folder.`);
+      say(`The page asks whether to install opencode ${OPENCODE_PIN.version} for the app only (${Math.round(asset.bytes / 1048576)} MB from registry.npmjs.org, into ${opencodeFolder()}). Nothing is fetched until you say yes. By hand: ${opencodeUrl(asset)}, unpacked into that folder.`);
     },
   },
   frames: {
@@ -1180,6 +1356,10 @@ const slashCommands: Record<
       const links = phoneLinks(port, lanToken);
       reply({ type: "phone", links, qr: qrRows(links[0]) });
     },
+  },
+  play: {
+    help: "play a short scene in chat (work mode switches to chat): /play lists them; /play key or /play room (counts: /play room 5 1 3 1); the room asks you to wait while she writes it, and she explains the thread when you finish or stop; /play end stops it",
+    run: ({ args, say }) => playCommand(args, say),
   },
   copy: { help: "copy her last reply to the clipboard", run: () => {} },
   export: { help: "download the conversation as a Markdown file", run: () => {} },
@@ -1238,7 +1418,7 @@ function opencodeOffer(force = false): Record<string, unknown> | null {
     type: "install-offer",
     brain: "opencode",
     version: OPENCODE_PIN.version,
-    host: "github.com",
+    host: "registry.npmjs.org",
     megabytes: Math.round(asset.bytes / 1048576),
     folder: opencodeFolder(),
     others: isInstalled("opencode"), // another opencode is on this computer: the card says the app's own copy is used instead and the other stays untouched
@@ -1449,6 +1629,7 @@ function resetConversation(): void {
   transcript.clear();
   persistTranscript();
   renewNotes();
+  stopScene();
   activity = null;
   pendingPermissions.clear();
   broadcast({ type: "reset" });
@@ -1476,6 +1657,10 @@ const turns = createTurnService({
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
   activity: setActivity,
   chatMode: () => mode === "chat",
+  sceneNote: () => (mode === "chat" && sceneId ? sceneNoteText : null),
+  sceneEndedByHer: () => {
+    stopScene();
+  },
   takeLookPicture: () => {
     const picture = lookPictureDue && lookPicture ? lookPicture : null;
     lookPictureDue = false;
@@ -1526,7 +1711,8 @@ wss.on("connection", (ws) => {
   const remote = remoteSockets.has(ws);
   clients.add(ws);
   void backgroundPackCheck().catch(() => {});
-  ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version }));
+  // `remote` is only for this socket: the page then types a folder instead of opening the dialog, which runs on this computer.
+  ws.send(JSON.stringify({ type: "hello", provider: provider.name, version: avatar.version, ...(remote ? { remote: true } : {}) }));
   void refreshPack()
     .then(async () => {
       if (ws.readyState !== ws.OPEN) return;
@@ -1546,6 +1732,7 @@ wss.on("connection", (ws) => {
     })
     .catch((err) => console.error("could not send the packs:", err));
   ws.send(JSON.stringify(modeInfo()));
+  if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
   ws.send(JSON.stringify(meterInfo()));
   ws.send(JSON.stringify(backgroundMessage()));
@@ -1620,7 +1807,7 @@ wss.on("connection", (ws) => {
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
-      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && looserThanAsk(msg.mode)) && request.tool !== "ExitPlanMode") {
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && remoteBlockedMode(msg.mode)) && request.tool !== "ExitPlanMode") {
         changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
@@ -1629,7 +1816,8 @@ wss.on("connection", (ws) => {
         broadcast(modeInfo());
       }
     } else if (msg.type === "mode" && (msg.mode === "chat" || msg.mode === "work")) {
-      await switchMode(msg.mode, remote ? undefined : msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      // A phone may name the folder (it must exist; home and `/` are still refused). The system dialog stays on the computer (`pick-folder`).
+      await switchMode(msg.mode, msg.projectDir, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "install-brain" && msg.brain === "opencode" && (msg.choice === "yes" || msg.choice === "stop")) {
       // It fetches and runs a program, so it is a decision for the person at the computer, never a phone.
       if (remote) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
@@ -1648,8 +1836,15 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "claude-setup" && typeof msg.value === "boolean") {
       if (remote && msg.value) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changeClaudeSetup(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (msg.type === "claude-chrome" && typeof msg.value === "boolean") {
+      if (remote && msg.value) {
+        ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+        ws.send(JSON.stringify(modeInfo())); // the checkbox snaps back; turning it on stays on the computer
+        return;
+      }
+      changeClaudeChrome(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
-      if (remote && looserThanAsk(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
+      if (remote && remoteBlockedMode(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
       changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
@@ -1683,6 +1878,12 @@ wss.on("connection", (ws) => {
       const switching = settings.provider !== msg.provider || basicMode;
       basicMode = false;
       settings.provider = msg.provider;
+      // Cursor's CLI already runs without asking: match it when she is switched onto Cursor, and say so once.
+      if (switching && settings.provider === "cursor" && cursorApprovalMode() === "unrestricted") {
+        permissionMode = "everything";
+        cursorEverythingNotice = CURSOR_EVERYTHING_NOTICE;
+        broadcast({ type: "notice", text: CURSOR_EVERYTHING_NOTICE });
+      } else if (settings.provider !== "cursor") cursorEverythingNotice = null;
       await saveSettings(settingsPath, settings);
       if (switching) {
         queue.drop();

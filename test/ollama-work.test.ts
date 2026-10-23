@@ -38,7 +38,7 @@ function setup(mode: "chat" | "work" = "work", permissionMode: PermissionMode = 
   writeFileSync(join(dir, "hello.txt"), "hello from the file\n");
   const make = (host: string, forceTools?: string[]) => {
     const p = new OllamaProvider({ host, model: "qwen3-coder", persona: () => "PERSONA", forceTools });
-    p.configure({ mode, cwd: dir, model: "qwen3-coder", allowedTools: ["Read", "Grep", "Glob"], permissionMode, claudeSetup: false, claudeSkills: false, effort: null });
+    p.configure({ mode, cwd: dir, model: "qwen3-coder", allowedTools: ["Read", "Grep", "Glob"], permissionMode, claudeSetup: false, claudeSkills: false, claudeChrome: false, effort: null });
     return p;
   };
   return { dir, make, done: () => rmSync(dir, { recursive: true, force: true }) };

@@ -255,7 +255,8 @@ function createPackAvatar(host, onError) {
   function pick(now, e) {
     const loop = activityFrames();
     if (loop?.loop.length) {
-      const step = Math.floor(Math.max(0, now - activityStart) / 333);
+      // A loop of a few pictures is a slow flip (3 a second); a long one is real motion (12 a second).
+      const step = Math.floor(Math.max(0, now - activityStart) / (loop.loop.length > 8 ? 83 : 333));
       return talking && loop.talk.length ? loop.talk[step % loop.talk.length] : loop.loop[step % loop.loop.length];
     }
     const poses = now < gestureUntil ? pack?.gestures?.[gestureName] : null;

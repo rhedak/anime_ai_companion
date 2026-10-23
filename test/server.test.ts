@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -902,6 +903,27 @@ describe("work mode", { skip }, () => {
     assert.equal(asked, 1, "asked once, not on every failure");
   });
 
+  test("/chrome on passes Claude's own flag and leaves other MCP servers out", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await enterWork(c);
+    await fresh(c);
+    const from = c.mark;
+    c.say("/chrome on");
+    try {
+      await c.next((e) => e.type === "mode" && e.claudeChrome === true, 5000, from);
+      await c.next((e) => e.type === "notice" && /Claude in Chrome/.test(e.text), 5000, from);
+      await ask(c, "look");
+      const args = server.claudeLog().filter((e) => e.kind === "argv").at(-1)!.args!;
+      assert.ok(args.includes("--chrome"));
+      assert.ok(args.includes("--strict-mcp-config"));
+    } finally {
+      c.say("/chrome off");
+      await c.next((e) => e.type === "mode" && e.claudeChrome === false, 5000, from);
+      await ask(c, "done"); // the off note must not ride into the next test
+    }
+  });
+
   test("she cannot save a note in work mode, and the user can add one by hand", async () => {
     const c = await server.client();
     await c.next("history");
@@ -1269,7 +1291,7 @@ describe("switching to a brain whose program is missing", { skip }, () => {
       const notice = await c.next((e) => e.type === "notice" && e.text.includes("opencode"), 5000, from);
       assert.match(notice.text, /not installed, so she stays on claude[^]*install it for you/);
       const offer = await c.next("install-offer", 5000, from);
-      assert.deepEqual([offer.brain, offer.host, offer.version], ["opencode", "github.com", OPENCODE_PIN.version]);
+      assert.deepEqual([offer.brain, offer.host, offer.version], ["opencode", "registry.npmjs.org", OPENCODE_PIN.version]);
       assert.ok(offer.megabytes > 10 && String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
       assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
     } finally {
@@ -1325,10 +1347,10 @@ describe("/doctor and /install-opencode", { skip }, () => {
       const from = c.mark;
       c.say("/install-opencode");
       const offer = await c.next("install-offer", 5000, from);
-      assert.deepEqual([offer.brain, offer.host, offer.version, offer.others], ["opencode", "github.com", OPENCODE_PIN.version, true]);
+      assert.deepEqual([offer.brain, offer.host, offer.version, offer.others], ["opencode", "registry.npmjs.org", OPENCODE_PIN.version, true]);
       assert.ok(String(offer.folder).includes("opencode-" + OPENCODE_PIN.version));
       const notice = await c.next((e) => e.type === "notice" && /opencode/.test(e.text) && /Nothing is fetched until you say yes/.test(e.text), 5000, from);
-      assert.match(notice.text, /releases\/download\/v/);
+      assert.match(notice.text, /registry\.npmjs\.org\/@opencode\/cli-/);
       assert.ok(!c.since(from).some((e) => e.type === "reset"), "nothing changes until the user says yes");
     } finally {
       await server.stop();
@@ -1647,14 +1669,81 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       ws.send(JSON.stringify({ type: "user", text: "/phone off" }));
       await new Promise((r) => setTimeout(r, 400));
       assert.ok(heard.some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), "a phone cannot turn phone access off");
-      // /doctor names folders and programs on this computer and /install-opencode fetches and runs a program: neither is for a phone.
-      for (const command of ["/doctor", "/install-opencode"]) {
+      // /doctor names folders and programs, /install-opencode fetches and runs a program, /restart stops the server: none of these is for a phone.
+      for (const command of ["/doctor", "/install-opencode", "/restart"]) {
         const before = heard.length;
         ws.send(JSON.stringify({ type: "user", text: command }));
         await new Promise((r) => setTimeout(r, 300));
         assert.ok(heard.slice(before).some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), `a phone cannot run ${command}`);
         assert.ok(!heard.slice(before).some((e) => e.type === "install-offer" || (e.type === "notice" && /Running on port|Looking at what/.test(e.text))), `${command} did nothing for a phone`);
       }
+      assert.equal(heard.find((e) => e.type === "hello")?.remote, true, "a phone is told it is one, so the page types a path instead of opening the folder dialog");
+
+      // A typed path is enough: the folder must exist, and home is still refused. The system dialog stays on the computer.
+      const project = await realpath(server.project);
+      const other = join(server.project, "phone-work");
+      mkdirSync(other);
+      const otherReal = await realpath(other);
+      const waitHeard = async (from: number, test: (e: any) => boolean, ms = 5000) => {
+        const started = Date.now();
+        for (;;) {
+          const found = heard.slice(from).find(test);
+          if (found) return found;
+          if (Date.now() - started > ms) throw new Error(`timed out; saw: ${heard.slice(from).map((e) => e.type).join(", ") || "nothing"}`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+      let from = heard.length;
+      const page = c.mark;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: server.project }));
+      assert.equal((await waitHeard(from, (e) => e.type === "mode" && e.mode === "work")).projectDir, project, "a phone can set the work folder by its path");
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, project);
+      assert.equal((await c.next((e) => e.type === "mode" && e.projectDir === project, 5000, page)).mode, "work", "the computer hears the folder the phone set");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: `/work ${other}` }));
+      assert.equal((await waitHeard(from, (e) => e.type === "mode" && e.projectDir === otherReal)).mode, "work", "/work <path> works from a phone");
+      assert.equal(heard.slice(from).some((e) => e.type === "notice" && /only possible on the computer itself/.test(e.text)), false);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: "~" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /home directory|disk root/.test(e.text))).text, /home directory/, "home is still refused from a phone");
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "mode", mode: "work", projectDir: join(server.project, "no-such-folder") }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /does not exist/.test(e.text))).text, /does not exist/);
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "pick-folder" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "the folder dialog stays on the computer");
+      assert.equal(heard.slice(from).some((e) => e.type === "picking"), false);
+      assert.equal(JSON.parse(server.data("settings.json")!).projectDir, otherReal);
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "!true" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice")).text, /only possible on the computer itself/, "a phone still cannot run !command");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn on Auto");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "/chrome on" }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn Chrome on");
+      assert.equal(heard.slice(from).some((e) => e.type === "mode" && e.claudeChrome), false, "Chrome stays off");
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "claude-chrome", value: true }));
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot tick Use my Chrome");
+      assert.equal((await waitHeard(from, (e) => e.type === "mode")).claudeChrome, false, "the checkbox is told to snap back");
+
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "user", text: "/permissions everything" }));
+      const ever = await waitHeard(from, (e) => e.type === "notice");
+      assert.doesNotMatch(ever.text, /only possible on the computer itself/, "Run everything is not refused just because it came from a phone");
+      assert.match(ever.text, /Cursor or opencode/, "this brain is Claude, which has no Run everything");
+
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
     }
@@ -1864,7 +1953,9 @@ describe("her name: the user's own, else the character's of the pack that is on"
 
   test("with a pack on and no name of her own she goes by the character's; /rename is the user's and wins; /rename reset goes back; the pack off gives the default", async () => {
     const c = await server.client();
-    assert.equal((await c.next("mode")).name, "Ann");
+    const opened = await c.next("mode");
+    assert.equal(opened.name, "Ann");
+    assert.equal(opened.nameSet, false, "no name of her own: the reset beside the name stays hidden");
     const said = async (text: string): Promise<string> => {
       const mark = c.mark;
       c.say(text);
@@ -1873,7 +1964,9 @@ describe("her name: the user's own, else the character's of the pack that is on"
     assert.match(await said("/rename"), /She is called Ann \(the name of the character of the pack that is on\)/);
     let from = c.mark;
     c.say("/rename Hana");
-    assert.equal((await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from)).name, "Hana");
+    const renamed = await c.next((e) => e.type === "mode" && e.name === "Hana", 5000, from);
+    assert.equal(renamed.name, "Hana");
+    assert.equal(renamed.nameSet, true, "a name of her own shows the reset beside it");
     assert.match((await c.next("notice", 5000, from)).text, /She is called Hana now\. \/rename reset goes back\./, "a rename is confirmed in the chat, as a reset is");
     assert.match(await said("/rename Hana"), /She is already called Hana\./, "the same name is answered too, not ignored");
     from = c.mark;
@@ -1885,10 +1978,207 @@ describe("her name: the user's own, else the character's of the pack that is on"
     await c.next("packs", 5000, from);
     from = c.mark;
     c.say("/rename reset");
-    assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Ann", "reset: the character's name again");
+    const reset = await c.next((e) => e.type === "mode", 5000, from);
+    assert.equal(reset.name, "Ann", "reset: the character's name again");
+    assert.equal(reset.nameSet, false);
     assert.equal(server.data("settings.json")?.includes('"nameSet": false'), true);
     from = c.mark;
     c.say("/frames off");
     assert.equal((await c.next((e) => e.type === "mode", 5000, from)).name, "Risa", "no pack: the default");
+  });
+});
+
+describe("a short scene in chat", { skip }, () => {
+  test("/play starts The spare key and keeps telling her until it ends", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const work = c.mark;
+      c.send({ type: "mode", mode: "work", projectDir: server.project });
+      await c.next((e) => e.type === "mode" && e.mode === "work", 8000, work);
+      c.say("/play");
+      assert.equal((await c.next((e) => e.type === "mode" && e.mode === "chat", 8000, work)).mode, "chat", "/play leaves work mode");
+      assert.match((await c.next("notice", 5000, work)).text, /Switched to chat\. Scenes: The spare key \(\/play key\); The locked room \(\/play room\)/);
+      assert.equal(server.claudeLog().some((e) => e.kind === "in"), false, "listing scenes does not start one");
+
+      const listed = c.mark;
+      c.say("/play");
+      assert.match((await c.next("notice", 5000, listed)).text, /^Scenes: The spare key \(\/play key\); The locked room \(\/play room\)/);
+      assert.equal(server.claudeLog().some((e) => e.kind === "in"), false, "listing scenes does not start one");
+
+      const from = c.mark;
+      c.say("/play key");
+      assert.match((await c.next("notice", 5000, from)).text, /The spare key\. You're locked out/);
+      await c.done(from);
+      assert.equal(c.since(from).some((e) => e.type === "user"), false, "she opens it; /play is not a message of the user's");
+      const opened = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+      assert.match(opened.text!, /The spare key/);
+      assert.match(opened.text!, /Open it now/);
+
+      await ask(c, "I look under the mat");
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "the scene stays for the next message");
+      c.say("/play");
+      assert.match((await c.next((e) => e.type === "notice" && /Already playing/.test(e.text), 5000)).text, /\/play end/);
+
+      await ask(c, "please PLAYEND");
+      await ask(c, "hello again");
+      assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "when she ends it, the next message is ordinary");
+
+      const again = c.mark;
+      c.say("/play key");
+      await c.done(again);
+      const stopped = c.mark;
+      c.say("/play end");
+      assert.match((await c.next("notice", 5000, stopped)).text, /Stopped The spare key/);
+      await ask(c, "so, tea?");
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /ended the scene "The spare key"/);
+
+      const bad = c.mark;
+      c.say("/play room 9");
+      assert.match((await c.next("notice", 5000, bad)).text, /Steps must be from 1 to 8/);
+      const beforeRoom = server.claudeLog().filter((e) => e.kind === "in").length;
+      const room = c.mark;
+      c.say("/play room 4 1 2 1");
+      assert.match(
+        (await c.next("notice", 5000, room)).text,
+        /The locked room\. Four steps\. Each has one hint, two red herrings and one trap\. A trap, or asking her to choose, starts the room over/,
+      );
+      assert.match((await c.next((e) => e.type === "notice" && /Setting up the game/.test(e.text), 5000, room)).text, /Please wait/);
+      await c.next((e) => e.type === "auto-turn", 5000, room);
+      await c.done(room);
+      const roomNote = server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!;
+      assert.equal(server.claudeLog().filter((e) => e.kind === "in").length, beforeRoom + 1);
+      assert.match(roomNote, /short story/);
+      assert.match(roomNote, /four scenes/);
+      assert.match(roomNote, /two red herrings/);
+      assert.match(roomNote, /starts over at step one/);
+      assert.match(roomNote, /\[play plan/);
+      assert.match(roomNote, /explain the thread/);
+      const roomEnd = c.mark;
+      c.say("/play end");
+      assert.match((await c.next("notice", 5000, roomEnd)).text, /Stopped The locked room/);
+      await c.done(roomEnd);
+      assert.match(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /Explain the thread now/);
+
+      const started = c.mark;
+      c.say("/play key");
+      await c.done(started);
+      c.say("/clear");
+      await c.next("reset", 5000);
+      await ask(c, "hello");
+      assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /The spare key/, "a new chat drops the scene");
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe("/restart", { skip }, () => {
+  test("on this computer it says so and exits so the parent can start the server again", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("/restart");
+      assert.match((await c.next("notice", 5000, from)).text, /Restarting\. The page reconnects/);
+      const started = Date.now();
+      while (server.exitCode() !== 75) {
+        if (Date.now() - started > 5000) throw new Error(`the server did not hand off (exit ${server.exitCode()})`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+/** Answers the few ACP calls a Cursor start makes, and records the argv it was given. */
+const CURSOR_STUB = `
+const fs = require("fs");
+const send = (o) => console.log(JSON.stringify(o));
+if (process.env.STANDIN_LOG) fs.appendFileSync(process.env.STANDIN_LOG, JSON.stringify({ kind: "cursor-argv", args: process.argv.slice(2) }) + "\\n");
+require("readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.method === "initialize") return send({ id: msg.id, result: { protocolVersion: 1 } });
+  if (msg.method === "authenticate") return send({ id: msg.id, result: {} });
+  if (msg.method === "session/new" || msg.method === "session/load") {
+    return send({ id: msg.id, result: { sessionId: "cursor-stand-in", models: { currentModelId: "m", availableModels: [{ modelId: "m", name: "Test" }] } } });
+  }
+  if (msg.id != null) send({ id: msg.id, result: {} });
+});
+`;
+
+describe("Cursor's own unrestricted setting", { skip }, () => {
+  test("the app starts in Run everything and says why, and work mode then passes --force", async () => {
+    const server = await startServer({
+      settings: { provider: "cursor" },
+      homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "unrestricted" }) },
+      standIns: { "cursor-agent": CURSOR_STUB },
+    });
+    try {
+      const c = await server.client();
+      const mode = await c.next("mode");
+      assert.equal(mode.provider, "cursor");
+      assert.equal(mode.permissionMode, "everything");
+      assert.match((await c.next((e) => e.type === "notice" && /unrestricted/.test(e.text))).text, /Run everything/);
+      const from = c.mark;
+      c.send({ type: "mode", mode: "work", projectDir: server.project });
+      assert.equal((await c.next((e) => e.type === "mode" && e.mode === "work", 8000, from)).permissionMode, "everything");
+      await waitFor(() => server.claudeLog().some((e) => e.kind === "cursor-argv" && e.args?.includes("--force")));
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a phone can choose Run everything; Auto stays on the computer", async () => {
+    const server = await startServer({
+      settings: { provider: "cursor" },
+      homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "allowlist" }) },
+      standIns: { "cursor-agent": CURSOR_STUB },
+    });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      assert.equal((await c.next("mode")).permissionMode, "manual", "allowlist still starts on Ask");
+      const lanIp = Object.values(networkInterfaces()).flatMap((list) => list ?? []).find((i) => i.family === "IPv4" && !i.internal)?.address;
+      if (!lanIp) return;
+      let from = c.mark;
+      c.say("/phone");
+      await c.next("lan-offer", 5000, from);
+      from = c.mark;
+      c.send({ type: "lan-answer", yes: true });
+      const card = await c.next("phone", 8000, from);
+      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
+      assert.ok(token);
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const heard: any[] = [];
+      ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
+      await new Promise<void>((resolve, reject) => {
+        ws.once("open", () => resolve());
+        ws.once("error", reject);
+      });
+      const waitHeard = async (start: number, test: (e: any) => boolean, ms = 5000) => {
+        const begun = Date.now();
+        for (;;) {
+          const found = heard.slice(start).find(test);
+          if (found) return found;
+          if (Date.now() - begun > ms) throw new Error(`timed out; saw: ${heard.slice(start).map((e) => e.type).join(", ") || "nothing"}`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+      let at = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /only possible on the computer itself/);
+      at = heard.length;
+      ws.send(JSON.stringify({ type: "permission-mode", value: "everything" }));
+      assert.equal((await waitHeard(at, (e) => e.type === "mode" && e.permissionMode === "everything")).permissionMode, "everything");
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Run everything/.test(e.text))).text, /without a card/);
+      ws.close();
+    } finally {
+      await server.stop();
+    }
   });
 });
