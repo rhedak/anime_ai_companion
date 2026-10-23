@@ -23,20 +23,20 @@ If none of the brains is installed, she does not fail at your first message: she
 characters, show a mood, wave and run through her animations (`/show`), but it cannot hold a conversation or use work mode. Her first message
 tells you how to get a real brain; [opencode](https://opencode.ai) is the easiest, free and without an account
 (`npm install -g opencode-ai`, then restart the app). On Windows, macOS and Linux (x64 and arm64) the page also offers to do it for you: a card asks first, says it will download
-opencode from GitHub (about 45 to 60 MB, a fixed version that is checked against a known checksum) into the app's own folder, and fetches nothing until
+opencode from npm's package registry (about 95 to 115 MB, a fixed version that is checked against a known checksum) into the app's own folder, and fetches nothing until
 you press **Install opencode**; it then switches her to it. That copy keeps its files apart from any other OpenCode on your computer. Installing one is enough: choose it in the **Brain** menu or restart, and the next
 conversation is a real one. On a first start the app uses whichever brain it finds, in the order Claude Code, opencode, Cursor, a running
 Ollama; a brain you chose yourself that has gone missing is not swapped for another one.
 
 ## Which opencode the app uses
 
-The app was made for one opencode version (**1.19.3** at the time of writing; the card and `/doctor` name the current one). The one-click install (the card, or **`/install-opencode`**, which works wherever you are, with any other opencode installed or not) downloads exactly that release
-from `github.com/anomalyco/opencode`, checks it against a checksum the app knows, and keeps it in the app's own data folder, in `tools/opencode-<version>/` (on Windows
-`%APPDATA%\Anime AI Companion\data\tools\opencode-1.19.3\` for the desktop app; `~/Library/Application Support/Anime AI Companion/data/tools/…` on a Mac; `~/.config/Anime AI Companion/data/tools/…` on Linux). It never touches your PATH or an opencode you installed yourself.
+The app was made for one opencode version (**2.1.3** at the time of writing; the card and `/doctor` name the current one). The one-click install (the card, or **`/install-opencode`**, which works wherever you are, with any other opencode installed or not) downloads exactly that release
+from `registry.npmjs.org`, checks it against a checksum the app knows, and keeps it in the app's own data folder, in `tools/opencode-<version>/` (on Windows
+`%APPDATA%\Anime AI Companion\data\tools\opencode-2.1.3\` for the desktop app; `~/Library/Application Support/Anime AI Companion/data/tools/…` on a Mac; `~/.config/Anime AI Companion/data/tools/…` on Linux). It never touches your PATH or an opencode you installed yourself.
 
-The app picks the program in this order: **`OPENCODE_BIN`** (your own choice, if you set it), then **this copy**, then any `opencode` on the PATH. So once the pinned copy is there it is used even if you have another one, and `npm install -g opencode-ai` (which gets the newest release, not the pinned one) is only the fallback. **`/doctor`** says which one is in use, its version and where it is.
+The app picks the program in this order: **`OPENCODE_BIN`** (your own choice, if you set it), then **this copy**, then any `opencode` on the PATH. So once the pinned copy is there it is used even if you have another one, and `npm install -g opencode-ai` (which gets the newest release, not the pinned one) is only the fallback. **`/doctor`** says which one is in use, its version and where it is. An opencode you installed yourself is used as it is, whether it is a 1.x or a 2.x release.
 
-To install it by hand, download the file for your system from the release page of that version (the file names are in `src/install-opencode.ts`; `/install-opencode` prints the link for your computer), unpack it into that folder so that the program (`opencode.exe` on Windows) is directly inside, and restart the app. A copy put there by hand is not checked against the checksum.
+To install it by hand, download the package for your system from npm (the package names are in `src/install-opencode.ts`; `/install-opencode` prints the link for your computer), unpack it into that folder so that `bin/opencode` (`bin\opencode.exe` on Windows) is inside, and restart the app. A copy put there by hand is not checked against the checksum.
 
 ## Claude Code
 
@@ -63,7 +63,8 @@ knows (choose one in the menu, or leave opencode's default). Sign in once with `
 no tools: opencode is told to ask about every tool, and the app refuses each request without showing a card. Work
 mode asks with the approval card. The menu offers **Ask**, **Plan** and **Run everything**, which lets every tool
 run without a card and resets to Ask at every start. Every start is isolated: your project's own `opencode.json`,
-plugins and MCP servers stay unloaded.
+plugins and MCP servers stay unloaded. Both the 1.x and 2.x command-line releases work: the app reads the installed
+version once and passes only the flags that release takes.
 
 ## Ollama
 

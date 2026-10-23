@@ -6,31 +6,33 @@ import { dirname, join } from "node:path";
 import { dataDir } from "./paths.ts";
 
 /**
- * Installing opencode for the user, after they said yes in the page. The program is the standalone build opencode publishes on GitHub (no Node,
- * npm or administrator needed), kept in this app's own data folder and never put on the PATH: a copy the user installed themselves is left alone.
+ * Installing opencode for the user, after they said yes in the page. opencode 2.x publishes its standalone builds as platform packages on npm (no Node,
+ * npm or administrator needed at run time), kept in this app's own data folder and never put on the PATH: a copy the user installed themselves is left alone.
  *
- * It is PINNED: one release, with the SHA-256 of each file, so the app runs what was looked at and nothing a later release put there. Moving the
+ * It is PINNED: one release, with the SHA-256 of each tarball, so the app runs what was looked at and nothing a later release put there. Moving the
  * pin is part of a release: see "Before a release" in AGENTS.md. A file whose hash differs is thrown away.
  */
 export const OPENCODE_PIN = {
-  version: "1.19.3",
-  repo: "anomalyco/opencode",
-  /** By `${platform}-${arch}`. The x64 build is the "baseline" one: it needs no AVX2, so it starts on any 64-bit PC, and she does not need the speed. */
+  version: "2.1.3",
+  registry: "https://registry.npmjs.org",
+  /** By `${platform}-${arch}`. The x64 packages are the "baseline" ones: they need no AVX2, so they start on any 64-bit PC, and she does not need the speed. */
   assets: {
-    "win32-x64": { name: "opencode-windows-x64-baseline.zip", sha256: "0d59113484bfe8d6dc146fc981f5c33faa8318303c183711b7a9387060b289e8", bytes: 62204138, program: "opencode.exe" },
-    "win32-arm64": { name: "opencode-windows-arm64.zip", sha256: "c1b9daf18c97564b2d171703279621f7edc3613e70750d796ef78db87257ad89", bytes: 60695316, program: "opencode.exe" },
-    // macOS (zip) and Linux (tar.gz, the glibc build: Alpine and other musl systems fall back to installing by hand). The system `tar` reads both.
-    "darwin-arm64": { name: "opencode-darwin-arm64.zip", sha256: "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64", bytes: 45587801, program: "opencode" },
-    "darwin-x64": { name: "opencode-darwin-x64-baseline.zip", sha256: "03f8c32f81a2c35429afedfb8f63978af32329febcebf800d52486f6ba568151", bytes: 49218661, program: "opencode" },
-    "linux-arm64": { name: "opencode-linux-arm64.tar.gz", sha256: "7900818a6a98881edbbadab4b7525940eff3b9750040c200481f9f56cacee405", bytes: 60519745, program: "opencode" },
-    "linux-x64": { name: "opencode-linux-x64-baseline.tar.gz", sha256: "531cff2441129c30f0edd5878af494108ad07f5feb46d7ee29a2a5b830a5765d", bytes: 60716645, program: "opencode" },
+    "win32-x64": { package: "@opencode/cli-windows-x64-baseline", name: "cli-windows-x64-baseline-2.1.3.tgz", sha256: "ee2a2c4ca6db550a05a8c4668ad1fc0a497c0b71a16795cf60f7298c4090ee98", bytes: 116608796, folder: "package", program: "bin/opencode.exe" },
+    "win32-arm64": { package: "@opencode/cli-windows-arm64", name: "cli-windows-arm64-2.1.3.tgz", sha256: "82bacaf2c7df0b95d59fc52bb86820090bec7e9ef1549636adcc0131aa03fa59", bytes: 110098074, folder: "package", program: "bin/opencode.exe" },
+    // macOS and Linux (the glibc build: Alpine and other musl systems fall back to installing by hand). The system `tar` reads every tarball.
+    "darwin-arm64": { package: "@opencode/cli-darwin-arm64", name: "cli-darwin-arm64-2.1.3.tgz", sha256: "f1addcd5efa7fea919e66f4f26b4f25c7fc695d52225d861ebc3a0779ec04db8", bytes: 100520406, folder: "package", program: "bin/opencode" },
+    "darwin-x64": { package: "@opencode/cli-darwin-x64-baseline", name: "cli-darwin-x64-baseline-2.1.3.tgz", sha256: "b6aa0eeac0f94e5f4a6ef7193c79ed4a72845fb997dceb9cce4fa07383668e4f", bytes: 105630583, folder: "package", program: "bin/opencode" },
+    "linux-arm64": { package: "@opencode/cli-linux-arm64", name: "cli-linux-arm64-2.1.3.tgz", sha256: "85046ccd46334022a702dc6e53231fefd994ff935a3b934b95390776b36b98c8", bytes: 112423922, folder: "package", program: "bin/opencode" },
+    "linux-x64": { package: "@opencode/cli-linux-x64-baseline", name: "cli-linux-x64-baseline-2.1.3.tgz", sha256: "dc83c937744ba5e2322fec05b26170e3f9240b0e4e8ffc665fe8e96e7e6e807e", bytes: 113799625, folder: "package", program: "bin/opencode" },
   },
 } as const;
 
 export interface OpencodeAsset {
+  package: string;
   name: string;
   sha256: string;
   bytes: number;
+  folder: string;
   program: string;
 }
 
@@ -39,7 +41,7 @@ export function opencodeAsset(platform: string = process.platform, arch: string 
   return (OPENCODE_PIN.assets as Record<string, OpencodeAsset>)[`${platform}-${arch}`] ?? null;
 }
 
-export const opencodeUrl = (asset: OpencodeAsset): string => `https://github.com/${OPENCODE_PIN.repo}/releases/download/v${OPENCODE_PIN.version}/${asset.name}`;
+export const opencodeUrl = (asset: OpencodeAsset): string => `${OPENCODE_PIN.registry}/${asset.package}/-/${asset.name}`;
 
 /** Where the pinned version lives: a folder per version, so a new pin installs next to the old one instead of into it. */
 export function opencodeFolder(root: string = dataDir): string {
@@ -102,7 +104,7 @@ export async function renameWithRetry(from: string, to: string, rename_: (a: str
   }
 }
 
-/** `tar` ships with Windows 10 (1803) and later (it reads zip files), with macOS (zip and tar.gz) and with Linux (tar.gz). */
+/** `tar` ships with Windows 10 (1803) and later, with macOS and with Linux, and reads npm's `.tgz` packages everywhere. */
 function defaultExtract(archive: string, into: string): Promise<void> {
   const tar = process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
   return new Promise((resolve, reject) => {
@@ -147,9 +149,9 @@ export async function installOpencode(options: InstallOptions = {}): Promise<str
     // 1. Download, hashing as it arrives. The size is known, so a file that runs on is cut off rather than filling the disk.
     const response = await fetchFn(opencodeUrl(asset), { signal, redirect: "follow" }).catch((err: unknown) => {
       if (signal?.aborted) throw new InstallError("Stopped.");
-      throw new InstallError(`Could not reach GitHub: ${err instanceof Error ? err.message : String(err)}`);
+      throw new InstallError(`Could not reach the package registry: ${err instanceof Error ? err.message : String(err)}`);
     });
-    if (!response.ok || !response.body) throw new InstallError(`GitHub answered ${response.status} for the download.`);
+    if (!response.ok || !response.body) throw new InstallError(`The package registry answered ${response.status} for the download.`);
     const archive = join(scratch, asset.name);
     const hash = createHash("sha256");
     const file = await open(archive, "w");
@@ -175,7 +177,8 @@ export async function installOpencode(options: InstallOptions = {}): Promise<str
     const unpacked = join(scratch, "unpacked");
     await mkdir(unpacked);
     await extract(archive, unpacked);
-    const program = join(unpacked, asset.program);
+    const packageFolder = join(unpacked, asset.folder);
+    const program = join(packageFolder, asset.program);
     if (!existsSync(program)) throw new InstallError(`The download did not contain ${asset.program}.`);
     await rm(archive, { force: true });
 
@@ -188,7 +191,7 @@ export async function installOpencode(options: InstallOptions = {}): Promise<str
     const finalFolder = opencodeFolder(root);
     await rm(finalFolder, { recursive: true, force: true });
     await mkdir(dirname(finalFolder), { recursive: true });
-    await renameWithRetry(unpacked, finalFolder);
+    await renameWithRetry(packageFolder, finalFolder);
     return join(finalFolder, asset.program);
   } finally {
     await rm(scratch, { recursive: true, force: true });
