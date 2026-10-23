@@ -187,6 +187,9 @@ and the model is not a known family, vouch for it with `COMPANION_OLLAMA_TOOLS=<
 
 Pick **Cursor** under *Brain* and she is driven by `cursor-agent` on your machine (Composer, Grok, or
 any other model that agent lists). Sign in once with `cursor-agent login`, or set `CURSOR_API_KEY`.
+Start the companion from Terminal on this Mac, or from the desktop app. Started from an SSH session, Cursor
+reports a locked login keychain even when Keychain Access shows it unlocked, and restarting from the page
+keeps that session.
 The conversation still goes to Cursor; files stay on this machine. Chat mode is read-only. Work mode
 asks with the same approval card as Claude, and the Permissions menu adds **Run everything**
 (`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets

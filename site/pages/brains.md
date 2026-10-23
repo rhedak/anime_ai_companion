@@ -49,7 +49,9 @@ at a time.
 ## Cursor
 
 Pick **Cursor** and she is driven by `cursor-agent` (Composer, Grok, or any model your account lists). Sign in once
-with `cursor-agent login`, or set `CURSOR_API_KEY`. The conversation goes to Cursor; files stay on this machine.
+with `cursor-agent login`, or set `CURSOR_API_KEY`. Start the companion from Terminal on this Mac, or from the desktop
+app: started from an SSH session, Cursor reports a locked login keychain even when Keychain Access shows it unlocked,
+and restarting from the page keeps that session. The conversation goes to Cursor; files stay on this machine.
 Chat mode is read-only. Work mode asks with the same approval card as Claude, and the permissions menu adds **Run
 everything** (`cursor-agent --force`): tools run without a card, a deny rule still blocks, and the choice resets to
 Ask every time the server starts. If Cursor's own CLI is set to run without asking (`"approvalMode": "unrestricted"`

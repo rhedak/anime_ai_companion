@@ -271,10 +271,69 @@ export const CURSOR_EVERYTHING_NOTICE =
 /**
  * What the page shows when cursor-agent dies. It says why in its own output (stderr), which used to go only to the server log, so
  * the chat showed a bare "exited (1)". The causes a user can fix themselves get the step to take; anything else is shown as it was said.
+ *
+ * `env` is the server's environment. cursor-agent (seen in 2026.10.22, `terminal-theme.ts`) treats an inherited SSH or mosh
+ * session as a reason to probe the keychain with a write, and prints "keychain is locked" when that write is refused. A companion
+ * started from SSH keeps those variables, and `/restart` keeps the same process session, so macOS answers "User interaction is not
+ * allowed" while Keychain Access still shows the login keychain unlocked.
  */
-export function cursorErrorText(message: string): string {
+export function cursorErrorText(message: string, env: NodeJS.ProcessEnv = {}): string {
   if (/keychain is locked/i.test(message)) {
+    if (cursorLikelySsh(env)) {
+      return "Cursor cannot read its login from this server. The server was started from an SSH session, so macOS blocks keychain access and Cursor calls that a locked keychain. Keychain Access can show the login keychain unlocked at the same time. Restarting from the page keeps that session. Stop the companion and start it again from Terminal on this Mac (`anaico --restart`), or quit and reopen the desktop app. Your Cursor login is fine.";
+    }
     return "Cursor cannot read its login because your macOS login keychain is locked. Run `security unlock-keychain` in a terminal and enter your Mac password (or unlock it in Keychain Access), then send your message again. Nothing is wrong with the app or with your Cursor login.";
   }
   return message;
+}
+
+/** True when cursor-agent will take its SSH keychain path. Same signals as its own session check, including an explicit override. */
+export function cursorLikelySsh(env: NodeJS.ProcessEnv): boolean {
+  for (const key of CURSOR_ASSUME_SSH) {
+    const forced = assumeSsh(env[key]);
+    if (forced !== undefined) return forced;
+  }
+  if (CURSOR_SSH_PRESENT.some((key) => present(env[key]))) return true;
+  if (typeof env.VSCODE_IPC_HOOK_CLI === "string" && /ssh/i.test(env.VSCODE_IPC_HOOK_CLI)) return true;
+  return typeof env.TERM === "string" && /mosh/i.test(env.TERM);
+}
+
+const CURSOR_ASSUME_SSH = [
+  "CURSOR_AGENT_CLI_ASSUME_SSH",
+  "CURSOR_AGENT_ASSUME_SSH",
+  "CURSOR_CLI_ASSUME_SSH",
+  "CURSOR_ASSUME_SSH",
+  "CURSOR_AGENT_CLI_FORCE_SSH",
+  "CURSOR_AGENT_FORCE_SSH",
+  "CURSOR_CLI_FORCE_SSH",
+  "CURSOR_FORCE_SSH",
+];
+
+const CURSOR_SSH_PRESENT = [
+  "SSH_CONNECTION",
+  "SSH_CLIENT",
+  "SSH_TTY",
+  "SSH2_CLIENT",
+  "SSH2_TTY",
+  "MOSH_CLIENT",
+  "MOSH_SERVER",
+  "MOSH_TTY",
+  "MOSH_IP",
+  "MOSH_PORT",
+  "MOSH_PRESERVE_PROMPT",
+  "VSCODE_SSH_HOST",
+  "VSCODE_SSH_SERVER",
+];
+
+function present(value: string | undefined): boolean {
+  return value != null && value !== "";
+}
+
+/** cursor-agent: an explicit 0/1 (and the usual words) overrides the session variables; anything else is ignored. */
+function assumeSsh(value: string | undefined): boolean | undefined {
+  if (value == null) return undefined;
+  const text = value.trim().toLowerCase();
+  if (text === "1" || text === "true" || text === "yes" || text === "y" || text === "on") return true;
+  if (text === "0" || text === "false" || text === "no" || text === "n" || text === "off") return false;
+  return undefined;
 }
