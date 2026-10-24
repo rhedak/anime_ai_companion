@@ -1,6 +1,6 @@
 # Pack studio: redraw packs, make new ones and new activities from inside the app
 
-Status: **design, nothing built** (2026-10-24). This file is the plan to iterate on; each milestone ends at something the owner
+Status: **design, being built** (started 2026-10-24). This file is the plan to iterate on; each milestone ends at something the owner
 can try in the running app. It keeps every rule in `AGENTS.md` ("Safety"). What the image models can and cannot do, and the numbers
 behind that, are in [`pack-image-models.md`](pack-image-models.md); how to make a pack by hand is in [`frame-packs.md`](frame-packs.md).
 
@@ -19,7 +19,7 @@ filter, or an agent that is free to run commands. The drawn avatar and everythin
 | Lesson | Consequence for the design |
 | --- | --- |
 | The model makes pictures, but what made the pack usable was **fixed code around it**: paste back only the face box, matting for the cut-out, seam and clipping checks, retries by seed. | The brain never edits pixels. A **job runner** does, with the checks built in. |
-| A hard colour key left fragments; closed-form alpha matting (`tools/pack-crop/`) fixed it. | The cut-out is part of the runner and is Python (numpy, scipy, pymatting). |
+| A hard colour key left fragments; closed-form alpha matting (`tools/pack-crop/`) fixed it. | The cut-out is part of the runner and **ships in the app**: it is TypeScript (a known-background matting that needs no solver), measured against the Python matting (`tools/pack-crop/`) on the Risa pictures. |
 | One picture took four batches over four prompts; another needed a different base. | Every step has a retry budget (3 seeds, then flag), and the user reviews a contact sheet. **Drafts, not promises.** |
 | A person must look at hands, eyes and edges at zoom. | The review step is part of the feature, not optional. The user is the final judge, always. |
 | The 4-step FLUX.2 klein 4B needs about 22 GB of GPU memory and 12 s a picture (Apple M5 Max, 128 GB). Nothing else was measured. | Many users cannot run it. A web image service must be a first-class second backend, and the doc says what was and was not measured. |
@@ -31,24 +31,25 @@ filter, or an agent that is free to run commands. The drawn avatar and everythin
 page (Looks → Packs… → "Make a pack")  ──ws──►  server (src/studio-service.ts)
                                                    │  spawn, one job at a time, killable
                                                    ▼
-                              job runner (python/pack_studio/, `uv run`)  ──►  image backend
+                              job runner (src/studio/, a worker thread)  ──►  image backend
                                   steps, checks, cut-out, contact sheet        (local server or web API)
 ```
 
 1. **Image backend** (the part that draws). A small interface, `generate` (text to picture) and `edit` (picture + prompt to picture), with
    a seed, a size and a model name. Two kinds, chosen in settings:
-   - **local**: a loopback HTTP server. We ship a reference one (`python/pack_studio/server.py`, diffusers, FLUX.2 klein 4B at a pinned
-     revision, the settings in `pack-image-models.md`). Anything that speaks the same tiny protocol works (ComfyUI behind an adapter,
-     Ollama if and when it serves image editing: not checked). One model in memory at a time.
+   - **local**: a loopback HTTP server that the user runs. We keep a reference one in the repository (`python/pack_studio/server.py`,
+     diffusers, FLUX.2 klein 4B at a pinned revision, the settings in `pack-image-models.md`); it is **not bundled** (weights of about
+     22 GB and a Python environment cannot be). Anything that speaks the same tiny protocol works (ComfyUI behind an adapter, Ollama if
+     and when it serves image editing: not checked). One model in memory at a time.
    - **web**: an adapter per service (an API key from the environment, `COMPANION_IMAGE_KEY`; never saved by the app, never in settings,
      never in the chat, never sent to the brain). Which services: open question 3.
-2. **Job runner** (the part that makes a pack). A Python program that takes a **job file** (below) and a backend address, writes to a
-   staging folder `data/studio/<job>/`, and reports progress as one JSON line per event on stdout. It owns the pipeline: base picture,
+2. **Job runner** (the part that makes a pack). TypeScript in `src/studio/`, **bundled with the app** and run in a worker thread (as the
+   drawing is), so cancelling is `terminate()` and nothing extra is installed. It takes a **job file** (below) and a backend address, writes to a
+   staging folder `data/studio/<job>/`, and reports progress as events. It owns the pipeline: base picture,
    face edits with paste-back, blinks and mouths, poses, cut-out, checks, contact sheet, retries within the budget. It is resumable (every
    picture is a file; a job that stopped continues from the files).
-3. **Studio service** (`src/studio-service.ts`, same shape as `persona-service.ts`): the opt-in, the approval card, starting and killing
-   the runner, relaying progress, and installing the result. Node stays thin; **the app still needs no Python unless this feature is used**
-   (like the picture-pack tools in `python/`).
+3. **Studio service** (`src/studio-service.ts`, same shape as `persona-service.ts`): the opt-in, the approval card, starting and stopping
+   the runner, relaying progress, and installing the result. **The app still needs no Python**; only the user's own image backend does.
 4. **The brain** (optional). Helps with words: turns "a winter coat, dark green" into the prompt for the outfit, writes `look.txt`,
    reads the runner's text report ("`thinking-talk3`: seam 22, check") and says what to retry. It has **no file or command tools** for
    this. Its skills are plain markdown the app hands it as a note for its next message (as with the persona, not in the cached system
@@ -154,9 +155,8 @@ Rule for every milestone: it ships off by default, behind the opt-in, with the d
 
 ## Open questions for the owner
 
-1. **Python.** The runner and the cut-out are Python (`uv run --with …`, deps pinned). Is "this feature needs `uv` and a one-time
-   dependency download" acceptable for the Mac app and the Windows installer, or should the cut-out be ported to Node first (a simpler
-   key plus feathering; visibly worse edges)? The design assumes Python for v1.
+1. **Python** (settled 2026-10-24: everything the app needs for this ships in the app, so the runner and the cut-out are TypeScript, and only
+   the image model is external). Open: how close the TypeScript cut-out gets to the Python matting (measured in milestone 1).
 2. **Where a redraw lands.** New name always (default in this doc), or may the user replace a pack of their own in place (with `.bak`)?
 3. **Which web services** first (one that offers image editing with a reference picture, and, later, video)? Needs a licence and
    price check at the time, and a decision on keys: environment variable only (this doc), or a `data/` file the user can see and delete.
