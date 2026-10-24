@@ -330,7 +330,8 @@ test("her proposal for the form is checked against this computer, and nothing st
     assert.equal(t.sent.filter((m) => m.type === "studio-proposal").length, 0, "off: the page is not opened");
     const asked = t.sent.find((m) => m.type === "studio-ask");
     assert.deepEqual([asked?.outfit, asked?.name], ["a long wool coat", "risa-coat"], "the user is asked whether to turn it on, with her words");
-    assert.equal(t.service.note(), null, "off: she is not told how to propose");
+    assert.match(t.service.note() ?? "", /exists but is turned off.*asks? the user whether to turn it on/s, "off: she still knows it exists and how to propose");
+    assert.equal(t.service.note(), null, "once per state");
     // The yes to the question turns it on: from this computer only, and only when the backend answers.
     const phone: Record<string, any>[] = [];
     await t.service.message({ type: "studio-on" }, (m: unknown) => phone.push(m as Record<string, any>), true);

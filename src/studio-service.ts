@@ -109,7 +109,7 @@ export function createStudioService(deps: StudioDeps) {
   /** The pictures of the pack drawn so far (the ones the review shows), so they can be looked at while the rest are still being drawn. */
   const previews = new Map<string, { thumb: string | null; flagged: boolean }>();
   /** Has she been told about the studio in this conversation? */
-  let told = false;
+  let told: "on" | "off" | null = null;
   /** What she last proposed for the form (or for a redraw), so a page that connects or reloads can show it. */
   let proposal: (StudioProposal & { id: string }) | null = null;
   /** The packs a new one can be drawn from, as of the last time the page asked: she is told them. */
@@ -464,16 +464,21 @@ export function createStudioService(deps: StudioDeps) {
     enabled: () => on,
     stateMessage,
 
-    /** A note for her next message: what the studio is and how to propose to it (once per conversation, chat mode, studio on). */
+    /** A note for her next message: what the studio is and how to propose to it (once per conversation and state, chat mode). */
     note(): string | null {
-      if (!on || deps.mode() !== "chat" || told) return null;
-      told = true;
-      return `${SKILL.trim().replace(/\s*\n\s*/g, " ")} Packs you can draw from: ${knownSources.join(", ") || "(none yet)"}.`;
+      const state = on ? "on" : "off";
+      if (disabled || deps.mode() !== "chat" || told === state) return null;
+      told = state;
+      const text = SKILL.trim().replace(/\s*\n\s*/g, " ");
+      // Off, she still knows it exists: a proposal then makes the page ask whether to turn it on (`studio-ask`).
+      const intro = on ? text : text.replace("The pack studio is on:", "The pack studio exists but is turned off right now:");
+      const off = on ? "" : " Because it is off, your tag makes the page ask the user whether to turn it on; say so, and do not claim it has started.";
+      return `${intro}${off} Packs you can draw from: ${knownSources.join(", ") || "(none yet)"}.`;
     },
 
     /** A new conversation is told again, and a proposal that was waiting is dropped. */
     forgetTold(): void {
-      told = false;
+      told = null;
       proposal = null;
     },
 
