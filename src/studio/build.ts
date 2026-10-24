@@ -157,6 +157,8 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
 }
 
 /** What goes into the review: the pictures worth a look. */
+/** Flagged blinks and mouths that get a tile of their own besides the eleven (a run that flags everything must not bury them). */
+const MAX_EXTRA_TILES = 8;
 export const REVIEW_FRAMES = [...EMOTIONS, ...Object.keys(POSES)];
 
 const REVIEW_BACKDROP = [40, 20, 80] as const;
@@ -204,6 +206,7 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
   for (const plan of plans) if (records[plan.name]) everything.push({ name: plan.name, picture: await load(dir, plan.name, w, h), group: plan.group });
   const flagged: { name: string; flags: Flags }[] = [];
   const tiles: { name: string; thumb: string; flagged: boolean; flags: string[] }[] = [];
+  let extraTiles = 0;
   for (const frame of everything) {
     const g = await groupOf(frame.group);
     const out = makeRaster(w, h);
@@ -220,7 +223,7 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
     await writeFile(join(dir, `out/${frame.name}.webp`), await encodeWebp(scaled, { lossless: true }));
     const rec = records[frame.name];
     if (rec && rec.flags.length) flagged.push({ name: frame.name, flags: rec.flags });
-    if (REVIEW_FRAMES.includes(frame.name)) {
+    if (REVIEW_FRAMES.includes(frame.name) || (rec?.flags.length && ++extraTiles <= MAX_EXTRA_TILES)) {
       await writeReview(dir, frame.name, scaled);
       tiles.push({ name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length), flags: rec?.flags ?? [] });
     }

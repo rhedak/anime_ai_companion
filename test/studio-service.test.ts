@@ -136,7 +136,7 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     assert.equal(asked.length, 1, "a review picture can be enlarged too");
     assert.ok((await decode(Buffer.from(String(asked[0].image).split(",")[1], "base64"))).w > 180);
 
-    assert.equal(review.tiles.length, 11, "seven emotions and four poses to look at");
+    assert.ok(review.tiles.length >= 11 && review.tiles.length <= 19, "seven emotions and four poses to look at, and at most eight flagged blinks or mouths");
     assert.ok(review.tiles.every((x: any) => String(x.thumb).startsWith("data:image/webp;base64,")));
     const drawn = t.fake.requests.filter((r) => r.path === "/edit").length;
     assert.ok(drawn >= 4 + 38, `the base pictures and the 38 others were asked for (${drawn})`);
@@ -284,7 +284,8 @@ test("a job that was left (waiting for a pick, or for the review) can be carried
         await third.service.message({ type: "studio-resume", id: card?.id }, send, false);
         await third.waitFor("studio-review");
         assert.equal(first.fake.requests.length, before, "nothing is drawn again for a review");
-        assert.equal(third.sent.find((m) => m.type === "studio-review")?.tiles.length, 11);
+        const shown = third.sent.find((m) => m.type === "studio-review")?.tiles.length;
+        assert.ok(shown >= 11 && shown <= 19);
         await third.service.message({ type: "studio-accept", id: card?.id }, send, false);
         await third.waitFor("studio-installed");
         assert.equal((await readdir(join(first.framesDir, "risa-snow"))).length, 42);
