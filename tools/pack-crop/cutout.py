@@ -52,7 +52,45 @@ def rough_background(rgb, keep_boxes=(), tol=TOL):
     return bg
 
 
-def cutout(rgb, keep_boxes=(), band=BAND, key="white"):
+def clear_pale_strands(alpha, fg, keep_boxes=(), hair_gap=45, speck=60):
+    """Clear what the matting keeps beside the hair that is not hair: faint pale strands the model drew as thin
+    translucent lines, and small light slivers between strands. Real hair edge pixels keep the hair colour after
+    the matting, so they stay. Skin, and anything inside keep_boxes (the eyes), is never touched."""
+    f = fg.astype(float)
+    r, g, b = f[..., 0], f[..., 1], f[..., 2]
+    hair = (r > 100) & (r - g > 60)
+    skin = (r > 215) & (g > 165) & (r - b > 15)
+    solid = alpha > 0.9
+    dist = ndi.distance_transform_edt(~(solid & hair))
+    keep = np.zeros(alpha.shape, bool)
+    for x0, y0, x1, y1 in keep_boxes:
+        keep[y0:y1, x0:x1] = True
+    out = alpha.copy()
+    paler = (f.mean(axis=2) > 120) & (b - r < 10)       # light and not blue: not the shirt, not the skirt
+    faint = paler & (r - g < hair_gap) & (alpha < 0.98) & (alpha > 0) & ~skin & (dist <= 6) & ~keep
+    out[faint] = 0
+    light = (f.min(axis=2) >= 170) & ((f.max(axis=2) - f.min(axis=2)) <= 40) & (b - r < 10) & (out > 0.15) & ~skin & ~keep
+    lab, n = ndi.label(light)
+    for i in range(1, n + 1):
+        comp = lab == i
+        if comp.sum() <= speck and dist[comp].min() <= 5:
+            out[comp] = 0
+    return out
+
+
+def snap_edge_colour(alpha, fg, solid_at=0.98):
+    """Give every partly transparent pixel the colour of the nearest solid pixel. The matting leaves a faint trace of the
+    background in edge colours it cannot separate (pale blue sleeve on white); the colour beside it is what the edge should be."""
+    solid = ndi.binary_erosion(alpha >= solid_at, iterations=1)
+    _, idx = ndi.distance_transform_edt(~solid, return_indices=True)
+    nearest = fg[idx[0], idx[1]]
+    edge = (alpha > 0) & (alpha < solid_at)
+    out = fg.copy()
+    out[edge] = nearest[edge]
+    return out
+
+
+def cutout(rgb, keep_boxes=(), band=BAND, key="white", strands=False, snap=False, floor=0.3):
     bg = rough_background_magenta(rgb) if key == "magenta" else rough_background(rgb, keep_boxes)
     unknown = ndi.binary_dilation(bg, iterations=band) & ~bg
     # pixels that are far from white are surely figure even next to the background
@@ -63,5 +101,13 @@ def cutout(rgb, keep_boxes=(), band=BAND, key="white"):
     alpha = estimate_alpha_cf(img, trimap)
     alpha = np.clip(alpha, 0, 1)
     alpha[bg] = 0
-    fg = estimate_foreground_ml(img, alpha)
-    return alpha, np.clip(fg, 0, 1) * 255, bg, trimap
+    fg = np.clip(estimate_foreground_ml(img, alpha), 0, 1) * 255
+    if strands:
+        alpha = clear_pale_strands(alpha, fg, keep_boxes)
+    if snap:
+        fg = snap_edge_colour(alpha, fg)
+    if floor:
+        # faint ghost strands (alpha well under half) go; the rest is stretched so solid edges stay solid
+        alpha = np.clip((alpha - floor * 0.8) / (1 - floor * 0.8), 0, 1)
+        alpha = np.where(alpha < 0.12, 0, alpha)
+    return alpha, fg, bg, trimap

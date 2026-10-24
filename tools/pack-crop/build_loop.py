@@ -14,11 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cutout import cutout
 
 
-def cut_frame(path, scale, offset, canvas, size, band):
+def cut_frame(path, scale, offset, canvas, size, band, floor):
     v = Image.open(path).convert("RGB")
     s = v.resize((round(v.width * scale), round(v.height * scale)), Image.LANCZOS)
     c = Image.new("RGB", canvas, (255, 0, 255)); c.paste(s, offset)
-    alpha, fg, _, _ = cutout(np.asarray(c), key="magenta", band=band)
+    alpha, fg, _, _ = cutout(np.asarray(c), key="magenta", band=band, floor=floor)
     rgba = np.dstack([np.clip(fg, 0, 255).astype(np.uint8), np.round(alpha * 255).astype(np.uint8)])
     return Image.fromarray(rgba, "RGBA").resize(size, Image.LANCZOS)
 
@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--canvas", default="896x1024")
     ap.add_argument("--size", default="940x1070")
     ap.add_argument("--band", type=int, default=6)
+    ap.add_argument("--floor", type=float, default=0.12, help="alpha below about this share is cleared (stills use 0.3; a soft video needs less)")
     ap.add_argument("--quality", type=int, default=90)
     a = ap.parse_args()
     off = tuple(int(v) for v in a.offset.split(","))
@@ -40,7 +41,7 @@ def main():
     frames = sorted(Path(a.frames).glob("f*.png"))
     for i, f in enumerate(frames, start=1):
         # lossless alpha, lossy colour: method 6 keeps the alpha channel exact
-        cut_frame(f, a.scale, off, canvas, size, a.band).save(out / f"activity-{a.name}-{i}.webp", "WEBP", quality=a.quality, alpha_quality=100, method=4)
+        cut_frame(f, a.scale, off, canvas, size, a.band, a.floor).save(out / f"activity-{a.name}-{i}.webp", "WEBP", quality=a.quality, alpha_quality=100, method=4)
     print("frames", len(frames))
 
 

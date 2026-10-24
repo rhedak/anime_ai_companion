@@ -43,6 +43,12 @@ def measure(path):
     white_fringe = white(e_rgb) & ~white(n_rgb) & shows
     magenta_fringe = magenta(e_rgb) & ~magenta(n_rgb) & shows
     soft = (a > 0) & (a < 255) & near_clear
+    # pale pixels that show right beside the hair and are not skin or shirt: stray strands and slivers
+    hair = (rgb[..., 0] > 100) & (rgb[..., 0] - rgb[..., 1] > 60) & (a == 255)
+    near_hair = ndi.binary_dilation(hair, iterations=4)
+    skin = (rgb[..., 0] > 215) & (rgb[..., 1] > 165) & (rgb[..., 0] - rgb[..., 2] > 15)
+    pale_hair = (a >= 40) & near_hair & ~skin & (rgb.mean(axis=2) > 140) & (rgb[..., 2] - rgb[..., 0] < 10) & ~hair & near_clear
+    out_pale = int(ndi.label(pale_hair)[1])
     # opaque islands and enclosed holes
     lab, n = ndi.label(a > 128)
     sizes = ndi.sum(np.ones_like(a), lab, range(1, n + 1)) if n else []
@@ -56,6 +62,7 @@ def measure(path):
             "tint_share": round(float((white_fringe | magenta_fringe).mean()), 4),
             "tint_mean": round(float(e.mean()), 2),
             "soft_share": round(float(soft.sum() / edge.sum()), 4),
+            "pale_beside_hair": [out_pale, int(pale_hair.sum())],
             "specks": [len(specks), int(sum(specks))],
             "holes": [len(hsizes), int(sum(hsizes))]}
 
@@ -91,6 +98,7 @@ def main():
     ts = [r["tint_share"] for r in res.values() if "tint_share" in r] or [0.0]
     ss = [r["soft_share"] for r in res.values() if "soft_share" in r]
     summary = {"files": len(res), "tint_share_mean": round(float(np.mean(ts)), 4), "tint_share_max": max(ts),
+               "pale_beside_hair_mean": round(float(np.mean([r["pale_beside_hair"][1] for r in res.values() if "pale_beside_hair" in r] or [0])), 1),
                "soft_share_mean": round(float(np.mean(ss)), 4),
                "specks_total": sum(r["specks"][0] for r in res.values() if "specks" in r),
                "holes_total": sum(r["holes"][0] for r in res.values() if "holes" in r)}
