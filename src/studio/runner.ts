@@ -1,9 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
-import { cutout, toRaster } from "./cutout.ts";
 import { keyRgb, outfitPrompt } from "./prompts.ts";
 import { decode, encodePng, encodeWebp, flatten, resize } from "./raster.ts";
+import { deriveGeometry } from "./geometry.ts";
 import type { Job } from "./job.ts";
 
 /** What the runner tells the service as it goes. Paths are relative to the job's folder. */
@@ -11,7 +11,8 @@ export type StudioEvent =
   | { type: "status"; text: string }
   | { type: "candidate"; seed: number; file: string; thumb: string; done: number; total: number }
   | { type: "base-done" }
-  | { type: "neutral-done"; file: string }
+  | { type: "frame"; name: string; done: number; total: number; flags: string[] }
+  | { type: "review"; tiles: { name: string; thumb: string; flagged: boolean }[]; flagged: { name: string; flags: string[] }[] }
   | { type: "error"; message: string };
 
 export interface RunDeps {
@@ -22,6 +23,8 @@ export interface RunDeps {
   signal?: AbortSignal;
   /** The source pack's neutral picture as it is on disk (any format sharp reads). */
   source: Buffer;
+  /** Its blink and mouth pictures, when it has them: the face area is learned from how they differ from the rest picture. */
+  sourceFrames?: { blink?: Buffer; talk: (Buffer | undefined)[] };
 }
 
 export const THUMB_WIDTH = 240;
@@ -38,6 +41,16 @@ export async function runBase(job: Job, deps: RunDeps): Promise<void> {
   const reference = await resize(flatten(source, keyRgb(job.key)), job.width, job.height);
   const referencePng = await encodePng(reference);
   await writeFile(join(dir, "source.png"), referencePng);
+  const white = [255, 255, 255] as const;
+  const flat = async (b?: Buffer) => (b ? flatten(await decode(b), white) : undefined);
+  const rest = flatten(source, white);
+  const geometry = deriveGeometry(
+    { rest, blink: await flat(deps.sourceFrames?.blink), talk: await Promise.all((deps.sourceFrames?.talk ?? []).map(flat)) },
+    job.width,
+    job.height,
+  );
+  await writeFile(join(dir, "geometry.json"), JSON.stringify(geometry, null, 2));
+  emit({ type: "status", text: geometry.from === "pack" ? "Learned where her face is from the pack's own blink and mouth pictures." : "The pack has no blink and mouth pictures to learn her face from; using typical proportions." });
   const prompt = outfitPrompt(job.outfit, job.key);
   let done = 0;
   for (const seed of job.seeds) {
@@ -54,22 +67,4 @@ export async function runBase(job: Job, deps: RunDeps): Promise<void> {
     emit({ type: "candidate", seed, file, thumb, done, total: job.seeds.length });
   }
   emit({ type: "base-done" });
-}
-
-/** The size every pack picture has (the same as the packs that ship). */
-export const PACK_SIZE = { width: 940, height: 1070 };
-
-/**
- * Step 2 (so far): the chosen base picture becomes the new pack's `neutral.webp`: cut off its key colour with a soft edge, scaled to the
- * pack size, lossless. Written to `out/`; the service installs the folder.
- */
-export async function runNeutral(job: Job, seed: number, deps: Pick<RunDeps, "dir" | "emit">): Promise<void> {
-  const { dir, emit } = deps;
-  emit({ type: "status", text: "Cutting her out…" });
-  const picture = await decode(await readFile(join(dir, `base/seed-${seed}.png`)));
-  const cut = cutout(picture, { key: job.key });
-  const scaled = await resize(toRaster(picture.w, picture.h, cut), PACK_SIZE.width, PACK_SIZE.height);
-  await mkdir(join(dir, "out"), { recursive: true });
-  await writeFile(join(dir, "out/neutral.webp"), await encodeWebp(scaled, { lossless: true }));
-  emit({ type: "neutral-done", file: "out/neutral.webp" });
 }

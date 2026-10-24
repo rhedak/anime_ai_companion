@@ -91,6 +91,54 @@ export function createStudio(io) {
     grid.append(pick);
   }
 
+  /** The finished pack: a tile for each emotion and pose, what the checks found, and the choice to draw some again or use it. */
+  function showReview(/** @type {string} */ id, /** @type {{ tiles?: any[], flagged?: any[] }} */ review) {
+    const box = q(".studio-candidates");
+    if (!box) return;
+    /** @type {Set<string>} */
+    const selected = new Set();
+    const grid = el("div", { className: "studio-tiles" });
+    const again = el("button", { type: "button", className: "ghost", textContent: "Draw the selected again", disabled: true });
+    const use = el("button", { type: "button", textContent: "Use this pack" });
+    for (const tile of review.tiles ?? []) {
+      if (typeof tile.thumb !== "string" || !tile.thumb.startsWith("data:image/webp;base64,")) continue;
+      const t = el("button", { type: "button", className: "preset", title: `${tile.name}${tile.flagged ? " (a check failed)" : ""}`, ariaLabel: `${tile.name}`, ariaPressed: "false" });
+      t.append(el("img", { src: tile.thumb, alt: tile.name }), el("span", { className: "preset-name", textContent: `${tile.flagged ? "⚠ " : ""}${tile.name}` }));
+      t.onclick = () => {
+        const on = !selected.has(tile.name);
+        if (on) selected.add(tile.name);
+        else selected.delete(tile.name);
+        t.setAttribute("aria-pressed", String(on));
+        t.classList.toggle("studio-selected", on);
+        again.disabled = selected.size === 0;
+      };
+      grid.append(t);
+    }
+    const notes = el("ul", { className: "studio-flags" });
+    for (const f of review.flagged ?? []) {
+      const redo = el("button", { type: "button", className: "ghost", textContent: "Draw again" });
+      redo.onclick = () => {
+        io.send({ type: "studio-regen", id, names: [f.name] });
+        box.replaceChildren();
+        status("Drawing it again…");
+        running(true);
+      };
+      notes.append(el("li", {}, el("strong", { textContent: `${f.name}: ` }), String((f.flags ?? []).join("; ")), " ", redo));
+    }
+    again.onclick = () => {
+      io.send({ type: "studio-regen", id, names: [...selected] });
+      box.replaceChildren();
+      status("Drawing them again…");
+      running(true);
+    };
+    use.onclick = () => {
+      io.send({ type: "studio-accept", id });
+      use.disabled = true;
+      status("Writing the pack…");
+    };
+    box.replaceChildren(grid, notes, el("div", { className: "pack-confirm-buttons" }, use, again));
+  }
+
   function fillSources() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
@@ -121,7 +169,10 @@ export function createStudio(io) {
             fillSources();
             if (msg.job && panel) {
               const grid = q(".studio-candidates");
-              if (grid && grid.childElementCount === 0) for (const c of Array.isArray(msg.candidates) ? msg.candidates : []) addCandidate(String(msg.job.id), c.seed, c.thumb, grid.childElementCount + 1);
+              if (grid && grid.childElementCount === 0) {
+                if (msg.review) showReview(String(msg.job.id), msg.review);
+                else for (const c of Array.isArray(msg.candidates) ? msg.candidates : []) addCandidate(String(msg.job.id), c.seed, c.thumb, grid.childElementCount + 1);
+              }
               status(String(msg.job.text || "Working…"));
             }
           }
@@ -164,6 +215,11 @@ export function createStudio(io) {
           if (grid) addCandidate(String(msg.id), msg.seed, msg.thumb, Number(msg.done));
           return true;
         }
+        case "studio-review":
+          running(false);
+          showReview(String(msg.id), msg);
+          status(msg.flagged?.length ? `Done. ${msg.flagged.length} picture(s) did not pass every check: look at them.` : "Done. Look at the pack, then use it.");
+          return true;
         case "studio-candidates-done":
           running(false);
           status("Pick the one you like. Nothing is saved until you do.");
@@ -171,7 +227,7 @@ export function createStudio(io) {
         case "studio-installed": {
           running(false);
           const name = String(msg.name);
-          status(`Made ${name}: a draft with her neutral picture.`);
+          status(`Made ${name}: a draft pack, written to your pictures. Look it over in a chat before you rely on it.`);
           const show = el("button", { type: "button", textContent: `Show her as ${name}` });
           show.onclick = () => io.send({ type: "pack-select", name });
           q(".studio-candidates")?.replaceChildren(show);

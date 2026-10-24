@@ -327,3 +327,8 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio-bad { color: var(--danger, #c0392b); }
 .studio-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
 .studio-candidates .preset img { width: 100%; display: block; border-radius: var(--radius-md); background: var(--fill-2); }
+.studio-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.studio-tiles .preset img { width: 100%; display: block; border-radius: var(--radius-md); }
+.studio-selected { outline: 2px solid var(--accent); }
+.studio-flags { margin: 8px 6px 0; padding-left: 18px; font-size: var(--font-size-small); }
+.studio-flags li { margin-bottom: 4px; }

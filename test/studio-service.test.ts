@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { readPack } from "../src/frame-pack.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
 import { startFakeBackend } from "./helpers/image-backend.ts";
@@ -30,7 +31,7 @@ async function setup(options: { backendUrl?: string | null } = {}) {
     broadcast: (m) => sent.push(m as Record<string, any>),
     remoteRefusal: () => "only on the computer",
     sources: async () => ["risa-dress"],
-    readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), character: "risa" } : null),
+    readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: [], character: "risa" } : null),
     refreshPacks: async () => {},
     pushNote: (t) => notes.push(t),
   });
@@ -74,7 +75,7 @@ test("the studio is off until /studio on, needs a backend that answers, and is r
   }
 });
 
-test("a redraw: the question first, four pictures, one picked, a pack installed that readers of data/frames understand", async () => {
+test("a redraw: the question, four pictures, one picked, the whole pack drawn and checked, a picture drawn again, and the pack installed", async () => {
   const t = await setup();
   try {
     const opened: unknown[] = [];
@@ -103,15 +104,58 @@ test("a redraw: the question first, four pictures, one picked, a pack installed 
     assert.match(waiting.job?.text ?? "", /Pick the one you like/);
 
     await t.service.message({ type: "studio-pick", id: card.id, seed: 3 }, send, false);
+    await t.waitFor("studio-review");
+    const review = t.sent.find((m) => m.type === "studio-review")!;
+    assert.equal(review.tiles.length, 11, "seven emotions and four poses to look at");
+    assert.ok(review.tiles.every((x: any) => String(x.thumb).startsWith("data:image/webp;base64,")));
+    const drawn = t.fake.requests.filter((r) => r.path === "/edit").length;
+    assert.ok(drawn >= 4 + 38, `the base pictures and the 38 others were asked for (${drawn})`);
+    const out = join(t.dataDir, "studio", card.id, "out");
+    assert.equal((await readdir(out)).length, 39, "every picture of a pack");
+
+    // A face edit keeps the base everywhere but the face: the band the fake draws across her middle must not be in `happy`, but is in a pose.
+    const [neutralPic, happy, wave] = await Promise.all(["neutral", "happy", "wave-1"].map((n) => decode(join(out, `${n}.webp`))));
+    // Below the face (the rows past 40% of her height) a face frame is the neutral picture; a pose has its own.
+    const differing = (x: typeof neutralPic, y: typeof neutralPic) => {
+      let n = 0;
+      for (let i = Math.floor(0.4 * x.h) * x.w; i < x.w * x.h; i++) for (let c = 0; c < 4; c++) if (x.data[i * 4 + c] !== y.data[i * 4 + c]) (n++, (c = 4));
+      return n;
+    };
+    assert.equal(differing(happy, neutralPic), 0, "outside the face, the happy picture is the neutral one");
+    assert.ok(differing(wave, neutralPic) > 0, "a pose is a whole-picture edit");
+    const mouthArea = (pic: typeof neutralPic) => Array.from(pic.data.subarray((Math.floor(pic.h * 0.23) * pic.w + Math.floor(pic.w * 0.47)) * 4, (Math.floor(pic.h * 0.23) * pic.w + Math.floor(pic.w * 0.47)) * 4 + 4));
+    assert.notDeepEqual(mouthArea(happy), mouthArea(neutralPic), "inside the face, the edit is kept");
+
+    // One picture drawn again takes new seeds and the pack is assembled again.
+    const before = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-regen", id: card.id, names: ["happy"] }, send, false);
+    await t.waitFor("studio-review", 2);
+    const redone = t.fake.requests.filter((r) => r.path === "/edit").slice(before);
+    assert.ok(redone.length >= 5, "happy and its blink and three mouths were asked for again");
+    assert.ok(redone.every((r) => /expression to a warm happy smile|only her eyes|only her mouth/.test(String(r.body.prompt))), "nothing else was");
+    assert.ok(redone.every((r) => !/sad|angry|raise/.test(String(r.body.prompt))), "not the sad or angry pictures, not the poses");
+
+    await t.service.message({ type: "studio-accept", id: card.id }, send, false);
     await t.waitFor("studio-installed");
     assert.equal(t.sent.find((m) => m.type === "studio-installed")?.name, "risa-winter");
     const folder = join(t.framesDir, "risa-winter");
-    assert.deepEqual((await readdir(folder)).sort(), ["NOTICE.md", "credit.txt", "look.txt", "neutral.webp"]);
+    const files = (await readdir(folder)).sort();
+    assert.equal(files.length, 39 + 3);
+    assert.ok(["NOTICE.md", "credit.txt", "look.txt", "neutral.webp", "thinking-talk3.webp", "wave-2.webp", "cheer-1.webp"].every((f) => files.includes(f)));
     const look = await readFile(join(folder, "look.txt"), "utf8");
     assert.match(look, /^character: risa\n/);
     assert.match(await readFile(join(folder, "NOTICE.md"), "utf8"), /fake-1.*MIT.*responsible/s);
     const pic = await decode(join(folder, "neutral.webp"));
     assert.deepEqual([pic.w, pic.h], [940, 1070]);
+    // The pack reads as a pack: every emotion has its blink and three mouths, and the gestures are there.
+    const emotions = ["neutral", "happy", "sad", "angry", "surprised", "shy", "thinking"];
+    const read = await readPack(t.framesDir, "risa-winter", emotions);
+    assert.ok(read.ok, read.ok ? "" : read.reason);
+    if (read.ok) {
+      for (const e of emotions) assert.ok(read.pack.emotions[e]?.blink && read.pack.emotions[e].talk.length === 3, `${e}: rest, blink and three mouths`);
+      assert.deepEqual(Object.keys(read.pack.gestures).sort(), ["cheer", "wave"]);
+      assert.equal(read.pack.characterId, "risa");
+    }
     assert.ok(t.notes.some((n) => /risa-winter/.test(n)));
     // The job's own files stay in data/studio for a later resume.
     assert.ok((await readdir(join(t.dataDir, "studio", card.id))).includes("job.json"));

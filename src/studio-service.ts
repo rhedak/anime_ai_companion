@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { isPackName } from "./frame-pack.ts";
@@ -9,6 +9,15 @@ import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
+
+/** The pictures of a source pack the studio reads: its rest picture, and its blink and mouth pictures to learn where her face is. */
+export interface SourceFrames {
+  neutral: Buffer;
+  blink?: Buffer;
+  talk: (Buffer | undefined)[];
+  /** The `character:` of its look.txt. */
+  character: string | null;
+}
 
 /** What the pack studio needs from the server around it. */
 export interface StudioDeps {
@@ -22,8 +31,7 @@ export interface StudioDeps {
   remoteRefusal(): string;
   /** The packs a new one can be drawn from (all of them, shipped and installed). */
   sources(): Promise<string[]>;
-  /** The neutral picture of a pack as bytes, and the character its look.txt names. Null when there is none. */
-  readSource(name: string): Promise<{ neutral: Buffer; character: string | null } | null>;
+  readSource(name: string): Promise<SourceFrames | null>;
   /** Tell the page about the packs again (a new one is there). */
   refreshPacks(): Promise<void>;
   /** Something to tell her with her next message. */
@@ -34,10 +42,11 @@ export interface StudioDeps {
 }
 
 type Send = (msg: unknown) => void;
+type Review = { tiles: { name: string; thumb: string | null; flagged: boolean }[]; flagged: { name: string; flags: string[] }[] };
 
 interface Pending {
   job: Job;
-  source: Buffer;
+  source: SourceFrames;
   info: BackendInfo;
 }
 
@@ -45,9 +54,18 @@ interface Running {
   job: Job;
   dir: string;
   worker: Worker;
-  phase: "base" | "neutral";
-  candidates: number[];
+  phase: "base" | "build";
   info: BackendInfo;
+}
+
+/** A job that waits for the user: to pick one of the base pictures, or to look at the pack and say yes. */
+interface Waiting {
+  kind: "pick" | "review";
+  job: Job;
+  dir: string;
+  info: BackendInfo;
+  candidates: number[];
+  review: Review | null;
 }
 
 /** What the user is told before anything is drawn, and again with the result. */
@@ -59,13 +77,15 @@ export const RESPONSIBILITY =
  *
  * It is a draft maker with an off switch. Off at every start, refused from a phone, one job at a time, and nothing is drawn before the user has
  * read a card that names the backend, the model and the folder. The brain has no part in it yet; the page's form is the only way in.
+ *
+ * A job goes: question, base pictures (the user picks one), the rest of the pack (checked, retried), review (the user may have a picture made
+ * again), install. The steps run in a worker thread (src/studio/); this file is the state machine around them.
  */
 export function createStudioService(deps: StudioDeps) {
   let on = false;
   let pending: Pending | null = null;
   let running: Running | null = null;
-  /** After the base pictures are made and before one is picked. */
-  let pendingPick: { job: Job; dir: string; info: BackendInfo; candidates: number[] } | null = null;
+  let waiting: Waiting | null = null;
   /** What the page would need to show a job again after a reload: the last thing said, and the candidate pictures so far. */
   let lastText = "";
   const shown = new Map<number, string>();
@@ -73,15 +93,17 @@ export function createStudioService(deps: StudioDeps) {
   const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : httpBackend(url));
 
   async function stateMessage() {
+    const job = running?.job ?? waiting?.job ?? null;
     return {
       type: "studio-state",
       on,
       backend: deps.settings.studioBackend,
       sources: on ? await deps.sources() : [],
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
-      /** A job the page should be showing: drawing, or waiting for the pick. */
-      job: running || pendingPick ? { id: (running ?? pendingPick)!.job.id, picking: !running, text: lastText } : null,
-      candidates: running || pendingPick ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
+      /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
+      job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
+      candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
+      review: waiting?.kind === "review" ? waiting.review : null,
     };
   }
   const announce = async () => deps.broadcast(await stateMessage());
@@ -100,33 +122,50 @@ export function createStudioService(deps: StudioDeps) {
 
   const describe = (info: BackendInfo) => `${info.name}${info.model ? `, model ${info.model}` : ""}${info.licence ? ` (${info.licence})` : ""}`;
 
-  function stopRunning(): void {
+  function forget(): void {
     pending = null;
-    pendingPick = null;
+    waiting = null;
     shown.clear();
     lastText = "";
+  }
+
+  function stopRunning(): void {
+    forget();
     if (!running) return;
     void running.worker.terminate();
     running = null;
   }
 
-  function startWorker(job: Job, dir: string, phase: "base" | "neutral", info: BackendInfo, data: Record<string, unknown>): void {
+  function startWorker(job: Job, dir: string, phase: "base" | "build", info: BackendInfo, data: Record<string, unknown>): void {
     const worker = new Worker(deps.workerUrl ?? new URL("./studio/studio-worker.ts", import.meta.url), {
       workerData: { phase, dir, job, ...data },
       stderr: true,
     });
     worker.unref();
-    const run: Running = { job, dir, worker, phase, candidates: [], info };
+    const run: Running = { job, dir, worker, phase, info };
     running = run;
+    waiting = null;
     void announce();
-    worker.on("message", async (event: StudioEvent | { type: "finished" }) => {
+    const candidates: number[] = [];
+    let review: Review | null = null;
+    const fail = (message: string) => {
+      if (running !== run) return;
+      running = null;
+      deps.broadcast({ type: "studio-error", id: job.id, message });
+      void announce();
+    };
+    // One message at a time and in order: reading a thumbnail takes a moment, and "finished" must not be handled before the review it follows.
+    let chain: Promise<void> = Promise.resolve();
+    worker.on("message", (event: StudioEvent | { type: "finished" }) => {
+      chain = chain.then(() => handle(event)).catch((error) => fail(error instanceof Error ? error.message : String(error)));
+    });
+    const handle = async (event: StudioEvent | { type: "finished" }): Promise<void> => {
       if (running !== run) return;
       if (event.type === "status") {
         lastText = event.text;
         deps.broadcast({ type: "studio-progress", id: job.id, text: event.text });
-      }
-      else if (event.type === "candidate") {
-        run.candidates.push(event.seed);
+      } else if (event.type === "candidate") {
+        candidates.push(event.seed);
         const file = await readFile(join(dir, event.thumb)).catch(() => null);
         const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
         if (thumb) shown.set(event.seed, thumb);
@@ -134,34 +173,34 @@ export function createStudioService(deps: StudioDeps) {
       } else if (event.type === "base-done") {
         lastText = "Pick the one you like. Nothing is saved until you do.";
         deps.broadcast({ type: "studio-candidates-done", id: job.id });
-      }
-      else if (event.type === "neutral-done") await install(run);
-      else if (event.type === "error") {
-        running = null;
-        deps.broadcast({ type: "studio-error", id: job.id, message: event.message });
-        void announce();
-      } else if (event.type === "finished" && run.phase === "base") {
-        // The pictures are made; which one is used comes next from the page.
+      } else if (event.type === "review") {
+        const tiles = await Promise.all(
+          event.tiles.map(async (t) => {
+            const file = await readFile(join(dir, t.thumb)).catch(() => null);
+            return { name: t.name, thumb: file ? `data:image/webp;base64,${file.toString("base64")}` : null, flagged: t.flagged };
+          }),
+        );
+        review = { tiles, flagged: event.flagged };
+      } else if (event.type === "error") {
+        fail(event.message);
+      } else if (event.type === "finished") {
         void run.worker.terminate();
         running = null;
-        pendingPick = { job, dir, info, candidates: run.candidates };
+        if (run.phase === "base") {
+          waiting = { kind: "pick", job, dir, info, candidates, review: null };
+        } else {
+          lastText = review && review.flagged.length ? `Done. ${review.flagged.length} picture${review.flagged.length === 1 ? "" : "s"} did not pass every check: look at them.` : "Done. Look at the pack, then use it.";
+          waiting = { kind: "review", job, dir, info, candidates: [], review };
+          deps.broadcast({ type: "studio-review", id: job.id, ...review });
+        }
         void announce();
       }
-    });
-    worker.on("error", (error) => {
-      if (running !== run) return;
-      running = null;
-      deps.broadcast({ type: "studio-error", id: job.id, message: `The studio stopped: ${error.message}` });
-      void announce();
-    });
+    };
+    worker.on("error", (error) => fail(`The studio stopped: ${error.message}`));
   }
 
-  async function install(run: Running): Promise<void> {
-    const { job, dir, info } = run;
-    running = null;
-    shown.clear();
-    lastText = "";
-    void run.worker.terminate();
+  async function install(w: Waiting): Promise<void> {
+    const { job, dir, info } = w;
     const out = join(dir, "out");
     try {
       const lookText = job.look || `You wear ${job.outfit}.`;
@@ -176,22 +215,21 @@ export function createStudioService(deps: StudioDeps) {
       const target = join(deps.framesDir, job.name);
       if (await stat(target).then(() => true, () => false)) throw new Error(`There is already a pack called ${job.name}. Nothing was replaced; start again with another name.`);
       await mkdir(deps.framesDir, { recursive: true });
-      await rename(out, target);
+      // The job's own folder keeps its pictures (a later redraw can use them); the pack is a copy, renamed into place whole.
+      await copyDir(out, join(deps.dataDir, "studio", `${job.id}-install`), target);
+      forget();
       await deps.refreshPacks();
-      deps.pushNote(`the user made a new picture pack on their computer, ${job.name} (${job.outfit}); it is a draft with only a neutral picture so far.`);
+      deps.pushNote(`the user made a new picture pack on their computer, ${job.name} (${job.outfit}); it is a draft.`);
       deps.broadcast({ type: "studio-installed", id: job.id, name: job.name });
       void announce();
     } catch (error) {
       deps.broadcast({ type: "studio-error", id: job.id, message: error instanceof Error ? error.message : String(error) });
-      void announce();
     }
   }
 
   async function start(msg: Record<string, unknown>, send: Send): Promise<void> {
     if (running) return send({ type: "studio-error", message: "A job is running. Stop it first." });
-    pendingPick = null;
-    shown.clear();
-    lastText = "";
+    forget();
     const source = typeof msg.source === "string" ? msg.source : "";
     const name = typeof msg.name === "string" ? msg.name.trim() : "";
     const outfit = cleanText(msg.outfit, MAX_OUTFIT);
@@ -223,7 +261,7 @@ export function createStudioService(deps: StudioDeps) {
       seeds: [1, 2, 3, 4],
     });
     if (!parsed.ok) return err(parsed.reason);
-    pending = { job: parsed.job, source: found.neutral, info: checked.info };
+    pending = { job: parsed.job, source: found, info: checked.info };
     send({
       type: "studio-confirm",
       id: parsed.job.id,
@@ -235,7 +273,7 @@ export function createStudioService(deps: StudioDeps) {
       pictures: parsed.job.seeds.length,
       note:
         `This draws ${parsed.job.seeds.length} pictures of ${source} in that outfit with ${describe(checked.info)} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ` +
-        `You pick one; only then is a pack written, to ${join(deps.framesDir, name)}. ${RESPONSIBILITY}`,
+        `You pick one; then about forty more pictures are made from it (faces, blinks, mouths and poses; several minutes), and you look at the pack before it is written to ${join(deps.framesDir, name)}. ${RESPONSIBILITY}`,
     });
   }
 
@@ -246,15 +284,30 @@ export function createStudioService(deps: StudioDeps) {
     const dir = join(deps.dataDir, "studio", job.id);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "job.json"), JSON.stringify(job, null, 2));
-    startWorker(job, dir, "base", info, { source });
+    startWorker(job, dir, "base", info, { source: source.neutral, sourceFrames: { blink: source.blink, talk: source.talk } });
     send({ type: "studio-progress", id: job.id, text: "Starting…" });
   }
 
   async function pick(id: string, seed: number, send: Send): Promise<void> {
-    if (!pendingPick || pendingPick.job.id !== id || running || !pendingPick.candidates.includes(seed)) return send({ type: "studio-error", message: "That picture is not available." });
-    const { job, dir, info } = pendingPick;
-    pendingPick = null;
-    startWorker(job, dir, "neutral", info, { seed });
+    if (!waiting || waiting.kind !== "pick" || waiting.job.id !== id || running || !waiting.candidates.includes(seed)) return send({ type: "studio-error", message: "That picture is not available." });
+    const { job, dir, info } = waiting;
+    await copyFile(join(dir, `base/seed-${seed}.png`), join(dir, "base/chosen.png"));
+    shown.clear();
+    startWorker(job, dir, "build", info, {});
+  }
+
+  /** Makes some pictures again (and what was drawn from them), with new seeds. */
+  async function regenerate(id: string, names: unknown, send: Send): Promise<void> {
+    if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
+    const only = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && /^[a-z0-9-]{1,30}$/.test(n)).slice(0, 12) : [];
+    if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
+    const { job, dir, info } = waiting;
+    startWorker(job, dir, "build", info, { only });
+  }
+
+  async function accept(id: string, send: Send): Promise<void> {
+    if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is no finished pack to use." });
+    await install(waiting);
   }
 
   function cancel(): void {
@@ -309,6 +362,8 @@ export function createStudioService(deps: StudioDeps) {
         if (msg.type === "studio-start") await start(msg, send);
         else if (msg.type === "studio-confirm" && typeof msg.id === "string") await confirm(msg.id, send);
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
+        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
+        else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
         else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());
       } catch (error) {
@@ -318,3 +373,9 @@ export function createStudioService(deps: StudioDeps) {
   };
 }
 
+/** A folder copied whole into a staging folder beside the job's, then renamed into place, so a half-written pack never shows up in data/frames. */
+async function copyDir(from: string, staging: string, to: string): Promise<void> {
+  await rm(staging, { recursive: true, force: true });
+  await cp(from, staging, { recursive: true });
+  await rename(staging, to);
+}

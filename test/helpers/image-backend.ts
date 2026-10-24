@@ -30,7 +30,9 @@ export async function startFakeBackend(options: { failEdit?: string } = {}): Pro
           ? sharp(Buffer.from(String(body.image), "base64")).resize(w, h)
           : sharp({ create: { width: w, height: h, channels: 3, background: { r: 255, g: 0, b: 255 } } });
         const band = await sharp({ create: { width: w, height: Math.max(8, Math.floor(h / 16)), channels: 3, background: { r: (seed * 53) % 256, g: (seed * 97) % 256, b: 120 } } }).png().toBuffer();
-        const png = await base.composite([{ input: band, top: Math.floor(h / 2), left: 0 }]).png().toBuffer();
+        // A patch where a face is (so a face edit visibly changes something), and a band across the middle (which a face edit must not keep).
+        const patch = await sharp({ create: { width: Math.floor(w * 0.12), height: Math.floor(h * 0.08), channels: 3, background: { r: 30 + ((seed * 71) % 200), g: 60, b: 90 } } }).png().toBuffer();
+        const png = await base.composite([{ input: band, top: Math.floor(h / 2), left: 0 }, { input: patch, top: Math.floor(h * 0.2), left: Math.floor(w * 0.44) }]).png().toBuffer();
         return send(200, { image: png.toString("base64") });
       }
       send(404, { message: "no such route" });

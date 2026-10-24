@@ -724,9 +724,15 @@ const studio = createStudioService({
   readSource: async (name) => {
     const found = await readPack(packDirs, name, Object.keys(emotions));
     if (!found.ok) return null;
-    const rest = found.pack.files.get(found.pack.emotions.neutral?.idle ?? "");
+    const { pack } = found;
+    const read = async (file: string | undefined) => {
+      const entry = file ? pack.files.get(file) : undefined;
+      return entry ? readFile(entry.path) : undefined;
+    };
+    const neutral = pack.emotions.neutral;
+    const rest = await read(neutral?.idle);
     if (!rest) return null;
-    return { neutral: await readFile(rest.path), character: found.pack.characterId ?? null };
+    return { neutral: rest, blink: await read(neutral.blink), talk: await Promise.all([0, 1, 2].map((k) => read(neutral.talk[k]))), character: pack.characterId ?? null };
   },
   refreshPacks: async () => broadcast(await packsMessage()),
   pushNote: (text) => notes.push(text),
