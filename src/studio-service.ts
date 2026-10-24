@@ -50,7 +50,7 @@ export interface StudioDeps {
 }
 
 type Send = (msg: unknown) => void;
-type Review = { tiles: { name: string; thumb: string | null; flagged: boolean }[]; flagged: { name: string; flags: string[] }[] };
+type Review = { tiles: { name: string; thumb: string | null; flagged: boolean; flags: string[] }[]; flagged: { name: string; flags: string[] }[] };
 
 interface Pending {
   job: Job;
@@ -107,7 +107,7 @@ export function createStudioService(deps: StudioDeps) {
   let lastText = "";
   const shown = new Map<number, string>();
   /** The pictures of the pack drawn so far (the ones the review shows), so they can be looked at while the rest are still being drawn. */
-  const previews = new Map<string, { thumb: string | null; flagged: boolean }>();
+  const previews = new Map<string, { thumb: string | null; flagged: boolean; flags: string[] }>();
   /** Has she been told about the studio in this conversation? */
   let told: "on" | "off" | null = null;
   /** What she last proposed for the form (or for a redraw), so a page that connects or reloads can show it. */
@@ -260,8 +260,8 @@ export function createStudioService(deps: StudioDeps) {
       } else if (event.type === "preview") {
         const file = await readFile(join(dir, event.thumb)).catch(() => null);
         const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
-        previews.set(event.name, { thumb, flagged: event.flagged });
-        deps.broadcast({ type: "studio-preview", id: job.id, name: event.name, thumb, flagged: event.flagged });
+        previews.set(event.name, { thumb, flagged: event.flagged, flags: event.flags });
+        deps.broadcast({ type: "studio-preview", id: job.id, name: event.name, thumb, flagged: event.flagged, flags: event.flags });
       } else if (event.type === "base-done") {
         lastText = "Pick the one you like. Nothing is saved until you do.";
         deps.broadcast({ type: "studio-candidates-done", id: job.id });
@@ -269,7 +269,7 @@ export function createStudioService(deps: StudioDeps) {
         const tiles = await Promise.all(
           event.tiles.map(async (t) => {
             const file = await readFile(join(dir, t.thumb)).catch(() => null);
-            return { name: t.name, thumb: file ? `data:image/webp;base64,${file.toString("base64")}` : null, flagged: t.flagged };
+            return { name: t.name, thumb: file ? `data:image/webp;base64,${file.toString("base64")}` : null, flagged: t.flagged, flags: t.flags };
           }),
         );
         review = { tiles, flagged: event.flagged };

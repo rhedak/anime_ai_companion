@@ -133,9 +133,10 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
   for (const name of REVIEW_FRAMES) {
     const drawn = name === "neutral" || records[name] !== undefined;
     if (!drawn || redo.has(name)) continue;
-    const flagged = (records[name]?.flags.length ?? 0) > 0;
-    if (await stat(join(dir, `review/${name}.webp`)).then(() => true, () => false)) emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged });
-    else await previewFrame(job, dir, name, name === "neutral" ? base : await load(dir, name, job.width, job.height), flagged, emit);
+    const flags = records[name]?.flags ?? [];
+    const flagged = flags.length > 0;
+    if (await stat(join(dir, `review/${name}.webp`)).then(() => true, () => false)) emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged, flags });
+    else await previewFrame(job, dir, name, name === "neutral" ? base : await load(dir, name, job.width, job.height), flags, emit);
   }
   let done = 0;
   for (const plan of plans) {
@@ -150,7 +151,7 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
     records[plan.name] = { ...made.record, attempts: (records[plan.name]?.attempts ?? 0) + made.record.attempts };
     await writeFile(framesFile(dir), JSON.stringify(records, null, 2));
     emit({ type: "frame", name: plan.name, done, total: plans.length, flags: made.record.flags });
-    await previewFrame(job, dir, plan.name, made.picture, made.record.flags.length > 0, emit);
+    await previewFrame(job, dir, plan.name, made.picture, made.record.flags, emit);
   }
   await runAssemble(job, geometry, deps);
 }
@@ -169,11 +170,11 @@ async function writeReview(dir: string, name: string, cut: Raster): Promise<void
 }
 
 /** A frame as soon as it is drawn: cut out on its own (the final pack shares one outline per group, so this is only for looking at). */
-async function previewFrame(job: Job, dir: string, name: string, picture: Raster, flagged: boolean, emit: BuildDeps["emit"]): Promise<void> {
+async function previewFrame(job: Job, dir: string, name: string, picture: Raster, flags: string[], emit: BuildDeps["emit"]): Promise<void> {
   if (!REVIEW_FRAMES.includes(name)) return;
   await mkdir(join(dir, "review"), { recursive: true });
   await writeReview(dir, name, toRaster(picture.w, picture.h, cutout(picture, { key: job.key })));
-  emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged });
+  emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged: flags.length > 0, flags });
 }
 
 /**
@@ -202,7 +203,7 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
   const everything: { name: string; picture: Raster; group: string }[] = [{ name: "neutral", picture: await load(dir, "base", w, h), group: "base" }];
   for (const plan of plans) if (records[plan.name]) everything.push({ name: plan.name, picture: await load(dir, plan.name, w, h), group: plan.group });
   const flagged: { name: string; flags: Flags }[] = [];
-  const tiles: { name: string; thumb: string; flagged: boolean }[] = [];
+  const tiles: { name: string; thumb: string; flagged: boolean; flags: string[] }[] = [];
   for (const frame of everything) {
     const g = await groupOf(frame.group);
     const out = makeRaster(w, h);
@@ -221,7 +222,7 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
     if (rec && rec.flags.length) flagged.push({ name: frame.name, flags: rec.flags });
     if (REVIEW_FRAMES.includes(frame.name)) {
       await writeReview(dir, frame.name, scaled);
-      tiles.push({ name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length) });
+      tiles.push({ name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length), flags: rec?.flags ?? [] });
     }
   }
   emit({ type: "review", tiles, flagged });

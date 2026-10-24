@@ -178,11 +178,11 @@ export function createStudio(io) {
   }
 
   /** One tile: made, or made again (it takes the old one's place). Selectable only once the pack is done. */
-  function setTile(/** @type {string} */ id, /** @type {{ name: string, thumb: unknown, flagged?: boolean }} */ tile, /** @type {Set<string> | null} */ selected, /** @type {() => void} */ changed) {
+  function setTile(/** @type {string} */ id, /** @type {{ name: string, thumb: unknown, flagged?: boolean, flags?: string[] }} */ tile, /** @type {Set<string> | null} */ selected, /** @type {() => void} */ changed) {
     const parts = tilesBox();
     if (!parts || !isThumb(tile.thumb)) return;
     const label = `${tile.flagged ? "⚠ " : ""}${tile.name}`;
-    const t = el("button", { type: "button", className: "preset", title: `${tile.name}${tile.flagged ? " (a check failed)" : ""}`, ariaLabel: tile.name });
+    const t = el("button", { type: "button", className: "preset", title: tile.flagged ? `${tile.name}: ${tile.flags?.length ? tile.flags.join("; ") : "a check failed"}` : tile.name, ariaLabel: tile.name });
     t.dataset.name = tile.name;
     t.append(el("img", { src: /** @type {string} */ (tile.thumb), alt: tile.name }), el("span", { className: "preset-name", textContent: label }));
     attachZoom(t, id, tile.name, /** @type {string} */ (tile.thumb));
@@ -349,7 +349,7 @@ export function createStudio(io) {
           ask(msg);
           return true;
         case "studio-preview":
-          setTile(String(msg.id), { name: String(msg.name), thumb: msg.thumb, flagged: msg.flagged === true }, null, () => {});
+          setTile(String(msg.id), { name: String(msg.name), thumb: msg.thumb, flagged: msg.flagged === true, flags: Array.isArray(msg.flags) ? msg.flags : [] }, null, () => {});
           return true;
         case "studio-full":
           if (isThumb(msg.image)) {

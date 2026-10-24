@@ -12,8 +12,8 @@ export type StudioEvent =
   | { type: "candidate"; seed: number; file: string; thumb: string; done: number; total: number }
   | { type: "base-done" }
   | { type: "frame"; name: string; done: number; total: number; flags: string[] }
-  | { type: "preview"; name: string; thumb: string; flagged: boolean }
-  | { type: "review"; tiles: { name: string; thumb: string; flagged: boolean }[]; flagged: { name: string; flags: string[] }[] }
+  | { type: "preview"; name: string; thumb: string; flagged: boolean; flags: string[] }
+  | { type: "review"; tiles: { name: string; thumb: string; flagged: boolean; flags: string[] }[]; flagged: { name: string; flags: string[] }[] }
   | { type: "error"; message: string };
 
 export interface RunDeps {
