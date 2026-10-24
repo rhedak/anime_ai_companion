@@ -90,6 +90,17 @@ def snap_edge_colour(alpha, fg, solid_at=0.98):
     return out
 
 
+def apply_floor(alpha, floor, body_open=3, protect=2):
+    """Clear faint ghost strands: alpha well under half goes to zero and the rest is stretched. Only away from the body:
+    the solid parts (found by opening the mask, which drops anything thinner than a few pixels) keep their own soft
+    edge, because an anti-aliased edge legitimately has weak pixels and clearing them breaks the outline."""
+    body = ndi.binary_opening(alpha > 0.5, structure=np.ones((2 * body_open + 1,) * 2))
+    near_body = ndi.binary_dilation(body, iterations=protect)
+    cleared = np.clip((alpha - floor * 0.8) / (1 - floor * 0.8), 0, 1)
+    cleared = np.where(cleared < 0.12, 0, cleared)
+    return np.where(near_body, alpha, cleared)
+
+
 def cutout(rgb, keep_boxes=(), band=BAND, key="white", strands=False, snap=False, floor=0.3):
     bg = rough_background_magenta(rgb) if key == "magenta" else rough_background(rgb, keep_boxes)
     unknown = ndi.binary_dilation(bg, iterations=band) & ~bg
@@ -107,7 +118,5 @@ def cutout(rgb, keep_boxes=(), band=BAND, key="white", strands=False, snap=False
     if snap:
         fg = snap_edge_colour(alpha, fg)
     if floor:
-        # faint ghost strands (alpha well under half) go; the rest is stretched so solid edges stay solid
-        alpha = np.clip((alpha - floor * 0.8) / (1 - floor * 0.8), 0, 1)
-        alpha = np.where(alpha < 0.12, 0, alpha)
+        alpha = apply_floor(alpha, floor)
     return alpha, fg, bg, trimap
