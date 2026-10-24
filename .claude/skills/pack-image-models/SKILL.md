@@ -90,3 +90,13 @@ FLUX.2 klein outputs RGB only. Pictures are made on flat white (stills) or magen
 - **One alpha per pose.** A face edit pasted back changes nothing outside the face, so `build_pack.py` gives all of a pose's face frames the same alpha. Do not matte them separately.
 - **Run `check.py` on the pack and on a Grok pack.** Compare edge tint, soft-edge share and specks; the target is at or better than Grok's. Then look at 3× crops on dark and white (hair edge, hands, chin, chair).
 - **Seam score** (printed by `build_pack.py`) above 16 means look at the picture. It once caught a face frame whose eyes had changed direction (a generation fault, not a crop one): regenerate by seed.
+
+## Putting the pack into the packs repository
+
+Done for Risa (casual); the generic steps are in `make-activity-pack` (section 4) and the packs repository's README. What is specific to a pack made this way:
+
+1. Build the final pictures with `tools/pack-crop/build_pack.py` (stills) and `build_loop.py` (a loop). Face frames of a pose copy the base's saved colours outside the face, so the archive stores them as small patches; without that the thinking frames were whole-picture patches (15.4 MB against 13.1 MB).
+2. Work on a branch from `origin/main` (a `git worktree` keeps the owner's checkout alone). Put the frames, `look.txt`, `credit.txt`, `NOTICE.md`, `PROCESS.md` (say what each tool made and the faults left) in `packs-src/<id>/`, `packs-src/<id>.publish.json` beside it, the outfit's line in `packs-src/characters/<character>.txt` (and the app's `packs/characters/<character>.txt`), and the thumbnail from `node src/pack-thumb-cli.ts <dir with the pack> -o <packs repo>/site/thumbs`.
+3. Keep the lossless masters, the white-background 896×1024 pictures, the video and the scripts in the untracked `ref/<id>/` of the packs repository.
+4. Verify: `pack-archive-cli.ts build`, `restore`, compare the visible pixels of every picture (a lossy loop picture must also match, because the archive stores it whole), `readPack` on the folder and on the restored one, `scripts/write-index-entry.mjs` for the entry the workflow will write, and a build with the tool at the workflow's `COMPANION_REF` (same SHA-256 means the workflow publishes what was checked). `npm run typecheck && npm test` in the app repository.
+5. Do not push, tag or edit `site/index.json`: the publish workflow does that from the tag, and it waits for the app release (`release-companion`).

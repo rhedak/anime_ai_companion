@@ -15,11 +15,12 @@ from cutout import cutout
 FACE = (360, 140, 545, 360)       # generous face box at 896x1024: anything that differs outside it is not a face edit
 EYES = [(371, 186, 524, 253)]     # enclosed eye whites are never gaps
 SEAM_MAX = 16                     # a change that still differs by more than this at the edge of its area is a seam
-SAME_PIXELS = 60                  # a face edit may differ from the base by this many pixels outside the box
+REAL_CHANGE = 100                 # a difference above this many levels is a real change, not the noise of a whole-picture edit
+SAME_PIXELS = 30                  # a face edit may differ from the base by this many such pixels outside the box
 
 
 def outside_changes(a, b):
-    d = np.abs(a.astype(int) - b.astype(int)).max(axis=2) > 2
+    d = np.abs(a.astype(int) - b.astype(int)).max(axis=2) > REAL_CHANGE
     x0, y0, x1, y1 = FACE
     d[y0:y1, x0:x1] = False
     return int(d.sum())
@@ -59,7 +60,14 @@ def main():
         n, c = min(same, key=lambda t: t[0]) if same else (None, None)
         if c is not None and n <= SAME_PIXELS:
             alpha = c[1]
-            fg = np.where((alpha == 1)[..., None], rgb, c[2])
+            # outside the face the picture is the base, exactly: stray differences of a level or two (a whole-picture
+            # edit) would otherwise make the archive store the whole picture instead of a small patch of the face
+            x0, y0, x1, y1 = FACE
+            inside = np.zeros(alpha.shape, bool); inside[y0:y1, x0:x1] = True
+            rgb = np.where(inside[..., None], rgb, c[0])
+            # the base's saved colours are not exactly its source pixels (the matting moves them a little), so outside the
+            # face the variant takes the base's saved colours, not its own source
+            fg = np.where((inside & (alpha == 1))[..., None], rgb, c[2])
             seam = seam_score(rgb, c[0])
             how = f"shares an alpha ({n} px outside, seam {seam}{' <-- CHECK' if seam > SEAM_MAX else ''})"
         else:
