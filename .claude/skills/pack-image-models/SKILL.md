@@ -77,6 +77,8 @@ Used for the Risa casual pack. The base is a neutral picture the owner has appro
 
 **Retrying**: the same prompt with the same seed gives the same picture, so a retry changes the seed (1, 2, 3, 4, …), not the prompt. Check each new candidate at zoom. Cap it at three tries per picture. If none passes, flag that picture for a person and keep the best candidate in the folder, named as such. Don't claim a picture is clean when the check hasn't been done.
 
+**A hand near the mouth** (thinking, finger on the chin): a wide-open mouth asked for from the closed-mouth base made the model move the finger into the lip (nine tries over three prompts, all of it). What worked: start from the previous open-mouth frame (`thinking-talk2`), ask only for "a little wider", paste back only the mouth (a box from just below the nose to just above the finger, here y 250–322 at 896×1024, feathered), and check the box edge for clipping (zero changed pixels above 40). A paste box that includes the eyes lets the model's changed gaze through: the first `thinking-talk3` had one.
+
 **Keeping the old versions**: move a replaced picture to `poses/old/` (or the matching folder) rather than deleting it, so the owner can compare.
 
 ## Cutting the figure out (transparent background)
