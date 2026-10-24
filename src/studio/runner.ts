@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
+import { cutout, toRaster } from "./cutout.ts";
 import { keyRgb, outfitPrompt } from "./prompts.ts";
 import { decode, encodePng, encodeWebp, flatten, resize } from "./raster.ts";
 import type { Job } from "./job.ts";
@@ -10,6 +11,7 @@ export type StudioEvent =
   | { type: "status"; text: string }
   | { type: "candidate"; seed: number; file: string; thumb: string; done: number; total: number }
   | { type: "base-done" }
+  | { type: "neutral-done"; file: string }
   | { type: "error"; message: string };
 
 export interface RunDeps {
@@ -52,4 +54,22 @@ export async function runBase(job: Job, deps: RunDeps): Promise<void> {
     emit({ type: "candidate", seed, file, thumb, done, total: job.seeds.length });
   }
   emit({ type: "base-done" });
+}
+
+/** The size every pack picture has (the same as the packs that ship). */
+export const PACK_SIZE = { width: 940, height: 1070 };
+
+/**
+ * Step 2 (so far): the chosen base picture becomes the new pack's `neutral.webp`: cut off its key colour with a soft edge, scaled to the
+ * pack size, lossless. Written to `out/`; the service installs the folder.
+ */
+export async function runNeutral(job: Job, seed: number, deps: Pick<RunDeps, "dir" | "emit">): Promise<void> {
+  const { dir, emit } = deps;
+  emit({ type: "status", text: "Cutting her out…" });
+  const picture = await decode(await readFile(join(dir, `base/seed-${seed}.png`)));
+  const cut = cutout(picture, { key: job.key });
+  const scaled = await resize(toRaster(picture.w, picture.h, cut), PACK_SIZE.width, PACK_SIZE.height);
+  await mkdir(join(dir, "out"), { recursive: true });
+  await writeFile(join(dir, "out/neutral.webp"), await encodeWebp(scaled, { lossless: true }));
+  emit({ type: "neutral-done", file: "out/neutral.webp" });
 }

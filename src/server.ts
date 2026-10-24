@@ -42,6 +42,7 @@ import { createTurnService } from "./turn-service.ts";
 import { SCENES, sceneById, sceneList, startPlay } from "./scenes.ts";
 import { createMemoryService } from "./memory-service.ts";
 import { createPersonaService } from "./persona-service.ts";
+import { createStudioService } from "./studio-service.ts";
 import { createNotes } from "./notes.ts";
 import { createQueueService } from "./queue-service.ts";
 import { createSkillsService } from "./skills-service.ts";
@@ -711,6 +712,26 @@ const personaVoice = createPersonaService({
   name: () => herName(),
 });
 
+// --- the pack studio: pictures of her in a new outfit, made on this computer; see studio-service.ts and docs/pack-studio.md ---
+const studio = createStudioService({
+  dataDir,
+  framesDir,
+  settings,
+  saveSettings: () => saveSettings(settingsPath, settings),
+  broadcast: (msg) => broadcast(msg),
+  remoteRefusal: () => remoteRefusal,
+  sources: () => listPacks(...packDirs),
+  readSource: async (name) => {
+    const found = await readPack(packDirs, name, Object.keys(emotions));
+    if (!found.ok) return null;
+    const rest = found.pack.files.get(found.pack.emotions.neutral?.idle ?? "");
+    if (!rest) return null;
+    return { neutral: await readFile(rest.path), character: found.pack.characterId ?? null };
+  },
+  refreshPacks: async () => broadcast(await packsMessage()),
+  pushNote: (text) => notes.push(text),
+});
+
 // --- character cards: see card-service.ts ---
 const cards = createCardService({
   file: join(dataDir, "character.json"),
@@ -1233,6 +1254,10 @@ const slashCommands: Record<
     help: "character cards: /card import <file.png|.json> | apply [greeting] [lore] [orders] | cancel | export | reset",
     run: ({ args, say, reply, remote }) => cards.command(args, say, reply, remote),
   },
+  studio: {
+    help: "make a picture pack of your own on this computer with an image model you run: /studio on | off | backend <address>",
+    run: ({ args, say, remote, reply }) => studio.command(args, say, remote, reply),
+  },
   skills: {
     help: "work mode: let her use your own skills (~/.claude/skills) by name; your hooks stay off: /skills on | off",
     claudeOnly: true,
@@ -1731,6 +1756,7 @@ wss.on("connection", (ws) => {
       }
     })
     .catch((err) => console.error("could not send the packs:", err));
+  void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
   ws.send(JSON.stringify(modeInfo()));
   if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
@@ -1965,6 +1991,8 @@ wss.on("connection", (ws) => {
       endActivityByUser(); // ending is harmless, so a phone may do it too
     } else if (msg.type === "pack-select" && (msg.name === null || typeof msg.name === "string")) {
       await choosePack(msg.name, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+    } else if (typeof msg.type === "string" && msg.type.startsWith("studio-")) {
+      await studio.message(msg, (m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)), remoteSockets.has(ws));
     } else if (msg.type === "pack-catalog") {
       // The gallery is opening: ask the index so a pack that is not installed can still be shown and downloaded.
       await refreshPackIndex(false);

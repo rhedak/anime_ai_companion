@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { httpBackend } from "./backend.ts";
-import { runBase, type StudioEvent } from "./runner.ts";
+import { runBase, runNeutral, type StudioEvent } from "./runner.ts";
 import { parseJob } from "./job.ts";
 
 /** Runs one phase of a job off the server's thread. The service starts it with `{ phase, dir, job, source }` and stops it with `terminate()`. */
@@ -14,6 +14,8 @@ try {
   const backend = httpBackend(parsed.job.backend.url);
   if (workerData.phase === "base") {
     await runBase(parsed.job, { dir: workerData.dir, backend, emit: send, source: Buffer.from(workerData.source) });
+  } else if (workerData.phase === "neutral") {
+    await runNeutral(parsed.job, Number(workerData.seed), { dir: workerData.dir, emit: send });
   } else {
     throw new Error(`Unknown phase ${String(workerData.phase)}.`);
   }

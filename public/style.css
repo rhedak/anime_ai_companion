@@ -317,3 +317,12 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
   main[data-view="behind"] .panel { align-items: center; }
   main[data-view="behind"] .panel > * { width: min(100%, 780px); }
 }
+
+/* the pack studio panel (public/studio.js) */
+.studio label { display: block; margin: 8px 6px 2px; font-size: 12px; color: var(--muted); }
+.studio select, .studio input, .studio textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.studio .pack-confirm-buttons { margin: 10px 0 4px; }
+.studio-status { margin: 8px 6px 0; font-size: var(--font-size-small); min-height: 1.2em; }
+.studio-bad { color: var(--danger, #c0392b); }
+.studio-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
+.studio-candidates .preset img { width: 100%; display: block; border-radius: var(--radius-md); background: var(--fill-2); }

@@ -9,10 +9,17 @@ import { normalizeTags } from "./tags.js";
 import { splitNarration } from "./narration.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
+import { createStudio } from "./studio.js";
 
 /** An element of the page by its id. Typed loosely on purpose: the markup is index.html's, and each id is one kind of element. @type {(id: string) => any} */
 const $ = (id) => document.getElementById(id);
 let ws = null;
+const studio = createStudio({
+  send: (msg) => ws?.send(JSON.stringify(msg)),
+  host: () => document.querySelector(".stage"),
+  say: (text) => addMsg("sys", text),
+});
+document.addEventListener("studio-state", () => renderLooksMenu()); // the menu has "Make a pack…" only while the studio is on
 /** This page is open on another device. The folder dialog runs on the computer, so a phone types the path instead. */
 let onPhone = false;
 
@@ -1360,6 +1367,17 @@ function handle(msg) {
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
       if (openGallery?.dataset.kind === "packs") galleryFill?.();
       break;
+    case "studio-state":
+    case "studio-open":
+    case "studio-confirm":
+    case "studio-progress":
+    case "studio-candidate":
+    case "studio-candidates-done":
+    case "studio-installed":
+    case "studio-error":
+    case "studio-cancelled":
+      studio.handle(msg);
+      break;
     case "pack-offer":
       askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, saved: msg.saved });
       break;
@@ -1982,6 +2000,7 @@ function renderLooksMenu() {
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
     ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
+    ...(studio.enabled() ? [new Option("Make a pack…", "studio")] : []),
   );
   select.value = ""; // a hidden, disabled first option is not selected by the browser on its own: it would pick "Presets…", which then fires no change
   select.disabled = select.options.length === 1;
@@ -2325,6 +2344,7 @@ $("looks").addEventListener("change", () => {
   const value = $("looks").value;
   if (value === "gallery") openGallery("presets");
   else if (value === "packs") openGallery("packs");
+  else if (value === "studio") studio.open();
   else if (value.startsWith("look:")) ws?.send(JSON.stringify({ type: "look-load", name: value.slice(5) }));
   $("looks").value = "";
 });
