@@ -248,7 +248,14 @@ export function createStudio(io) {
           box.replaceChildren();
           status("Carrying on…");
         };
-        return button;
+        const discard = el("button", { type: "button", className: "ghost", textContent: "Delete", title: `Delete the unfinished job ${j.name} from this computer (a pack already installed is kept)` });
+        const row = el("div", { className: "pack-confirm-buttons" }, button, discard);
+        discard.onclick = () => {
+          if (!confirm(`Delete the unfinished job "${j.name}" (${j.outfit}) from this computer?`)) return;
+          io.send({ type: "studio-discard", id: j.id });
+          row.remove();
+        };
+        return row;
       }),
     );
   }

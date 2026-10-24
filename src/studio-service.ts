@@ -429,6 +429,14 @@ export function createStudioService(deps: StudioDeps) {
     say(`The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`);
   }
 
+  /** Removes a job of an earlier session from the disk (only one that is listed as carry-on-able, never the open one). Packs already installed are not touched. */
+  async function discard(id: string, send: Send): Promise<void> {
+    if (running || waiting || pending) return send({ type: "studio-error", message: "Finish or stop the job that is open first." });
+    if (!(await findJobs()).some((j) => j.id === id)) return send({ type: "studio-error", message: "That job is not there any more." });
+    await rm(join(deps.dataDir, "studio", id), { recursive: true, force: true });
+    await announce();
+  }
+
   /** Carries on a job from an earlier session, from whatever is on disk. */
   async function resume(id: string, send: Send): Promise<void> {
     if (running || waiting || pending) return send({ type: "studio-error", message: "Finish or stop the job that is open first." });
@@ -528,6 +536,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
         else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
+        else if (msg.type === "studio-discard" && typeof msg.id === "string") await discard(msg.id, send);
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
         else if (msg.type === "studio-cancel") cancel();

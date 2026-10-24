@@ -300,6 +300,36 @@ test("a job that was left (waiting for a pick, or for the review) can be carried
   }
 });
 
+test("a job that was left can be deleted, but not while another is open, and not one that is not listed", async () => {
+  const first = await setup();
+  try {
+    await first.service.command("on", first.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await first.service.message({ type: "studio-start", source: "risa-dress", name: "risa-gone", outfit: "a red scarf" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    await first.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await first.waitFor("studio-candidates-done");
+    first.service.close();
+
+    const second = await setup({ again: first });
+    try {
+      await second.service.command("on", second.say, false, () => {});
+      await second.service.message({ type: "studio-discard", id: "job-00000000" }, send, false);
+      assert.match(me.at(-1)?.message, /not there/);
+      await second.service.message({ type: "studio-discard", id: "../../etc" }, send, false);
+      assert.match(me.at(-1)?.message, /not there/, "only ids of listed jobs are taken");
+      await second.service.message({ type: "studio-discard", id: card?.id }, send, false);
+      assert.deepEqual((await second.service.stateMessage()).resumable, []);
+      assert.deepEqual((await readdir(join(second.dataDir, "studio")).catch(() => [])).filter((n) => n === card?.id), []);
+    } finally {
+      await second.cleanup();
+    }
+  } finally {
+    await first.cleanup();
+  }
+});
+
 test("her proposal for the form is checked against this computer, and nothing starts", async () => {
   const t = await setup();
   try {
