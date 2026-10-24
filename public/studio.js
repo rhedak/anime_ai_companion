@@ -232,6 +232,8 @@ export function createStudio(io) {
       status("Writing the pack…");
     };
     parts.extra.replaceChildren(notes, el("div", { className: "pack-confirm-buttons" }, use, again));
+    // The panel scrolls and the buttons are below the pictures: bring them into view.
+    parts.extra.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
 
   /** Jobs from an earlier session, as buttons that carry them on. */
