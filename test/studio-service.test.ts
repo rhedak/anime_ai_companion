@@ -175,8 +175,16 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(proposals().length, 1, "work mode: a file she reads could talk her into it");
     t.mode.value = "chat";
+    t.service.makeApplier()('[studio redraw="cheer, thinking-talk3"]');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(proposals().at(-1)?.redraw, ["cheer-1", "cheer-2", "thinking-talk3"], "a pose's own name means all its pictures, exact names stay");
     t.service.forgetTold();
     assert.match(t.service.note() ?? "", /pack studio is on/, "a new conversation is told again");
+
+    // A form that fails does not drop the review that is open.
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-other", outfit: "x" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /Describe the outfit/);
+    assert.ok((await t.service.stateMessage()).review, "the review is still there");
 
     // One picture drawn again takes new seeds and the pack is assembled again.
     const before = t.fake.requests.filter((r) => r.path === "/edit").length;

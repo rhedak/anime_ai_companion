@@ -174,6 +174,7 @@ test("a broken pose (two copies of her stacked) fails the lower-body check, a cl
   assert.deepEqual(checkLowerBody(body(0), body(1), w, h), [], "a pixel of shift is the same picture");
   assert.match(checkLowerBody(body(0), body(30), w, h).join(" "), /does not line up/);
   assert.match(checkLowerBody(body(0), body(0, 3), w, h).join(" "), /smaller/);
+  assert.deepEqual(checkLowerBody(body(0), body(0, 1), w, h), [], "a pose that is a little smaller (raised arms redraw her) is the same picture");
 });
 
 test("a face edit never replaces the plain background of the base, so the model repainting the backdrop leaves no rectangle", () => {

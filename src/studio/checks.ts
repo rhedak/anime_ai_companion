@@ -56,7 +56,9 @@ export function checkLowerBody(baseAlpha: Float32Array, poseAlpha: Float32Array,
     }
   }
   const flags: Flags = [];
-  if (before > 0 && after < before * 0.9) flags.push(`the lower part of her is ${Math.round((100 * (before - after)) / before)}% smaller than in her neutral picture (a lowered arm may be gone)`);
+  // Raising the arms makes the model redraw her a little smaller or larger (measured: 0.86 to 0.95 of the neutral area for a good wave or cheer, and the same
+  // 0.7 rows down, so it is her legs and not the arms): only a clear loss is a flag. A broken picture shows in the overlap below.
+  if (before > 0 && after < before * 0.8) flags.push(`the lower part of her is ${Math.round((100 * (before - after)) / before)}% smaller than in her neutral picture (her legs may be cut or gone)`);
   if (either > 0 && both / either < 0.8) flags.push(`the lower part of her does not line up with her neutral picture (${Math.round((100 * both) / either)}% overlap): the picture may be broken`);
   return flags;
 }

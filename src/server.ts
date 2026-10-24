@@ -720,7 +720,11 @@ const studio = createStudioService({
   framesDir,
   settings,
   saveSettings: () => saveSettings(settingsPath, settings),
-  broadcast: (msg) => broadcast(msg),
+  // The studio is refused from a phone, so what it draws, proposes and reports goes to sockets on this computer only.
+  broadcast: (msg) => {
+    const data = JSON.stringify(msg);
+    for (const c of clients) if (c.readyState === c.OPEN && !remoteSockets.has(c)) c.send(data);
+  },
   remoteRefusal: () => remoteRefusal,
   sources: () => listPacks(...packDirs),
   readSource: async (name) => {
@@ -1766,7 +1770,7 @@ wss.on("connection", (ws) => {
       }
     })
     .catch((err) => console.error("could not send the packs:", err));
-  void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
+  if (!remote) void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
   ws.send(JSON.stringify(modeInfo()));
   if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));

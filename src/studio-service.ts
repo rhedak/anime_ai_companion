@@ -164,8 +164,7 @@ export function createStudioService(deps: StudioDeps) {
     if (p.look) valid.look = p.look;
     if (usableName(p.name) && !(await stat(join(deps.framesDir, p.name)).then(() => true, () => false))) valid.name = p.name;
     if (on && p.redraw && waiting?.kind === "review") {
-      const known = knownFrameNames();
-      const names = p.redraw.filter((n) => known.has(n));
+      const names = frameNames(p.redraw);
       if (names.length) valid.redraw = names;
     }
     if (running || !(valid.outfit || valid.name || valid.look || valid.redraw)) return;
@@ -229,6 +228,7 @@ export function createStudioService(deps: StudioDeps) {
     });
     worker.unref();
     const run: Running = { job, dir, worker, phase, info };
+    const review0 = waiting?.kind === "review" && data.only ? waiting : null; // a redraw that fails leaves the review as it was
     running = run;
     waiting = null;
     void announce();
@@ -237,6 +237,7 @@ export function createStudioService(deps: StudioDeps) {
     const fail = (message: string) => {
       if (running !== run) return;
       running = null;
+      if (review0) waiting = review0;
       deps.pushNote(`the pack studio stopped while drawing "${job.name}": ${message.slice(0, 300)}`);
       deps.broadcast({ type: "studio-error", id: job.id, message });
       void announce();
@@ -322,7 +323,6 @@ export function createStudioService(deps: StudioDeps) {
 
   async function start(msg: Record<string, unknown>, send: Send): Promise<void> {
     if (running) return send({ type: "studio-error", message: "A job is running. Stop it first." });
-    forget();
     const source = typeof msg.source === "string" ? msg.source : "";
     const name = typeof msg.name === "string" ? msg.name.trim() : "";
     const outfit = cleanText(msg.outfit, MAX_OUTFIT);
@@ -356,6 +356,7 @@ export function createStudioService(deps: StudioDeps) {
       seeds: [1, 2, 3, 4],
     });
     if (!parsed.ok) return err(parsed.reason);
+    forget(); // only now: a form that fails above must not drop the review the user is looking at
     pending = { job: parsed.job, source: found, info: checked.info };
     send({
       type: "studio-confirm",
@@ -391,11 +392,16 @@ export function createStudioService(deps: StudioDeps) {
     startWorker(job, dir, "build", info, {});
   }
 
+  /** The picture names a list means: exact names, and a pose's own name (`cheer`, `wave`) for all its pictures. Anything else is dropped. */
+  function frameNames(list: string[]): string[] {
+    const known = knownFrameNames();
+    return [...new Set(list.flatMap((n) => (known.has(n) ? [n] : [...known].filter((k) => k.startsWith(`${n}-`) && /^\d+$/.test(k.slice(n.length + 1))))))];
+  }
+
   /** Makes some pictures again (and what was drawn from them), with new seeds. */
   async function regenerate(id: string, names: unknown, send: Send): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
-    const known = knownFrameNames();
-    const only = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && known.has(n)).slice(0, 12) : [];
+    const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 12) : [];
     if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
     const { job, dir, info } = waiting;
     startWorker(job, dir, "build", info, { only });
