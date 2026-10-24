@@ -79,7 +79,7 @@ export function createStudio(io) {
 
   function addCandidate(/** @type {string} */ id, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
     const grid = q(".studio-candidates");
-    if (grid) grid.className = "studio-candidates";
+    grid?.classList.remove("studio-review");
     if (!grid || typeof thumb !== "string" || !thumb.startsWith("data:image/webp;base64,")) return;
     const pick = el("button", { type: "button", className: "preset", title: "Use this one", ariaLabel: `Use picture ${number}` });
     pick.append(el("img", { src: thumb, alt: `Candidate ${number}` }));
@@ -137,7 +137,7 @@ export function createStudio(io) {
       use.disabled = true;
       status("Writing the pack…");
     };
-    box.className = "studio-review";
+    box.classList.add("studio-review");
     box.replaceChildren(grid, notes, el("div", { className: "pack-confirm-buttons" }, use, again));
   }
 

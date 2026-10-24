@@ -10,7 +10,7 @@ const diffAt = (a: Raster, b: Raster, i: number) =>
 /**
  * A face edit pasted back into `box`: did the edit run into the edge of the box (a wide mouth that reaches the chin, an eye that the box cut
  * off), and did it change anything at all? `box` is the padded box that was pasted. A hard change on the box's own border means the model
- * wanted to draw beyond it.
+ * wanted to draw beyond it. (A few dozen pixels is a hair strand crossing the border; the real cut-offs seen so far were 160 and more.)
  */
 export function checkFaceEdit(base: Raster, result: Raster, box: Box): Flags {
   const [x0, y0, x1, y1] = box;
@@ -26,7 +26,7 @@ export function checkFaceEdit(base: Raster, result: Raster, box: Box): Flags {
     }
   }
   const flags: Flags = [];
-  if (edge > 12) flags.push(`the change runs into the edge of the face area (${edge} pixels), so something may be cut off`);
+  if (edge > 100) flags.push(`the change runs into the edge of the face area (${edge} pixels), so something may be cut off`);
   if (inside < 0.004 * area) flags.push("the face hardly changed");
   return flags;
 }

@@ -1,6 +1,6 @@
 # Pack studio: redraw packs, make new ones and new activities from inside the app
 
-Status: **design, being built** (started 2026-10-24). This file is the plan to iterate on; each milestone ends at something the owner
+Status: **milestones 0 to 2 built** (2026-10-24): `/studio`, the question, four base pictures, the whole pack, review and install, resume. Milestones 3 and later are still design. This file is the plan to iterate on; each milestone ends at something the owner
 can try in the running app. It keeps every rule in `AGENTS.md` ("Safety"). What the image models can and cannot do, and the numbers
 behind that, are in [`pack-image-models.md`](pack-image-models.md); how to make a pack by hand is in [`frame-packs.md`](frame-packs.md).
 
@@ -137,6 +137,14 @@ These follow `AGENTS.md` ("Safety") and the position in `pack-image-models.md` (
 - The Python runner's pure parts (paste-back, seam score, matting, the contact sheet) get small synthetic-picture tests runnable with
   `uv run` and added to `check.sh` only when `uv` is present (`check.sh` already fails on skipped tests, so they are either run or not listed).
 - A **manual in-app checklist** per milestone (below) with the real model, kept in this file; real-model runs are never in CI.
+
+## What is built, and how to try it
+
+1. Start an image backend on this computer. The reference one: `uv run --with torch --with diffusers --with transformers --with accelerate --with sentencepiece --with pillow python python/pack_studio/server.py` (FLUX.2 klein 4B, weights already in the Hugging Face cache at the pinned revision; see the file's docstring). It loads the model on the first request and needs about 22 GB.
+2. In the app: `/studio backend http://127.0.0.1:7861`, then `/studio on` (it checks the backend, says what it is and who is responsible, and opens the panel). Pick a pack to draw from, a name and an outfit, and press *Draw outfits*; read the question; press *Draw 4 pictures*; pick one; wait for the rest (about forty pictures: 8 to 15 minutes on the machine it was built on, more with retries); look at the review (⚠ marks a picture a check flagged; *Draw again* redraws it and what was drawn from it); *Use this pack* writes `data/frames/<name>`, and *Show her as…* turns it on.
+3. A job survives a restart: `/studio on` offers *Carry on …* for a job that waits for the pick, is half drawn, or is ready to review (everything is on disk in `data/studio/<job>/`).
+
+What the first real runs showed (Risa's dress pack, FLUX.2 klein 4B, Apple M5 Max): the model sometimes returns a broken pose (two copies of her stacked), repaints the backdrop near the face a slightly different pink, or changes an expression too little; the checks catch these and each picture gets three attempts, but a draft still needs a person's eye. Decoded pictures must be copied out of `sharp`'s buffers (a view onto them was overwritten, which looked like noise in the pictures).
 
 ## Milestones (each ends at something to try in the app)
 
