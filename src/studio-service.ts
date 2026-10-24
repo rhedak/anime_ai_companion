@@ -381,7 +381,7 @@ export function createStudioService(deps: StudioDeps) {
       width,
       height,
       backend: { url: deps.settings.studioBackend, name: checked.info.name, model: checked.info.model, revision: checked.info.revision, licence: checked.info.licence },
-      seeds: [1, 2, 3, 4],
+      seeds: [1, 2, 3, 4].slice(0, Number.isInteger(msg.pictures) && (msg.pictures as number) >= 1 && (msg.pictures as number) <= 4 ? (msg.pictures as number) : 4),
     });
     if (!parsed.ok) return err(parsed.reason);
     forget(); // only now: a form that fails above must not drop the review the user is looking at

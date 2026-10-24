@@ -352,6 +352,28 @@ test("a paid backend: the warning comes before anything is drawn, what the base 
   }
 });
 
+test("the number of first pictures can be one to four, and a value outside that means four", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-one", outfit: "a red scarf", pictures: 1 }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.equal(card?.pictures, 1);
+    await t.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    assert.equal(t.sent.filter((m) => m.type === "studio-candidate").length, 1);
+    assert.equal(t.fake.requests.filter((r) => r.path === "/edit").length, 1);
+    await t.service.message({ type: "studio-cancel" }, send, false);
+    me.length = 0;
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-many", outfit: "a red scarf", pictures: 9 }, send, false);
+    assert.equal(me.find((m) => m.type === "studio-confirm")?.pictures, 4);
+  } finally {
+    await t.cleanup();
+  }
+});
+
 test("a job that was left can be deleted, but not while another is open, and not one that is not listed", async () => {
   const first = await setup();
   try {

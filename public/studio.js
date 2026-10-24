@@ -43,6 +43,7 @@ export function createStudio(io) {
     const name = el("input", { type: "text", id: "studio-name", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
     const outfit = el("textarea", { id: "studio-outfit", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
     const look = el("textarea", { id: "studio-look", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
+    const count = el("select", { id: "studio-count", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
@@ -59,7 +60,7 @@ export function createStudio(io) {
     start.onclick = () => {
       q(".studio-confirm")?.replaceChildren();
       q(".studio-candidates")?.replaceChildren();
-      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value });
+      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value) });
       status("Checking…");
     };
     panel = el(
@@ -74,6 +75,8 @@ export function createStudio(io) {
       outfit,
       el("label", { textContent: "Her words for it", htmlFor: "studio-look" }),
       look,
+      el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }),
+      count,
       el("div", { className: "studio-proposal" }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton),
       el("p", { className: "studio-status", role: "status" }),
