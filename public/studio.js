@@ -57,7 +57,7 @@ export function createStudio(io) {
     };
     panel = el(
       "div",
-      { className: "gallery studio", role: "dialog", ariaLabel: "Pack studio" },
+      { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
       el("div", { className: "gallery-title", textContent: "Pack studio: a draft of her in a new outfit, drawn on this computer" }),
       el("label", { textContent: "Draw from", htmlFor: "studio-source" }),
       source,
@@ -74,6 +74,21 @@ export function createStudio(io) {
     fillSources();
     source.onchange?.(new Event("change"));
     outfit.focus();
+    io.send({ type: "studio-state" }); // a job that is already going (or waiting for the pick) is shown again
+  }
+
+  function addCandidate(/** @type {string} */ id, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
+    const grid = q(".studio-candidates");
+    if (!grid || typeof thumb !== "string" || !thumb.startsWith("data:image/webp;base64,")) return;
+    const pick = el("button", { type: "button", className: "preset", title: "Use this one", ariaLabel: `Use picture ${number}` });
+    pick.append(el("img", { src: thumb, alt: `Candidate ${number}` }));
+    pick.onclick = () => {
+      io.send({ type: "studio-pick", id, seed });
+      grid.replaceChildren();
+      status("Cutting her out…");
+      running(true);
+    };
+    grid.append(pick);
   }
 
   function fillSources() {
@@ -100,7 +115,16 @@ export function createStudio(io) {
           on = msg.on === true;
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
           if (!on) close();
-          else fillSources();
+          else {
+            // A job is running or waits for the pick (this page was reloaded, or the panel was closed): show where it is.
+            if (msg.job && !panel) open();
+            fillSources();
+            if (msg.job && panel) {
+              const grid = q(".studio-candidates");
+              if (grid && grid.childElementCount === 0) for (const c of Array.isArray(msg.candidates) ? msg.candidates : []) addCandidate(String(msg.job.id), c.seed, c.thumb, grid.childElementCount + 1);
+              status(String(msg.job.text || "Working…"));
+            }
+          }
           running(Boolean(msg.running));
           document.dispatchEvent(new CustomEvent("studio-state", { detail: { on } }));
           return true;
@@ -137,16 +161,7 @@ export function createStudio(io) {
           return true;
         case "studio-candidate": {
           const grid = q(".studio-candidates");
-          if (!grid || typeof msg.thumb !== "string" || !msg.thumb.startsWith("data:image/webp;base64,")) return true;
-          const pick = el("button", { type: "button", className: "preset", title: "Use this one", ariaLabel: `Use picture ${msg.done}` });
-          pick.append(el("img", { src: msg.thumb, alt: `Candidate ${msg.done}` }));
-          pick.onclick = () => {
-            io.send({ type: "studio-pick", id: String(msg.id), seed: msg.seed });
-            grid.replaceChildren();
-            status("Cutting her out…");
-            running(true);
-          };
-          grid.append(pick);
+          if (grid) addCandidate(String(msg.id), msg.seed, msg.thumb, Number(msg.done));
           return true;
         }
         case "studio-candidates-done":

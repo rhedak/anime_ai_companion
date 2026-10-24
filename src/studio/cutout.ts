@@ -14,13 +14,23 @@ import { dilate, dilateSquare, makeRaster, openSquare, type Mask, type Raster } 
 export type KeyName = "magenta" | "green" | "cyan";
 export const KEYS: Record<KeyName, readonly [number, number, number]> = { magenta: [255, 0, 255], green: [0, 255, 0], cyan: [0, 255, 255] };
 
-/** Within this distance of the key colour a pixel is background (a model's flat colour is never perfectly flat). Blends are further out and go to the matting. */
-const KEY_RADIUS = 90;
-
-const near = (key: KeyName, r: number, g: number, b: number): boolean => {
-  const k = KEYS[key];
-  return Math.hypot(r - k[0], g - k[1], b - k[2]) < KEY_RADIUS;
-};
+/**
+ * Is this pixel the key colour or a shaded version of it? A model's "flat" colour is never exactly the colour asked for, and a shadow near
+ * the figure makes it darker, so the test is the hue (red and blue alike and green low, for magenta) and not a distance to one value. A
+ * blend with the figure is further from that hue (half dark red hair and half magenta has far more red than blue) and goes to the matting.
+ */
+export function isKeyLike(key: KeyName, r: number, g: number, b: number): boolean {
+  if (key === "magenta") {
+    const hi = Math.max(r, b), lo = Math.min(r, b);
+    return lo >= 70 && hi - lo <= 0.22 * hi && g <= 0.4 * lo;
+  }
+  if (key === "green") {
+    const hi = Math.max(r, b), lo = Math.min(r, b);
+    return g >= 70 && hi <= 0.4 * g && hi - lo <= 0.3 * g;
+  }
+  const hi = Math.max(g, b), lo = Math.min(g, b);
+  return lo >= 70 && hi - lo <= 0.22 * hi && r <= 0.4 * lo;
+}
 
 /** How much of a figure's colours each key comes close to (pixels within its radius): the lowest is the safest key. */
 export function pickKey(figure: Raster): { key: KeyName; shares: Record<KeyName, number> } {
@@ -31,8 +41,7 @@ export function pickKey(figure: Raster): { key: KeyName; shares: Record<KeyName,
     seen++;
     const r = figure.data[i * 4], g = figure.data[i * 4 + 1], b = figure.data[i * 4 + 2];
     for (const key of Object.keys(KEYS) as KeyName[]) {
-      const k = KEYS[key];
-      if (Math.hypot(r - k[0], g - k[1], b - k[2]) < KEY_RADIUS) shares[key]++;
+      if (isKeyLike(key, r, g, b)) shares[key]++;
     }
   }
   const order = (Object.keys(KEYS) as KeyName[]).sort((a, b) => shares[a] - shares[b]);
@@ -62,16 +71,28 @@ export interface Cutout {
 export function keyBackground(pic: Raster, key: KeyName): Mask {
   const { w, h, data } = pic;
   const out = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) if (near(key, data[i * 4], data[i * 4 + 1], data[i * 4 + 2])) out[i] = 1;
+  for (let i = 0; i < w * h; i++) if (isKeyLike(key, data[i * 4], data[i * 4 + 1], data[i * 4 + 2])) out[i] = 1;
   return out;
+}
+
+/** The colour the background really has in this picture: the middle of the background pixels, channel by channel. */
+export function measureKey(pic: Raster, background: Mask, fallback: readonly [number, number, number]): [number, number, number] {
+  const samples: number[][] = [[], [], []];
+  for (let i = 0; i < background.length; i += 7) {
+    if (!background[i]) continue;
+    for (let c = 0; c < 3; c++) samples[c].push(pic.data[i * 4 + c]);
+  }
+  if (samples[0].length < 50) return [fallback[0], fallback[1], fallback[2]];
+  const mid = (v: number[]) => v.sort((a, b) => a - b)[v.length >> 1];
+  return [mid(samples[0]), mid(samples[1]), mid(samples[2])];
 }
 
 export function cutout(pic: Raster, options: CutoutOptions): Cutout {
   const { w, h, data } = pic;
   const n = w * h;
   const band = options.band ?? 4;
-  const K = KEYS[options.key];
   const background = keyBackground(pic, options.key);
+  const K = measureKey(pic, background, KEYS[options.key]);
   const grown = dilate(background, w, h, band);
   const alpha = new Float32Array(n);
   const fg = new Float32Array(n * 3);

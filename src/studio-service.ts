@@ -66,6 +66,9 @@ export function createStudioService(deps: StudioDeps) {
   let running: Running | null = null;
   /** After the base pictures are made and before one is picked. */
   let pendingPick: { job: Job; dir: string; info: BackendInfo; candidates: number[] } | null = null;
+  /** What the page would need to show a job again after a reload: the last thing said, and the candidate pictures so far. */
+  let lastText = "";
+  const shown = new Map<number, string>();
   const disabled = process.env.COMPANION_NO_STUDIO === "1";
   const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : httpBackend(url));
 
@@ -76,6 +79,9 @@ export function createStudioService(deps: StudioDeps) {
       backend: deps.settings.studioBackend,
       sources: on ? await deps.sources() : [],
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
+      /** A job the page should be showing: drawing, or waiting for the pick. */
+      job: running || pendingPick ? { id: (running ?? pendingPick)!.job.id, picking: !running, text: lastText } : null,
+      candidates: running || pendingPick ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
     };
   }
   const announce = async () => deps.broadcast(await stateMessage());
@@ -97,6 +103,8 @@ export function createStudioService(deps: StudioDeps) {
   function stopRunning(): void {
     pending = null;
     pendingPick = null;
+    shown.clear();
+    lastText = "";
     if (!running) return;
     void running.worker.terminate();
     running = null;
@@ -113,12 +121,20 @@ export function createStudioService(deps: StudioDeps) {
     void announce();
     worker.on("message", async (event: StudioEvent | { type: "finished" }) => {
       if (running !== run) return;
-      if (event.type === "status") deps.broadcast({ type: "studio-progress", id: job.id, text: event.text });
+      if (event.type === "status") {
+        lastText = event.text;
+        deps.broadcast({ type: "studio-progress", id: job.id, text: event.text });
+      }
       else if (event.type === "candidate") {
         run.candidates.push(event.seed);
-        const thumb = await readFile(join(dir, event.thumb)).catch(() => null);
-        deps.broadcast({ type: "studio-candidate", id: job.id, seed: event.seed, done: event.done, total: event.total, thumb: thumb ? `data:image/webp;base64,${thumb.toString("base64")}` : null });
-      } else if (event.type === "base-done") deps.broadcast({ type: "studio-candidates-done", id: job.id });
+        const file = await readFile(join(dir, event.thumb)).catch(() => null);
+        const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
+        if (thumb) shown.set(event.seed, thumb);
+        deps.broadcast({ type: "studio-candidate", id: job.id, seed: event.seed, done: event.done, total: event.total, thumb });
+      } else if (event.type === "base-done") {
+        lastText = "Pick the one you like. Nothing is saved until you do.";
+        deps.broadcast({ type: "studio-candidates-done", id: job.id });
+      }
       else if (event.type === "neutral-done") await install(run);
       else if (event.type === "error") {
         running = null;
@@ -143,6 +159,8 @@ export function createStudioService(deps: StudioDeps) {
   async function install(run: Running): Promise<void> {
     const { job, dir, info } = run;
     running = null;
+    shown.clear();
+    lastText = "";
     void run.worker.terminate();
     const out = join(dir, "out");
     try {
@@ -172,6 +190,8 @@ export function createStudioService(deps: StudioDeps) {
   async function start(msg: Record<string, unknown>, send: Send): Promise<void> {
     if (running) return send({ type: "studio-error", message: "A job is running. Stop it first." });
     pendingPick = null;
+    shown.clear();
+    lastText = "";
     const source = typeof msg.source === "string" ? msg.source : "";
     const name = typeof msg.name === "string" ? msg.name.trim() : "";
     const outfit = cleanText(msg.outfit, MAX_OUTFIT);

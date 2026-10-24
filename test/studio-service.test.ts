@@ -97,7 +97,10 @@ test("a redraw: the question first, four pictures, one picked, a pack installed 
     const candidates = t.sent.filter((m) => m.type === "studio-candidate");
     assert.equal(candidates.length, 4);
     assert.ok(candidates.every((c) => String(c.thumb).startsWith("data:image/webp;base64,")));
-    assert.equal((await t.service.stateMessage()).running, null, "the worker is done while she waits for the pick");
+    const waiting = await t.service.stateMessage();
+    assert.equal(waiting.running, null, "the worker is done while she waits for the pick");
+    assert.deepEqual([waiting.job?.picking, waiting.candidates.length], [true, 4], "a reloaded page can show the pictures again");
+    assert.match(waiting.job?.text ?? "", /Pick the one you like/);
 
     await t.service.message({ type: "studio-pick", id: card.id, seed: 3 }, send, false);
     await t.waitFor("studio-installed");
