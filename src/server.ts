@@ -714,6 +714,7 @@ const personaVoice = createPersonaService({
 
 // --- the pack studio: pictures of her in a new outfit, made on this computer; see studio-service.ts and docs/pack-studio.md ---
 const studio = createStudioService({
+  mode: () => mode,
   dataDir,
   framesDir,
   settings,
@@ -1621,6 +1622,7 @@ function forgetConversationSize(): void {
   cards.forgetLore();
   memory.forgetTold(); // a new conversation is told her notes again
   personaVoice.forgetTold();
+  studio.forgetTold();
   turns.dropHeld();
 }
 
@@ -1717,6 +1719,7 @@ const turns = createTurnService({
   notes,
   memory,
   persona: personaVoice,
+  studio,
   cards,
   skills,
   queue,

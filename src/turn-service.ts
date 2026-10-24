@@ -8,6 +8,7 @@ import type { ImageInput } from "./images.ts";
 import type { createCardService } from "./card-service.ts";
 import type { createMemoryService } from "./memory-service.ts";
 import type { createPersonaService } from "./persona-service.ts";
+import type { createStudioService } from "./studio-service.ts";
 import type { createNotes } from "./notes.ts";
 import type { createQueueService } from "./queue-service.ts";
 import type { createSkillsService } from "./skills-service.ts";
@@ -56,6 +57,7 @@ export interface TurnDeps {
   notes: ReturnType<typeof createNotes>;
   memory: ReturnType<typeof createMemoryService>;
   persona: ReturnType<typeof createPersonaService>;
+  studio: ReturnType<typeof createStudioService>;
   cards: ReturnType<typeof createCardService>;
   skills: ReturnType<typeof createSkillsService>;
   queue: ReturnType<typeof createQueueService>;
@@ -139,7 +141,7 @@ export function createTurnService(deps: TurnDeps) {
 
   /** The message as the brain gets it: with a note in front when something waits to be said. */
   function withNotes(userText: string): string {
-    const background = [deps.memory.note(userText), deps.persona.note(), deps.cards.loreNote(userText), deps.sceneNote()].filter((n): n is string => Boolean(n));
+    const background = [deps.memory.note(userText), deps.persona.note(), deps.studio.note(), deps.cards.loreNote(userText), deps.sceneNote()].filter((n): n is string => Boolean(n));
     const waiting = [...background, ...deps.notes.take()];
     return waiting.length ? `(system note, not from the user: ${waiting.join(" ")})\n\n${userText}` : userText;
   }
@@ -150,6 +152,7 @@ export function createTurnService(deps: TurnDeps) {
     const applyNewTags = makeTagApplier();
     const applyMemory = deps.memory.makeApplier();
     const applyPersona = deps.persona.makeApplier();
+    const applyStudio = deps.studio.makeApplier();
 
     return (event) => {
       if (event.type === "delta") {
@@ -158,6 +161,7 @@ export function createTurnService(deps: TurnDeps) {
         applyNewTags(normalizeTags(reply));
         applyMemory(normalizeTags(reply));
         applyPersona(normalizeTags(reply));
+        applyStudio(normalizeTags(reply));
         deps.broadcast(event);
       } else if (event.type === "tool") {
         deps.skills.noticeToolUse(event);
@@ -184,6 +188,7 @@ export function createTurnService(deps: TurnDeps) {
         applyNewTags(reply);
         applyMemory(reply);
         applyPersona(reply);
+        applyStudio(reply);
         // Let queued avatar changes land before the turn is reported finished.
         deps.avatar.settled().finally(async () => {
           deps.transcript.flush();

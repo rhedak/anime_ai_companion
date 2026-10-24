@@ -24,7 +24,9 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
   const notes: string[] = [];
+  const mode = { value: "chat" as "chat" | "work" };
   const service = createStudioService({
+    mode: () => mode.value,
     dataDir,
     framesDir,
     settings,
@@ -37,7 +39,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     pushNote: (t) => notes.push(t),
   });
   const waitFor = async (type: string, count = 1) => {
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 3600; i++) {
       if (sent.filter((m) => m.type === type).length >= count) return;
       await new Promise((r) => setTimeout(r, 25));
     }
@@ -49,7 +51,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     await fake.stop();
     await rm(dataDir, { recursive: true, force: true });
   };
-  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, say: (t: string) => said.push(t) };
+  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, say: (t: string) => said.push(t) };
 }
 
 test("the studio is off until /studio on, needs a backend that answers, and is refused from a phone", async () => {
@@ -127,6 +129,28 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     assert.ok(differing(wave, neutralPic) > 0, "a pose is a whole-picture edit");
     const mouthArea = (pic: typeof neutralPic) => Array.from(pic.data.subarray((Math.floor(pic.h * 0.23) * pic.w + Math.floor(pic.w * 0.47)) * 4, (Math.floor(pic.h * 0.23) * pic.w + Math.floor(pic.w * 0.47)) * 4 + 4));
     assert.notDeepEqual(mouthArea(happy), mouthArea(neutralPic), "inside the face, the edit is kept");
+
+    // She is told about the studio once, in chat, with the packs she can draw from; and told what the checks found.
+    assert.match(t.service.note() ?? "", /pack studio is on.*Packs you can draw from: risa-dress/s);
+    assert.equal(t.service.note(), null, "once per conversation");
+    assert.ok(t.notes.some((n) => /finished drawing "risa-winter".*(Checks that still failed|Every picture passed)/s.test(n)), "the report reaches her");
+
+    // Her proposals fill the form and nothing more; a bad name, a work-mode reply and a studio that is off are ignored.
+    const proposals = () => t.sent.filter((m) => m.type === "studio-proposal");
+    const apply = t.service.makeApplier();
+    apply('Here: [studio redraw="happy, nonsense, wave-1"] done');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual([proposals().length, proposals()[0]?.redraw, proposals()[0]?.job], [1, ["happy", "wave-1"], card.id], "only pictures the pack has, and only while a review is open");
+    apply('Here: [studio redraw="happy, nonsense, wave-1"] done');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(proposals().length, 1, "the same tag is not applied twice by the same reply");
+    t.mode.value = "work";
+    t.service.makeApplier()('[studio redraw="sad"]');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(proposals().length, 1, "work mode: a file she reads could talk her into it");
+    t.mode.value = "chat";
+    t.service.forgetTold();
+    assert.match(t.service.note() ?? "", /pack studio is on/, "a new conversation is told again");
 
     // One picture drawn again takes new seeds and the pack is assembled again.
     const before = t.fake.requests.filter((r) => r.path === "/edit").length;
@@ -247,5 +271,32 @@ test("a job that was left (waiting for a pick, or for the review) can be carried
     }
   } finally {
     await first.cleanup();
+  }
+});
+
+test("her proposal for the form is checked against this computer, and nothing starts", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const requests = t.fake.requests.length;
+    t.service.makeApplier()('Okay! [studio outfit="a red scarf and a long coat" name="risa-scarf" source="risa-dress" look="You wear a red scarf."]');
+    await new Promise((r) => setTimeout(r, 50));
+    const first = t.sent.filter((m) => m.type === "studio-proposal").at(-1);
+    assert.deepEqual([first?.outfit, first?.name, first?.source, first?.look, first?.redraw], ["a red scarf and a long coat", "risa-scarf", "risa-dress", "You wear a red scarf.", undefined]);
+    assert.equal((await t.service.stateMessage()).proposal?.name, "risa-scarf", "a page that reloads shows it again");
+    t.service.makeApplier()('[studio outfit="a hat" name="../evil" source="nobody"]');
+    await new Promise((r) => setTimeout(r, 50));
+    const second = t.sent.filter((m) => m.type === "studio-proposal").at(-1);
+    assert.deepEqual([second?.outfit, second?.name, second?.source], ["a hat", undefined, undefined], "a name that is not usable and a pack that is not there are left out");
+    assert.equal(t.fake.requests.length, requests, "nothing was drawn");
+    // Off: no note, no proposals.
+    await t.service.command("off", t.say, false, () => {});
+    t.sent.length = 0;
+    t.service.makeApplier()('[studio outfit="a coat"]');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(t.sent.filter((m) => m.type === "studio-proposal").length, 0);
+    assert.equal(t.service.note(), null);
+  } finally {
+    await t.cleanup();
   }
 });

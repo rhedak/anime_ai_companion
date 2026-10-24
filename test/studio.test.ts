@@ -8,6 +8,7 @@ import { checkLowerBody } from "../src/studio/checks.ts";
 import { pasteBack } from "../src/studio/paste.ts";
 import { cutout, keyBackground, KEYS, pickKey, toRaster } from "../src/studio/cutout.ts";
 import { cleanText, parseJob } from "../src/studio/job.ts";
+import { findStudioTags, usableName } from "../src/studio/tags.ts";
 import { decode, encodePng, flatten, label, makeRaster, openSquare, resize, type Raster } from "../src/studio/raster.ts";
 import { runBase, type StudioEvent } from "../src/studio/runner.ts";
 import { startFakeBackend } from "./helpers/image-backend.ts";
@@ -184,4 +185,15 @@ test("a face edit never replaces the plain background of the base, so the model 
   const out = pasteBack(base, edited, [2, 2, 18, 18], 2, keep);
   assert.deepEqual([...out.data.slice((3 * 20 + 3) * 4, (3 * 20 + 3) * 4 + 3)], [255, 0, 255], "the backdrop is the base's");
   assert.ok(out.data[(10 * 20 + 10) * 4 + 1] > 150, "the figure takes the edit");
+});
+
+test("a studio tag is read into its fields, cleaned, and only complete tags count", () => {
+  const reply = 'Sure! [emotion:happy] [studio outfit="a dark green winter coat <b>over</b> a sweater" name="risa-winter" look=\'You wear a green coat.\' source="risa-dress"] Here you go.';
+  assert.deepEqual(findStudioTags(reply), [{ outfit: "a dark green winter coat b over /b a sweater", name: "risa-winter", look: "You wear a green coat.", source: "risa-dress" }]);
+  assert.deepEqual(findStudioTags('[studio redraw="Happy, shy-blink; ../x, sad"]'), [{ redraw: ["happy", "shy-blink", "sad"] }]);
+  assert.deepEqual(findStudioTags('[studio outfit="a coat'), [], "a tag still being written is not read");
+  assert.deepEqual(findStudioTags('[studio outfit="a coat [with] a hood"]'), [], "a bracket inside a value ends the tag: nothing is read rather than half of it");
+  assert.deepEqual(findStudioTags('[studio ignored="x"]'), [], "a tag with nothing we know is nothing");
+  assert.equal(findStudioTags(`[studio outfit="${"w ".repeat(500)}"]`)[0].outfit?.length, 400, "the outfit is capped");
+  assert.ok(usableName("risa-winter") && !usableName("../x") && !usableName(".hidden") && !usableName(undefined));
 });

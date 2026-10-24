@@ -196,3 +196,15 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
   }
   emit({ type: "review", tiles, flagged });
 }
+
+/** Every name a pack job draws, for checking a name that came from outside (the brain's proposal, the page). */
+export function knownFrameNames(): Set<string> {
+  const names = new Set<string>(Object.keys(POSES));
+  for (const e of EMOTIONS) {
+    names.add(e);
+    names.add(`${e}-blink`);
+    for (const k of [1, 2, 3]) names.add(`${e}-talk${k}`);
+  }
+  names.delete("neutral"); // the base picture is not drawn again here
+  return names;
+}

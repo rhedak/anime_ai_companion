@@ -99,6 +99,7 @@ function parseReply(text) {
     .replace(/\[demo\]/g, "")
     .replace(/ *\[remember\s[^\]]*\]/g, "")
     .replace(/ *\[persona\s[^\]]*\]/g, "")
+    .replace(/ *\[studio\s[^\]]*\]/g, "")
     .replace(/ *\[remember\][^\[]*$/i, "") // a [remember]… that is still being written
     .replace(/ *\[image\s[^\]]*\]/g, "")
     .replace(/ *\[outfit\s[^\]]*\]/g, "")
@@ -1376,6 +1377,7 @@ function handle(msg) {
     case "studio-installed":
     case "studio-error":
     case "studio-cancelled":
+    case "studio-proposal":
       studio.handle(msg);
       break;
     case "pack-offer":

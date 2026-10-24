@@ -37,6 +37,7 @@ export function createStudio(io) {
     const source = el("select", { id: "studio-source", ariaLabel: "Draw from this pack" });
     const name = el("input", { type: "text", id: "studio-name", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
     const outfit = el("textarea", { id: "studio-outfit", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
+    const look = el("textarea", { id: "studio-look", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
@@ -52,7 +53,7 @@ export function createStudio(io) {
     start.onclick = () => {
       q(".studio-confirm")?.replaceChildren();
       q(".studio-candidates")?.replaceChildren();
-      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value });
+      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value });
       status("Checking…");
     };
     panel = el(
@@ -65,6 +66,9 @@ export function createStudio(io) {
       name,
       el("label", { textContent: "Outfit", htmlFor: "studio-outfit" }),
       outfit,
+      el("label", { textContent: "Her words for it", htmlFor: "studio-look" }),
+      look,
+      el("div", { className: "studio-proposal" }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton),
       el("p", { className: "studio-status", role: "status" }),
       el("div", { className: "studio-confirm" }),
@@ -160,6 +164,44 @@ export function createStudio(io) {
     );
   }
 
+  /**
+   * Something she proposed (chat): words for the form, or pictures to draw again. It only fills in what the user can read and change; the
+   * user still presses the button, and the server asks its question before anything is drawn.
+   */
+  function applyProposal(/** @type {Record<string, any>} */ p) {
+    if (!panel) open();
+    const set = (/** @type {string} */ id, /** @type {unknown} */ value) => {
+      const field = /** @type {HTMLInputElement | HTMLTextAreaElement | null} */ (q(id));
+      if (field && typeof value === "string" && value) field.value = value;
+    };
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    if (select && typeof p.source === "string" && sources.includes(p.source)) select.value = p.source;
+    set("#studio-outfit", p.outfit);
+    set("#studio-look", p.look);
+    if (typeof p.name === "string" && p.name) {
+      set("#studio-name", p.name);
+      const name = q("#studio-name");
+      if (name) delete name.dataset.auto;
+    }
+    const box = q(".studio-proposal");
+    if (!box) return;
+    box.replaceChildren();
+    if (Array.isArray(p.redraw) && p.redraw.length && p.job) {
+      const names = p.redraw.map(String);
+      const go = el("button", { type: "button", textContent: `Draw ${names.join(", ")} again` });
+      go.onclick = () => {
+        io.send({ type: "studio-regen", id: String(p.job), names });
+        box.replaceChildren();
+        q(".studio-candidates")?.replaceChildren();
+        status("Drawing them again…");
+        running(true);
+      };
+      box.append(el("p", { textContent: "She suggests drawing these again:" }), go);
+    } else if (p.outfit || p.name || p.look) {
+      box.append(el("p", { textContent: "She suggested these words. Change anything, then press Draw outfits." }));
+    }
+  }
+
   function fillSources() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
@@ -198,8 +240,12 @@ export function createStudio(io) {
               status(String(msg.job.text || "Working…"));
             }
           }
+          if (msg.proposal && panel && !q(".studio-proposal")?.childElementCount) applyProposal({ ...msg.proposal, job: msg.job?.reviewing ? msg.job.id : null });
           running(Boolean(msg.running));
           document.dispatchEvent(new CustomEvent("studio-state", { detail: { on } }));
+          return true;
+        case "studio-proposal":
+          applyProposal(msg);
           return true;
         case "studio-open":
           if (!panel) open();

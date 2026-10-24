@@ -1,14 +1,18 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
+import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { BackendError, checkBackendUrl, httpBackend, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
-import { cleanText, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
+import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
+import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
 
 /** The pictures of a source pack the studio reads: its rest picture, and its blink and mouth pictures to learn where her face is. */
 export interface SourceFrames {
@@ -36,6 +40,8 @@ export interface StudioDeps {
   refreshPacks(): Promise<void>;
   /** Something to tell her with her next message. */
   pushNote(text: string): void;
+  /** Chat or work: the brain's proposals are for chat only (in work mode a file she reads could talk her into one). */
+  mode(): Mode;
   /** Tests give a stand-in; the app builds the HTTP client. */
   makeBackend?: (url: string) => ImageBackend;
   workerUrl?: URL;
@@ -68,6 +74,15 @@ interface Waiting {
   review: Review | null;
 }
 
+/** What she is told about the studio (src/studio/skill.md). Read once; the app runs from a folder that has it. */
+const SKILL = (() => {
+  try {
+    return readFileSync(new URL("./studio/skill.md", import.meta.url), "utf8");
+  } catch {
+    return "";
+  }
+})();
+
 /** What the user is told before anything is drawn, and again with the result. */
 export const RESPONSIBILITY =
   "You are responsible for what is drawn and for which image model you use. The app adds no filter of its own, and the model's own terms apply to every picture.";
@@ -89,6 +104,12 @@ export function createStudioService(deps: StudioDeps) {
   /** What the page would need to show a job again after a reload: the last thing said, and the candidate pictures so far. */
   let lastText = "";
   const shown = new Map<number, string>();
+  /** Has she been told about the studio in this conversation? */
+  let told = false;
+  /** What she last proposed for the form (or for a redraw), so a page that connects or reloads can show it. */
+  let proposal: (StudioProposal & { id: string }) | null = null;
+  /** The packs a new one can be drawn from, as of the last time the page asked: she is told them. */
+  let knownSources: string[] = [];
   const disabled = process.env.COMPANION_NO_STUDIO === "1";
   const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : httpBackend(url));
 
@@ -98,16 +119,46 @@ export function createStudioService(deps: StudioDeps) {
       type: "studio-state",
       on,
       backend: deps.settings.studioBackend,
-      sources: on ? await deps.sources() : [],
+      sources: on ? (knownSources = await deps.sources()) : [],
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
       /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
       candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
       review: waiting?.kind === "review" ? waiting.review : null,
       resumable: on && !job && !pending ? await findJobs() : [],
+      proposal,
     };
   }
   const announce = async () => deps.broadcast(await stateMessage());
+
+  /** What a job found, in words for her: the checks that still failed after the retries. */
+  function reportNote(job: Job, review: Review | null): string {
+    const failed = review?.flagged ?? [];
+    const found = failed.length ? `Checks that still failed after the retries: ${failed.map((f) => `${f.name}: ${f.flags.join("; ")}`).join(" | ")}.` : "Every picture passed every check.";
+    return (
+      `The pack studio finished drawing "${job.name}" (${job.outfit}) from the ${job.source} pack. ${found} The user is looking at the pack now. ` +
+      `If they ask what you think, you may suggest pictures to draw again with [studio redraw="…"]; they press the button.`
+    ).slice(0, 1800);
+  }
+
+  /** A proposal from her reply, checked against this computer: what is not valid is left out, and nothing is started. */
+  async function propose(p: StudioProposal): Promise<void> {
+    if (!on || deps.mode() !== "chat") return;
+    const sources = await deps.sources();
+    const valid: StudioProposal = {};
+    if (p.source && sources.includes(p.source)) valid.source = p.source;
+    if (p.outfit && p.outfit.length >= 3) valid.outfit = p.outfit;
+    if (p.look) valid.look = p.look;
+    if (usableName(p.name) && !(await stat(join(deps.framesDir, p.name)).then(() => true, () => false))) valid.name = p.name;
+    if (p.redraw && waiting?.kind === "review") {
+      const known = knownFrameNames();
+      const names = p.redraw.filter((n) => known.has(n));
+      if (names.length) valid.redraw = names;
+    }
+    if (running || !(valid.outfit || valid.name || valid.look || valid.source || valid.redraw)) return;
+    proposal = { id: randomBytes(4).toString("hex"), ...valid };
+    deps.broadcast({ type: "studio-proposal", ...proposal, job: waiting?.kind === "review" ? waiting.job.id : null });
+  }
 
   /** Jobs of an earlier session that can be carried on: waiting for the pick, half built, or ready to review. Newest first. */
   async function findJobs(): Promise<{ id: string; name: string; outfit: string; stage: "pick" | "build" | "review" }[]> {
@@ -167,6 +218,7 @@ export function createStudioService(deps: StudioDeps) {
     const fail = (message: string) => {
       if (running !== run) return;
       running = null;
+      deps.pushNote(`the pack studio stopped while drawing "${job.name}": ${message.slice(0, 300)}`);
       deps.broadcast({ type: "studio-error", id: job.id, message });
       void announce();
     };
@@ -208,6 +260,7 @@ export function createStudioService(deps: StudioDeps) {
           lastText = review && review.flagged.length ? `Done. ${review.flagged.length} picture${review.flagged.length === 1 ? "" : "s"} did not pass every check: look at them.` : "Done. Look at the pack, then use it.";
           waiting = { kind: "review", job, dir, info, candidates: [], review };
           deps.broadcast({ type: "studio-review", id: job.id, ...review });
+          deps.pushNote(reportNote(job, review));
         }
         void announce();
       }
@@ -249,6 +302,8 @@ export function createStudioService(deps: StudioDeps) {
     const source = typeof msg.source === "string" ? msg.source : "";
     const name = typeof msg.name === "string" ? msg.name.trim() : "";
     const outfit = cleanText(msg.outfit, MAX_OUTFIT);
+    const look = cleanText(msg.look, MAX_LOOK);
+    proposal = null;
     const err = (message: string) => send({ type: "studio-error", message });
     if (!(await deps.sources()).includes(source)) return err("Pick one of your packs to draw from.");
     if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
@@ -269,7 +324,7 @@ export function createStudioService(deps: StudioDeps) {
       source,
       character: found.character,
       outfit,
-      look: `You wear ${outfit}.`,
+      look: look || `You wear ${outfit}.`,
       key,
       width,
       height,
@@ -315,7 +370,8 @@ export function createStudioService(deps: StudioDeps) {
   /** Makes some pictures again (and what was drawn from them), with new seeds. */
   async function regenerate(id: string, names: unknown, send: Send): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
-    const only = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && /^[a-z0-9-]{1,30}$/.test(n)).slice(0, 12) : [];
+    const known = knownFrameNames();
+    const only = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && known.has(n)).slice(0, 12) : [];
     if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
     const { job, dir, info } = waiting;
     startWorker(job, dir, "build", info, { only });
@@ -360,6 +416,28 @@ export function createStudioService(deps: StudioDeps) {
   return {
     enabled: () => on,
     stateMessage,
+
+    /** A note for her next message: what the studio is and how to propose to it (once per conversation, chat mode, studio on). */
+    note(): string | null {
+      if (!on || deps.mode() !== "chat" || told) return null;
+      told = true;
+      return `${SKILL.trim().replace(/\s*\n\s*/g, " ")} Packs you can draw from: ${knownSources.join(", ") || "(none yet)"}.`;
+    },
+
+    /** A new conversation is told again, and a proposal that was waiting is dropped. */
+    forgetTold(): void {
+      told = false;
+      proposal = null;
+    },
+
+    /** Handles each new complete [studio …] tag of a reply (a proposal; nothing is started). */
+    makeApplier(): (reply: string) => void {
+      let seen = 0;
+      return (reply) => {
+        const tags = findStudioTags(reply);
+        for (; seen < tags.length; seen++) void propose(tags[seen]).catch(() => {});
+      };
+    },
     close: () => stopRunning(),
 
     /** `/studio`: on, off, backend, or open the panel. */
