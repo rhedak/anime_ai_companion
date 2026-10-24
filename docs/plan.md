@@ -12,6 +12,7 @@ HTML, permission modes stay in memory, and the cache-friendly way of talking to 
 | 1 | Check Ollama work mode with real models | first check done 2026-10-14 (`qwen3-coder:30b` good on small tasks, a 7B poor); docs wording and a real-app session still to do | Local code never leaves the machine; quality depends on the model |
 | 2 | Split `server.ts` and `app.js` | in progress (7 of 11 pieces of the server done; the page not started) | An outside review asked for it, and the tests now make it safe |
 | 3 | A demo that runs in the browser | phases 0 to 2 done and live at `/demo/` on the docs site (since 0.5.0); drawing moved from Pyodide to the creator's compiled TypeScript (about 0.7 MB instead of about 6.5 MB, not yet released); a few small things left, below | A try-before-you-install page, with no server and no cost |
+| 4 | Pack studio: redraw packs, new packs and activities made on the user's own computer | design written 2026-10-24 ([`pack-studio.md`](pack-studio.md)), nothing built | The Risa (casual) pack showed the pipeline works with a local model and what has to wrap it |
 
 Smaller ideas are at the end.
 
