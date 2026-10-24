@@ -78,3 +78,13 @@ Used for the Risa casual pack. The base is a neutral picture the owner has appro
 **Retrying**: the same prompt with the same seed gives the same picture, so a retry changes the seed (1, 2, 3, 4, …), not the prompt. Check each new candidate at zoom. Cap it at three tries per picture. If none passes, flag that picture for a person and keep the best candidate in the folder, named as such. Don't claim a picture is clean when the check hasn't been done.
 
 **Keeping the old versions**: move a replaced picture to `poses/old/` (or the matching folder) rather than deleting it, so the owner can compare.
+
+## Cutting the figure out (transparent background)
+
+FLUX.2 klein outputs RGB only. Pictures are made on flat white (stills) or magenta (video loops), and `tools/pack-crop` cuts them out. Method and numbers: `tools/pack-crop/README.md`.
+
+- **Do not threshold.** A hard on/off key leaves a stair-step edge and a pale outline on every strand (that was the first Risa casual pack). Use `cutout.py`: rough mask → unknown band → closed-form matting → edge colours with the background removed.
+- **Magenta only for video.** For the stills, white worked once the gaps were handled: pale neutral gaps between hair and shoulder or fingers are background too (`PALE`), but eye whites must be kept (`EYES` box).
+- **One alpha per pose.** A face edit pasted back changes nothing outside the face, so `build_pack.py` gives all of a pose's face frames the same alpha. Do not matte them separately.
+- **Run `check.py` on the pack and on a Grok pack.** Compare edge tint, soft-edge share and specks; the target is at or better than Grok's. Then look at 3× crops on dark and white (hair edge, hands, chin, chair).
+- **Seam score** (printed by `build_pack.py`) above 16 means look at the picture. It once caught a face frame whose eyes had changed direction (a generation fault, not a crop one): regenerate by seed.

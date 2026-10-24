@@ -48,6 +48,10 @@ Blind visual check, by the owner: Qwen fast and Qwen default were comparable in 
 - **Re-running is the fix for failures.** A failed picture costs about 12 seconds with FLUX.2, so regenerate rather than hand-fix.
 - **Expressions are subtle.** The FLUX.2 face edits changed fewer pixels inside their box than the Qwen edits did. Check that the expression is clearly different before using it.
 
+## Cutting the figure out
+
+The model makes no transparency. The first cut (a threshold on a white or magenta key) left white and magenta fragments and a stair-step edge. The second (`tools/pack-crop`, closed-form matting with a soft alpha) measured at or better than a Grok pack on edge tint and soft edges (table in that folder's README). A face frame that differs from its base only inside the face shares the base's alpha, so the outline cannot change between frames.
+
 ## Caveats
 
 - One seed per prompt in the edit tests; the quality tests used three seeds.
