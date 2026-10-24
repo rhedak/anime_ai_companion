@@ -129,7 +129,8 @@ export function createStudioService(deps: StudioDeps) {
     const each = calls > 0 ? usd / calls : 0;
     return (
       `The ${calls} pictures cost ${dollars(usd)}. Picking one draws about ${more} more (about ${dollars(more * each)} if each passes at the first try, up to ${dollars(3 * more * each)} if each needs three tries). ` +
-      `It stops at your limit of ${dollars(budget())} for this pack; every draw is paid.`
+      `It stops at your limit of ${dollars(budget())} for this pack; every draw is paid.` +
+      (more * each > budget() ? ` That limit is lower than the likely cost of the whole pack: raise it with /studio budget <dollars>, or the job will stop part way.` : "")
     );
   };
   /** The warning before anything is paid for. */
@@ -398,8 +399,15 @@ export function createStudioService(deps: StudioDeps) {
       paid: checked.info.paid ? { host: checked.info.paid.host, limit: budget() } : null,
       note:
         (checked.info.paid ? `${paidNote(checked.info, parsed.job.seeds.length)} ` : "") +
-        `This draws ${parsed.job.seeds.length} pictures of ${source} in that outfit with ${describe(checked.info)} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ` +
-        `You pick one; then about forty more pictures are made from it (faces, blinks, mouths and poses; several minutes), and you look at the pack before it is written to ${join(deps.framesDir, name)}. ${RESPONSIBILITY}`,
+        (() => {
+          const n = parsed.job.seeds.length;
+          const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
+          const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to ${join(deps.framesDir, name)}. `;
+          return checked.info.paid
+            ? `This draws ${what}. ${rest}`
+            : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ${rest}`;
+        })() +
+        `${RESPONSIBILITY}`,
     });
   }
 
