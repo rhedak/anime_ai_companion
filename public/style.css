@@ -332,3 +332,5 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio-selected { outline: 2px solid var(--accent); }
 .studio-flags { margin: 8px 6px 0; padding-left: 18px; font-size: var(--font-size-small); }
 .studio-flags li { margin-bottom: 4px; }
+.studio-review { display: block; }
+.studio-confirm button { margin: 4px 6px 0 0; }

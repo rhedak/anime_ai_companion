@@ -39,11 +39,13 @@ export function featherMask(w: number, h: number, box: Box, sigma = 6): Float32A
  * The edited picture inside the box (feathered), the base everywhere else. A model changes pixels all over the picture even when asked
  * to change one thing; this keeps what it was asked to change and nothing else, so every frame of an outfit has the same everything-but-face.
  */
-export function pasteBack(base: Raster, edited: Raster, box: Box, sigma = 6): Raster {
+export function pasteBack(base: Raster, edited: Raster, box: Box, sigma = 6, keep?: Uint8Array): Raster {
   const out = makeRaster(base.w, base.h);
   const mask = featherMask(base.w, base.h, box, sigma);
   for (let i = 0; i < base.w * base.h; i++) {
-    const m = mask[i];
+    // `keep` is where the base is the plain key colour: a model that repaints the backdrop near her face (a slightly pinker pink) must not
+    // leave a rectangle of it, so the backdrop stays the base's.
+    const m = keep && keep[i] ? 0 : mask[i];
     for (let c = 0; c < 3; c++) out.data[i * 4 + c] = Math.round(edited.data[i * 4 + c] * m + base.data[i * 4 + c] * (1 - m));
     out.data[i * 4 + 3] = 255;
   }

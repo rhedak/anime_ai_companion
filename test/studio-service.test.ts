@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { readPack } from "../src/frame-pack.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
-import { startFakeBackend } from "./helpers/image-backend.ts";
+import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
 
 /** A figure on a clear picture, like a pack's neutral. */
 async function neutral(): Promise<Buffer> {
@@ -15,10 +15,11 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null } = {}) {
-  const dataDir = await mkdtemp(join(tmpdir(), "studio-service-"));
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend } } = {}) {
+  // `again`: a second server on the same data folder and the same backend, as after a restart.
+  const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
-  const fake = await startFakeBackend();
+  const fake = options.again?.fake ?? (await startFakeBackend());
   const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl };
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
@@ -44,6 +45,7 @@ async function setup(options: { backendUrl?: string | null } = {}) {
   };
   const cleanup = async () => {
     service.close();
+    if (options.again) return; // the first server owns the backend and the folder
     await fake.stop();
     await rm(dataDir, { recursive: true, force: true });
   };
@@ -196,5 +198,54 @@ test("stopping a job and a backend that fails are told to the page and leave not
     assert.equal(t.service.enabled(), false);
   } finally {
     await t.cleanup();
+  }
+});
+
+test("a job that was left (waiting for a pick, or for the review) can be carried on after a restart", async () => {
+  const first = await setup();
+  try {
+    await first.service.command("on", first.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await first.service.message({ type: "studio-start", source: "risa-dress", name: "risa-snow", outfit: "a white winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    await first.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await first.waitFor("studio-candidates-done");
+    first.service.close(); // the server goes away
+
+    const second = await setup({ again: first });
+    try {
+      await second.service.command("on", second.say, false, () => {});
+      let state = await second.service.stateMessage();
+      assert.deepEqual(state.resumable, [{ id: card?.id, name: "risa-snow", outfit: "a white winter coat", stage: "pick" }]);
+      await second.service.message({ type: "studio-resume", id: card?.id }, send, false);
+      state = await second.service.stateMessage();
+      assert.deepEqual([state.job?.picking, state.candidates.length], [true, 4], "the four pictures are there again");
+      await second.service.message({ type: "studio-pick", id: card?.id, seed: 2 }, send, false);
+      await second.waitFor("studio-review");
+
+      // And once the pack is drawn, a third start finds it ready to review, and rebuilds the review from the pictures on disk.
+      second.service.close();
+      const third = await setup({ again: first });
+      try {
+        await third.service.command("on", third.say, false, () => {});
+        assert.equal((await third.service.stateMessage()).resumable[0]?.stage, "review");
+        const before = first.fake.requests.length;
+        await third.service.message({ type: "studio-resume", id: card?.id }, send, false);
+        await third.waitFor("studio-review");
+        assert.equal(first.fake.requests.length, before, "nothing is drawn again for a review");
+        assert.equal(third.sent.find((m) => m.type === "studio-review")?.tiles.length, 11);
+        await third.service.message({ type: "studio-accept", id: card?.id }, send, false);
+        await third.waitFor("studio-installed");
+        assert.equal((await readdir(join(first.framesDir, "risa-snow"))).length, 42);
+        assert.deepEqual((await third.service.stateMessage()).resumable, [], "an installed job is not offered again");
+      } finally {
+        await third.cleanup();
+      }
+    } finally {
+      await second.cleanup();
+    }
+  } finally {
+    await first.cleanup();
   }
 });

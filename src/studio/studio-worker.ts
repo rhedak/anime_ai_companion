@@ -2,7 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { httpBackend } from "./backend.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runBuild } from "./build.ts";
+import { runAssemble, runBuild } from "./build.ts";
 import type { Geometry } from "./geometry.ts";
 import { runBase, type StudioEvent } from "./runner.ts";
 import { parseJob } from "./job.ts";
@@ -28,6 +28,9 @@ try {
   } else if (workerData.phase === "build") {
     const geometry = JSON.parse(await readFile(join(workerData.dir, "geometry.json"), "utf8")) as Geometry;
     await runBuild(parsed.job, geometry, { dir: workerData.dir, backend, emit: send }, Array.isArray(workerData.only) ? workerData.only.map(String) : undefined);
+  } else if (workerData.phase === "assemble") {
+    const geometry = JSON.parse(await readFile(join(workerData.dir, "geometry.json"), "utf8")) as Geometry;
+    await runAssemble(parsed.job, geometry, { dir: workerData.dir, emit: send });
   } else {
     throw new Error(`Unknown phase ${String(workerData.phase)}.`);
   }

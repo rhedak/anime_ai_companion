@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { BackendError, checkBackendUrl, httpBackend } from "../src/studio/backend.ts";
+import { checkLowerBody } from "../src/studio/checks.ts";
+import { pasteBack } from "../src/studio/paste.ts";
 import { cutout, keyBackground, KEYS, pickKey, toRaster } from "../src/studio/cutout.ts";
 import { cleanText, parseJob } from "../src/studio/job.ts";
 import { decode, encodePng, flatten, label, makeRaster, openSquare, resize, type Raster } from "../src/studio/raster.ts";
@@ -153,4 +155,33 @@ test("resizing keeps the colour of an edge (the alpha is premultiplied)", async 
   for (let i = 0; i < 32 * 32; i++) {
     if (big.data[i * 4 + 3] > 200) assert.ok(big.data[i * 4] > 150, "no grey fringe from the clear pixels beside it");
   }
+});
+
+test("a broken pose (two copies of her stacked) fails the lower-body check, a close one does not", () => {
+  const w = 40, h = 100;
+  // A torso (rows 20 to 59, wide) and legs (rows 60 to 99, narrow); `shift` moves the whole figure down.
+  const body = (shift: number, lessWide = 0) => {
+    const a = new Float32Array(w * h);
+    for (let y = 20; y < h; y++) {
+      const [x0, x1] = y < 60 ? [10, 30] : [15 + lessWide, 25 - lessWide];
+      const yy = y + shift;
+      if (yy < h) for (let x = x0; x < x1; x++) a[yy * w + x] = 1;
+    }
+    return a;
+  };
+  assert.deepEqual(checkLowerBody(body(0), body(0), w, h), []);
+  assert.deepEqual(checkLowerBody(body(0), body(1), w, h), [], "a pixel of shift is the same picture");
+  assert.match(checkLowerBody(body(0), body(30), w, h).join(" "), /does not line up/);
+  assert.match(checkLowerBody(body(0), body(0, 3), w, h).join(" "), /smaller/);
+});
+
+test("a face edit never replaces the plain background of the base, so the model repainting the backdrop leaves no rectangle", () => {
+  const base = makeRaster(20, 20, [255, 0, 255, 255]);
+  for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) base.data.set([200, 40, 50, 255], (y * 20 + x) * 4);
+  const edited = makeRaster(20, 20, [240, 30, 220, 255]); // a different pink everywhere, and a changed figure
+  for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) edited.data.set([10, 200, 10, 255], (y * 20 + x) * 4);
+  const keep = keyBackground(base, "magenta");
+  const out = pasteBack(base, edited, [2, 2, 18, 18], 2, keep);
+  assert.deepEqual([...out.data.slice((3 * 20 + 3) * 4, (3 * 20 + 3) * 4 + 3)], [255, 0, 255], "the backdrop is the base's");
+  assert.ok(out.data[(10 * 20 + 10) * 4 + 1] > 150, "the figure takes the edit");
 });

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
 import { checkBackground, checkFaceEdit, checkLowerBody, type Flags } from "./checks.ts";
-import { cutout, type Cutout } from "./cutout.ts";
+import { cutout, keyBackground, type Cutout } from "./cutout.ts";
 import type { Job } from "./job.ts";
 import { padBox, pasteBack, type Box } from "./paste.ts";
 import type { Geometry } from "./geometry.ts";
@@ -87,7 +87,7 @@ async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: F
     let picture: Raster;
     let flags: Flags;
     if (plan.mode === "paste" && plan.box) {
-      picture = pasteBack(source, edited, plan.box);
+      picture = pasteBack(source, edited, plan.box, 6, keyBackground(source, job.key));
       flags = checkFaceEdit(source, picture, plan.box);
     } else {
       picture = edited;

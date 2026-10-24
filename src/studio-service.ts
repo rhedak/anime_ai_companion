@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { isPackName } from "./frame-pack.ts";
@@ -54,7 +54,7 @@ interface Running {
   job: Job;
   dir: string;
   worker: Worker;
-  phase: "base" | "build";
+  phase: "base" | "build" | "assemble";
   info: BackendInfo;
 }
 
@@ -104,9 +104,25 @@ export function createStudioService(deps: StudioDeps) {
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
       candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
       review: waiting?.kind === "review" ? waiting.review : null,
+      resumable: on && !job && !pending ? await findJobs() : [],
     };
   }
   const announce = async () => deps.broadcast(await stateMessage());
+
+  /** Jobs of an earlier session that can be carried on: waiting for the pick, half built, or ready to review. Newest first. */
+  async function findJobs(): Promise<{ id: string; name: string; outfit: string; stage: "pick" | "build" | "review" }[]> {
+    const root = join(deps.dataDir, "studio");
+    const found: { id: string; name: string; outfit: string; stage: "pick" | "build" | "review"; created: string }[] = [];
+    const has = (path: string) => stat(path).then(() => true, () => false);
+    for (const id of await readdir(root).catch(() => [] as string[])) {
+      const parsed = parseJob(await readFile(join(root, id, "job.json"), "utf8").then((t) => JSON.parse(t), () => null));
+      if (!parsed.ok || parsed.job.id !== id || (await has(join(deps.framesDir, parsed.job.name)))) continue;
+      const dir = join(root, id);
+      const stage = (await has(join(dir, "out/neutral.webp"))) ? "review" : (await has(join(dir, "base/chosen.png"))) ? "build" : (await has(join(dir, `base/seed-${parsed.job.seeds[0]}.thumb.webp`))) ? "pick" : null;
+      if (stage) found.push({ id, name: parsed.job.name, outfit: parsed.job.outfit, stage, created: parsed.job.created });
+    }
+    return found.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 5).map(({ created: _created, ...rest }) => rest);
+  }
 
   async function check(): Promise<{ ok: true; info: BackendInfo } | { ok: false; reason: string }> {
     const url = checkBackendUrl(deps.settings.studioBackend);
@@ -136,7 +152,7 @@ export function createStudioService(deps: StudioDeps) {
     running = null;
   }
 
-  function startWorker(job: Job, dir: string, phase: "base" | "build", info: BackendInfo, data: Record<string, unknown>): void {
+  function startWorker(job: Job, dir: string, phase: "base" | "build" | "assemble", info: BackendInfo, data: Record<string, unknown>): void {
     const worker = new Worker(deps.workerUrl ?? new URL("./studio/studio-worker.ts", import.meta.url), {
       workerData: { phase, dir, job, ...data },
       stderr: true,
@@ -310,6 +326,31 @@ export function createStudioService(deps: StudioDeps) {
     await install(waiting);
   }
 
+  /** Carries on a job from an earlier session, from whatever is on disk. */
+  async function resume(id: string, send: Send): Promise<void> {
+    if (running || waiting || pending) return send({ type: "studio-error", message: "Finish or stop the job that is open first." });
+    const wanted = (await findJobs()).find((j) => j.id === id);
+    if (!wanted) return send({ type: "studio-error", message: "That job cannot be carried on." });
+    const checked = await check();
+    if (!checked.ok) return send({ type: "studio-error", message: checked.reason });
+    const dir = join(deps.dataDir, "studio", id);
+    const parsed = parseJob(JSON.parse(await readFile(join(dir, "job.json"), "utf8")));
+    if (!parsed.ok) return send({ type: "studio-error", message: parsed.reason });
+    const job: Job = { ...parsed.job, backend: { ...parsed.job.backend, url: deps.settings.studioBackend ?? parsed.job.backend.url } };
+    forget();
+    if (wanted.stage === "pick") {
+      const candidates: number[] = [];
+      for (const seed of job.seeds) {
+        const file = await readFile(join(dir, `base/seed-${seed}.thumb.webp`)).catch(() => null);
+        if (file) (candidates.push(seed), shown.set(seed, `data:image/webp;base64,${file.toString("base64")}`));
+      }
+      lastText = "Pick the one you like. Nothing is saved until you do.";
+      waiting = { kind: "pick", job, dir, info: checked.info, candidates, review: null };
+      return void (await announce());
+    }
+    startWorker(job, dir, wanted.stage === "review" ? "assemble" : "build", checked.info, {});
+  }
+
   function cancel(): void {
     stopRunning();
     deps.broadcast({ type: "studio-cancelled" });
@@ -363,6 +404,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-confirm" && typeof msg.id === "string") await confirm(msg.id, send);
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
         else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
+        else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
         else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());

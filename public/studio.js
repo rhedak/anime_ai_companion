@@ -79,6 +79,7 @@ export function createStudio(io) {
 
   function addCandidate(/** @type {string} */ id, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
     const grid = q(".studio-candidates");
+    if (grid) grid.className = "studio-candidates";
     if (!grid || typeof thumb !== "string" || !thumb.startsWith("data:image/webp;base64,")) return;
     const pick = el("button", { type: "button", className: "preset", title: "Use this one", ariaLabel: `Use picture ${number}` });
     pick.append(el("img", { src: thumb, alt: `Candidate ${number}` }));
@@ -136,7 +137,27 @@ export function createStudio(io) {
       use.disabled = true;
       status("Writing the pack…");
     };
+    box.className = "studio-review";
     box.replaceChildren(grid, notes, el("div", { className: "pack-confirm-buttons" }, use, again));
+  }
+
+  /** Jobs from an earlier session, as buttons that carry them on. */
+  function showResumable(/** @type {any[]} */ jobs) {
+    const box = q(".studio-confirm");
+    if (!box) return;
+    box.replaceChildren(
+      ...jobs.map((j) => {
+        const stage = j.stage === "review" ? "ready to look at" : j.stage === "pick" ? "waiting for you to pick a picture" : "half drawn";
+        const button = el("button", { type: "button", className: "ghost", textContent: `Carry on ${j.name} (${stage})` });
+        button.title = String(j.outfit);
+        button.onclick = () => {
+          io.send({ type: "studio-resume", id: j.id });
+          box.replaceChildren();
+          status("Carrying on…");
+        };
+        return button;
+      }),
+    );
   }
 
   function fillSources() {
@@ -167,6 +188,7 @@ export function createStudio(io) {
             // A job is running or waits for the pick (this page was reloaded, or the panel was closed): show where it is.
             if (msg.job && !panel) open();
             fillSources();
+            if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-confirm")?.childElementCount) showResumable(msg.resumable);
             if (msg.job && panel) {
               const grid = q(".studio-candidates");
               if (grid && grid.childElementCount === 0) {

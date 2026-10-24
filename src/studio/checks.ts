@@ -39,14 +39,26 @@ export function silhouetteIn(alpha: Float32Array, w: number, region: Box): numbe
 }
 
 /**
- * A gesture edit (a raised arm) is a whole-picture edit, and the model tends to drop the arm that was not mentioned. The lower part of the
- * picture is where the lowered arms hang: the silhouette there should be about what it was in the base picture.
+ * A gesture edit (a raised arm) is a whole-picture edit, and the model tends to drop the arm that was not mentioned, or, now and then, to
+ * return a broken picture (two copies of her stacked). The lower part of the picture is where her legs and the lowered arms are: what is there
+ * should be about what was there in the base picture, in size and in place.
  */
 export function checkLowerBody(baseAlpha: Float32Array, poseAlpha: Float32Array, w: number, h: number): Flags {
   const region: Box = [0, Math.round(h * 0.55), w, h];
-  const before = silhouetteIn(baseAlpha, w, region);
-  const after = silhouetteIn(poseAlpha, w, region);
-  return before > 0 && after < before * 0.9 ? [`the lower part of her is ${Math.round((100 * (before - after)) / before)}% smaller than in her neutral picture (a lowered arm may be gone)`] : [];
+  let before = 0, after = 0, both = 0, either = 0;
+  for (let y = region[1]; y < region[3]; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = baseAlpha[y * w + x] > 0.5, b = poseAlpha[y * w + x] > 0.5;
+      if (a) before++;
+      if (b) after++;
+      if (a && b) both++;
+      if (a || b) either++;
+    }
+  }
+  const flags: Flags = [];
+  if (before > 0 && after < before * 0.9) flags.push(`the lower part of her is ${Math.round((100 * (before - after)) / before)}% smaller than in her neutral picture (a lowered arm may be gone)`);
+  if (either > 0 && both / either < 0.8) flags.push(`the lower part of her does not line up with her neutral picture (${Math.round((100 * both) / either)}% overlap): the picture may be broken`);
+  return flags;
 }
 
 /** A whole-picture edit must keep the background the key colour: a model that redraws the backdrop breaks the cut-out. */

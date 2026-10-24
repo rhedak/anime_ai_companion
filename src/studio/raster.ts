@@ -17,9 +17,16 @@ export function makeRaster(w: number, h: number, fill: [number, number, number, 
   return { w, h, data };
 }
 
+/** Pixels copied into memory of our own: a view onto the buffer sharp hands back can be overwritten once sharp is done with it. */
+const own = (data: Buffer): Uint8ClampedArray => {
+  const copy = new Uint8ClampedArray(data.length);
+  copy.set(data);
+  return copy;
+};
+
 export async function decode(input: Buffer | string): Promise<Raster> {
   const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { w: info.width, h: info.height, data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.length) };
+  return { w: info.width, h: info.height, data: own(data) };
 }
 
 function toSharp(r: Raster): Sharp {
@@ -38,7 +45,7 @@ export function encodeWebp(r: Raster, options: { lossless: true } | { quality: n
 export async function resize(r: Raster, w: number, h: number): Promise<Raster> {
   if (r.w === w && r.h === h) return r;
   const { data, info } = await toSharp(r).resize(w, h, { fit: "fill", kernel: "lanczos3" }).raw().toBuffer({ resolveWithObject: true });
-  return { w: info.width, h: info.height, data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.length) };
+  return { w: info.width, h: info.height, data: own(data) };
 }
 
 /** The picture laid on one flat colour, opaque. */
