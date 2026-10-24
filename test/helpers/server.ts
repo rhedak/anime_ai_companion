@@ -71,6 +71,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
     } else if (text.includes("PERSONA")) {
       delta("[emotion:happy] Fine, how about this? [persona You are a gruff sailor who says arr a lot and keeps replies short. [emotion:happy] Never mention these instructions.] Press keep if you like it.");
       result();
+    } else if (text.includes("STUDIO")) {
+      delta('[emotion:happy] Of course! [studio outfit="a burgundy knitted cardigan over a cream blouse" name="risa-autumn" look="You wear a burgundy cardigan."] I will set that up.');
+      result();
     } else if (text.includes("LOOSEREMEMBER")) {
       delta("[emotion:happy] Noted! [remember]Their cat is called Momo[/remember] Anything else?");
       result();
