@@ -54,3 +54,27 @@ Expect roughly:
 - **Timing**: the median of the timed runs, which exclude the warm-up.
 
 Always state which settings a number was measured with (steps, guidance, pipeline), and that the blind rating is a visual check, not a scored study.
+
+## Building a pack from an approved base
+
+Used for the Risa casual pack. The base is a neutral picture the owner has approved by eye; everything else is an edit of it, with the same seed unless a retry is needed.
+
+**Face pictures** (emotions, blinks, three mouth openings):
+- Edit the base, not the previous picture, so the errors don't compound. Blinks of a non-neutral emotion are the exception: edit that emotion's picture so the eyes change only.
+- Paste back only inside the face box (the `face` box from `config.json`, scaled to the picture, padded by about 12 px, feathered with a Gaussian blur of 6). Anything the model draws outside the box is dropped.
+- **Check for clipping** after every paste-back: count changed pixels (difference from the base above 40) that sit on the box's edge. Anything above a handful means the paste-back cut something. An open mouth that reaches the chin is the usual cause: extend the box for that picture (for example, down to y 345 at 896×1024) and regenerate it.
+- **Check for changes outside the box**: the largest difference outside should stay small (about 20 or below). Changes outside the box mean the paste-back isn't doing its job.
+
+**Gesture pictures** (wave, cheer, thinking with a hand at the face):
+- Do **not** paste back. A limb that leaves the box gets cut off at the box edge, so the picture ends up with a stub of arm. The whole-picture output is the right result.
+- Say the other arm explicitly, or the model drops it. Use: "her other arm (the one on the right side of the picture) hangs relaxed at her side with the hand visible". Without it, the lowered hand disappears (measured: skin pixels in that region fell from about 3150 to about 115).
+- Check the lowered hand by counting skin pixels in the same region of the neutral and each pose. A value far below the neutral means the arm is gone.
+
+**Defects only a person can see**, so check them by eye at zoom (crop around the hand or face, 2–3×):
+- finger count on open hands (the model has produced four-finger hands and a hand with a finger merged into a ghost stroke);
+- a cut-off finger or limb at the edge of the picture;
+- the hair clip and outfit still present and in place.
+
+**Retrying**: the same prompt with the same seed gives the same picture, so a retry changes the seed (1, 2, 3, 4, …), not the prompt. Check each new candidate at zoom. Cap it at three tries per picture. If none passes, flag that picture for a person and keep the best candidate in the folder, named as such. Don't claim a picture is clean when the check hasn't been done.
+
+**Keeping the old versions**: move a replaced picture to `poses/old/` (or the matching folder) rather than deleting it, so the owner can compare.
