@@ -1,5 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { httpBackend } from "./backend.ts";
+import { makeBackend } from "./backend.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runAssemble, runBuild } from "./build.ts";
@@ -15,7 +15,11 @@ const send = (event: StudioEvent | { type: "finished" }) => port.postMessage(eve
 try {
   const parsed = parseJob(workerData.job);
   if (!parsed.ok) throw new Error(parsed.reason);
-  const backend = httpBackend(parsed.job.backend.url);
+  const backend = makeBackend(parsed.job.backend.url, {
+    limitUsd: Number(workerData.limitUsd) || 0,
+    spentUsd: Number(workerData.spentUsd) || 0,
+    onSpend: (usd) => send({ type: "spend", usd }),
+  });
   if (workerData.phase === "base") {
     const frames = workerData.sourceFrames as { blink?: Uint8Array; talk: (Uint8Array | undefined)[] } | undefined;
     await runBase(parsed.job, {

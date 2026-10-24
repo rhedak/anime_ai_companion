@@ -330,6 +330,9 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
 .studio-tiles .preset img { width: 100%; display: block; border-radius: var(--radius-md); }
 .studio-selected { outline: 2px solid var(--accent); }
+.studio-spend { margin: 2px 6px 0; font-size: var(--font-size-small); font-weight: 600; }
+.studio-spend:empty { display: none; }
+.studio-paid { border: 1px solid #d9822b; }
 .studio-flags { margin: 8px 6px 0; padding-left: 18px; font-size: var(--font-size-small); }
 .studio-flags li { margin-bottom: 4px; }
 .studio-review { display: block; }

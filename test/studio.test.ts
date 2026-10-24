@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { BackendError, checkBackendUrl, httpBackend } from "../src/studio/backend.ts";
+import { BackendError, checkBackendUrl, httpBackend, makeBackend, XAI, xaiBackend } from "../src/studio/backend.ts";
 import { checkLowerBody } from "../src/studio/checks.ts";
 import { pasteBack } from "../src/studio/paste.ts";
 import { cutout, keyBackground, KEYS, pickKey, toRaster } from "../src/studio/cutout.ts";
@@ -197,4 +197,86 @@ test("a studio tag is read into its fields, cleaned, and only complete tags coun
   assert.deepEqual(findStudioTags('[studio ignored="x"]'), [], "a tag with nothing we know is nothing");
   assert.equal(findStudioTags(`[studio outfit="${"w ".repeat(500)}"]`)[0].outfit?.length, 400, "the outfit is capped");
   assert.ok(usableName("risa-winter") && !usableName("../x") && !usableName(".hidden") && !usableName(undefined));
+});
+
+test("the paid backend: the key from the environment, a data-URI picture, the cost counted against a limit, and nothing leaks the key", async () => {
+  const fake = await startFakeBackend({ xai: {} });
+  const saved = { key: process.env.XAI_API_KEY, base: process.env.COMPANION_XAI_BASE };
+  try {
+    process.env.COMPANION_XAI_BASE = fake.url;
+    process.env.XAI_API_KEY = "";
+    const spends: number[] = [];
+    const req = { image: Buffer.from(await encodePng(makeRaster(64, 64, [255, 0, 255, 255]))), prompt: "a coat", seed: 1, width: 64, height: 64 };
+    const none = makeBackend(XAI, { limitUsd: 1, spentUsd: 0 });
+    await assert.rejects(none.info(), /XAI_API_KEY is not set/);
+    await assert.rejects(none.edit(req), /XAI_API_KEY is not set/);
+    assert.equal(fake.requests.length, 0, "nothing is sent without a key");
+
+    process.env.XAI_API_KEY = "xai-secret-key-1234567890";
+    const paid = makeBackend(XAI, { limitUsd: 0.05, spentUsd: 0, onSpend: (usd) => spends.push(usd) });
+    const info = await paid.info();
+    assert.deepEqual([info.paid?.host, info.edit], [new URL(fake.url).host, true]);
+    const picture = await paid.edit(req);
+    assert.ok((await decode(picture)).w > 0);
+    const sent = fake.requests.at(-1);
+    assert.equal(sent?.path, "/images/edits");
+    assert.equal(sent?.authorization, "Bearer xai-secret-key-1234567890");
+    assert.deepEqual([sent?.body.model, sent?.body.response_format, sent?.body.resolution], ["grok-imagine-image-2.0", "b64_json", "1k"]);
+    await paid.edit(req);
+    assert.deepEqual(spends.map((n) => Math.round(n * 100) / 100), [0.02, 0.04]);
+    await paid.edit(req); // 0.06: the call that starts below the limit is made, the next is refused
+    await assert.rejects(paid.edit(req), /spending limit for this pack \(\$0\.05\) is reached/);
+    assert.equal(fake.requests.length, 3);
+    // A job that is carried on counts what it already cost.
+    await assert.rejects(makeBackend(XAI, { limitUsd: 1, spentUsd: 1 }).edit(req), /spending limit/);
+  } finally {
+    process.env.XAI_API_KEY = saved.key ?? "";
+    if (saved.key === undefined) delete process.env.XAI_API_KEY;
+    if (saved.base === undefined) delete process.env.COMPANION_XAI_BASE;
+    else process.env.COMPANION_XAI_BASE = saved.base;
+    await fake.stop();
+  }
+});
+
+test("the paid backend: a busy service is asked again, an error never shows the key, and an answer without a cost stops further calls", async () => {
+  const saved = { key: process.env.XAI_API_KEY, base: process.env.COMPANION_XAI_BASE };
+  process.env.XAI_API_KEY = "xai-secret-key-1234567890";
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 64, [255, 0, 255, 255]))), prompt: "a coat", seed: 1, width: 64, height: 64 };
+  const opts = { limitUsd: 5, spentUsd: 0 };
+  try {
+    const busy = await startFakeBackend({ xai: { busyFirst: 2 } });
+    try {
+      process.env.COMPANION_XAI_BASE = busy.url;
+      const slept: number[] = [];
+      const b = xaiBackend({ ...opts, sleep: async (ms) => void slept.push(ms) });
+      assert.ok((await decode(await b.edit(req))).w > 0, "answered on the third try");
+      assert.equal(slept.length, 2);
+    } finally {
+      await busy.stop();
+    }
+    const broken = await startFakeBackend({ xai: { failWith: { status: 400, message: "bad key xai-secret-key-1234567890 and a refusal" } } });
+    try {
+      process.env.COMPANION_XAI_BASE = broken.url;
+      const error = await makeBackend(XAI, opts).edit(req).then(() => null, (e: Error) => e);
+      assert.match(error?.message ?? "", /xAI answered 400: bad key … and a refusal/);
+      assert.ok(!String(error?.message).includes("secret"), "the key is taken out of the message");
+    } finally {
+      await broken.stop();
+    }
+    const blind = await startFakeBackend({ xai: { costTicks: null } });
+    try {
+      process.env.COMPANION_XAI_BASE = blind.url;
+      const b = makeBackend(XAI, opts);
+      await b.edit(req);
+      await assert.rejects(b.edit(req), /did not say what the last picture cost/);
+      assert.equal(blind.requests.length, 1);
+    } finally {
+      await blind.stop();
+    }
+  } finally {
+    if (saved.key === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = saved.key;
+    if (saved.base === undefined) delete process.env.COMPANION_XAI_BASE;
+    else process.env.COMPANION_XAI_BASE = saved.base;
+  }
 });

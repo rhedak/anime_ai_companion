@@ -6,7 +6,7 @@ import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
-import { BackendError, checkBackendUrl, httpBackend, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, checkBackendUrl, makeBackend, XAI, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
@@ -29,7 +29,7 @@ export interface StudioDeps {
   dataDir: string;
   /** data/frames: where a finished pack is installed. */
   framesDir: string;
-  settings: { studioBackend: string | null };
+  settings: { studioBackend: string | null; studioBudgetUsd?: number };
   saveSettings(): Promise<void>;
   broadcast: Broadcast;
   remoteRefusal(): string;
@@ -115,7 +115,29 @@ export function createStudioService(deps: StudioDeps) {
   /** The packs a new one can be drawn from, as of the last time the page asked: she is told them. */
   let knownSources: string[] = [];
   const disabled = process.env.COMPANION_NO_STUDIO === "1";
-  const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : httpBackend(url));
+  const budget = () => deps.settings.studioBudgetUsd ?? 5;
+  /** What the open job has cost so far (a paid backend only), also kept in the job's folder so a carried-on job keeps counting. */
+  let spent = 0;
+  const readSpend = async (dir: string): Promise<number> => {
+    const n = Number(JSON.parse(await readFile(join(dir, "spend.json"), "utf8").catch(() => "{}")).usd);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const dollars = (n: number) => `$${n.toFixed(2)}`;
+  /** After the base pictures of a paid backend: what the rest will cost, from what those cost. */
+  const paidProjection = (usd: number, calls: number): string => {
+    const more = knownFrameNames().size;
+    const each = calls > 0 ? usd / calls : 0;
+    return (
+      `The ${calls} pictures cost ${dollars(usd)}. Picking one draws about ${more} more (about ${dollars(more * each)} if each passes at the first try, up to ${dollars(3 * more * each)} if each needs three tries). ` +
+      `It stops at your limit of ${dollars(budget())} for this pack; every draw is paid.`
+    );
+  };
+  /** The warning before anything is paid for. */
+  const paidNote = (info: BackendInfo, pictures: number): string =>
+    `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (XAI_API_KEY). ` +
+    `Making ${pictures} pictures is the first step; the rest of the pack (about ${knownFrameNames().size} more, up to three tries each) comes after you pick one, and you are shown what the first step cost before that. ` +
+    `The app stops at ${dollars(budget())} for this pack (/studio budget changes it). Keeping the key safe, and what it costs you, is your responsibility: the app never saves it, shows it or sends it anywhere but that host.`
+  const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0 }));
 
   async function stateMessage() {
     const job = running?.job ?? waiting?.job ?? null;
@@ -129,6 +151,8 @@ export function createStudioService(deps: StudioDeps) {
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
       /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
+      /** What a paid backend has cost this job, and the limit. */
+      spend: job && (running?.info ?? waiting?.info)?.paid ? { usd: spent, limit: budget() } : null,
       candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
       review: waiting?.kind === "review" ? waiting.review : null,
       previews: running && running.phase !== "base" ? [...previews].map(([name, v]) => ({ name, ...v })) : [],
@@ -223,7 +247,7 @@ export function createStudioService(deps: StudioDeps) {
 
   function startWorker(job: Job, dir: string, phase: "base" | "build" | "assemble", info: BackendInfo, data: Record<string, unknown>): void {
     const worker = new Worker(deps.workerUrl ?? new URL("./studio/studio-worker.ts", import.meta.url), {
-      workerData: { phase, dir, job, ...data },
+      workerData: { phase, dir, job, limitUsd: budget(), spentUsd: spent, ...data },
       stderr: true,
     });
     worker.unref();
@@ -263,9 +287,13 @@ export function createStudioService(deps: StudioDeps) {
         const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
         previews.set(event.name, { thumb, flagged: event.flagged, flags: event.flags });
         deps.broadcast({ type: "studio-preview", id: job.id, name: event.name, thumb, flagged: event.flagged, flags: event.flags });
+      } else if (event.type === "spend") {
+        spent = event.usd;
+        await writeFile(join(dir, "spend.json"), JSON.stringify({ usd: spent })).catch(() => {});
+        deps.broadcast({ type: "studio-spend", id: job.id, usd: spent, limit: budget() });
       } else if (event.type === "base-done") {
-        lastText = "Pick the one you like. Nothing is saved until you do.";
-        deps.broadcast({ type: "studio-candidates-done", id: job.id });
+        lastText = "Pick the one you like. Nothing is saved until you do." + (info.paid ? ` ${paidProjection(spent, job.seeds.length)}` : "");
+        deps.broadcast({ type: "studio-candidates-done", id: job.id, text: lastText });
       } else if (event.type === "review") {
         const tiles = await Promise.all(
           event.tiles.map(async (t) => {
@@ -367,7 +395,9 @@ export function createStudioService(deps: StudioDeps) {
       backend: describe(checked.info),
       folder: join(deps.framesDir, name),
       pictures: parsed.job.seeds.length,
+      paid: checked.info.paid ? { host: checked.info.paid.host, limit: budget() } : null,
       note:
+        (checked.info.paid ? `${paidNote(checked.info, parsed.job.seeds.length)} ` : "") +
         `This draws ${parsed.job.seeds.length} pictures of ${source} in that outfit with ${describe(checked.info)} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ` +
         `You pick one; then about forty more pictures are made from it (faces, blinks, mouths and poses; several minutes), and you look at the pack before it is written to ${join(deps.framesDir, name)}. ${RESPONSIBILITY}`,
     });
@@ -380,6 +410,7 @@ export function createStudioService(deps: StudioDeps) {
     const dir = join(deps.dataDir, "studio", job.id);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "job.json"), JSON.stringify(job, null, 2));
+    spent = 0;
     startWorker(job, dir, "base", info, { source: source.neutral, sourceFrames: { blink: source.blink, talk: source.talk } });
     send({ type: "studio-progress", id: job.id, text: "Starting…" });
   }
@@ -432,7 +463,11 @@ export function createStudioService(deps: StudioDeps) {
     on = true;
     await announce();
     reply({ type: "studio-open" });
-    say(`The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`);
+    say(
+      checked.info.paid
+        ? `The pack studio is on, drawing with ${describe(checked.info)}. THIS IS PAID: every picture is charged by ${checked.info.paid.host} to the account of your XAI_API_KEY, and your source pictures are sent there. The limit is ${dollars(budget())} per pack (/studio budget changes it). Keeping the key safe is your responsibility. ${RESPONSIBILITY} It is off again after a restart.`
+        : `The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`,
+    );
   }
 
   /** Removes a job of an earlier session from the disk (only one that is listed as carry-on-able, never the open one). Packs already installed are not touched. */
@@ -455,13 +490,14 @@ export function createStudioService(deps: StudioDeps) {
     if (!parsed.ok) return send({ type: "studio-error", message: parsed.reason });
     const job: Job = { ...parsed.job, backend: { ...parsed.job.backend, url: deps.settings.studioBackend ?? parsed.job.backend.url } };
     forget();
+    spent = await readSpend(dir);
     if (wanted.stage === "pick") {
       const candidates: number[] = [];
       for (const seed of job.seeds) {
         const file = await readFile(join(dir, `base/seed-${seed}.thumb.webp`)).catch(() => null);
         if (file) (candidates.push(seed), shown.set(seed, `data:image/webp;base64,${file.toString("base64")}`));
       }
-      lastText = "Pick the one you like. Nothing is saved until you do.";
+      lastText = "Pick the one you like. Nothing is saved until you do." + (checked.info.paid ? ` ${paidProjection(spent, job.seeds.length)}` : "");
       waiting = { kind: "pick", job, dir, info: checked.info, candidates, review: null };
       return void (await announce());
     }
@@ -514,10 +550,18 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861.");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or `xai` for xAI's paid service (it needs XAI_API_KEY in this app's environment).");
         deps.settings.studioBackend = url;
         await deps.saveSettings();
-        return say(`Image backend set to ${url}. /studio on checks it.`);
+        return say(url === XAI ? `Image backend set to xAI (paid). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
+      }
+      if (word === "budget") {
+        if (rest.length === 0) return say(`A pack made with a paid image service may cost up to ${dollars(budget())}. /studio budget <dollars> changes it (0.5 to 200).`);
+        const n = Number(rest[0].replace(/^\$/, ""));
+        if (!Number.isFinite(n) || n < 0.5 || n > 200) return say("The limit has to be between 0.5 and 200 dollars.");
+        deps.settings.studioBudgetUsd = n;
+        await deps.saveSettings();
+        return say(`A pack made with a paid image service may now cost up to ${dollars(n)}.`);
       }
       if (word === "off") {
         stopRunning();

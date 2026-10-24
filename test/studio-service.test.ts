@@ -15,12 +15,12 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number } = {}) {
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
-  const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs }));
-  const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl };
+  const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs, xai: options.xai ? {} : undefined }));
+  const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl, studioBudgetUsd: options.budget };
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
   const notes: string[] = [];
@@ -306,6 +306,49 @@ test("a job that was left (waiting for a pick, or for the review) can be carried
     }
   } finally {
     await first.cleanup();
+  }
+});
+
+test("a paid backend: the warning comes before anything is drawn, what the base pictures cost is shown before the pick, and the limit stops the job", async () => {
+  const saved = { key: process.env.XAI_API_KEY, base: process.env.COMPANION_XAI_BASE };
+  process.env.XAI_API_KEY = "xai-secret-key-1234567890";
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  const t = await setup({ backendUrl: "xai", xai: true, budget: 5 });
+  const poor = await setup({ backendUrl: "xai", xai: true, budget: 0.05 });
+  try {
+    process.env.COMPANION_XAI_BASE = t.fake.url;
+    await t.service.command("on", t.say, false, () => {});
+    assert.match(t.said.at(-1) ?? "", /THIS IS PAID.*\$5\.00 per pack.*your responsibility/s);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-paid", outfit: "a red scarf" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.match(card?.note, /THIS IS PAID.*never saves it/s);
+    assert.deepEqual(card?.paid?.limit, 5);
+    assert.equal(t.fake.requests.length, 0, "nothing is sent before the yes");
+    await t.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    const done = t.sent.find((m) => m.type === "studio-candidates-done");
+    assert.match(done?.text, /The 4 pictures cost \$0\.08\. Picking one draws about \d+ more.*up to \$/);
+    assert.ok(t.sent.filter((m) => m.type === "studio-spend").length >= 4);
+    assert.deepEqual((await t.service.stateMessage()).spend, { usd: 0.08, limit: 5 });
+    assert.equal(JSON.stringify(t.sent).includes("secret"), false, "the key is nowhere in what the page is sent");
+
+    // A pack whose limit is nearly nothing stops after the third picture.
+    process.env.COMPANION_XAI_BASE = poor.fake.url;
+    await poor.service.command("on", poor.say, false, () => {});
+    const them: Record<string, any>[] = [];
+    await poor.service.message({ type: "studio-start", source: "risa-dress", name: "risa-poor", outfit: "a red scarf" }, (m) => them.push(m as any), false);
+    await poor.service.message({ type: "studio-confirm", id: them.find((m) => m.type === "studio-confirm")?.id }, (m) => them.push(m as any), false);
+    await poor.waitFor("studio-error");
+    assert.match(poor.sent.find((m) => m.type === "studio-error")?.message, /spending limit for this pack \(\$0\.05\)/);
+    assert.equal(poor.fake.requests.length, 3, "the fourth picture was never asked for");
+  } finally {
+    if (saved.key === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = saved.key;
+    if (saved.base === undefined) delete process.env.COMPANION_XAI_BASE;
+    else process.env.COMPANION_XAI_BASE = saved.base;
+    await t.cleanup();
+    await poor.cleanup();
   }
 });
 

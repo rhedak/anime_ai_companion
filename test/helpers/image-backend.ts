@@ -5,11 +5,11 @@ import sharp from "sharp";
 /** A stand-in for an image model: answers the studio's protocol with a deterministic picture made from the request. No GPU, no weights. */
 export interface FakeBackend {
   url: string;
-  requests: { path: string; body: Record<string, unknown> }[];
+  requests: { path: string; body: Record<string, unknown>; authorization?: string }[];
   stop(): Promise<void>;
 }
 
-export async function startFakeBackend(options: { failEdit?: string; delayMs?: number } = {}): Promise<FakeBackend> {
+export async function startFakeBackend(options: { failEdit?: string; delayMs?: number; xai?: { costTicks?: number | null; failWith?: { status: number; message: string }; busyFirst?: number } } = {}): Promise<FakeBackend> {
   const requests: FakeBackend["requests"] = [];
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -21,9 +21,25 @@ export async function startFakeBackend(options: { failEdit?: string; delayMs?: n
       };
       if (req.method === "GET" && req.url === "/health") return send(200, { ok: true, name: "fake backend", model: "fake-1", revision: "abc", licence: "MIT", edit: true, generate: true });
       const body = chunks.length ? (JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>) : {};
-      requests.push({ path: req.url ?? "", body: { ...body, image: body.image ? "<png>" : undefined } });
+      requests.push({ path: req.url ?? "", body: { ...body, image: body.image ? "<png>" : undefined }, authorization: req.headers.authorization });
       if (req.url === "/edit" && options.failEdit) return send(500, { message: options.failEdit });
       if (options.delayMs) await new Promise((r) => setTimeout(r, options.delayMs));
+      // The paid web service's shape (the app's xai backend, pointed here by COMPANION_XAI_BASE): the picture in a data URI, the cost in usage.
+      if (options.xai && (req.url === "/images/edits" || req.url === "/images/generations")) {
+        const x = options.xai;
+        if (x.busyFirst && requests.filter((r) => r.path.startsWith("/images/")).length <= x.busyFirst) return send(429, { error: "slow down" });
+        if (x.failWith) return send(x.failWith.status, { error: { message: x.failWith.message } });
+        const data = (body.image as { url?: string } | undefined)?.url?.split(",")[1];
+        const input = data ? Buffer.from(data, "base64") : null;
+        const meta = input ? await sharp(input).metadata() : { width: 896, height: 1024 };
+        const w = meta.width ?? 896, h = meta.height ?? 1024, seed = requests.length;
+        const base = input ? sharp(input) : sharp({ create: { width: w, height: h, channels: 3, background: { r: 255, g: 0, b: 255 } } });
+        const band = await sharp({ create: { width: w, height: Math.max(8, Math.floor(h / 16)), channels: 3, background: { r: (seed * 53) % 256, g: (seed * 97) % 256, b: 120 } } }).png().toBuffer();
+        const patch = await sharp({ create: { width: Math.floor(w * 0.12), height: Math.floor(h * 0.08), channels: 3, background: { r: 30 + ((seed * 71) % 200), g: 60, b: 90 } } }).png().toBuffer();
+        const png = await base.composite([{ input: band, top: Math.floor(h / 2), left: 0 }, { input: patch, top: Math.floor(h * 0.2), left: Math.floor(w * 0.44) }]).png().toBuffer();
+        const usage = x.costTicks === null ? {} : { usage: { cost_in_usd_ticks: x.costTicks ?? 200_000_000 } };
+        return send(200, { data: [{ b64_json: png.toString("base64") }], ...usage });
+      }
       if (req.url === "/edit" || req.url === "/generate") {
         const w = Number(body.width), h = Number(body.height), seed = Number(body.seed);
         // The input picture with a band of a colour that depends on the seed, so every candidate differs.

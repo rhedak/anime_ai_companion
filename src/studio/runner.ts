@@ -14,6 +14,8 @@ export type StudioEvent =
   | { type: "frame"; name: string; done: number; total: number; flags: string[] }
   | { type: "preview"; name: string; thumb: string; flagged: boolean; flags: string[] }
   | { type: "review"; tiles: { name: string; thumb: string; flagged: boolean; flags: string[] }[]; flagged: { name: string; flags: string[] }[] }
+  /** What the pack has cost so far, in dollars (a paid backend only). */
+  | { type: "spend"; usd: number }
   | { type: "error"; message: string };
 
 export interface RunDeps {

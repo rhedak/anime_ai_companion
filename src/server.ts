@@ -1267,7 +1267,7 @@ const slashCommands: Record<
     run: ({ args, say, reply, remote }) => cards.command(args, say, reply, remote),
   },
   studio: {
-    help: "make a picture pack of your own on this computer with an image model you run: /studio on | off | backend <address>",
+    help: "make a picture pack of your own on this computer with an image model you run: /studio on | off | backend <address or xai> | budget <dollars>",
     run: ({ args, say, remote, reply }) => studio.command(args, say, remote, reply),
   },
   skills: {

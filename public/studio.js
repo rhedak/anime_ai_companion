@@ -77,6 +77,7 @@ export function createStudio(io) {
       el("div", { className: "studio-proposal" }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton),
       el("p", { className: "studio-status", role: "status" }),
+      el("p", { className: "studio-spend", role: "status" }),
       el("div", { className: "studio-confirm" }),
       el("div", { className: "studio-candidates" }),
     );
@@ -236,6 +237,13 @@ export function createStudio(io) {
     parts.extra.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
 
+  /** What a paid backend has cost this job, always in view while it is drawn. */
+  function spendLine(/** @type {number} */ usd, /** @type {number} */ limit) {
+    const p = q(".studio-spend");
+    if (!p) return;
+    p.textContent = Number.isFinite(usd) && Number.isFinite(limit) ? `Paid so far: $${usd.toFixed(2)} of your $${limit.toFixed(2)} limit for this pack.` : "";
+  }
+
   /** Jobs from an earlier session, as buttons that carry them on. */
   function showResumable(/** @type {any[]} */ jobs) {
     const box = q(".studio-confirm");
@@ -346,8 +354,12 @@ export function createStudio(io) {
             }
           }
           if (msg.proposal && panel && !q(".studio-proposal")?.childElementCount) applyProposal({ ...msg.proposal, job: msg.job?.reviewing ? msg.job.id : null });
+          spendLine(Number(msg.spend?.usd), Number(msg.spend?.limit));
           running(Boolean(msg.running));
           document.dispatchEvent(new CustomEvent("studio-state", { detail: { on } }));
+          return true;
+        case "studio-spend":
+          spendLine(Number(msg.usd), Number(msg.limit));
           return true;
         case "studio-ask":
           ask(msg);
@@ -371,7 +383,8 @@ export function createStudio(io) {
           jobId = String(msg.id);
           const box = q(".studio-confirm");
           if (!box) return true;
-          const yes = el("button", { type: "button", textContent: `Draw ${msg.pictures} pictures` });
+          const paid = msg.paid && typeof msg.paid === "object";
+          const yes = el("button", { type: "button", textContent: paid ? `Draw ${msg.pictures} pictures (paid)` : `Draw ${msg.pictures} pictures` });
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();
@@ -385,7 +398,7 @@ export function createStudio(io) {
             status("Starting…");
           };
           box.replaceChildren(
-            el("div", { className: "pack-confirm", role: "alertdialog" }, el("p", { textContent: String(msg.note) }), el("div", { className: "pack-confirm-buttons" }, yes, no)),
+            el("div", { className: paid ? "pack-confirm studio-paid" : "pack-confirm", role: "alertdialog" }, el("p", { textContent: String(msg.note) }), el("div", { className: "pack-confirm-buttons" }, yes, no)),
           );
           status("");
           yes.focus();
@@ -407,7 +420,7 @@ export function createStudio(io) {
           return true;
         case "studio-candidates-done":
           running(false);
-          status("Pick the one you like. Nothing is saved until you do.");
+          status(typeof msg.text === "string" && msg.text ? msg.text : "Pick the one you like. Nothing is saved until you do.");
           return true;
         case "studio-installed": {
           running(false);

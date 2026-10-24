@@ -138,6 +138,26 @@ These follow `AGENTS.md` ("Safety") and the position in `pack-image-models.md` (
   `uv run` and added to `check.sh` only when `uv` is present (`check.sh` already fails on skipped tests, so they are either run or not listed).
 - A **manual in-app checklist** per milestone (below) with the real model, kept in this file; real-model runs are never in CI.
 
+## The paid web backend (xAI Grok Imagine)
+
+`/studio backend xai` points the studio at xAI's image service instead of a model on this computer (`xaiBackend` in `src/studio/backend.ts`; the
+endpoint and payload follow the `imagine` package's grok client: `POST https://api.x.ai/v1/images/edits`, the picture as a data URI, `b64_json`
+back, `grok-imagine-image-2.0` at `1k`, the cost in `usage.cost_in_usd_ticks`). It is the one web service there is an adapter for, and it **costs money per picture**.
+
+- **The key** is `XAI_API_KEY` in the environment the app is started from (for example `~/.zshrc`; a daemon started without that file has no key
+  and the studio says so). The app never writes it anywhere (not settings, not `data/`, not a job file, not the transcript), never sends it to the
+  page or the brain, reads it at the moment of each call, puts it in one header to `api.x.ai`, and takes it out of every error text. The address
+  `https://api.x.ai` is fixed; `COMPANION_XAI_BASE` (loopback http only) exists for tests.
+- **Warnings.** `/studio on` and the approval card (*Draw 4 pictures (paid)*, framed) say that it is paid per picture, retries and *Draw again* included,
+  that the source pictures and the words are sent to `api.x.ai`, what the limit is, and that keeping the key safe and paying the bill is the user's responsibility.
+- **The limit.** Every paid call is counted from the service's own cost field and a pack may cost `studioBudgetUsd` in all (default $5; `/studio budget <dollars>`, 0.5 to 200). The call
+  that would start past it is refused (so a pack can end one picture over), and the count is kept in `spend.json` in the job's folder, so a job carried on after a restart continues counting.
+  A service answer without a cost stops the job after that picture (the limit cannot be kept blind). A busy service (429 or 503) is asked again twice; a failed call is not billed.
+- **Before the pick** the page shows what the four pictures cost and, from that, what the rest would cost (if each passes first time, and if each needs three tries); picking is the yes to that.
+  The panel shows "Paid so far: $x of your $y limit" while it draws.
+- **No seed:** the service takes none, so a redraw is a new draw, as with the local backend in practice. Pictures that come back in another shape are resized to the job's size.
+- Not built yet: pasting a key for one session (memory only), the service's price list, a second web service.
+
 ## What is built, and how to try it
 
 1. Start an image backend on this computer. The reference one: `uv run --with torch --with diffusers --with transformers --with accelerate --with sentencepiece --with pillow python python/pack_studio/server.py` (FLUX.2 klein 4B, weights already in the Hugging Face cache at the pinned revision; see the file's docstring). It loads the model on the first request and needs about 22 GB.
