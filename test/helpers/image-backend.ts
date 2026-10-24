@@ -9,7 +9,7 @@ export interface FakeBackend {
   stop(): Promise<void>;
 }
 
-export async function startFakeBackend(options: { failEdit?: string } = {}): Promise<FakeBackend> {
+export async function startFakeBackend(options: { failEdit?: string; delayMs?: number } = {}): Promise<FakeBackend> {
   const requests: FakeBackend["requests"] = [];
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -23,6 +23,7 @@ export async function startFakeBackend(options: { failEdit?: string } = {}): Pro
       const body = chunks.length ? (JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>) : {};
       requests.push({ path: req.url ?? "", body: { ...body, image: body.image ? "<png>" : undefined } });
       if (req.url === "/edit" && options.failEdit) return send(500, { message: options.failEdit });
+      if (options.delayMs) await new Promise((r) => setTimeout(r, options.delayMs));
       if (req.url === "/edit" || req.url === "/generate") {
         const w = Number(body.width), h = Number(body.height), seed = Number(body.seed);
         // The input picture with a band of a colour that depends on the seed, so every candidate differs.

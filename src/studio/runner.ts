@@ -12,6 +12,7 @@ export type StudioEvent =
   | { type: "candidate"; seed: number; file: string; thumb: string; done: number; total: number }
   | { type: "base-done" }
   | { type: "frame"; name: string; done: number; total: number; flags: string[] }
+  | { type: "preview"; name: string; thumb: string; flagged: boolean }
   | { type: "review"; tiles: { name: string; thumb: string; flagged: boolean }[]; flagged: { name: string; flags: string[] }[] }
   | { type: "error"; message: string };
 
@@ -63,6 +64,7 @@ export async function runBase(job: Job, deps: RunDeps): Promise<void> {
     await writeFile(join(dir, file), await encodePng(picture));
     const tw = THUMB_WIDTH;
     await writeFile(join(dir, thumb), await encodeWebp(await resize(picture, tw, Math.round((tw * job.height) / job.width)), { quality: 80 }));
+    await writeFile(join(dir, `base/seed-${seed}.full.webp`), await encodeWebp(picture, { quality: 85 })); // what the page shows when the pointer is over the small one
     done++;
     emit({ type: "candidate", seed, file, thumb, done, total: job.seeds.length });
   }

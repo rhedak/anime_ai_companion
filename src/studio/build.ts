@@ -1,8 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
 import { checkBackground, checkFaceEdit, checkLowerBody, type Flags } from "./checks.ts";
-import { cutout, keyBackground, type Cutout } from "./cutout.ts";
+import { cutout, keyBackground, toRaster, type Cutout } from "./cutout.ts";
 import type { Job } from "./job.ts";
 import { padBox, pasteBack, type Box } from "./paste.ts";
 import type { Geometry } from "./geometry.ts";
@@ -29,22 +29,26 @@ const ATTEMPTS = 3;
 /** Between one attempt and the next the seed jumps, so the same prompt gives another picture. */
 const SEED_STEP = 1000;
 
-/** What to draw, in the order it can be drawn (a frame comes after the one it edits). */
+/** What to draw, in the order it can be drawn (a frame comes after the one it edits, and what the review shows comes first). */
 export function planFrames(job: Job, geometry: Geometry, w: number, h: number): FramePlan[] {
-  const plans: FramePlan[] = [];
+  // The pictures the review shows come first (every emotion at rest, then the poses), so they can be looked at, and the job stopped, within
+  // minutes; the blinks and mouths, which are edits of those, come after.
+  const rests: FramePlan[] = [];
+  const details: FramePlan[] = [];
   const key = job.key;
   const padded = (b: Box) => padBox(b, 0, w, h);
   for (const emotion of EMOTIONS) {
-    if (emotion === "thinking") plans.push({ name: "thinking", from: "base", prompt: thinkingPrompt(key), mode: "whole", group: "thinking" });
-    else if (emotion !== "neutral") plans.push({ name: emotion, from: "base", prompt: emotionPrompt(emotion, key), mode: "paste", box: padded(geometry.face), group: "base" });
+    if (emotion === "thinking") rests.push({ name: "thinking", from: "base", prompt: thinkingPrompt(key), mode: "whole", group: "thinking" });
+    else if (emotion !== "neutral") rests.push({ name: emotion, from: "base", prompt: emotionPrompt(emotion, key), mode: "paste", box: padded(geometry.face), group: "base" });
     const group = emotion === "thinking" ? "thinking" : "base";
     const rest = emotion === "neutral" ? "base" : emotion;
-    plans.push({ name: `${emotion}-blink`, from: rest, prompt: blinkPrompt(key), mode: "paste", box: padded(geometry.eyes), group });
+    details.push({ name: `${emotion}-blink`, from: rest, prompt: blinkPrompt(key), mode: "paste", box: padded(geometry.eyes), group });
     for (const level of [1, 2, 3] as const) {
-      plans.push({ name: `${emotion}-talk${level}`, from: rest, prompt: talkPrompt(level), mode: "paste", box: padded(geometry.mouth[level - 1]), group });
+      details.push({ name: `${emotion}-talk${level}`, from: rest, prompt: talkPrompt(level), mode: "paste", box: padded(geometry.mouth[level - 1]), group });
     }
   }
-  for (const [name, prompt] of Object.entries(POSES)) plans.push({ name, from: "base", prompt: prompt(key), mode: "whole", group: name });
+  for (const [name, prompt] of Object.entries(POSES)) rests.push({ name, from: "base", prompt: prompt(key), mode: "whole", group: name });
+  const plans = [...rests, ...details];
   return plans;
 }
 
@@ -125,6 +129,14 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
   }
   const base = await load(dir, "base", job.width, job.height);
   const baseAlpha = cutout(base, { key: job.key }).alpha;
+  // What is already drawn (a job that was stopped and carried on) is shown again, from the thumbnails already on disk when there are some.
+  for (const name of REVIEW_FRAMES) {
+    const drawn = name === "neutral" || records[name] !== undefined;
+    if (!drawn || redo.has(name)) continue;
+    const flagged = (records[name]?.flags.length ?? 0) > 0;
+    if (await stat(join(dir, `review/${name}.webp`)).then(() => true, () => false)) emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged });
+    else await previewFrame(job, dir, name, name === "neutral" ? base : await load(dir, name, job.width, job.height), flagged, emit);
+  }
   let done = 0;
   for (const plan of plans) {
     done++;
@@ -138,12 +150,31 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
     records[plan.name] = { ...made.record, attempts: (records[plan.name]?.attempts ?? 0) + made.record.attempts };
     await writeFile(framesFile(dir), JSON.stringify(records, null, 2));
     emit({ type: "frame", name: plan.name, done, total: plans.length, flags: made.record.flags });
+    await previewFrame(job, dir, plan.name, made.picture, made.record.flags.length > 0, emit);
   }
   await runAssemble(job, geometry, deps);
 }
 
 /** What goes into the review: the pictures worth a look. */
 export const REVIEW_FRAMES = [...EMOTIONS, ...Object.keys(POSES)];
+
+const REVIEW_BACKDROP = [40, 20, 80] as const;
+export const REVIEW_THUMB = 180;
+
+/** A picture of the review, cut out on a dark backdrop: a small one for the grid and a full-size one for the pointer to enlarge. */
+async function writeReview(dir: string, name: string, cut: Raster): Promise<void> {
+  const dark = flatten(cut, REVIEW_BACKDROP);
+  await writeFile(join(dir, `review/${name}.webp`), await encodeWebp(await resize(dark, REVIEW_THUMB, Math.round((REVIEW_THUMB * dark.h) / dark.w)), { quality: 80 }));
+  await writeFile(join(dir, `review/${name}.full.webp`), await encodeWebp(dark, { quality: 85 }));
+}
+
+/** A frame as soon as it is drawn: cut out on its own (the final pack shares one outline per group, so this is only for looking at). */
+async function previewFrame(job: Job, dir: string, name: string, picture: Raster, flagged: boolean, emit: BuildDeps["emit"]): Promise<void> {
+  if (!REVIEW_FRAMES.includes(name)) return;
+  await mkdir(join(dir, "review"), { recursive: true });
+  await writeReview(dir, name, toRaster(picture.w, picture.h, cutout(picture, { key: job.key })));
+  emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged });
+}
 
 /**
  * Step 3: the pack folder from the pictures: cut out, one shared outline for the pictures of a group, scaled to the pack size, lossless.
@@ -189,8 +220,7 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
     const rec = records[frame.name];
     if (rec && rec.flags.length) flagged.push({ name: frame.name, flags: rec.flags });
     if (REVIEW_FRAMES.includes(frame.name)) {
-      const dark = flatten(await resize(out, 180, Math.round((180 * h) / w)), [40, 20, 80]);
-      await writeFile(join(dir, `review/${frame.name}.webp`), await encodeWebp(dark, { quality: 80 }));
+      await writeReview(dir, frame.name, scaled);
       tiles.push({ name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length) });
     }
   }

@@ -715,6 +715,7 @@ const personaVoice = createPersonaService({
 // --- the pack studio: pictures of her in a new outfit, made on this computer; see studio-service.ts and docs/pack-studio.md ---
 const studio = createStudioService({
   mode: () => mode,
+  activeSource: () => settings.framePack,
   dataDir,
   framesDir,
   settings,

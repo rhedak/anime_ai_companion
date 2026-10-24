@@ -15,18 +15,20 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend } } = {}) {
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
-  const fake = options.again?.fake ?? (await startFakeBackend());
+  const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs }));
   const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl };
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
   const notes: string[] = [];
   const mode = { value: "chat" as "chat" | "work" };
+  const active = { value: null as string | null };
   const service = createStudioService({
     mode: () => mode.value,
+    activeSource: () => active.value,
     dataDir,
     framesDir,
     settings,
@@ -51,7 +53,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     await fake.stop();
     await rm(dataDir, { recursive: true, force: true });
   };
-  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, say: (t: string) => said.push(t) };
+  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, active, say: (t: string) => said.push(t) };
 }
 
 test("the studio is off until /studio on, needs a backend that answers, and is refused from a phone", async () => {
@@ -107,9 +109,33 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     assert.deepEqual([waiting.job?.picking, waiting.candidates.length], [true, 4], "a reloaded page can show the pictures again");
     assert.match(waiting.job?.text ?? "", /Pick the one you like/);
 
+    // The pointer over a small picture asks for the full-size one: of this job, by a name it can have, and nothing else.
+    const asked: Record<string, any>[] = [];
+    const ask = (id: string, name: string) => t.service.message({ type: "studio-full", id, name }, (m: unknown) => asked.push(m as Record<string, any>), false);
+    await ask(card.id, "seed-3");
+    await ask(card.id, "../../job");
+    await ask(card.id, "seed-99");
+    await ask("job-other", "seed-3");
+    assert.equal(asked.length, 1, "only the picture that exists, of the job that is open");
+    assert.equal(asked[0].name, "seed-3");
+    assert.ok(String(asked[0].image).startsWith("data:image/webp;base64,"));
+    const bigger = await decode(Buffer.from(String(asked[0].image).split(",")[1], "base64"));
+    assert.ok(bigger.w > 240, `full size, not the thumbnail (${bigger.w} wide)`);
+
     await t.service.message({ type: "studio-pick", id: card.id, seed: 3 }, send, false);
     await t.waitFor("studio-review");
     const review = t.sent.find((m) => m.type === "studio-review")!;
+    // The pictures of the review reach the page one by one while the rest is drawn: in plan order, each before the review itself.
+    const previewNames = t.sent.filter((m) => m.type === "studio-preview").map((m) => m.name);
+    const firsts = [...new Set(previewNames)];
+    assert.deepEqual(firsts.slice(0, 11), ["neutral", "happy", "sad", "angry", "surprised", "shy", "thinking", "wave-1", "wave-2", "cheer-1", "cheer-2"]);
+    assert.ok(t.sent.findIndex((m) => m.type === "studio-preview" && m.name === "cheer-2") < t.sent.findIndex((m) => m.type === "studio-review"));
+    assert.ok(t.sent.filter((m) => m.type === "studio-preview").every((m) => String(m.thumb).startsWith("data:image/webp;base64,")));
+    asked.length = 0;
+    await ask(card.id, "happy");
+    assert.equal(asked.length, 1, "a review picture can be enlarged too");
+    assert.ok((await decode(Buffer.from(String(asked[0].image).split(",")[1], "base64"))).w > 180);
+
     assert.equal(review.tiles.length, 11, "seven emotions and four poses to look at");
     assert.ok(review.tiles.every((x: any) => String(x.thumb).startsWith("data:image/webp;base64,")));
     const drawn = t.fake.requests.filter((r) => r.path === "/edit").length;
@@ -289,14 +315,78 @@ test("her proposal for the form is checked against this computer, and nothing st
     const second = t.sent.filter((m) => m.type === "studio-proposal").at(-1);
     assert.deepEqual([second?.outfit, second?.name, second?.source], ["a hat", undefined, undefined], "a name that is not usable and a pack that is not there are left out");
     assert.equal(t.fake.requests.length, requests, "nothing was drawn");
-    // Off: no note, no proposals.
-    await t.service.command("off", t.say, false, () => {});
-    t.sent.length = 0;
-    t.service.makeApplier()('[studio outfit="a coat"]');
+    // Her proposal names a pack that is not there: the form starts from the pack she is wearing instead.
+    t.active.value = "risa-dress";
+    t.service.makeApplier()('[studio outfit="a knitted sweater" source="risa-casual-new"]');
     await new Promise((r) => setTimeout(r, 50));
-    assert.equal(t.sent.filter((m) => m.type === "studio-proposal").length, 0);
-    assert.equal(t.service.note(), null);
+    assert.equal(t.sent.filter((m) => m.type === "studio-proposal").at(-1)?.source, "risa-dress");
+
+    // With the studio off, her words wait: the user is asked, nothing opens, and turning it on shows them in the form.
+    await t.service.command("off", t.say, false, () => {});
+    assert.equal((await t.service.stateMessage()).proposal, null, "turning it off drops what was waiting");
+    t.sent.length = 0;
+    t.service.makeApplier()('[studio outfit="a long wool coat" name="risa-coat"]');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(t.sent.filter((m) => m.type === "studio-proposal").length, 0, "off: the page is not opened");
+    const asked = t.sent.find((m) => m.type === "studio-ask");
+    assert.deepEqual([asked?.outfit, asked?.name], ["a long wool coat", "risa-coat"], "the user is asked whether to turn it on, with her words");
+    assert.equal(t.service.note(), null, "off: she is not told how to propose");
+    // The yes to the question turns it on: from this computer only, and only when the backend answers.
+    const phone: Record<string, any>[] = [];
+    await t.service.message({ type: "studio-on" }, (m: unknown) => phone.push(m as Record<string, any>), true);
+    assert.equal(t.service.enabled(), false, "a phone cannot say yes");
+    assert.equal(phone[0].text, "only on the computer");
+    const yes: Record<string, any>[] = [];
+    await t.service.message({ type: "studio-on" }, (m: unknown) => yes.push(m as Record<string, any>), false);
+    assert.equal(t.service.enabled(), true);
+    assert.ok(yes.some((m) => m.type === "studio-open"), "the panel opens");
+    const shown = await t.service.stateMessage();
+    assert.deepEqual([shown.proposal?.outfit, shown.proposal?.name, shown.proposal?.source, shown.active], ["a long wool coat", "risa-coat", "risa-dress", "risa-dress"], "the form can be filled from the state");
   } finally {
     await t.cleanup();
+  }
+});
+
+test("the yes to the question needs a backend that answers, and says why when it does not", async () => {
+  const t = await setup({ backendUrl: null });
+  try {
+    const answers: Record<string, any>[] = [];
+    await t.service.message({ type: "studio-on" }, (m: unknown) => answers.push(m as Record<string, any>), false);
+    assert.equal(t.service.enabled(), false);
+    assert.match(answers[0].text, /No image backend is set/);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("a job stopped part way shows what is already drawn when it is carried on, and stopping is allowed at any moment", async () => {
+  const first = await setup({ delayMs: 120 });
+  try {
+    await first.service.command("on", first.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await first.service.message({ type: "studio-start", source: "risa-dress", name: "risa-half", outfit: "a long scarf" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    await first.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await first.waitFor("studio-candidates-done");
+    await first.service.message({ type: "studio-pick", id: card?.id, seed: 1 }, send, false);
+    await first.waitFor("studio-preview", 3); // neutral, happy, sad: the pictures of the review come first
+    await first.service.message({ type: "studio-cancel" }, send, false);
+
+    const second = await setup({ again: first });
+    try {
+      await second.service.command("on", second.say, false, () => {});
+      assert.equal((await second.service.stateMessage()).resumable[0]?.stage, "build");
+      await second.service.message({ type: "studio-resume", id: card?.id }, send, false);
+      await second.waitFor("studio-preview", 3);
+      const names = second.sent.filter((m) => m.type === "studio-preview").map((m) => m.name);
+      assert.deepEqual(names.slice(0, 3), ["neutral", "happy", "sad"], "what exists is shown again at once, in order");
+      assert.equal((await second.service.stateMessage()).previews.length >= 3, true, "and a page that reloads gets them from the state");
+      await second.service.message({ type: "studio-cancel" }, send, false);
+    } finally {
+      await second.cleanup();
+    }
+  } finally {
+    await first.cleanup();
   }
 });

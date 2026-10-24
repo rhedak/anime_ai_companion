@@ -1378,6 +1378,9 @@ function handle(msg) {
     case "studio-error":
     case "studio-cancelled":
     case "studio-proposal":
+    case "studio-preview":
+    case "studio-full":
+    case "studio-ask":
       studio.handle(msg);
       break;
     case "pack-offer":

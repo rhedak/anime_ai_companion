@@ -1885,13 +1885,16 @@ describe("the pack studio: she proposes words, the page fills the form, nothing 
     let from = c.mark;
     c.say("STUDIO before it is on");
     await c.next("done", 8000, from);
-    assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0, "off: her tag is ignored");
+    assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0, "off: the page is not opened by her tag");
+    const asked = c.since(from).find((e) => e.type === "studio-ask");
+    assert.equal(asked?.name, "risa-autumn", "off: the user is asked whether to turn it on, with her words");
     assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /pack studio is on/);
 
     from = c.mark;
     c.say("/studio on");
     const state = await c.next((e) => e.type === "studio-state" && e.on === true, 8000, from);
     assert.equal(state.backend, backend.url);
+    assert.equal(state.proposal?.name, "risa-autumn", "the words she proposed while it was off are in the form when it is turned on");
     await fresh(c);
     from = c.mark;
     c.say("STUDIO please");

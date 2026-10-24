@@ -36,6 +36,8 @@ export interface StudioDeps {
   /** The packs a new one can be drawn from (all of them, shipped and installed). */
   sources(): Promise<string[]>;
   readSource(name: string): Promise<SourceFrames | null>;
+  /** The pack she is wearing now, or null (the drawn avatar): a new outfit is drawn from it unless the user picks another. */
+  activeSource(): string | null;
   /** Tell the page about the packs again (a new one is there). */
   refreshPacks(): Promise<void>;
   /** Something to tell her with her next message. */
@@ -104,6 +106,8 @@ export function createStudioService(deps: StudioDeps) {
   /** What the page would need to show a job again after a reload: the last thing said, and the candidate pictures so far. */
   let lastText = "";
   const shown = new Map<number, string>();
+  /** The pictures of the pack drawn so far (the ones the review shows), so they can be looked at while the rest are still being drawn. */
+  const previews = new Map<string, { thumb: string | null; flagged: boolean }>();
   /** Has she been told about the studio in this conversation? */
   let told = false;
   /** What she last proposed for the form (or for a redraw), so a page that connects or reloads can show it. */
@@ -120,11 +124,14 @@ export function createStudioService(deps: StudioDeps) {
       on,
       backend: deps.settings.studioBackend,
       sources: on ? (knownSources = await deps.sources()) : [],
+      /** The pack the form starts from. */
+      active: deps.activeSource(),
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
       /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
       candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
       review: waiting?.kind === "review" ? waiting.review : null,
+      previews: running && running.phase !== "base" ? [...previews].map(([name, v]) => ({ name, ...v })) : [],
       resumable: on && !job && !pending ? await findJobs() : [],
       proposal,
     };
@@ -141,22 +148,33 @@ export function createStudioService(deps: StudioDeps) {
     ).slice(0, 1800);
   }
 
-  /** A proposal from her reply, checked against this computer: what is not valid is left out, and nothing is started. */
+  /**
+   * A proposal from her reply, checked against this computer: what is not valid is left out, and nothing is started. With the studio off it
+   * waits (and the user is told): `/studio on` then opens the form with her words in it.
+   */
   async function propose(p: StudioProposal): Promise<void> {
-    if (!on || deps.mode() !== "chat") return;
+    if (deps.mode() !== "chat" || disabled) return;
     const sources = await deps.sources();
     const valid: StudioProposal = {};
+    const active = deps.activeSource();
+    // The pack to draw from: the one she named if it exists, else the one she is wearing.
     if (p.source && sources.includes(p.source)) valid.source = p.source;
+    else if (active && sources.includes(active)) valid.source = active;
     if (p.outfit && p.outfit.length >= 3) valid.outfit = p.outfit;
     if (p.look) valid.look = p.look;
     if (usableName(p.name) && !(await stat(join(deps.framesDir, p.name)).then(() => true, () => false))) valid.name = p.name;
-    if (p.redraw && waiting?.kind === "review") {
+    if (on && p.redraw && waiting?.kind === "review") {
       const known = knownFrameNames();
       const names = p.redraw.filter((n) => known.has(n));
       if (names.length) valid.redraw = names;
     }
-    if (running || !(valid.outfit || valid.name || valid.look || valid.source || valid.redraw)) return;
+    if (running || !(valid.outfit || valid.name || valid.look || valid.redraw)) return;
     proposal = { id: randomBytes(4).toString("hex"), ...valid };
+    if (!on) {
+      // Off: ask. The yes (from this computer) is what turns it on, and her words are in the form when it opens.
+      deps.broadcast({ type: "studio-ask", id: proposal.id, outfit: valid.outfit ?? null, name: valid.name ?? null, backend: deps.settings.studioBackend });
+      return;
+    }
     deps.broadcast({ type: "studio-proposal", ...proposal, job: waiting?.kind === "review" ? waiting.job.id : null });
   }
 
@@ -193,6 +211,7 @@ export function createStudioService(deps: StudioDeps) {
     pending = null;
     waiting = null;
     shown.clear();
+    previews.clear();
     lastText = "";
   }
 
@@ -238,6 +257,11 @@ export function createStudioService(deps: StudioDeps) {
         const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
         if (thumb) shown.set(event.seed, thumb);
         deps.broadcast({ type: "studio-candidate", id: job.id, seed: event.seed, done: event.done, total: event.total, thumb });
+      } else if (event.type === "preview") {
+        const file = await readFile(join(dir, event.thumb)).catch(() => null);
+        const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
+        previews.set(event.name, { thumb, flagged: event.flagged });
+        deps.broadcast({ type: "studio-preview", id: job.id, name: event.name, thumb, flagged: event.flagged });
       } else if (event.type === "base-done") {
         lastText = "Pick the one you like. Nothing is saved until you do.";
         deps.broadcast({ type: "studio-candidates-done", id: job.id });
@@ -382,6 +406,29 @@ export function createStudioService(deps: StudioDeps) {
     await install(waiting);
   }
 
+  /** A picture at its full size for the pointer to enlarge: only of the job that is open, only a name this job can have, only from its folder. */
+  async function full(id: string, name: unknown, send: Send): Promise<void> {
+    const job = running?.job ?? waiting?.job;
+    const dir = running?.dir ?? waiting?.dir;
+    if (!job || !dir || job.id !== id || typeof name !== "string") return;
+    const seed = /^seed-(\d{1,10})$/.exec(name);
+    const file = seed ? join(dir, `base/seed-${seed[1]}.full.webp`) : name === "neutral" || knownFrameNames().has(name) ? join(dir, `review/${name}.full.webp`) : null;
+    if (!file) return;
+    const bytes = await readFile(file).catch(() => null);
+    if (bytes) send({ type: "studio-full", id, name, image: `data:image/webp;base64,${bytes.toString("base64")}` });
+  }
+
+  /** Turns the studio on (after checking the backend) and opens the panel. From `/studio on`, or from the yes to the question her proposal raises. */
+  async function turnOn(say: Say, reply: (msg: unknown) => void): Promise<void> {
+    if (disabled) return say("The pack studio is turned off (COMPANION_NO_STUDIO).");
+    const checked = await check();
+    if (!checked.ok) return say(checked.reason);
+    on = true;
+    await announce();
+    reply({ type: "studio-open" });
+    say(`The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`);
+  }
+
   /** Carries on a job from an earlier session, from whatever is on disk. */
   async function resume(id: string, send: Send): Promise<void> {
     if (running || waiting || pending) return send({ type: "studio-error", message: "Finish or stop the job that is open first." });
@@ -455,20 +502,12 @@ export function createStudioService(deps: StudioDeps) {
       }
       if (word === "off") {
         stopRunning();
+        proposal = null;
         on = false;
         await announce();
         return say("The pack studio is off.");
       }
-      if (word === "on") {
-        const checked = await check();
-        if (!checked.ok) return say(checked.reason);
-        on = true;
-        await announce();
-        reply({ type: "studio-open" });
-        return say(
-          `The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`,
-        );
-      }
+      if (word === "on") return turnOn(say, reply);
       if (!on) return say(`The pack studio is off. /studio backend <address> sets the image backend, /studio on turns it on. It makes picture packs of your own on this computer (docs/pack-studio.md).`);
       reply({ type: "studio-open" });
     },
@@ -476,6 +515,7 @@ export function createStudioService(deps: StudioDeps) {
     /** A message from the page. */
     async message(msg: Record<string, unknown>, send: Send, remote: boolean): Promise<void> {
       if (remote) return send({ type: "notice", text: deps.remoteRefusal() });
+      if (msg.type === "studio-on") return turnOn((text) => send({ type: "notice", text }), send);
       if (!on) return send({ type: "studio-error", message: "The pack studio is off. Type /studio on." });
       try {
         if (msg.type === "studio-start") await start(msg, send);
@@ -483,6 +523,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
         else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
+        else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
         else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());

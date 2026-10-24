@@ -8,6 +8,9 @@ export function createStudio(io) {
   let on = false;
   /** @type {string[]} */
   let sources = [];
+  /** The pack she is wearing: the form starts from it, until the user picks another. */
+  let active = "";
+  let sourceTouched = false;
   /** @type {HTMLElement | null} */
   let panel = null;
   let jobId = "";
@@ -29,6 +32,8 @@ export function createStudio(io) {
   function close() {
     panel?.remove();
     panel = null;
+    zoom?.remove();
+    zoom = null;
   }
 
   function open() {
@@ -43,6 +48,7 @@ export function createStudio(io) {
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
     closeButton.onclick = close;
     stop.onclick = () => io.send({ type: "studio-cancel" });
+    source.addEventListener("input", () => (sourceTouched = true)); // only the user's own choice counts (a script's change does not fire this)
     source.onchange = () => {
       if (!name.value || name.dataset.auto === "1") {
         name.value = `${source.value}-new`;
@@ -75,74 +81,157 @@ export function createStudio(io) {
       el("div", { className: "studio-candidates" }),
     );
     io.host()?.append(panel);
+    zoom = el("div", { className: "studio-zoom", hidden: true }, el("img", { alt: "" }));
+    io.host()?.append(zoom);
     fillSources();
     source.onchange?.(new Event("change"));
     outfit.focus();
     io.send({ type: "studio-state" }); // a job that is already going (or waiting for the pick) is shown again
   }
 
+  // --- looking at the pictures: the pointer over a small one shows it at full size, beside the panel ---
+
+  /** @type {HTMLElement | null} */
+  let zoom = null;
+  /** Full-size pictures already fetched, by `<job>/<name>`. */
+  const fullSize = new Map();
+  let zoomKey = "";
+
+  /**
+   * She proposed an outfit while the studio is off: ask whether to turn it on. The yes (it only counts from this computer) is the opt-in, and
+   * her words are in the form when the panel opens.
+   */
+  function ask(/** @type {Record<string, any>} */ msg) {
+    document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
+    const box = el("div", { className: "pack-confirm", role: "alertdialog", ariaLabel: "Turn on the pack studio?" });
+    box.dataset.kind = "studio-ask";
+    const outfit = typeof msg.outfit === "string" && msg.outfit ? ` “${msg.outfit}”` : "";
+    const backend = typeof msg.backend === "string" && msg.backend ? ` (${msg.backend})` : "";
+    const yes = el("button", { type: "button", textContent: "Turn on the pack studio" });
+    const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
+    no.onclick = () => box.remove();
+    yes.onclick = () => {
+      box.remove();
+      io.send({ type: "studio-on" });
+    };
+    box.append(
+      el("p", { textContent: `She suggested an outfit for the pack studio:${outfit || " (no words yet)"}. The studio makes picture packs of her on this computer with an image model you run${backend}, and it is off until you turn it on. Turn it on and open it with her words?` }),
+      el("div", { className: "pack-confirm-buttons" }, yes, no),
+    );
+    io.host()?.append(box);
+    yes.focus();
+  }
+
+  function showZoom(/** @type {string} */ id, /** @type {string} */ name, /** @type {string} */ thumb) {
+    if (!zoom) return;
+    zoomKey = `${id}/${name}`;
+    const img = /** @type {HTMLImageElement} */ (zoom.firstElementChild);
+    img.src = fullSize.get(zoomKey) ?? thumb; // the small one at once, the full one when it arrives
+    // Beside the panel when the stage is wide enough for a picture there, else over the whole stage (the pointer goes through it).
+    zoom.classList.toggle("beside", (zoom.parentElement?.clientWidth ?? 0) - 576 >= 320);
+    zoom.hidden = false;
+    if (!fullSize.has(zoomKey)) io.send({ type: "studio-full", id, name });
+  }
+
+  function hideZoom() {
+    zoomKey = "";
+    if (zoom) zoom.hidden = true;
+  }
+
+  function attachZoom(/** @type {HTMLElement} */ node, /** @type {string} */ id, /** @type {string} */ name, /** @type {string} */ thumb) {
+    node.addEventListener("mouseenter", () => showZoom(id, name, thumb));
+    node.addEventListener("focus", () => showZoom(id, name, thumb));
+    node.addEventListener("mouseleave", hideZoom);
+    node.addEventListener("blur", hideZoom);
+  }
+
+  const isThumb = (/** @type {unknown} */ t) => typeof t === "string" && t.startsWith("data:image/webp;base64,");
+
   function addCandidate(/** @type {string} */ id, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
     const grid = q(".studio-candidates");
     grid?.classList.remove("studio-review");
-    if (!grid || typeof thumb !== "string" || !thumb.startsWith("data:image/webp;base64,")) return;
-    const pick = el("button", { type: "button", className: "preset", title: "Use this one", ariaLabel: `Use picture ${number}` });
-    pick.append(el("img", { src: thumb, alt: `Candidate ${number}` }));
+    if (!grid || !isThumb(thumb)) return;
+    const pick = el("button", { type: "button", className: "preset", title: "Use this one (the pointer over it shows it larger)", ariaLabel: `Use picture ${number}` });
+    pick.append(el("img", { src: /** @type {string} */ (thumb), alt: `Candidate ${number}` }));
+    attachZoom(pick, id, `seed-${seed}`, /** @type {string} */ (thumb));
     pick.onclick = () => {
+      hideZoom();
       io.send({ type: "studio-pick", id, seed });
       grid.replaceChildren();
-      status("Cutting her out…");
+      status("Drawing the rest of her…");
       running(true);
     };
     grid.append(pick);
   }
 
-  /** The finished pack: a tile for each emotion and pose, what the checks found, and the choice to draw some again or use it. */
-  function showReview(/** @type {string} */ id, /** @type {{ tiles?: any[], flagged?: any[] }} */ review) {
+  /** The pictures of the pack as a grid: it fills while the pack is drawn, and becomes the review. Returns the grid and the room for what the review adds. */
+  function tilesBox() {
     const box = q(".studio-candidates");
-    if (!box) return;
-    /** @type {Set<string>} */
-    const selected = new Set();
-    const grid = el("div", { className: "studio-tiles" });
-    const again = el("button", { type: "button", className: "ghost", textContent: "Draw the selected again", disabled: true });
-    const use = el("button", { type: "button", textContent: "Use this pack" });
-    for (const tile of review.tiles ?? []) {
-      if (typeof tile.thumb !== "string" || !tile.thumb.startsWith("data:image/webp;base64,")) continue;
-      const t = el("button", { type: "button", className: "preset", title: `${tile.name}${tile.flagged ? " (a check failed)" : ""}`, ariaLabel: `${tile.name}`, ariaPressed: "false" });
-      t.append(el("img", { src: tile.thumb, alt: tile.name }), el("span", { className: "preset-name", textContent: `${tile.flagged ? "⚠ " : ""}${tile.name}` }));
+    if (!box) return null;
+    let grid = /** @type {HTMLElement | null} */ (box.querySelector(".studio-tiles"));
+    if (!grid) {
+      box.classList.add("studio-review");
+      grid = el("div", { className: "studio-tiles" });
+      box.replaceChildren(grid, el("div", { className: "studio-extra" }));
+    }
+    return { grid, extra: /** @type {HTMLElement} */ (box.querySelector(".studio-extra")) };
+  }
+
+  /** One tile: made, or made again (it takes the old one's place). Selectable only once the pack is done. */
+  function setTile(/** @type {string} */ id, /** @type {{ name: string, thumb: unknown, flagged?: boolean }} */ tile, /** @type {Set<string> | null} */ selected, /** @type {() => void} */ changed) {
+    const parts = tilesBox();
+    if (!parts || !isThumb(tile.thumb)) return;
+    const label = `${tile.flagged ? "⚠ " : ""}${tile.name}`;
+    const t = el("button", { type: "button", className: "preset", title: `${tile.name}${tile.flagged ? " (a check failed)" : ""}`, ariaLabel: tile.name });
+    t.dataset.name = tile.name;
+    t.append(el("img", { src: /** @type {string} */ (tile.thumb), alt: tile.name }), el("span", { className: "preset-name", textContent: label }));
+    attachZoom(t, id, tile.name, /** @type {string} */ (tile.thumb));
+    if (selected) {
+      t.setAttribute("aria-pressed", "false");
       t.onclick = () => {
         const on = !selected.has(tile.name);
         if (on) selected.add(tile.name);
         else selected.delete(tile.name);
         t.setAttribute("aria-pressed", String(on));
         t.classList.toggle("studio-selected", on);
-        again.disabled = selected.size === 0;
+        changed();
       };
-      grid.append(t);
     }
+    const old = Array.from(parts.grid.children).find((c) => /** @type {HTMLElement} */ (c).dataset.name === tile.name);
+    if (old) old.replaceWith(t);
+    else parts.grid.append(t);
+  }
+
+  /** The finished pack: a tile for each emotion and pose, what the checks found, and the choice to draw some again or use it. */
+  function showReview(/** @type {string} */ id, /** @type {{ tiles?: any[], flagged?: any[] }} */ review) {
+    const parts = tilesBox();
+    if (!parts) return;
+    /** @type {Set<string>} */
+    const selected = new Set();
+    const again = el("button", { type: "button", className: "ghost studio-action", textContent: "Draw the selected again", disabled: true });
+    const use = el("button", { type: "button", className: "studio-action", textContent: "Use this pack" });
+    for (const tile of review.tiles ?? []) setTile(id, tile, selected, () => (again.disabled = selected.size === 0));
     const notes = el("ul", { className: "studio-flags" });
-    for (const f of review.flagged ?? []) {
-      const redo = el("button", { type: "button", className: "ghost", textContent: "Draw again" });
-      redo.onclick = () => {
-        io.send({ type: "studio-regen", id, names: [f.name] });
-        box.replaceChildren();
-        status("Drawing it again…");
-        running(true);
-      };
-      notes.append(el("li", {}, el("strong", { textContent: `${f.name}: ` }), String((f.flags ?? []).join("; ")), " ", redo));
-    }
-    again.onclick = () => {
-      io.send({ type: "studio-regen", id, names: [...selected] });
-      box.replaceChildren();
-      status("Drawing them again…");
+    /** Drawing again: the tiles stay (the ones that are made again are replaced as they are drawn), the buttons wait. */
+    const redraw = (/** @type {string[]} */ names, /** @type {string} */ text) => {
+      io.send({ type: "studio-regen", id, names });
+      parts.extra.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = true));
+      parts.grid.querySelectorAll("button").forEach((b) => b.removeAttribute("aria-pressed"));
+      status(text);
       running(true);
     };
+    for (const f of review.flagged ?? []) {
+      const redo = el("button", { type: "button", className: "ghost studio-action", textContent: "Draw again" });
+      redo.onclick = () => redraw([f.name], "Drawing it again…");
+      notes.append(el("li", {}, el("strong", { textContent: `${f.name}: ` }), String((f.flags ?? []).join("; ")), " ", redo));
+    }
+    again.onclick = () => redraw([...selected], "Drawing them again…");
     use.onclick = () => {
       io.send({ type: "studio-accept", id });
       use.disabled = true;
       status("Writing the pack…");
     };
-    box.classList.add("studio-review");
-    box.replaceChildren(grid, notes, el("div", { className: "pack-confirm-buttons" }, use, again));
+    parts.extra.replaceChildren(notes, el("div", { className: "pack-confirm-buttons" }, use, again));
   }
 
   /** Jobs from an earlier session, as buttons that carry them on. */
@@ -207,7 +296,9 @@ export function createStudio(io) {
     if (!select) return;
     const keep = select.value;
     select.replaceChildren(...sources.map((s) => new Option(s, s)));
-    if (sources.includes(keep)) select.value = keep;
+    if (!sourceTouched && sources.includes(active)) select.value = active;
+    else if (sources.includes(keep)) select.value = keep;
+    select.onchange?.(new Event("change")); // the name of the new pack follows the pack it is drawn from, until the user has typed one
   }
 
   function running(/** @type {boolean} */ busy) {
@@ -224,7 +315,9 @@ export function createStudio(io) {
       switch (msg.type) {
         case "studio-state":
           on = msg.on === true;
+          if (on) document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
+          active = typeof msg.active === "string" ? msg.active : "";
           if (!on) close();
           else {
             // A job is running or waits for the pick (this page was reloaded, or the panel was closed): show where it is.
@@ -235,6 +328,7 @@ export function createStudio(io) {
               const grid = q(".studio-candidates");
               if (grid && grid.childElementCount === 0) {
                 if (msg.review) showReview(String(msg.job.id), msg.review);
+                else if (Array.isArray(msg.previews) && msg.previews.length) for (const t of msg.previews) setTile(String(msg.job.id), t, null, () => {});
                 else for (const c of Array.isArray(msg.candidates) ? msg.candidates : []) addCandidate(String(msg.job.id), c.seed, c.thumb, grid.childElementCount + 1);
               }
               status(String(msg.job.text || "Working…"));
@@ -243,6 +337,18 @@ export function createStudio(io) {
           if (msg.proposal && panel && !q(".studio-proposal")?.childElementCount) applyProposal({ ...msg.proposal, job: msg.job?.reviewing ? msg.job.id : null });
           running(Boolean(msg.running));
           document.dispatchEvent(new CustomEvent("studio-state", { detail: { on } }));
+          return true;
+        case "studio-ask":
+          ask(msg);
+          return true;
+        case "studio-preview":
+          setTile(String(msg.id), { name: String(msg.name), thumb: msg.thumb, flagged: msg.flagged === true }, null, () => {});
+          return true;
+        case "studio-full":
+          if (isThumb(msg.image)) {
+            fullSize.set(`${msg.id}/${msg.name}`, msg.image);
+            if (zoomKey === `${msg.id}/${msg.name}` && zoom) /** @type {HTMLImageElement} */ (zoom.firstElementChild).src = msg.image;
+          }
           return true;
         case "studio-proposal":
           applyProposal(msg);
