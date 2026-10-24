@@ -335,7 +335,9 @@ export function createStudio(io) {
             if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-confirm")?.childElementCount) showResumable(msg.resumable);
             if (msg.job && panel) {
               const grid = q(".studio-candidates");
-              if (grid && grid.childElementCount === 0) {
+              // A review that is waiting but whose buttons are missing (the pictures came first) is shown again whole.
+              if (grid && msg.review && !q(".studio-extra")?.childElementCount) showReview(String(msg.job.id), msg.review);
+              else if (grid && grid.childElementCount === 0) {
                 if (msg.review) showReview(String(msg.job.id), msg.review);
                 else if (Array.isArray(msg.previews) && msg.previews.length) for (const t of msg.previews) setTile(String(msg.job.id), t, null, () => {});
                 else for (const c of Array.isArray(msg.candidates) ? msg.candidates : []) addCandidate(String(msg.job.id), c.seed, c.thumb, grid.childElementCount + 1);
