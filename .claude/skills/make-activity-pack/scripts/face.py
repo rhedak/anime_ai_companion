@@ -13,6 +13,9 @@ def irises(arr, ymax=0.26):
     if os.environ.get("IRIS") == "amber":
         # brown/amber eyes (Franzi): the iris rim is brown-orange (about 105,63,16); skin is much lighter and hair has no orange cast
         teal = a & (r > 70) & (r < 215) & (g < 135) & (r - b > 45) & (r - g > 18) & (r - g < int(os.environ.get("IRIS_RG_MAX", "999")))  # IRIS_RG_MAX=90 keeps a red hair bow (r - g about 120) out
+    elif os.environ.get("IRIS") == "softgreen":
+        # Risa's pale green irises (about g > r + 15, g > b + 25): the default teal test finds none of them
+        teal = a & (g > r + 15) & (g > b + 25)
     else:
         teal = a & (g > r + 25) & (b > r + 25) & (g > 90)
     teal[int(H * ymax):] = False
@@ -30,6 +33,12 @@ def measure(path):
     irs = irises(arr)
     import os
     eyes = [((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, b[2] - b[0] + 1, b[3] - b[1] + 1, area) for area, b in irs]
+    if os.environ.get("IRIS") == "softgreen" and len(eyes) >= 2:
+        # the iris comes in pieces: split the blobs at their mean x, one eye per side (area-weighted centre)
+        mid = sum(e[0] for e in eyes) / len(eyes)
+        sides = [[e for e in eyes if e[0] < mid], [e for e in eyes if e[0] >= mid]]
+        if all(sides):
+            eyes = [(sum(e[0] * e[4] for e in s) / sum(e[4] for e in s), sum(e[1] * e[4] for e in s) / sum(e[4] for e in s), max(e[2] for e in s), max(e[3] for e in s), sum(e[4] for e in s)) for s in sides]
     if os.environ.get("IRIS") == "amber":
         eyes = sorted(eyes, key=lambda e: -e[4])[:2]  # the iris rim comes in pieces: the two biggest are the eyes
     eyes = sorted(eyes)
