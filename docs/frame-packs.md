@@ -93,6 +93,8 @@ uv run --with cairosvg python python/make_sample_pack.py data/frames/linnea
 
 ## Making a pack with an AI image tool
 
+Which local model to use for making packs, and the measurements behind that choice, are in [`pack-image-models.md`](pack-image-models.md).
+
 What makes or breaks it is **consistency**: every picture must be the same drawing with only the face changed.
 If the head sits a few pixels differently, or the hair or the lighting changes, she twitches every time the
 picture swaps. So:

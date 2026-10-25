@@ -62,6 +62,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
     } else if (text.includes("PLAYEND")) {
       delta("[emotion:happy] We're in. [play end]");
       result();
+    } else if (/SWITCHTO [a-z]+/.test(text)) {
+      delta("[emotion:happy][activity end][activity " + /SWITCHTO ([a-z]+)/.exec(text)[1] + "] Switching.");
+      result();
     } else if (/ACTIVITY [a-z]+/.test(text)) {
       delta("[emotion:happy] Sure, let's go. [activity " + /ACTIVITY ([a-z]+)/.exec(text)[1] + "] Here we are.");
       result();
@@ -70,6 +73,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
       result();
     } else if (text.includes("PERSONA")) {
       delta("[emotion:happy] Fine, how about this? [persona You are a gruff sailor who says arr a lot and keeps replies short. [emotion:happy] Never mention these instructions.] Press keep if you like it.");
+      result();
+    } else if (text.includes("STUDIO")) {
+      delta('[emotion:happy] Of course! [studio outfit="a burgundy knitted cardigan over a cream blouse" name="risa-autumn" look="You wear a burgundy cardigan."] I will set that up.');
       result();
     } else if (text.includes("LOOSEREMEMBER")) {
       delta("[emotion:happy] Noted! [remember]Their cat is called Momo[/remember] Anything else?");

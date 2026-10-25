@@ -1,3 +1,4 @@
+import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
@@ -205,6 +206,15 @@ describe("chatting", { skip }, () => {
     await ask(c, "thanks");
     const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
     assert.match(after.text!, /The user ended the activity "swimming"/);
+
+    // moving on from one activity to the next in one reply ([activity end][activity swimming]) ends the old one and starts the new one
+    const moved = c.mark;
+    await ask(c, "please ACTIVITY cooking");
+    await c.next((e) => e.type === "activity" && e.name === "cooking", 8000, moved);
+    const switched = c.mark;
+    await ask(c, "now SWITCHTO swimming");
+    await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, switched);
+    assert.deepEqual(c.events.slice(switched).filter((e: any) => e.type === "activity").map((e: any) => e.name), [null, "swimming"]);
 
     // /clear ends one too, and work mode does not take the tag at all
     await ask(c, "please ACTIVITY walking");
@@ -1862,6 +1872,67 @@ describe("whose voice she speaks in: custom, then the character of the pack that
     } finally {
       await server.stop();
     }
+  });
+});
+
+describe("the pack studio: she proposes words, the page fills the form, nothing starts", { skip }, () => {
+  let server: RunningServer;
+  let backend: FakeBackend;
+  before(async () => {
+    backend = await startFakeBackend();
+    server = await startServer({ delay: 20, env: { COMPANION_IMAGE_BACKEND: backend.url } });
+  });
+  after(async () => {
+    await server?.stop();
+    await backend?.stop();
+  });
+
+  test("off at every start: no note, and her tag is ignored; /studio on tells her how, her tag fills the form, and nothing is drawn", async () => {
+    const c = await server.client();
+    await c.next("history");
+    await fresh(c);
+    let from = c.mark;
+    c.say("STUDIO before it is on");
+    await c.next("done", 8000, from);
+    assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0, "off: the page is not opened by her tag");
+    const asked = c.since(from).find((e) => e.type === "studio-ask");
+    assert.equal(asked?.name, "risa-autumn", "off: the user is asked whether to turn it on, with her words");
+    assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /pack studio is on/);
+
+    from = c.mark;
+    c.say("/studio on");
+    const state = await c.next((e) => e.type === "studio-state" && e.on === true, 8000, from);
+    assert.equal(state.backend, backend.url);
+    assert.equal(state.proposal?.name, "risa-autumn", "the words she proposed while it was off are in the form when it is turned on");
+    await fresh(c);
+    from = c.mark;
+    c.say("STUDIO please");
+    const proposal = await c.next("studio-proposal", 8000, from);
+    assert.deepEqual([proposal.outfit, proposal.name, proposal.look], ["a burgundy knitted cardigan over a cream blouse", "risa-autumn", "You wear a burgundy cardigan."]);
+    const told = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
+    assert.match(told.text!, /pack studio is on[^]*\[studio outfit=/, "the first message after the switch carries what the studio is and how to propose");
+    assert.match(told.text!, /Packs you can draw from: /);
+    assert.equal(backend.requests.filter((r) => r.path === "/edit").length, 0, "a proposal draws nothing");
+    // The next message in the conversation is not told again.
+    from = c.mark;
+    c.say("STUDIO once more");
+    await c.next("studio-proposal", 8000, from);
+    assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /pack studio is on/);
+    // A page that connects later is shown the proposal again.
+    const later = await server.client();
+    const again = await later.next((e) => e.type === "studio-state" && e.on === true, 8000);
+    assert.equal(again.proposal?.name, "risa-autumn");
+  });
+
+  test("in work mode her tag is not applied (a file she reads could talk her into it)", async () => {
+    const c = await server.client();
+    await c.next("history");
+    c.say("/work " + server.dir);
+    await c.next((e) => e.type === "mode" && e.mode === "work", 8000).catch(() => {});
+    const from = c.mark;
+    c.say("STUDIO in work mode");
+    await c.next("done", 8000, from);
+    assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0);
   });
 });
 

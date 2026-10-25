@@ -268,8 +268,7 @@ export class CursorProvider implements Provider {
     proc.on("close", (code) => {
       if (this.proc !== proc) return;
       this.proc = null;
-      const said = this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim(); // colour codes and CRs are noise in a chat bubble
-      this.recentStderr = [];
+      const said = this.takeStderr();
       const message = cursorErrorText(`cursor-agent exited (${code ?? "signal"}).${said ? ` ${said.slice(0, 400)}` : ""}`, process.env);
       this.failWaiters(message);
       if (this.listener && !this.interrupted) this.finish({ type: "error", message });
@@ -350,7 +349,7 @@ export class CursorProvider implements Provider {
         this.finish({ type: "done" });
         return;
       }
-      this.finish({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      this.finish({ type: "error", message: this.turnErrorText(err instanceof Error ? err.message : String(err)) });
     } finally {
       const mode = cursorSessionMode(this.config.mode, this.config.permissionMode);
       if (!this.listener && (this.wantsForce() !== this.appliedForce || mode !== this.appliedMode)) {
@@ -359,8 +358,30 @@ export class CursorProvider implements Provider {
     }
   }
 
+  /** What the stderr said since the last exit (colour codes and CRs are noise in a chat bubble), without clearing it. */
+  private stderrText(): string {
+    return this.recentStderr.join("").replace(/\u001b\[[0-9;]*m/g, "").replace(/\r/g, "").trim();
+  }
+
+  private takeStderr(): string {
+    const said = this.stderrText();
+    this.recentStderr = [];
+    return said;
+  }
+
+  /**
+   * cursor-agent answers some failed prompts with a bare JSON-RPC "Internal error" and says the reason only on stderr, which the
+   * chat never saw. Show the last of that, run through the same explanations as an exit.
+   */
+  private turnErrorText(detail: string): string {
+    if (!/^internal error\b/i.test(detail.trim())) return detail;
+    const said = this.stderrText();
+    if (!said) return `${detail}. Cursor did not say why; the server log (data/server.log) may have more.`;
+    return cursorErrorText(`${detail}. cursor-agent said: ${said.slice(-400)}`, process.env);
+  }
+
   private onLine(line: string): void {
-    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { message?: string } };
+    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { message?: string; data?: { message?: unknown } } };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -370,7 +391,9 @@ export class CursorProvider implements Provider {
       const waiter = typeof msg.id === "number" || typeof msg.id === "string" ? this.waiters.get(msg.id) : undefined;
       if (!waiter || (typeof msg.id !== "number" && typeof msg.id !== "string")) return;
       this.waiters.delete(msg.id);
-      if (msg.error) waiter.reject(new Error(msg.error.message ?? "Cursor agent error"));
+      // cursor-agent often says the real reason in error.data.message ("Authentication required. Please run 'agent login' ..."); the bare message is only "Internal error" or similar
+      const detail = typeof msg.error?.data?.message === "string" ? msg.error.data.message.trim() : "";
+      if (msg.error) waiter.reject(new Error(detail || msg.error.message || "Cursor agent error"));
       else waiter.resolve(msg.result);
       return;
     }

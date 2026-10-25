@@ -1,0 +1,217 @@
+{
+  "reference": "/Users/henrik/git/anime_ai_companion-packs/packs-src/risa-uniform",
+  "size": [
+    896,
+    1024
+  ],
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "timing": {
+    "warmup": 1,
+    "runs": 5
+  },
+  "models": {
+    "zimage-turbo": {
+      "kind": "generate",
+      "repo": "Tongyi-MAI/Z-Image-Turbo",
+      "licence": "Apache-2.0",
+      "dtype": "bfloat16",
+      "device": "mps",
+      "steps": 9,
+      "guidance": 0.0,
+      "verify": "Check repo id, pipeline class, steps and guidance against the model card before the first run.",
+      "revision": "f332072aa78be7aecdf3ee76d5c247082da564a6"
+    },
+    "qwen-image-edit": {
+      "kind": "edit",
+      "repo": "Qwen/Qwen-Image-Edit",
+      "revision": "ac7f9318f633fc4b5778c59367c8128225f1e3de",
+      "licence": "Apache-2.0",
+      "dtype": "bfloat16",
+      "device": "mps",
+      "steps": 50,
+      "true_cfg_scale": 4.0,
+      "negative_prompt": " ",
+      "timing": {
+        "warmup": 1,
+        "runs": 2
+      },
+      "download_gib": 53.76,
+      "verify": "Check the pipeline class (QwenImageEditPipeline), steps and true_cfg_scale against the model card, which is what this config was copied from."
+    },
+    "qwen-image-edit-fast": {
+      "kind": "edit",
+      "repo": "Qwen/Qwen-Image-Edit",
+      "revision": "ac7f9318f633fc4b5778c59367c8128225f1e3de",
+      "licence": "Apache-2.0",
+      "dtype": "bfloat16",
+      "device": "mps",
+      "steps": 20,
+      "true_cfg_scale": 1.0,
+      "negative_prompt": null,
+      "timing": {
+        "warmup": 1,
+        "runs": 2
+      },
+      "download_gib": 53.76,
+      "verify": "Same weights as qwen-image-edit. Faster settings: 20 steps and true_cfg_scale 1.0 with no negative prompt, so diffusers skips the unconditioned pass. This is a test of speed and outside-box behaviour, not the default setting."
+    },
+    "flux2-klein-4b": {
+      "kind": "edit",
+      "pipeline": "Flux2KleinPipeline",
+      "repo": "black-forest-labs/FLUX.2-klein-4B",
+      "revision": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+      "licence": "Apache-2.0",
+      "dtype": "bfloat16",
+      "device": "mps",
+      "steps": 4,
+      "guidance_scale": 1.0,
+      "timing": {
+        "warmup": 1,
+        "runs": 2
+      },
+      "download_gib": 22.11,
+      "verify": "Distilled 4B model (4 steps, guidance 1.0, per the model card). Confirm the image= argument and output size on the first run."
+    },
+    "flux2-klein-4b-t2i": {
+      "kind": "generate",
+      "pipeline": "Flux2KleinPipeline",
+      "repo": "black-forest-labs/FLUX.2-klein-4B",
+      "revision": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+      "licence": "Apache-2.0",
+      "dtype": "bfloat16",
+      "device": "mps",
+      "steps": 4,
+      "guidance": 1.0,
+      "verify": "Same weights as flux2-klein-4b, text-to-image only (no image argument). Distilled settings from the model card: 4 steps, guidance 1.0."
+    }
+  },
+  "subject": "anime illustration of an adult woman, long straight dark red hair with bangs and a gold hair clip, green eyes, {outfit}, head and upper body in frame, plain white background, clean line art, soft cel shading",
+  "outfits": {
+    "uniform": "navy blazer with gold buttons, white shirt with light blue ribbon bow, blue-grey pleated skirt",
+    "sundress": "light yellow sundress",
+    "hoodie": "grey hoodie and dark jeans"
+  },
+  "neutral_clause": "neutral calm expression, looking at the viewer",
+  "emotions": {
+    "happy": "happy smile, relaxed eyes",
+    "sad": "sad expression, eyebrows raised in the middle",
+    "angry": "angry expression, furrowed brows, pouting",
+    "surprised": "surprised expression, wide open eyes, small open mouth",
+    "shy": "shy expression, looking away, slight blush",
+    "thinking": "thinking expression, looking up to the side, one finger on the chin"
+  },
+  "quality_prompts": [
+    "anime illustration of a young woman standing in a city street at night, neon signs, plain light background",
+    "anime illustration of a girl sitting on a bench reading a book, soft afternoon light, full body",
+    "anime portrait of a woman with short white hair, close-up, looking over her shoulder",
+    "anime illustration of a woman holding an umbrella in the rain, three-quarter view",
+    "anime illustration of a woman waving with one hand, smiling, upper body, plain white background",
+    "anime illustration of a girl cheering with both arms raised, full body, plain white background",
+    "anime illustration of a woman in a kimono, standing, soft cel shading, plain white background",
+    "anime illustration of a woman at a desk with a laptop, side view, indoor warm lighting",
+    "anime illustration of a woman with long blonde hair in a summer dress, walking on a beach, full body",
+    "anime illustration of a woman drinking tea in a cafe, medium shot, plain background",
+    "anime illustration of a woman with blue hair and a hoodie, looking down at her phone, upper body",
+    "anime illustration of a woman in a winter coat, snow falling, close-up, plain background"
+  ],
+  "matte_tolerance": 12,
+  "embedder": {
+    "repo": "facebook/dinov2-small",
+    "revision": "ed25f3a31f01632728cabb09d1542f84ab7b0056",
+    "licence": "Apache-2.0"
+  },
+  "edit": {
+    "boxes": {
+      "outfit": [
+        290,
+        330,
+        680,
+        860
+      ],
+      "face": [
+        400,
+        170,
+        545,
+        310
+      ],
+      "arm": [
+        285,
+        470,
+        360,
+        890
+      ]
+    },
+    "tests": [
+      {
+        "name": "outfit-green-dress",
+        "box": "outfit",
+        "prompt": "change the navy blazer and pleated skirt to a green sleeveless dress with square straps, keep the face, hair, pose and background identical"
+      },
+      {
+        "name": "outfit-white-sundress",
+        "box": "outfit",
+        "prompt": "change the outfit to a white summer dress, keep the face, hair, pose and background identical"
+      },
+      {
+        "name": "outfit-red-hoodie",
+        "box": "outfit",
+        "prompt": "change the navy blazer to a red hoodie, keep everything else identical"
+      },
+      {
+        "name": "outfit-jeans",
+        "box": "outfit",
+        "prompt": "change the pleated skirt to dark blue jeans, keep everything else identical"
+      },
+      {
+        "name": "outfit-black-sweater",
+        "box": "outfit",
+        "prompt": "change the outfit to a black knit sweater and grey trousers, keep the face and hair identical"
+      },
+      {
+        "name": "face-happy",
+        "box": "face",
+        "prompt": "make her smile happily with her eyes slightly closed, keep everything else identical"
+      },
+      {
+        "name": "face-surprised",
+        "box": "face",
+        "prompt": "make her look surprised with wide eyes and an open mouth, keep everything else identical"
+      },
+      {
+        "name": "face-sad",
+        "box": "face",
+        "prompt": "make her look sad with lowered eyebrows, keep everything else identical"
+      },
+      {
+        "name": "arm-wave",
+        "box": "arm",
+        "prompt": "raise her right arm (the one on the left side of the picture) to shoulder height with the hand open as if waving, keep everything else identical"
+      },
+      {
+        "name": "arm-hip",
+        "box": "arm",
+        "prompt": "bend her right arm (the one on the left side of the picture) so the hand rests on her hip, keep everything else identical"
+      },
+      {
+        "name": "arm-chin",
+        "box": "arm",
+        "prompt": "bring her right hand (the one on the left side of the picture) up to touch her chin, keep everything else identical"
+      }
+    ],
+    "drift": {
+      "box": "face",
+      "prompts": [
+        "make her smile, keep everything else identical",
+        "return her to a calm neutral expression, keep everything else identical",
+        "make her smile, keep everything else identical",
+        "return her to a calm neutral expression, keep everything else identical",
+        "make her smile, keep everything else identical"
+      ]
+    },
+    "inside_threshold": 16
+  }
+}

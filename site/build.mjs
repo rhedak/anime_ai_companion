@@ -21,6 +21,9 @@ const pages = [
   { slug: "phone", title: "From your phone", file: "site/pages/phone.md" },
   { slug: "looks", title: "Her looks", file: "site/pages/looks.md" },
   { slug: "picture-packs", title: "Picture packs", file: "docs/frame-packs.md" },
+  { slug: "pack-studio", title: "Make her an outfit", file: "site/pages/pack-studio.md" },
+  { slug: "local-model", title: "A model on your computer", file: "site/pages/local-model.md" },
+  { slug: "agent-guide", title: "Guide for AI agents", file: "site/pages/agent-guide.md" },
   { slug: "customising", title: "Customising", file: "site/pages/customising.md" },
   { slug: "commands", title: "Slash commands", file: "site/pages/commands.md" },
   { slug: "how-it-works", title: "How it works", file: "site/pages/how-it-works.md" },
@@ -101,13 +104,13 @@ const version = rootPackage.installerVersion ?? rootPackage.version;
 const css = readFileSync(join(here, "template", "site.css"), "utf8");
 const js = readFileSync(join(here, "template", "site.js"), "utf8");
 
-function layout({ page, index, html, headings, description }) {
+function layout({ page, index, html, headings, description, wide }) {
   const prev = pages[index - 1];
   const next = pages[index + 1];
   const nav = pages
     .map((p) => `<li><a href="${p.slug}.html"${p.slug === page.slug ? ' aria-current="page"' : ""}>${escape(p.title)}</a></li>`)
     .join("");
-  const toc = headings.length > 2
+  const toc = !wide && headings.length > 2
     ? `<nav class="toc" aria-label="On this page"><h2>On this page</h2><ul>${headings.map((h) => `<li class="d${h.depth}"><a href="#${h.id}">${h.html}</a></li>`).join("")}</ul></nav>`
     : "";
   const title = page.slug === "index" ? "Anime AI Companion" : `${page.title} · Anime AI Companion`;
@@ -137,7 +140,7 @@ function layout({ page, index, html, headings, description }) {
 <div class="shell">
   <nav id="side" class="side" aria-label="Documentation"><ul>${nav}</ul></nav>
   <main id="main">
-    <article class="doc">
+    <article class="doc${wide ? " wide" : ""}">
 ${html}
       <footer class="pager">
         ${prev ? `<a class="prev" href="${prev.slug}.html"><small>Previous</small>${escape(prev.title)}</a>` : "<span></span>"}
@@ -168,7 +171,7 @@ pages.forEach((page, index) => {
   const { meta, body } = split(readFileSync(path, "utf8").replaceAll("<version>", version));
   const { html, headings } = render(body, page.file);
   const description = meta.description ?? (/<p>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "").replace(/<[^>]+>/g, "").slice(0, 200);
-  writeFileSync(join(dist, `${page.slug}.html`), layout({ page, index, html, headings, description }));
+  writeFileSync(join(dist, `${page.slug}.html`), layout({ page, index, html, headings, description, wide: meta.wide === "true" }));
 });
 if (existsSync(join(here, "assets"))) cpSync(join(here, "assets"), join(dist, "assets"), { recursive: true });
 if (existsSync(join(here, "assets", "favicon.png"))) cpSync(join(here, "assets", "favicon.png"), join(dist, "favicon.ico")); // asked for at the root whatever the page says

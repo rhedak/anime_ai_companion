@@ -14,11 +14,11 @@ const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
 
 // ---- the throwaway copy of the app ------------------------------------------------------------------------------
 /** A fresh copy of the app with its own data, a demo project, and a server on `port`. Returns a handle to stop it. */
-export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/ts/src"), before = async () => {} } = {}) {
+export async function startApp({ port = 3801, settings = {}, creatorSrc = resolve(root, "../anime-character-creator/ts/src"), before = async () => {}, env = {} } = {}) {
   const app = join(stageDir, "app");
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(join(app, "data"), { recursive: true });
-  for (const item of ["src", "public", "python", "packs", "persona.md", "persona-work.md", "emotions.json", "package.json", "pyproject.toml"]) {
+  for (const item of ["bin", "src", "public", "python", "packs", "persona.md", "persona-work.md", "emotions.json", "package.json", "pyproject.toml"]) {
     cpSync(join(root, item), join(app, item), { recursive: true });
   }
   mkdirSync(join(app, "workspace"), { recursive: true });
@@ -33,7 +33,7 @@ export async function startApp({ port = 3801, settings = {}, creatorSrc = resolv
   const log = join(stageDir, "server.log");
   const proc = spawn(process.execPath, ["src/server.ts", "--lan"], {
     cwd: app,
-    env: { ...process.env, PORT: String(port), CREATOR_SRC: creatorSrc, ANAICO_HOME: join(stageDir, "home") },
+    env: { ...process.env, PORT: String(port), CREATOR_SRC: creatorSrc, ANAICO_HOME: join(stageDir, "home"), ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

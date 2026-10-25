@@ -4,3 +4,5 @@ default: risa-dress
 activity: swimming = bikini
 activity: cooking = uniform
 activity: dancing = dress
+activity: reading = casual
+activity: tennis = tennis

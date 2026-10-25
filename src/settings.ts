@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, parse } from "node:path";
 import { isEffort, type Effort } from "./claude-settings.ts";
 import { isPackName } from "./frame-pack.ts";
+import { BROWSER_BACKENDS, checkBackendUrl, PAID_SERVICES } from "./studio/backend.ts";
 
 export type ProviderName = "claude" | "ollama" | "cursor" | "opencode";
 
@@ -29,6 +30,12 @@ export interface Settings {
   nameSet: boolean;
   /** A folder in data/frames shown instead of the drawn avatar (see src/frame-pack.ts); null is the drawn one. */
   framePack: string | null;
+  /** The image backend the pack studio talks to: plain http on this computer, or null. Never a key: those come from the environment. */
+  studioBackend: string | null;
+  /** What one pack made with a paid image service may cost in all, in dollars. */
+  studioBudgetUsd: number;
+  /** The last address of a model on this computer, so the list in the studio can go back to it after a web service was chosen. */
+  studioLocalBackend: string | null;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
   effort: Effort | "default";
   /** How her notes about the user get saved (chat only). Asking is the default. */
@@ -50,6 +57,9 @@ const defaults = (): Settings => ({
   name: "Risa",
   nameSet: false,
   framePack: null,
+  studioBackend: null,
+  studioBudgetUsd: 5,
+  studioLocalBackend: null,
   effort: "default",
   memorySaving: "ask",
   allowedTools: ["Read", "Grep", "Glob"],
@@ -68,6 +78,10 @@ export async function loadSettings(path: string): Promise<Settings> {
   // Settings from before this flag: a name that is not the default was the user's own choice.
   settings.nameSet = typeof saved.nameSet === "boolean" ? saved.nameSet : settings.name !== DEFAULT_NAME;
   if (typeof settings.framePack !== "string" || !isPackName(settings.framePack)) settings.framePack = null;
+  settings.studioBackend = checkBackendUrl(process.env.COMPANION_IMAGE_BACKEND ?? settings.studioBackend);
+  settings.studioLocalBackend = checkBackendUrl(settings.studioLocalBackend);
+  if (settings.studioLocalBackend && (PAID_SERVICES.includes(settings.studioLocalBackend) || BROWSER_BACKENDS.includes(settings.studioLocalBackend))) settings.studioLocalBackend = null;
+  settings.studioBudgetUsd = typeof settings.studioBudgetUsd === "number" && settings.studioBudgetUsd >= 0.5 && settings.studioBudgetUsd <= 200 ? settings.studioBudgetUsd : 5;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (!isMemorySaving(settings.memorySaving)) settings.memorySaving = "ask";
   if (process.env.COMPANION_MODEL) settings.chatModel = process.env.COMPANION_MODEL;
@@ -97,9 +111,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, memorySaving } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, memorySaving } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, memorySaving }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, memorySaving }, null, 2));
 }
 
 /**
