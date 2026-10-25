@@ -435,10 +435,22 @@ export function createStudio(io) {
           q(".studio-candidates")?.replaceChildren(show);
           return true;
         }
-        case "studio-error":
+        case "studio-error": {
           running(false);
           status(String(msg.message), true);
+          // A job that stopped part way is still on disk: one button carries it on from the picture that failed.
+          q(".studio-retry")?.remove();
+          if (msg.retry === "resume" && typeof msg.id === "string") {
+            const again = el("button", { type: "button", className: "studio-retry", textContent: "Try again from here" });
+            again.onclick = () => {
+              again.remove();
+              io.send({ type: "studio-resume", id: msg.id });
+              status("Carrying on…");
+            };
+            q(".studio-status")?.after(again);
+          }
           return true;
+        }
         case "studio-cancelled":
           running(false);
           q(".studio-confirm")?.replaceChildren();

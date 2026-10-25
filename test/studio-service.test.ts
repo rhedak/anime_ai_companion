@@ -342,6 +342,7 @@ test("a paid backend: the warning comes before anything is drawn, what the base 
     await poor.service.message({ type: "studio-confirm", id: them.find((m) => m.type === "studio-confirm")?.id }, (m) => them.push(m as any), false);
     await poor.waitFor("studio-error");
     assert.match(poor.sent.find((m) => m.type === "studio-error")?.message, /spending limit for this pack \(\$0\.05\)/);
+    assert.equal(poor.sent.find((m) => m.type === "studio-error")?.retry, "resume", "a job that stopped can be tried again from the page");
     assert.equal(poor.fake.requests.length, 3, "the fourth picture was never asked for");
   } finally {
     if (saved.key === undefined) delete process.env.XAI_API_KEY;

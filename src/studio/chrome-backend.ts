@@ -73,7 +73,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** The new download of the post, once Chrome has finished writing it (a size that stops changing). */
 async function pickUp(folder: string, since: number, postId: string | null, before: Set<string>): Promise<{ name: string; bytes: Buffer } | null> {
-  for (let tries = 0; tries < 24; tries++) {
+  for (let tries = 0; tries < 16; tries++) {
     const names = (await readdir(folder).catch(() => [] as string[])).filter(
       (n) => /^grok-image-.*\.(jpe?g|png|webp)$/i.test(n) && !before.has(n) && (!postId || n.includes(postId)),
     );
@@ -159,10 +159,19 @@ export function chromeBackend(options: ChromeOptions): ImageBackend {
       const before = new Set(await readdir(folder).catch(() => [] as string[]));
       const since = Date.now();
       try {
-        const answer = readAnswer(await run(recipe(file, req.prompt), work, signal));
-        if (!answer.ok) throw new Error(`Grok Imagine in your Chrome: ${answer.reason}`);
-        const got = await pickUp(folder, since, answer.postId, before);
-        if (!got) throw new Error(`The browser said it was done, but no download appeared in ${folder}. Chrome may save downloads elsewhere: COMPANION_BROWSER_DOWNLOADS names the folder.`);
+        let said = "";
+        let got: { name: string; bytes: Buffer } | null = null;
+        // A download that never arrives is asked for once more (a new picture on the site, but a transient block is the common cause); anything else the agent reports stops the job.
+        for (let attempt = 0; attempt < 2 && !got; attempt++) {
+          said = await run(recipe(file, req.prompt), work, signal);
+          const answer = readAnswer(said);
+          if (!answer.ok) throw new Error(`Grok Imagine in your Chrome: ${answer.reason}`);
+          got = await pickUp(folder, since, answer.postId, before);
+        }
+        if (!got) {
+          await writeFile(join(work, `said-${asked}.txt`), said).catch(() => {});
+          throw new Error(`The browser said it was done (${said.trim().split("\n").slice(-3).join(" / ").slice(0, 300)}), but no download appeared in ${folder}. Chrome may have blocked it (look for a download icon in its address bar) or saves downloads elsewhere: COMPANION_BROWSER_DOWNLOADS names the folder.`);
+        }
         await rm(join(folder, got.name), { force: true }); // the app's own download: taken out of the user's folder again
         await writeFile(join(work, `out-${asked}${/\.png$/i.test(got.name) ? ".png" : ".jpg"}`), got.bytes);
         return got.bytes;

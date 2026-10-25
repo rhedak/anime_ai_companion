@@ -271,7 +271,8 @@ export function createStudioService(deps: StudioDeps) {
       running = null;
       if (review0) waiting = review0;
       deps.pushNote(`the pack studio stopped while drawing "${job.name}": ${message.slice(0, 300)}`);
-      deps.broadcast({ type: "studio-error", id: job.id, message });
+      // The job's files are on disk: the page may offer to carry on (a redraw that failed keeps its review open instead, which has its own buttons).
+      deps.broadcast({ type: "studio-error", id: job.id, message, retry: review0 ? null : "resume" });
       void announce();
     };
     // One message at a time and in order: reading a thumbnail takes a moment, and "finished" must not be handled before the review it follows.
