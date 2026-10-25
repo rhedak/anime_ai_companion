@@ -16,11 +16,11 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number } = {}) {
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
-  const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs, xai: options.xai ? {} : undefined }));
+  const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs, xai: options.xai ? {} : undefined, noWeights: options.noWeights }));
   const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl, studioBudgetUsd: options.budget };
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
@@ -61,7 +61,7 @@ test("the studio is off until /studio on, needs a backend that answers, and is r
   const t = await setup({ backendUrl: null });
   try {
     await t.service.command("on", t.say, false, () => {});
-    assert.match(t.said.at(-1) ?? "", /No image backend is set/);
+    assert.match(t.said.at(-1) ?? "", /No image maker is chosen yet/);
     await t.service.command("backend http://example.com", t.say, false, () => {});
     assert.match(t.said.at(-1) ?? "", /plain http on this computer/);
     await t.service.command("backend http://127.0.0.1:9", t.say, false, () => {});
@@ -537,7 +537,7 @@ test("the yes to the question needs a backend that answers, and says why when it
     const answers: Record<string, any>[] = [];
     await t.service.message({ type: "studio-on" }, (m: unknown) => answers.push(m as Record<string, any>), false);
     assert.equal(t.service.enabled(), false);
-    assert.match(answers[0].text, /No image backend is set/);
+    assert.match(answers[0].text, /No image maker is chosen yet/);
   } finally {
     await t.cleanup();
   }
@@ -572,5 +572,37 @@ test("a job stopped part way shows what is already drawn when it is carried on, 
     }
   } finally {
     await first.cleanup();
+  }
+});
+
+test("a model on this computer is always in the image maker list, and when it is not there the studio says how to set one up", async () => {
+  const t = await setup({ backendUrl: "xai" });
+  try {
+    const state = await t.service.stateMessage();
+    assert.equal(state.backends[0].kind, "local");
+    assert.equal(state.backends[0].value, "http://127.0.0.1:7861", "with no address saved it is the reference server's");
+    await t.service.command("backend http://127.0.0.1:9", t.say, false, () => {});
+    assert.equal((await t.service.stateMessage()).backends[0].value, "http://127.0.0.1:9", "a saved address replaces the default");
+    await t.service.command("on", t.say, false, () => {});
+    const help = t.said.at(-1) ?? "";
+    assert.match(help, /did not answer/);
+    assert.match(help, /you need an image model running/);
+    assert.match(help, /rhedak\.github\.io\/anime_ai_companion\/local-model\.html/);
+    assert.equal(t.service.enabled(), false);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("a local server that has no model downloaded gets the same instructions instead of a failed picture", async () => {
+  const t = await setup({ noWeights: true });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const help = t.said.at(-1) ?? "";
+    assert.match(help, /no model downloaded yet/);
+    assert.match(help, /local-model\.html/);
+    assert.equal(t.service.enabled(), false);
+  } finally {
+    await t.cleanup();
   }
 });

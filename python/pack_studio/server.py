@@ -6,7 +6,7 @@
 This is a reference, not part of the app (the app bundles no Python and no weights). Anything that speaks the same protocol works in its place;
 the protocol is documented in src/studio/backend.ts:
 
-    GET  /health    -> {"ok": true, "name", "model", "revision", "licence", "edit": true, "generate": true}
+    GET  /health    -> {"ok": true, "name", "model", "revision", "licence", "edit": true, "generate": true, "weights"?: false when the files are not downloaded}
     POST /edit      {"image": <base64 PNG>, "prompt", "seed", "width", "height", "steps"?} -> {"image": <base64 PNG>}
     POST /generate  {"prompt", "seed", "width", "height", "steps"?}                        -> {"image": <base64 PNG>}
 
@@ -43,6 +43,17 @@ def load():
         pipe.set_progress_bar_config(disable=True)
         state["pipe"] = pipe
     return state["pipe"]
+
+
+def weights_present():
+    """Are the model's files in the Hugging Face cache? (Nothing is downloaded.)"""
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(REPO, revision=REVISION, local_files_only=True, allow_patterns=["model_index.json"])
+        return True
+    except Exception:
+        return False
 
 
 def draw(prompt, seed, width, height, steps, image=None):
@@ -88,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed_host():
             return self.send(403, {"message": "Only this computer may ask."})
         if self.path == "/health":
-            return self.send(200, {"ok": True, "name": "FLUX.2 klein 4B (reference backend)", "model": REPO, "revision": REVISION, "licence": "Apache-2.0", "edit": True, "generate": True})
+            return self.send(200, {"ok": True, "name": "FLUX.2 klein 4B (reference backend)", "model": REPO, "revision": REVISION, "licence": "Apache-2.0", "edit": True, "generate": True, "weights": weights_present()})
         self.send(404, {"message": "No such route."})
 
     def do_POST(self):

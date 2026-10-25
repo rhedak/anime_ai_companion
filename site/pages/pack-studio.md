@@ -39,7 +39,7 @@ A job stays on disk (`data/studio/<job>/`), so it can be carried on after a rest
 
 | Image maker | Where it runs | What it costs |
 | --- | --- | --- |
-| **A model on this computer** | A server you start on your machine; the app talks to it on `127.0.0.1` only. The reference one (`python/pack_studio/server.py`, FLUX.2 klein 4B) needs about 22 GB of memory. | Time. |
+| **A model on this computer** | A server you start on your machine; the app talks to it on `127.0.0.1` only. The reference one (`python/pack_studio/server.py`, FLUX.2 klein 4B) needs about 22 GB of memory: [how to set it up](local-model.html). The list always shows this entry; with no model running the studio shows the steps instead. | Time. |
 | **xAI, Google Gemini, OpenAI** (APIs) | Their servers, with **your key** from the environment (`XAI_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`). The key is never saved, shown or sent anywhere else. | **Paid per picture**, and the card says so. The price is counted from the answers, and a limit per pack (default $5, `/studio budget`) stops it. In tests one picture cost between 5 and 7 cents. |
 | **Grok Imagine, Google Gemini, ChatGPT** (websites) | The site, in **your own Chrome**, signed in as you, driven by Claude Code through the Claude in Chrome extension. | **No per-picture bill**, but it uses your Claude allowance and the site's: it is slow (a minute or two a picture, an hour or more for a pack) and a free account runs out (a free ChatGPT account made about five pictures in a day). Stay at the computer while it runs. |
 

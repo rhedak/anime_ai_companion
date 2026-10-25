@@ -6,7 +6,7 @@ import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
-import { BackendError, checkBackendUrl, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
@@ -123,12 +123,12 @@ export function createStudioService(deps: StudioDeps) {
     if (isLocal(url)) deps.settings.studioLocalBackend = url;
     deps.settings.studioBackend = url;
   };
-  /** The choices of the page's "Image maker" list. A local address is only offered when one is saved (`/studio backend <address>` sets it). */
+  /** The choices of the page's "Image maker" list. The local entry is always there: the saved address, or the reference server's. Choosing it without a model running only shows how to set one up (`localHelp`). */
   const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser" }[] => {
     const saved = deps.settings.studioBackend;
-    const local = saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) ? saved : deps.settings.studioLocalBackend;
+    const local = (saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) ? saved : deps.settings.studioLocalBackend) ?? DEFAULT_LOCAL_BACKEND;
     return [
-      ...(local ? [{ value: local, label: `A model on this computer (${local})`, kind: "local" as const }] : []),
+      { value: local, label: `A model on this computer (${local})`, kind: "local" as const },
       { value: "xai", label: "xAI Grok Imagine API (paid per picture, XAI_API_KEY)", kind: "paid" },
       { value: "gemini", label: "Google Gemini API (paid per picture, GEMINI_API_KEY)", kind: "paid" },
       { value: "openai", label: "OpenAI API (paid per picture, OPENAI_API_KEY)", kind: "paid" },
@@ -247,15 +247,25 @@ export function createStudioService(deps: StudioDeps) {
     return found.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 5).map(({ created: _created, ...rest }) => rest);
   }
 
+  /** What to do when a model on this computer is not there: said instead of an error, with the guide to follow. */
+  const localHelp = (url: string, problem: string): string =>
+    `${problem}\n\nTo draw on this computer you need an image model running, which the app does not bundle. ` +
+    `1. Download a model once (the reference one, FLUX.2 klein 4B, is about 8 GB and needs about 22 GB of memory to run). ` +
+    `2. Start its server (python/pack_studio/server.py in this app's folder; it listens on 127.0.0.1 only). ` +
+    `3. Press the button again${url === DEFAULT_LOCAL_BACKEND ? "" : `, or give its address with /studio backend <address> (now ${url})`}. ` +
+    `The step-by-step guide: ${LOCAL_MODEL_GUIDE} . Or use another image maker instead: /studio backend xai (or gemini, openai, grok-web, gemini-web, chatgpt-web).`;
+
   async function check(): Promise<{ ok: true; info: BackendInfo } | { ok: false; reason: string }> {
     const url = checkBackendUrl(deps.settings.studioBackend);
-    if (!url) return { ok: false, reason: "No image backend is set. Start one on this computer and give its address: /studio backend http://127.0.0.1:7861" };
+    if (!url) return { ok: false, reason: localHelp(DEFAULT_LOCAL_BACKEND, "No image maker is chosen yet.") };
     try {
       const info = await backendFor(url).info();
+      if (isLocal(url) && info.weights === false) return { ok: false, reason: localHelp(url, `The image server at ${url} is running, but it has no model downloaded yet.`) };
       if (!info.edit) return { ok: false, reason: "That backend cannot change a picture (it has no /edit), which a redraw needs." };
       return { ok: true, info };
     } catch (error) {
-      return { ok: false, reason: error instanceof BackendError || error instanceof Error ? error.message : String(error) };
+      const reason = error instanceof BackendError || error instanceof Error ? error.message : String(error);
+      return { ok: false, reason: isLocal(url) ? localHelp(url, reason) : reason };
     }
   }
 

@@ -9,7 +9,7 @@ export interface FakeBackend {
   stop(): Promise<void>;
 }
 
-export async function startFakeBackend(options: { failEdit?: string; delayMs?: number; xai?: { costTicks?: number | null; failWith?: { status: number; message: string }; busyFirst?: number }; gemini?: { noPicture?: string; noUsage?: boolean }; openai?: { noUsage?: boolean } } = {}): Promise<FakeBackend> {
+export async function startFakeBackend(options: { failEdit?: string; delayMs?: number; xai?: { costTicks?: number | null; failWith?: { status: number; message: string }; busyFirst?: number }; gemini?: { noPicture?: string; noUsage?: boolean }; openai?: { noUsage?: boolean }; noWeights?: boolean } = {}): Promise<FakeBackend> {
   const requests: FakeBackend["requests"] = [];
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -19,7 +19,7 @@ export async function startFakeBackend(options: { failEdit?: string; delayMs?: n
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(body));
       };
-      if (req.method === "GET" && req.url === "/health") return send(200, { ok: true, name: "fake backend", model: "fake-1", revision: "abc", licence: "MIT", edit: true, generate: true });
+      if (req.method === "GET" && req.url === "/health") return send(200, { ok: true, name: "fake backend", model: "fake-1", revision: "abc", licence: "MIT", edit: true, generate: true, ...(options.noWeights ? { weights: false } : {}) });
       const raw = Buffer.concat(chunks);
       const isForm = /multipart\/form-data/.test(String(req.headers["content-type"]));
       // A form (OpenAI): its text fields by name, and the first PNG in it as `image`.

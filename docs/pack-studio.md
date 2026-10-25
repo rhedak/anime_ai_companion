@@ -174,7 +174,7 @@ Drawing through the Grok Imagine website, with the user's own signed-in browser,
 
 ## Choosing the image maker in the panel
 
-The panel has an **Image maker** list (top of the form; it is disabled while a job runs): a model on this computer (the last saved address, which `/studio backend <address>` sets), the three paid APIs, and the three websites through Chrome, each with what it costs. A choice is saved (`studioBackend`) and is what the next question, resume and "Carry on" use, so a job can start with one maker and go on with another (a base picture from one, the rest from another). Nothing is checked or started by choosing: the approval card names what will be used, and says if a key or Claude Code is missing. Refused from a phone and while a job is running (`chooseBackend`).
+The panel has an **Image maker** list (top of the form; it is disabled while a job runs): a model on this computer (always listed: the last saved address, which `/studio backend <address>` sets, or `http://127.0.0.1:7861`; when nothing answers there, or the server says its weights are not downloaded, the studio shows the setup steps and the guide `site/pages/local-model.md` instead of an error), the three paid APIs, and the three websites through Chrome, each with what it costs. A choice is saved (`studioBackend`) and is what the next question, resume and "Carry on" use, so a job can start with one maker and go on with another (a base picture from one, the rest from another). Nothing is checked or started by choosing: the approval card names what will be used, and says if a key or Claude Code is missing. Refused from a phone and while a job is running (`chooseBackend`).
 
 ## What is built, and how to try it
 

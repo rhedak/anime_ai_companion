@@ -11,7 +11,14 @@ import { chromeBackend } from "./chrome-backend.ts";
  *   POST /generate  { prompt, seed, width, height, steps? }                        -> { image: <base64 PNG> }
  * An error is any non-2xx answer; its body, if JSON with a `message`, is shown to the user.
  */
+/** Where a model on this computer is looked for when the user has not given another address (the reference server's port). */
+export const DEFAULT_LOCAL_BACKEND = "http://127.0.0.1:7861";
+/** The guide on the documentation site: how to run a model on this computer for the studio. */
+export const LOCAL_MODEL_GUIDE = "https://rhedak.github.io/anime_ai_companion/local-model.html";
+
 export interface BackendInfo {
+  /** A model on this computer that says its weights are not downloaded yet (`false`); absent when it does not say. */
+  weights?: boolean;
   /** Set for a service that bills per picture and is reached over the internet: the host that receives the pictures. */
   paid?: { host: string; keyName: string };
   /** Set for a website drawn through the user's own browser (Claude in Chrome): not paid per picture, but it uses Claude and the site's allowance. */
@@ -366,6 +373,7 @@ export function httpBackend(baseUrl: string, options: { timeoutMs?: number; fetc
         licence: text(j.licence, 80),
         edit: j.edit === true,
         generate: j.generate === true,
+        ...(j.weights === false ? { weights: false } : {}),
       };
     },
     async edit(req, signal) {

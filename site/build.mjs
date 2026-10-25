@@ -22,6 +22,7 @@ const pages = [
   { slug: "looks", title: "Her looks", file: "site/pages/looks.md" },
   { slug: "picture-packs", title: "Picture packs", file: "docs/frame-packs.md" },
   { slug: "pack-studio", title: "Make her an outfit", file: "site/pages/pack-studio.md" },
+  { slug: "local-model", title: "A model on your computer", file: "site/pages/local-model.md" },
   { slug: "customising", title: "Customising", file: "site/pages/customising.md" },
   { slug: "commands", title: "Slash commands", file: "site/pages/commands.md" },
   { slug: "how-it-works", title: "How it works", file: "site/pages/how-it-works.md" },
