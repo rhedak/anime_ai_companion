@@ -14,7 +14,7 @@ export const keyWords: Record<KeyName, string> = {
 export function outfitPrompt(outfit: string, key: KeyName): string {
   return (
     `change her outfit to ${outfit}; keep her face, hairstyle, hair colour, hair clip or accessories, eye colour, pose, expression and framing ` +
-    `exactly the same, and keep the plain flat ${keyWords[key]} background exactly the same`
+    `exactly the same (if the picture is cut off at its edge, it stays cut off at the same place: draw no more of her body than it shows, no legs or shoes below that edge, and do not make her smaller), and keep the plain flat ${keyWords[key]} background exactly the same`
   );
 }
 
