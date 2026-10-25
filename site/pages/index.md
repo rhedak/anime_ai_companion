@@ -18,7 +18,7 @@ wide: true
 <p class="fine">Windows, macOS and Linux · MIT licence · no account, no telemetry, nothing hosted</p>
 
 </div>
-<div class="stage"><img src="assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading a book: three activities of picture packs, animated" width="900" height="342"><p class="fine">Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and reads.</p></div>
+<div class="stage"><img src="assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa splashing water at you: three activities of picture packs, animated" width="900" height="342"><p class="fine">Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and splashes water at you.</p></div>
 </div>
 
 <div class="cards">
@@ -71,7 +71,7 @@ In a picture pack that has one, an **activity** is something she does for a whil
 <div class="reel">
 <figure><img src="assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="300" height="342" loading="lazy"><figcaption>Risa plays tennis</figcaption></figure>
 <figure><img src="assets/activity-dancing.gif" alt="Franzi dances in a dirndl" width="300" height="342" loading="lazy"><figcaption>Franzi dances</figcaption></figure>
-<figure><img src="assets/activity-reading.gif" alt="Risa reads a book on a wooden chair" width="300" height="342" loading="lazy"><figcaption>Risa reads</figcaption></figure>
+<figure><img src="assets/activity-swimming.gif" alt="Risa splashes water toward you" width="300" height="342" loading="lazy"><figcaption>Risa splashes</figcaption></figure>
 <figure><img src="assets/activity-cooking.gif" alt="Franzi cooks in a frying pan" width="300" height="342" loading="lazy"><figcaption>Franzi cooks</figcaption></figure>
 </div>
 

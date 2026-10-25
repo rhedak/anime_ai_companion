@@ -21,7 +21,7 @@ FPS = 12
 LOOPS = [
     ("dancing", APP / "franzi-dress", "dancing", 300),
     ("tennis", PACKS / "risa-tennis", "tennis", 300),
-    ("reading", PACKS / "risa-casual", "reading", 300),
+    ("swimming", PACKS / "risa-bikini", "swimming", 300),
     ("cooking", PACKS / "franzi-casual", "cooking", 300),
 ]
 
@@ -62,7 +62,7 @@ for name, folder, activity, width in LOOPS:
     gif(loops[name], OUT / f"activity-{name}.gif")
 
 # The hero: three loops side by side, each at its own length (the whole thing is 72 pictures: 6 seconds).
-trio = ["dancing", "tennis", "reading"]
+trio = ["dancing", "tennis", "swimming"]
 n = 72
 w, h = loops[trio[0]][0].size
 hero = []
