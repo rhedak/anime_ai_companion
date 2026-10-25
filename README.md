@@ -37,6 +37,20 @@ The **demo** is a live Risa in your browser: nothing to install and nothing sent
 | **She redraws herself.** | "Blue hair and glasses, please." Save looks, switch between 19 built-in characters, import a character card, or wear picture packs instead of the drawn character. |
 | **Your brain, your login.** | It runs on your own computer with the agent you already use. Nothing is hosted, and there is no telemetry. |
 
+### She is drawn by code, so she can redraw herself
+
+<table>
+  <tr>
+    <td valign="top">
+      The character you meet first is <b>not a picture</b>: she is a vector drawing made by code (the <a href="https://github.com/rhedak/anime-character-creator">anime-character-creator</a>), so hair, eyes, glasses, hats and clothes are parameters. She is not as polished as the picture packs below, but <b>she can change anything, in an instant</b>: ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking. Every change is reversible, and you can save the looks you like.
+      <br><br><sub>The picture shows the app's own drawing, answered by its built-in script: no model was needed to change her.</sub>
+    </td>
+    <td width="330"><img src="site/assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short" width="330"></td>
+  </tr>
+</table>
+
+### She does things with you
+
 <table>
   <tr>
     <td align="center"><img src="site/assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="200"><br><sub>Risa plays tennis</sub></td>

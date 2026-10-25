@@ -122,12 +122,13 @@ li { margin: .25em 0; }
   .reel { grid-template-columns: repeat(4, 1fr); }
   .split { grid-template-columns: 1fr 1fr; }
   .split.studio { grid-template-columns: 1fr 360px; }
+  .split.redraw { grid-template-columns: 1fr 400px; }
 }
 @media (min-width: 900px) and (max-width: 1119px) {
-  .hero, .split, .split.studio { grid-template-columns: 1fr; }
+  .hero, .split, .split.studio, .split.redraw { grid-template-columns: 1fr; }
   .cards { grid-template-columns: 1fr; }
   .reel { grid-template-columns: repeat(2, 1fr); }
-  .split.studio .shot { max-width: 360px; }
+  .split.studio .shot, .split.redraw .shot { max-width: 400px; }
 }
 }
 

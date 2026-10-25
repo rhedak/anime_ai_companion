@@ -6,6 +6,7 @@ GitHub Pages by `.github/workflows/pages.yml` whenever `site/**` changes on `mai
 ```bash
 npm run site                  # builds into site/dist (git-ignored); open site/dist/index.html
 node site/shots.mjs           # retakes the screenshots in site/assets from a throwaway copy of the app
+node site/shot-redraw.mjs      # retakes site/assets/redraw.gif: the drawn Risa redrawing herself (a throwaway app with no brain; needs ffmpeg and uv)
 node site/shot-studio.mjs      # retakes the picture of the pack studio (a finished job folder is carried on in a throwaway app)
 uv run --with pillow --with numpy python -I scripts/make-site-media.py   # the GIFs (activities, hero, wardrobe) from the packs' loop pictures; needs ffmpeg
 npm test                      # test/docs.test.ts: every slash command is documented, every link and picture exists,

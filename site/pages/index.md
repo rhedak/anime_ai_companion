@@ -51,6 +51,21 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 </div>
 </div>
 
+## She is drawn by code, so she can redraw herself
+
+<div class="split redraw">
+<div>
+
+The character you meet first is **not a picture**. She is a vector drawing made by code (the [anime-character-creator](https://github.com/rhedak/anime-character-creator)): hair, eyes, glasses, hats, a coat or a skirt are all parameters. She is not as polished as the picture packs below, but **she can change anything, in an instant**: ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking, with every change reversible.
+
+Save the looks you like, or switch to one of the built-in characters. The picture on the right is the app's own drawing, answered by its built-in script: no model was needed to change her.
+
+[Her looks](looks.html)
+
+</div>
+<div class="shot"><img src="assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short, each time when asked" width="480" height="598" loading="lazy"></div>
+</div>
+
 ## She does things with you
 
 An **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, cooking, reading and swimming work the same way, in the picture packs that have them.
