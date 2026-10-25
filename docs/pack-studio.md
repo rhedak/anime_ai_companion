@@ -160,6 +160,15 @@ back, `grok-imagine-image-2.0` at `1k`, the cost in `usage.cost_in_usd_ticks`). 
 - **No seed:** the service takes none, so a redraw is a new draw, as with the local backend in practice. Pictures that come back in another shape are resized to the job's size.
 - Not built yet: pasting a key for one session (memory only), the service's price list, a second web service.
 
+## The browser backend (planned: grok.com/imagine through Claude in Chrome)
+
+Drawing through the Grok Imagine website, with the user's own signed-in browser, instead of paying per picture through an API. Not built; the owner approved the design below on 2026-10-25. Nothing is measured yet: the first step is one real edit (steps, time, Claude tokens, how clean the download is).
+
+- **How:** a fourth kind of backend. `edit()` starts its own short-lived `claude -p --chrome` process (not the chat brain: forty pictures would fill the conversation) with one fixed task: upload this PNG, send this prompt, wait for the result, download it into the job's folder, say where it is. The cut-out, checks, retries, review and install are unchanged. Claude Code is the only brain that can drive Chrome reliably, so the studio needs `claude` installed and signed in whatever the chat brain is, and the extension signed into the same account with `grok.com` allowed.
+- **Approvals (decided):** one approval card for the whole pack, instead of a card per browser action (about 15 to 25 actions a picture would be a thousand clicks). The studio's own process gets the Claude in Chrome tools pre-allowed, for that job only; nothing else (no shell, no file edit outside the job's folder) and no other site. This is the one deliberate exception to "each browser action comes through the approval card" in `AGENTS.md`, and it is written there with the code that adds it.
+- **What the card says (decided):** it is not paid per picture but it is not free: it uses Claude (the plan's allowance, tokens for every screenshot and step) **and** the image site's own allowance; it is slow (minutes a picture, an hour or more for a pack); it drives the user's real browser on the user's real account; automating a consumer site may be against its terms and could put that account at risk (the user's responsibility); **the user stays at the computer while it runs** (it can be stopped at any moment, and a site that asks for a login, a captcha or a payment is not handled: the job stops and says so).
+- **Limits:** a cap on the number of pictures asked for and on the time per picture; the job stops on the first thing it cannot do rather than guessing. Off at every start, refused from a phone, work-mode style opt-in like `/chrome`.
+
 ## What is built, and how to try it
 
 1. Start an image backend on this computer. The reference one: `uv run --with torch --with diffusers --with transformers --with accelerate --with sentencepiece --with pillow python python/pack_studio/server.py` (FLUX.2 klein 4B, weights already in the Hugging Face cache at the pinned revision; see the file's docstring). It loads the model on the first request and needs about 22 GB.
