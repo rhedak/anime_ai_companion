@@ -373,7 +373,7 @@ test("the OpenAI backend: a form with the picture at its own size, the key in a 
 });
 
 /** A stand-in `claude` for the browser backend: reads the task on stdin, "downloads" the picture it was told to upload, and answers like the real agent. */
-function chromeStandIn(dir: string, downloads: string, mode: "ok" | "login" | "nodownload" | "hang" = "ok"): string {
+function chromeStandIn(dir: string, downloads: string, mode: "ok" | "login" | "nodownload" | "hang" | "gemini" = "ok"): string {
   return writeStandIn(
     dir,
     "claude",
@@ -387,8 +387,12 @@ process.stdin.on("end", () => {
   const mode = ${JSON.stringify(mode)};
   if (mode === "hang") return setTimeout(() => {}, 60000);
   if (mode === "login") return console.log("I opened the page.\\nFAILED: the page asked me to sign in");
-  const file = /Upload this file[^:]*: (\\S+)/.exec(task)[1];
+  const file = /upload this file[^:]*: (\\S+)/i.exec(task)[1];
   const id = "1437a575-d926-4ec1-a880-" + String(Date.now() % 1e12).padStart(12, "0");
+  if (mode === "gemini") {
+    fs.writeFileSync(path.join(${JSON.stringify(downloads)}, "Gemini_Generated_Image_abc123.jpeg"), fs.readFileSync(file));
+    return console.log("DONE");
+  }
   if (mode === "ok") fs.writeFileSync(path.join(${JSON.stringify(downloads)}, "grok-image-" + id + ".jpg"), fs.readFileSync(file));
   console.log("All done.\\nDONE " + id);
 });
@@ -437,6 +441,29 @@ test("the browser backend: one fixed task for a cut-down claude, the picture it 
     assert.deepEqual(readAnswer("blah\nDONE 1437a575-d926-4ec1-a880-babbd529d65d"), { ok: true, postId: "1437a575-d926-4ec1-a880-babbd529d65d" });
     assert.equal(readAnswer("hmm").ok, false);
     await assert.rejects(chromeBackend({ dir: job, downloads, program: join(root, "missing") }).info(), /needs Claude Code/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the browser backend for Gemini: its own task and its own download name, with no post id to look for", async () => {
+  const root = await mkdtemp(join(tmpdir(), "studio-chrome-gem-"));
+  const downloads = join(root, "Downloads");
+  await mkdir(downloads);
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 80, [255, 0, 255, 255]))), prompt: "change her outfit to a red scarf", seed: 1, width: 64, height: 80 };
+  try {
+    const bin = join(root, "bin");
+    const program = chromeStandIn(bin, downloads, "gemini");
+    await writeFile(join(downloads, "Gemini_Generated_Image_old.jpeg"), "an earlier one");
+    const b = chromeBackend({ dir: join(root, "job"), downloads, program, site: "gemini", timeoutMs: 20_000 });
+    assert.equal((await b.info()).browser?.site, "gemini.google.com");
+    assert.equal((await decode(await b.edit(req))).w, 64);
+    const call = JSON.parse((await readFile(join(bin, "calls.log"), "utf8")).trim().split("\n")[0]);
+    assert.match(call.task, /https:\/\/gemini\.google\.com\/app/);
+    assert.match(call.task, /Create image/);
+    assert.match(call.task, /<<<PROMPT\nchange her outfit to a red scarf\nPROMPT>>>/);
+    assert.doesNotMatch(call.task, /grok\.com/);
+    assert.deepEqual((await readdir(downloads)).sort(), ["Gemini_Generated_Image_old.jpeg"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
