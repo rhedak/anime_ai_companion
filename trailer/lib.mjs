@@ -18,7 +18,7 @@ export async function startApp({ port = 3801, settings = {}, creatorSrc = resolv
   const app = join(stageDir, "app");
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(join(app, "data"), { recursive: true });
-  for (const item of ["src", "public", "python", "packs", "persona.md", "persona-work.md", "emotions.json", "package.json", "pyproject.toml"]) {
+  for (const item of ["bin", "src", "public", "python", "packs", "persona.md", "persona-work.md", "emotions.json", "package.json", "pyproject.toml"]) {
     cpSync(join(root, item), join(app, item), { recursive: true });
   }
   mkdirSync(join(app, "workspace"), { recursive: true });

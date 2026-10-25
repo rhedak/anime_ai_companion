@@ -1,22 +1,81 @@
-# Anime AI Companion
+<p align="center">
+  <img src="site/assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading: three of her activities, animated" width="100%">
+</p>
 
-**A face for your coding agent.** A local, browser-based anime character, drawn by code, that sits in front of
-**Claude Code, Cursor, opencode or a local Ollama model**. She chats, her expression follows the conversation, and in
-**work mode** she reads, edits and runs commands in your project folder, asking first with a card that shows the exact
-command or diff. A phone on your network can answer those cards. Ask her to redesign herself ("blue hair and
-glasses, please") and she redraws.
+<h1 align="center">Anime AI Companion</h1>
+
+<p align="center">
+  <b>A face for your coding agent.</b><br>
+  A free, open-source anime character on <b>your own computer</b>, in front of Claude Code, Cursor, opencode or a local Ollama model.<br>
+  She asks before every command, answers from your phone, plays tennis when you ask,<br>
+  and you can have her drawn in a new outfit of your own.
+</p>
+
+<p align="center">
+  <a href="https://rhedak.github.io/anime_ai_companion/demo/"><b>▶ Try the demo</b></a> &nbsp;·&nbsp;
+  <a href="https://rhedak.github.io/anime_ai_companion/download.html"><b>Download</b></a> &nbsp;·&nbsp;
+  <a href="https://rhedak.github.io/anime_ai_companion/">Documentation</a> &nbsp;·&nbsp;
+  <a href="https://www.youtube.com/shorts/E_4PIfWC-5U">Trailer</a>
+</p>
+
+<p align="center">
+  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue">
+  <img alt="Node.js 22.18 or newer" src="https://img.shields.io/badge/node-%E2%89%A522.18-brightgreen">
+  <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/runs%20on-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-lightgrey">
+  <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-success">
+</p>
+
+The **demo** is a live Risa in your browser: nothing to install and nothing sent anywhere.
+
+## What makes her different
+
+| | |
+| --- | --- |
+| **She asks first.** | In work mode she reads, edits and runs commands in your project folder, and **every command and file change waits for you**, with the exact text or diff on a card. Looser modes are opt-in and come back to "ask" at every start. A phone on your network can answer the cards. |
+| **She has a life of her own.** | Seven expressions, blinking, a mouth that moves while she talks, and **activities**: dancing, swimming, cooking, reading, tennis. Ask her to play tennis and the picture turns into a loop where the ball comes at you and she hits it back. |
+| **You dress her.** | The **pack studio** draws her a whole new set of pictures from an outfit you describe, with an image model *you* choose: one on your computer, an API key, or a website you already use. A card says what it costs before anything is drawn. |
+| **She redraws herself.** | "Blue hair and glasses, please." Save looks, switch between 19 built-in characters, import a character card, or wear picture packs instead of the drawn character. |
+| **Your brain, your login.** | It runs on your own computer with the agent you already use. Nothing is hosted, and there is no telemetry. |
+
+<table>
+  <tr>
+    <td align="center"><img src="site/assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="200"><br><sub>Risa plays tennis</sub></td>
+    <td align="center"><img src="site/assets/activity-dancing.gif" alt="Franzi dances in a dirndl" width="200"><br><sub>Franzi dances</sub></td>
+    <td align="center"><img src="site/assets/activity-reading.gif" alt="Risa reads a book on a wooden chair" width="200"><br><sub>Risa reads</sub></td>
+    <td align="center"><img src="site/assets/activity-cooking.gif" alt="Franzi cooks in a frying pan" width="200"><br><sub>Franzi cooks</sub></td>
+  </tr>
+</table>
+
+Risa and Franzi are original characters, and their pictures were made with AI (MIT licence, details in each pack).
+
+## Make her a new outfit
+
+The **pack studio** turns *"a dark green hooded coat over a white knitted sweater"* into a complete picture pack: seven expressions with blinks and talking mouths, waves and cheers, all cut out and ready to wear. Risa's green coat and tennis outfits were drawn this way.
+
+<table>
+  <tr>
+    <td valign="top">
+
+| Image maker | What it costs you |
+| --- | --- |
+| **A model on your computer** (a loopback server you run, such as FLUX.2 klein) | Nothing but time and about 22 GB of memory |
+| **An API** (xAI, Google Gemini, OpenAI) with your own key | Paid per picture: counted live, with a limit per pack |
+| **A website you are signed in to** (Grok Imagine, Gemini, ChatGPT), driven through Claude in Chrome | No per-picture bill: it uses your Claude allowance and the site's. Slower; free accounts run out |
+
+Every picture is checked and tried up to three times, you look at the whole pack before anything is written, and in chat she can suggest an outfit but **never starts it**. It is off at every start. [How the studio works](docs/pack-studio.md)
+
+</td>
+    <td valign="top" width="300"><img src="site/assets/wardrobe.gif" alt="Risa in five outfits, one after the other" width="300"><br><img src="site/assets/studio.png" alt="The pack studio panel with a finished set to review" width="300"></td>
+  </tr>
+</table>
+
+## A coding agent you can watch
 
 ![Work mode: before an edit she asks, and the card shows the diff](site/assets/work.png)
 
-**[Try the demo now](https://rhedak.github.io/anime_ai_companion/demo/)**: a live Risa in your browser, nothing to install and nothing sent anywhere. Or [watch the short trailer](https://www.youtube.com/shorts/E_4PIfWC-5U) (about a minute).
-
-- **Approvals you can read.** Every command and file change waits for you, with the exact text. Looser modes are opt-in
-  and come back to "ask" at every start.
-- **Your brain, your login.** It runs on your own computer with the agent you already use. Nothing is hosted, and
-  there is no telemetry.
+- **Approvals you can read.** Every command and file change waits for you, with the exact text.
 - **Carry on from your phone.** One flag (`--lan`), or `/phone` in the desktop app, lets your phone join the session and answer the cards.
-- **A companion too.** Chat mode is a friend with a face: character cards, her own notes about you, an optional
-  microphone, picture packs instead of the drawn character.
+- **A companion too.** Chat mode is a friend with a face: character cards, her own notes about you, an optional microphone.
 
 ```
 browser ──ws── Node server ──┬─ a brain: Claude Code, Cursor, opencode or Ollama   (the persona and the tools)
