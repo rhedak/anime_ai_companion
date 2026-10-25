@@ -43,6 +43,8 @@ A job stays on disk (`data/studio/<job>/`), so it can be carried on after a rest
 | **xAI, Google Gemini, OpenAI** (APIs) | Their servers, with **your key** from the environment (`XAI_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`). The key is never saved, shown or sent anywhere else. | **Paid per picture**, and the card says so. The price is counted from the answers, and a limit per pack (default $5, `/studio budget`) stops it. In tests one picture cost between 5 and 7 cents. |
 | **Grok Imagine, Google Gemini, ChatGPT** (websites) | The site, in **your own Chrome**, signed in as you, driven by Claude Code through the Claude in Chrome extension. | **No per-picture bill**, but it uses your Claude allowance and the site's: it is slow (a minute or two a picture, an hour or more for a pack) and a free account runs out (a free ChatGPT account made about five pictures in a day). Stay at the computer while it runs. |
 
+**None of these suit you?** `/studio handover` (it works with the studio off) or the panel's **Hand over to an AI agent…** gives you a prompt to copy into any AI agent that makes pictures, a chat website or anything else you use. It describes what a pack needs and links to a [guide for agents](agent-guide.html). You attach the neutral picture, take the files it makes, and put the folder in `data/frames/`.
+
 Choose one in the panel's **Image maker** list, or type `/studio backend xai` (`gemini`, `openai`, `grok-web`, `gemini-web`, `chatgpt-web`, or the address of a local server).
 
 ### Using a website

@@ -6,6 +6,7 @@ import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
+import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
 import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
@@ -253,7 +254,7 @@ export function createStudioService(deps: StudioDeps) {
     `1. Download a model once (the reference one, FLUX.2 klein 4B, is about 8 GB and needs about 22 GB of memory to run). ` +
     `2. Start its server (python/pack_studio/server.py in this app's folder; it listens on 127.0.0.1 only). ` +
     `3. Press the button again${url === DEFAULT_LOCAL_BACKEND ? "" : `, or give its address with /studio backend <address> (now ${url})`}. ` +
-    `The step-by-step guide: ${LOCAL_MODEL_GUIDE} . Or use another image maker instead: /studio backend xai (or gemini, openai, grok-web, gemini-web, chatgpt-web).`;
+    `The step-by-step guide: ${LOCAL_MODEL_GUIDE} . Or use another image maker instead: /studio backend xai (or gemini, openai, grok-web, gemini-web, chatgpt-web). With none of these, /studio handover gives you a prompt to copy into any AI agent that makes pictures.`;
 
   async function check(): Promise<{ ok: true; info: BackendInfo } | { ok: false; reason: string }> {
     const url = checkBackendUrl(deps.settings.studioBackend);
@@ -620,6 +621,13 @@ export function createStudioService(deps: StudioDeps) {
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
+      if (word === "handover") {
+        const prompt = handoverPrompt({ source: deps.activeSource(), outfit: rest.join(" ") });
+        return say(
+          `A handover prompt: copy the text between the lines into an AI agent that can make pictures (a chat website, an agent, whatever you use) and attach the neutral picture of the pack you want to start from` +
+            `${deps.activeSource() ? ` (${deps.activeSource()}: its folder is data/frames/${deps.activeSource()}/ or packs/${deps.activeSource()}/ in the app's folder)` : ""}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.\n\n--- copy from here ---\n${prompt}\n--- to here ---`,
+        );
+      }
       if (word === "budget") {
         if (rest.length === 0) return say(`A pack made with a paid image service may cost up to ${dollars(budget())}. /studio budget <dollars> changes it (0.5 to 200).`);
         const n = Number(rest[0].replace(/^\$/, ""));
@@ -636,7 +644,7 @@ export function createStudioService(deps: StudioDeps) {
         return say("The pack studio is off.");
       }
       if (word === "on") return turnOn(say, reply);
-      if (!on) return say(`The pack studio is off. /studio backend <address> sets the image backend, /studio on turns it on. It makes picture packs of your own on this computer (docs/pack-studio.md).`);
+      if (!on) return say(`The pack studio is off. /studio backend <address> sets the image backend, /studio on turns it on, /studio handover gives a prompt for any AI agent. It makes picture packs of your own on this computer (docs/pack-studio.md).`);
       reply({ type: "studio-open" });
     },
 
@@ -652,6 +660,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
         else if (msg.type === "studio-backend") await chooseBackend(msg.value, send);
+        else if (msg.type === "studio-handover") send({ type: "studio-handover", prompt: handoverPrompt({ source: typeof msg.source === "string" ? msg.source : null, name: typeof msg.name === "string" ? msg.name : undefined, outfit: typeof msg.outfit === "string" ? msg.outfit : undefined }), guide: HANDOVER_GUIDE });
         else if (msg.type === "studio-discard" && typeof msg.id === "string") await discard(msg.id, send);
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);

@@ -176,6 +176,10 @@ Drawing through the Grok Imagine website, with the user's own signed-in browser,
 
 The panel has an **Image maker** list (top of the form; it is disabled while a job runs): a model on this computer (always listed: the last saved address, which `/studio backend <address>` sets, or `http://127.0.0.1:7861`; when nothing answers there, or the server says its weights are not downloaded, the studio shows the setup steps and the guide `site/pages/local-model.md` instead of an error), the three paid APIs, and the three websites through Chrome, each with what it costs. A choice is saved (`studioBackend`) and is what the next question, resume and "Carry on" use, so a job can start with one maker and go on with another (a base picture from one, the rest from another). Nothing is checked or started by choosing: the approval card names what will be used, and says if a key or Claude Code is missing. Refused from a phone and while a job is running (`chooseBackend`).
 
+## The handover prompt
+
+For a user with no image maker the studio can use: `/studio handover [outfit words]` (works with the studio off, only from this computer) and the panel's *Hand over to an AI agent…* button give a prompt (`src/studio/handover.ts`) to copy into any AI agent that makes pictures. It says what a picture pack is, the file names and rules in short, and links to the guide for agents on the site (`site/pages/agent-guide.md`, the long version: files, consistency rules, checks, what to hand back). Nothing is sent from the app; the user copies it, attaches the neutral picture, and installs the folder by hand (`/frames <name>`). The unreachable-local-model help names it as the way out.
+
 ## What is built, and how to try it
 
 1. Start an image backend on this computer. The reference one: `uv run --with torch --with diffusers --with transformers --with accelerate --with sentencepiece --with pillow python python/pack_studio/server.py` (FLUX.2 klein 4B, weights already in the Hugging Face cache at the pinned revision; see the file's docstring). It loads the model on the first request and needs about 22 GB.

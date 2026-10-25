@@ -606,3 +606,22 @@ test("a local server that has no model downloaded gets the same instructions ins
     await t.cleanup();
   }
 });
+
+test("/studio handover gives a prompt for any AI agent, with the studio off, and links the guide", async () => {
+  const t = await setup({ backendUrl: null });
+  try {
+    t.active.value = "risa-dress";
+    await t.service.command("handover a dark green winter coat over a white sweater", t.say, false, () => {});
+    const said = t.said.at(-1) ?? "";
+    assert.match(said, /--- copy from here ---/);
+    assert.match(said, /a dark green winter coat over a white sweater/);
+    assert.match(said, /risa-dress/);
+    assert.match(said, /agent-guide\.html/);
+    assert.match(said, /\/frames dark-green-winter\./);
+    assert.equal(t.service.enabled(), false);
+    await t.service.command("handover", t.say, true, () => {});
+    assert.match(t.said.at(-1) ?? "", /only on the computer/, "a phone gets no handover");
+  } finally {
+    await t.cleanup();
+  }
+});

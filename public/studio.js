@@ -53,6 +53,8 @@ export function createStudio(io) {
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
+    const handover = el("button", { type: "button", className: "ghost", textContent: "Hand over to an AI agent…", title: "A prompt to copy into any AI agent that makes pictures, if no image maker here suits you" });
+    handover.onclick = () => io.send({ type: "studio-handover", source: source.value, name: name.value, outfit: outfit.value });
     closeButton.onclick = close;
     stop.onclick = () => io.send({ type: "studio-cancel" });
     source.addEventListener("input", () => (sourceTouched = true)); // only the user's own choice counts (a script's change does not fire this)
@@ -86,7 +88,8 @@ export function createStudio(io) {
       el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }),
       count,
       el("div", { className: "studio-proposal" }),
-      el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton),
+      el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, handover),
+      el("div", { className: "studio-handover" }),
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
       el("div", { className: "studio-confirm" }),
@@ -401,6 +404,25 @@ export function createStudio(io) {
         case "studio-proposal":
           applyProposal(msg);
           return true;
+        case "studio-handover": {
+          // The prompt for an AI agent of the user's choice: shown whole, with a button that copies it (nothing is sent from here).
+          const box = q(".studio-handover");
+          if (!box || typeof msg.prompt !== "string") return true;
+          const text = msg.prompt;
+          const area = el("textarea", { className: "studio-handover-text", rows: 10, readOnly: true, ariaLabel: "Handover prompt" });
+          area.value = text;
+          const copy = el("button", { type: "button", textContent: "Copy the prompt" });
+          copy.onclick = () => {
+            area.select();
+            navigator.clipboard?.writeText(text).then(() => (copy.textContent = "Copied"), () => (copy.textContent = "Select the text and copy it"));
+          };
+          box.replaceChildren(
+            el("p", { textContent: "Paste this into an AI agent that makes pictures (a chat website, an agent, anything you use) and attach the neutral picture of the pack you start from. It follows a guide on the documentation site. What it makes is yours to check and answer for; nothing is sent from here." }),
+            area,
+            copy,
+          );
+          return true;
+        }
         case "studio-open":
           if (!panel) open();
           return true;
