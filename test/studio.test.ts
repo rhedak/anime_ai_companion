@@ -412,7 +412,7 @@ test("the browser backend: one fixed task for a cut-down claude, the picture it 
     assert.deepEqual([picture.w, picture.h], [64, 80]);
     const call = JSON.parse((await readFile(join(root, "bin", "calls.log"), "utf8")).trim().split("\n")[0]);
     const flag = (name: string) => call.args[call.args.indexOf(name) + 1];
-    assert.deepEqual([flag("--tools"), flag("--allowedTools"), flag("--setting-sources"), call.args.includes("--chrome"), call.args.includes("--strict-mcp-config")], ["", "mcp__claude-in-chrome__*", "", true, true], "no tool but the extension's, nothing from the user's settings");
+    assert.deepEqual([flag("--tools"), flag("--allowedTools"), flag("--setting-sources"), call.args.includes("--chrome"), call.args.includes("--strict-mcp-config")], ["Read", `mcp__claude-in-chrome__*,Read(${join(job, "web")}/**)`, "", true, true], "no tool but Read of the one folder and the extension's, nothing from the user's settings");
     assert.equal(call.cwd.replace(/^\/private/, ""), join(job, "web").replace(/^\/private/, ""));
     assert.match(call.task, /https:\/\/grok\.com\/imagine/);
     assert.match(call.task, /<<<PROMPT\nchange her outfit to a red scarf\nPROMPT>>>/);

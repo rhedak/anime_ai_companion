@@ -11,7 +11,7 @@ import type { BackendInfo, EditRequest, ImageBackend } from "./backend.ts";
  * allowance) and the site's own allowance, and it is slow. Claude Code is the only brain that can drive Chrome through its extension, so this starts its
  * own `claude` whatever the chat brain is.
  *
- * What that process may do is cut down to the browser: no built-in tools at all (`--tools ""`), only the extension's tools allowed (the studio asks the
+ * What that process may do is cut down to the browser: one built-in tool (`Read`, allowed for the job's `web` folder only: the extension reads the file it uploads through it), the extension's tools allowed (the studio asks the
  * user once for the whole pack instead of once per click: docs/pack-studio.md), the user's settings and other MCP servers unloaded, and a task that
  * says what to do when the site asks for anything but a picture.
  */
@@ -110,9 +110,11 @@ export function chromeBackend(options: ChromeOptions): ImageBackend {
         "--model", model,
         "--strict-mcp-config",
         "--setting-sources", "",
-        "--tools", "",
+        // The extension reads the file it uploads through the session's file permissions: with no built-in tool at all it refuses even the working folder. So the one tool
+        // there is is Read, and it is allowed for that folder only (anything else it would ask for is refused: there is nobody to ask in this mode).
+        "--tools", "Read",
         "--chrome",
-        "--allowedTools", "mcp__claude-in-chrome__*",
+        "--allowedTools", `mcp__claude-in-chrome__*,Read(${cwd}/**)`,
         "--max-turns", "80",
       ],
       { cwd, env: { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_CRON: "1" } },
