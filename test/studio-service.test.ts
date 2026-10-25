@@ -46,7 +46,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
       if (sent.filter((m) => m.type === type).length >= count) return;
       await new Promise((r) => setTimeout(r, 25));
     }
-    throw new Error(`no ${type} (${count}); got ${sent.map((m) => m.type).join(",")}`);
+    throw new Error(`no ${type} (${count}); got ${sent.map((m) => m.type).join(",")}${sent.filter((m) => m.type === "studio-error").map((m) => ` [error: ${m.message}]`).join("")}`);
   };
   const cleanup = async () => {
     service.close();
