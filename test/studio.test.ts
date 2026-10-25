@@ -258,7 +258,7 @@ test("the paid backend: a busy service is asked again, an error never shows the 
     try {
       process.env.COMPANION_XAI_BASE = broken.url;
       const error = await makeBackend(XAI, opts).edit(req).then(() => null, (e: Error) => e);
-      assert.match(error?.message ?? "", /xAI answered 400: bad key … and a refusal/);
+      assert.match(error?.message ?? "", /xAI Grok Imagine answered 400: bad key … and a refusal/);
       assert.ok(!String(error?.message).includes("secret"), "the key is taken out of the message");
     } finally {
       await broken.stop();
@@ -278,5 +278,55 @@ test("the paid backend: a busy service is asked again, an error never shows the 
     else process.env.XAI_API_KEY = saved.key;
     if (saved.base === undefined) delete process.env.COMPANION_XAI_BASE;
     else process.env.COMPANION_XAI_BASE = saved.base;
+  }
+});
+
+test("the Gemini backend: the key (GEMINI_API_KEY or GOOGLE_API_KEY), an inline_data picture, a cost worked out from the token counts, and honest stops", async () => {
+  const saved = { gem: process.env.GEMINI_API_KEY, goog: process.env.GOOGLE_API_KEY, base: process.env.COMPANION_GEMINI_BASE, model: process.env.COMPANION_GEMINI_MODEL };
+  const restore = (name: string, v: string | undefined) => (v === undefined ? delete process.env[name] : (process.env[name] = v));
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 64, [255, 0, 255, 255]))), prompt: "a coat", seed: 1, width: 64, height: 64 };
+  const fake = await startFakeBackend({ gemini: {} });
+  try {
+    process.env.COMPANION_GEMINI_BASE = fake.url;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.COMPANION_GEMINI_MODEL;
+    await assert.rejects(makeBackend("gemini", { limitUsd: 1, spentUsd: 0 }).info(), /GEMINI_API_KEY is not set/);
+    process.env.GOOGLE_API_KEY = "goog-secret-key-1234567890";
+    const spends: number[] = [];
+    const b = makeBackend("gemini", { limitUsd: 0.1, spentUsd: 0, onSpend: (n) => spends.push(n) });
+    const info = await b.info();
+    assert.deepEqual([info.paid?.keyName, info.model], ["GEMINI_API_KEY", "gemini-3.1-flash-image"]);
+    assert.ok((await decode(await b.edit(req))).w > 0);
+    const sent = fake.requests.at(-1) as any;
+    assert.equal(sent.path, "/models/gemini-3.1-flash-image:generateContent");
+    assert.equal(sent.googKey, "goog-secret-key-1234567890");
+    assert.equal(sent.authorization, undefined);
+    assert.deepEqual(Object.keys(sent.body.contents[0].parts[0]), ["inline_data"]);
+    assert.equal(sent.body.contents[0].parts[1].text, "a coat");
+    assert.deepEqual([sent.body.generationConfig.responseModalities, sent.body.generationConfig.imageConfig.imageSize], [["IMAGE"], "1K"]);
+    // 1300 input tokens at $0.50 and 1120 image tokens at $60 per million: 6.8 cents.
+    assert.ok(Math.abs(spends[0] - 0.06785) < 1e-9, `got ${spends[0]}`);
+    await b.edit(req); // 0.1358 is past 0.10: the next call is refused
+    await assert.rejects(b.edit(req), /spending limit/);
+
+    process.env.COMPANION_GEMINI_MODEL = "some-new-model";
+    const blind = makeBackend("gemini", { limitUsd: 5, spentUsd: 0 });
+    await blind.edit(req);
+    await assert.rejects(blind.edit(req), /did not say what the last picture cost/);
+  } finally {
+    await fake.stop();
+  }
+  const refusing = await startFakeBackend({ gemini: { noPicture: "IMAGE_SAFETY" } });
+  try {
+    process.env.COMPANION_GEMINI_BASE = refusing.url;
+    delete process.env.COMPANION_GEMINI_MODEL;
+    await assert.rejects(makeBackend("gemini", { limitUsd: 5, spentUsd: 0 }).edit(req), /Google Gemini sent no picture.*IMAGE_SAFETY/);
+  } finally {
+    await refusing.stop();
+    restore("GEMINI_API_KEY", saved.gem);
+    restore("GOOGLE_API_KEY", saved.goog);
+    restore("COMPANION_GEMINI_BASE", saved.base);
+    restore("COMPANION_GEMINI_MODEL", saved.model);
   }
 });

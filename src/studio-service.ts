@@ -6,7 +6,7 @@ import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
-import { BackendError, checkBackendUrl, makeBackend, XAI, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, checkBackendUrl, makeBackend, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
@@ -135,7 +135,7 @@ export function createStudioService(deps: StudioDeps) {
   };
   /** The warning before anything is paid for. */
   const paidNote = (info: BackendInfo, pictures: number): string =>
-    `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (XAI_API_KEY). ` +
+    `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (${info.paid?.keyName}). ` +
     `Making ${pictures} pictures is the first step; the rest of the pack (about ${knownFrameNames().size} more, up to three tries each) comes after you pick one, and you are shown what the first step cost before that. ` +
     `The app stops at ${dollars(budget())} for this pack (/studio budget changes it). Keeping the key safe, and what it costs you, is your responsibility: the app never saves it, shows it or sends it anywhere but that host.`
   const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0 }));
@@ -473,7 +473,7 @@ export function createStudioService(deps: StudioDeps) {
     reply({ type: "studio-open" });
     say(
       checked.info.paid
-        ? `The pack studio is on, drawing with ${describe(checked.info)}. THIS IS PAID: every picture is charged by ${checked.info.paid.host} to the account of your XAI_API_KEY, and your source pictures are sent there. The limit is ${dollars(budget())} per pack (/studio budget changes it). Keeping the key safe is your responsibility. ${RESPONSIBILITY} It is off again after a restart.`
+        ? `The pack studio is on, drawing with ${describe(checked.info)}. THIS IS PAID: every picture is charged by ${checked.info.paid.host} to the account of your ${checked.info.paid.keyName}, and your source pictures are sent there. The limit is ${dollars(budget())} per pack (/studio budget changes it). Keeping the key safe is your responsibility. ${RESPONSIBILITY} It is off again after a restart.`
         : `The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`,
     );
   }
@@ -558,10 +558,10 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or `xai` for xAI's paid service (it needs XAI_API_KEY in this app's environment).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai` or `gemini` (each needs its API key, XAI_API_KEY or GEMINI_API_KEY, in this app's environment).");
         deps.settings.studioBackend = url;
         await deps.saveSettings();
-        return say(url === XAI ? `Image backend set to xAI (paid). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
+        return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
       if (word === "budget") {
         if (rest.length === 0) return say(`A pack made with a paid image service may cost up to ${dollars(budget())}. /studio budget <dollars> changes it (0.5 to 200).`);
