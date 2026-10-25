@@ -49,7 +49,8 @@ export const GEMINI = "gemini";
 export const OPENAI = "openai";
 export const GROK_WEB = "grok-web";
 export const GEMINI_WEB = "gemini-web";
-export const BROWSER_BACKENDS: readonly string[] = [GROK_WEB, GEMINI_WEB];
+export const CHATGPT_WEB = "chatgpt-web";
+export const BROWSER_BACKENDS: readonly string[] = [GROK_WEB, GEMINI_WEB, CHATGPT_WEB];
 export const PAID_SERVICES: readonly string[] = [XAI, GEMINI, OPENAI];
 export const XAI_BASE = "https://api.x.ai/v1";
 export const XAI_MODEL = "grok-imagine-image-2.0";
@@ -312,7 +313,7 @@ export const xaiBackend = (options: PaidOptions): ImageBackend => paidBackend(xa
 
 /** The client for a backend address: a paid web service by name, or the loopback server. A paid one carries the limit and a counter of what is spent. */
 export function makeBackend(url: string, paid?: Omit<PaidOptions, "fetch" | "baseUrl" | "sleep"> & { dir?: string }): ImageBackend {
-  if (BROWSER_BACKENDS.includes(url)) return chromeBackend({ dir: paid?.dir ?? ".", site: url === GEMINI_WEB ? "gemini" : "grok" });
+  if (BROWSER_BACKENDS.includes(url)) return chromeBackend({ dir: paid?.dir ?? ".", site: url === GEMINI_WEB ? "gemini" : url === CHATGPT_WEB ? "chatgpt" : "grok" });
   const adapter = ADAPTERS[url];
   return adapter ? paidBackend(adapter, paid ?? { limitUsd: 0, spentUsd: 0 }) : httpBackend(url);
 }

@@ -19,7 +19,7 @@ import type { BackendInfo, EditRequest, ImageBackend } from "./backend.ts";
 
 const POST_ID = /^[0-9a-f-]{8,64}$/i;
 
-export type Site = "grok" | "gemini";
+export type Site = "grok" | "gemini" | "chatgpt";
 
 interface SiteInfo {
   /** Shown to the user: where the browser goes. */
@@ -34,6 +34,21 @@ interface SiteInfo {
 const PROMPT_BLOCK = (prompt: string) => [`<<<PROMPT`, prompt, `PROMPT>>>`];
 
 const SITES: Record<Site, SiteInfo> = {
+  chatgpt: {
+    site: "chatgpt.com",
+    label: "ChatGPT",
+    // The file is named after what ChatGPT calls the picture ("Anime Girl in Winter Parka.png"): any new picture in the downloads folder since the start.
+    download: /\.(png|jpe?g|webp)$/i,
+    steps: (file, prompt) => [
+      `1. Call tabs_context_mcp (createIfEmpty), then open a NEW tab and go to https://chatgpt.com/ (a new chat; you must already be signed in: if you see a Log in button, stop and answer FAILED: not signed in).`,
+      `2. Call find with the query "hidden file input for attaching photos" and upload this file with file_upload into the one named Attach photos (or the first file input): ${file}   (never click the + button or "Add photos": it opens a dialog you cannot use). Wait until the small preview of the picture shows in the prompt box.`,
+      `3. Click the prompt box ("Ask ChatGPT"), type the words "Create an image: " followed by exactly the text between the markers below (the markers themselves are not part of it), and press Enter.`,
+      ...PROMPT_BLOCK(prompt),
+      `4. Wait for the picture: ChatGPT shows it in its answer, usually within 15 to 60 seconds. If it answers with words instead of a picture, or says it cannot make the image, or that a limit is reached or to try again later or to upgrade, stop and answer FAILED: followed by what it said. If there is nothing after 150 seconds, answer FAILED: no picture.`,
+      `5. Click the generated picture once to open it in the viewer. Then call find with the query "Download button" and click the button named Download by its ref, once. Do not click anything else (not Share, not Edit, not Markup, not Remove BG).`,
+      `6. Wait 3 seconds, close the tab you opened, and answer with one line: DONE`,
+    ],
+  },
   grok: {
     site: "grok.com/imagine",
     label: "Grok Imagine",

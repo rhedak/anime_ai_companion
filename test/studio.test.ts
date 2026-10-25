@@ -468,3 +468,39 @@ test("the browser backend for Gemini: its own task and its own download name, wi
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("the browser backend for ChatGPT: its own task, and a download named after whatever ChatGPT calls the picture", async () => {
+  const root = await mkdtemp(join(tmpdir(), "studio-chrome-gpt-"));
+  const downloads = join(root, "Downloads");
+  await mkdir(downloads);
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 80, [255, 0, 255, 255]))), prompt: "change her outfit to a red scarf", seed: 1, width: 64, height: 80 };
+  try {
+    const bin = join(root, "bin");
+    writeStandIn(
+      bin,
+      "claude",
+      `
+const fs = require("fs"), path = require("path");
+let task = "";
+process.stdin.on("data", (c) => (task += c));
+process.stdin.on("end", () => {
+  fs.appendFileSync(${JSON.stringify(join(bin, "calls.log"))}, JSON.stringify({ task }) + "\\n");
+  const file = /upload this file[^:]*: (\\S+)/i.exec(task)[1];
+  fs.writeFileSync(path.join(${JSON.stringify(downloads)}, "Anime Girl in Winter Parka.png"), fs.readFileSync(file));
+  console.log("DONE");
+});
+`,
+    );
+    await writeFile(join(downloads, "report.pdf"), "not a picture");
+    const b = chromeBackend({ dir: join(root, "job"), downloads, program: join(bin, "claude"), site: "chatgpt", timeoutMs: 20_000 });
+    assert.equal((await b.info()).browser?.site, "chatgpt.com");
+    assert.equal((await decode(await b.edit(req))).w, 64);
+    const call = JSON.parse((await readFile(join(bin, "calls.log"), "utf8")).trim().split("\n")[0]);
+    assert.match(call.task, /https:\/\/chatgpt\.com\//);
+    assert.match(call.task, /Create an image: /);
+    assert.match(call.task, /<<<PROMPT\nchange her outfit to a red scarf\nPROMPT>>>/);
+    assert.deepEqual((await readdir(downloads)).sort(), ["report.pdf"], "the picture was taken out of the folder, the user's other file was not");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
