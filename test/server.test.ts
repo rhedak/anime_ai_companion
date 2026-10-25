@@ -207,6 +207,15 @@ describe("chatting", { skip }, () => {
     const after = server.claudeLog().filter((e) => e.kind === "in").at(-1)!;
     assert.match(after.text!, /The user ended the activity "swimming"/);
 
+    // moving on from one activity to the next in one reply ([activity end][activity swimming]) ends the old one and starts the new one
+    const moved = c.mark;
+    await ask(c, "please ACTIVITY cooking");
+    await c.next((e) => e.type === "activity" && e.name === "cooking", 8000, moved);
+    const switched = c.mark;
+    await ask(c, "now SWITCHTO swimming");
+    await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, switched);
+    assert.deepEqual(c.events.slice(switched).filter((e: any) => e.type === "activity").map((e: any) => e.name), [null, "swimming"]);
+
     // /clear ends one too, and work mode does not take the tag at all
     await ask(c, "please ACTIVITY walking");
     await c.next((e) => e.type === "activity" && e.name === "walking", 8000);

@@ -84,6 +84,7 @@ export function createTurnService(deps: TurnDeps) {
     let seen = 0;
     let outfitDone = false;
     let activityDone = false;
+    let activityEnded = false;
     return (reply) => {
       // One outfit change per reply: the first complete tag counts, so a reply cannot flip between outfits or pile up download questions.
       if (!outfitDone) {
@@ -93,12 +94,20 @@ export function createTurnService(deps: TurnDeps) {
           deps.wearOutfit(wanted);
         }
       }
-      // One activity change per reply as well: the first complete tag counts.
+      // One activity change per reply as well: the first complete tag counts. Except that an `[activity end]` first is only the end of the old one: a model that
+      // moves from tennis to swimming writes `[activity end][activity swimming]`, and the start after it counts too (once).
       if (!activityDone && deps.chatMode()) {
         const found = findActivityTags(reply);
-        if (found.length) {
-          activityDone = true;
+        if (found.length && !activityEnded) {
+          activityEnded = found[0] === null;
+          activityDone = !activityEnded;
           deps.activity(found[0], outfitDone);
+        }
+        const next = activityEnded ? found.find((name) => name !== null) : undefined;
+        if (next) {
+          activityEnded = false;
+          activityDone = true;
+          deps.activity(next, outfitDone);
         }
       }
       const tags = findAvatarTags(reply);

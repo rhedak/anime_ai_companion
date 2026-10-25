@@ -62,6 +62,9 @@ require("readline").createInterface({ input: process.stdin }).on("line", (line) 
     } else if (text.includes("PLAYEND")) {
       delta("[emotion:happy] We're in. [play end]");
       result();
+    } else if (/SWITCHTO [a-z]+/.test(text)) {
+      delta("[emotion:happy][activity end][activity " + /SWITCHTO ([a-z]+)/.exec(text)[1] + "] Switching.");
+      result();
     } else if (/ACTIVITY [a-z]+/.test(text)) {
       delta("[emotion:happy] Sure, let's go. [activity " + /ACTIVITY ([a-z]+)/.exec(text)[1] + "] Here we are.");
       result();
