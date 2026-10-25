@@ -46,33 +46,21 @@ by hand. This one shows her adult look, and none of its pictures was retouched b
    as lossless WebP, with the same file names as before and as the other Risa and Franzi packs: 39 pictures, plus
    `NOTICE.md`, `credit.txt`, `look.txt` and this file.
 
-## Dancing activity frames
+## The dancing activity (64 pictures: a dance loop)
 
-The pack also has two 6-frame loops of her dancing, `activity-dancing-1` to `-6` (silent) and `activity-dancing-talk-1`
-to `-6` (talking, with the same poses), 940 × 1070 lossless WebP like the other frames. Unlike the 4-frame swimming and
-cooking loops, this one has 6 frames, meant to play at about 3 frames a second.
+Replaces the earlier two six-picture sample loops (silent and talking). Made on 25 October 2026 on Grok Imagine in the owner's signed-in Chrome, with the owner's Grok allowance (nothing was paid per picture). The same method as the `risa-bikini` loop of the packs repository.
 
-1. **Pictures.** Two poses were made by editing the pack's dress base picture in Grok Imagine, on the same black
-   background at 1312 × 1504: B, swaying to one side with both arms raised and the skirt swinging out, and A, centred with
-   her arms raised at head height and the skirt nearly straight. Her mirrored poses, Bm and Am, were made by a script that
-   flips the pictures horizontally. The loop order is B, A, B, Bm, Am, Bm, so frames 1 and 3 are the same picture, and so are
-   frames 4 and 6. In the mirrored frames her gold hair clip is on the other side of her head.
-2. **Scale and position.** One common scale and shift, the same for all frames, makes her head the size and position of
-   the `neutral` frame: scale 1.02 at 1312 × 1504, measured by matching her head in B to `neutral`, then the same scaling
-   to 940 × 1070 as the rest of the pack. The mirrored frames are flipped about the centre of her head, so her head stays
-   in the same place. Her raised hands stay well inside the frame in every pose.
-3. **One face.** B's head (face, bangs and clip, inside a feathered oval) was pasted onto A, so the face is the same in
-   the unmirrored frames, and its mirror image is in the mirrored frames. The hair at the sides stays each picture's own.
-4. **Transparent background.** The black was made transparent with the same method as the rest of the pack (step 4), in
-   the version that also clears the JPEG's lifted black and the red-tinted black beside her hair, with one more rule: the
-   dark outlines of the dress and of her skin are never taken for background.
-5. **Cleanup.** A scan cleared stray specks away from her figure, faint haze around her outline and white flecks at the
-   edge, and, after the scaling to 940 × 1070, faint loose pixels that had split off her outline.
-6. **Talking loop.** The talking frames are the six silent frames with an open mouth cut in. The mouths are the pack's own
-   `neutral-talk2`, `neutral-talk3`, `neutral-talk2`, `neutral-talk1`, `neutral-talk2` and `neutral-talk3` mouths (frames 1 to
-   6), turned to match the slight tilt of her head, with a feathered mask that covers the closed mouth fully and the skin tone
-   matched. In the mirrored frames the mouth is mirrored with the picture. Every other pixel is the same as in the silent
-   frame.
+1. **Key picture.** The pack's `neutral` picture was put on flat magenta and edited on Grok Imagine into a picture of her dancing: one arm raised in the air, the other hand holding the side of her skirt, her weight on one foot, her head tilted, her mouth closed. The owner approved it before the video was made.
+2. **Video.** One video (720p, 6 seconds, 896 x 1024, 24 a second): she sways, turns and waves her raised arm, her skirt swinging. The first and the last frames (frames 3 and 137 of the 145; a difference of 1.2 of a 12-a-second step, the loosest loop of the new ones) close the loop.
+   Every second frame of that stretch is a picture. In three of the video's frames (83, 85 and 87) her raised arm fades into the background and her hand floats by itself, so those three were left out; the dance jumps a little there.
+3. **Cutting out.** Each frame was cut out of the magenta with the studio's matting (key magenta), scaled to 940 x 1070 and saved as lossy WebP (quality 90, lossless transparency), as the app allows for long loops. The picture was not moved: she turns and sways, so her head cannot be matched to `neutral`'s.
+4. **No talking set.** She turns and tilts her head while she dances, so the open mouths of the other packs would not sit right on her face; the silent loop goes on while she speaks.
+
+### Faults that are left
+
+- Looked at as contact sheets and a GIF, not every picture. Her raised hand touches or leaves the top of the picture in some frames, and the hand of a few frames is soft or half see-through. She is smaller in the picture than in `neutral` (the video shows her down to the knees).
+- The jump where three frames were left out, and the loop point (the closing pair differs by a little more than one step), are visible. The pictures are soft, as the video is only 896 x 1024.
+- The earlier two six-picture loops are kept in the owner's `ref/` folder of the packs repository.
 
 ## Licence
 
