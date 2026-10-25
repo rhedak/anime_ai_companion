@@ -1,4 +1,4 @@
-import { dilate, dilateSquare, makeRaster, openSquare, type Mask, type Raster } from "./raster.ts";
+import { dilate, dilateSquare, label, makeRaster, openSquare, type Mask, type Raster } from "./raster.ts";
 
 /**
  * Cuts a figure off a flat background colour and gives the edge a soft alpha.
@@ -56,6 +56,11 @@ export interface CutoutOptions {
   band?: number;
   /** Alpha below about this (before stretching) is cleared away from the solid body: the ghost strands a model draws beside hair. 0 turns it off. */
   floor?: number;
+  /**
+   * Clean the magenta a picture with props leaves behind (a magenta key only): a pale pink smudge that is a small piece of its own, and the pink that the strings of a
+   * racket or a net keep from the background behind them. Off by default: a pink garment would be touched too (see `cleanPink`).
+   */
+  cleanPink?: boolean;
 }
 
 export interface Cutout {
@@ -154,8 +159,47 @@ export function cutout(pic: Raster, options: CutoutOptions): Cutout {
     // little off, unmixing leaves a trace of the key in the colour (a pink edge on dark red hair).
     for (let c = 0; c < 3; c++) fg[i * 3 + c] = f[c];
   }
+  if (options.cleanPink && options.key === "magenta") cleanPink(alpha, fg, w, h);
   const floor = options.floor ?? 0.3;
   return { alpha: floor ? applyFloor(alpha, w, h, floor) : alpha, fg, background };
+}
+
+/** Red and blue well above green and near each other: the pink of a white thing that lets the magenta show through (not red hair, skin, lips or navy). */
+const pinkish = (fg: Float32Array, i: number): boolean => {
+  const r = fg[i * 3], g = fg[i * 3 + 1], b = fg[i * 3 + 2];
+  return Math.min(r, b) - g > 25 && b >= 0.6 * r && r >= 0.6 * b;
+};
+
+/**
+ * What the matting leaves of the key colour around props, in place.
+ *  - A small piece of its own (under 0.7% of the picture, not the figure) that is mostly pink is dropped: a video model draws a pale pink smudge where a ball is
+ *    about to appear, and nothing real is a piece of its own and pink.
+ *  - Every pink pixel gets the green it lacks, so the strings of a racket (and the solid pale pink where a racket is seen edge-on) are white or grey.
+ * A pink garment is not safe from the second (it would turn paler), which is why `CutoutOptions.cleanPink` is off unless asked for: a figure with pink clothes should
+ * not use it (and a key other than magenta would suit her better, see `pickKey`).
+ */
+export function cleanPink(alpha: Float32Array, fg: Float32Array, w: number, h: number): { dropped: number; despilled: number } {
+  const present = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) present[i] = alpha[i] > 0.1 ? 1 : 0;
+  const { labels, count } = label(present, w, h);
+  const area = new Int32Array(count + 1), pink = new Int32Array(count + 1);
+  for (let i = 0; i < w * h; i++) if (labels[i]) (area[labels[i]]++, pinkish(fg, i) && pink[labels[i]]++);
+  let biggest = 1;
+  for (let k = 1; k <= count; k++) if (area[k] > area[biggest]) biggest = k;
+  let dropped = 0;
+  for (let k = 1; k <= count; k++) {
+    if (k === biggest || area[k] > 0.007 * w * h || pink[k] < 0.5 * area[k]) continue;
+    dropped++;
+    for (let i = 0; i < w * h; i++) if (labels[i] === k) alpha[i] = 0;
+  }
+  let despilled = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (alpha[i] > 0 && pinkish(fg, i)) {
+      fg[i * 3 + 1] = Math.min(fg[i * 3], fg[i * 3 + 2]);
+      despilled++;
+    }
+  }
+  return { dropped, despilled };
 }
 
 /**

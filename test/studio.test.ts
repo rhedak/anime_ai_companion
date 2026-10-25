@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { BackendError, checkBackendUrl, httpBackend, makeBackend, XAI, xaiBackend } from "../src/studio/backend.ts";
 import { checkLowerBody } from "../src/studio/checks.ts";
 import { pasteBack } from "../src/studio/paste.ts";
-import { cutout, keyBackground, KEYS, pickKey, toRaster } from "../src/studio/cutout.ts";
+import { cleanPink, cutout, keyBackground, KEYS, pickKey, toRaster } from "../src/studio/cutout.ts";
 import { cleanText, parseJob } from "../src/studio/job.ts";
 import { findStudioTags, usableName } from "../src/studio/tags.ts";
 import { decode, encodePng, flatten, label, makeRaster, openSquare, resize, type Raster } from "../src/studio/raster.ts";
@@ -503,4 +503,29 @@ process.stdin.on("end", () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("the magenta that props leave behind: a pale pink smudge of its own goes, pink strings turn white, and hair and a ball stay (a pink garment would turn paler, which is why it is an option)", () => {
+  const w = 120, h = 140;
+  const pic = makeRaster(w, h, [255, 0, 255, 255]);
+  const put = (x0: number, y0: number, x1: number, y1: number, rgb: [number, number, number]) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) pic.data.set([...rgb, 255], (y * w + x) * 4);
+  };
+  put(40, 40, 90, 130, [200, 30, 40]); // her (red hair and body)
+  put(95, 20, 107, 32, [220, 255, 30]); // a ball: a piece of its own, yellow-green
+  put(5, 100, 15, 110, [240, 110, 220]); // the smudge: a piece of its own, pale pink
+  for (let x = 10; x < 36; x += 5) put(x, 50, x + 1, 80, [255, 170, 255]); // pink strings with the key between them
+  put(40, 40, 50, 130, [255, 150, 200]); // a pink garment on her left edge: inside her, far from the background on one side
+  const plain = cutout(pic, { key: "magenta" });
+  const clean = cutout(pic, { key: "magenta", cleanPink: true });
+  const at = (x: number, y: number) => y * w + x;
+  assert.ok(plain.alpha[at(10, 105)] > 0.5, "without the option the smudge is kept as part of the picture");
+  assert.equal(clean.alpha[at(10, 105)], 0, "with it the smudge is gone");
+  assert.ok(clean.alpha[at(101, 26)] > 0.9 && clean.fg[at(101, 26) * 3 + 1] > 200, "the ball is kept, yellow-green");
+  assert.ok(clean.alpha[at(65, 100)] > 0.9 && clean.fg[at(65, 100) * 3] === 200, "her hair is not touched");
+  assert.equal(plain.fg[at(45, 100) * 3 + 1], 150, "without the option a pink garment keeps its colour");
+  assert.ok(clean.fg[at(45, 100) * 3 + 1] > 150, "with it a pink garment turns paler: the option is for figures without pink clothes");
+  const direct = { alpha: new Float32Array([1, 1, 1]), fg: new Float32Array([255, 170, 255, 200, 30, 40, 255, 170, 255]) };
+  const result = cleanPink(direct.alpha, direct.fg, 3, 1);
+  assert.deepEqual([result.despilled, direct.fg[1], direct.fg[4], direct.fg[7]], [2, 255, 30, 255], "the pink pixels get their green, the red one does not");
 });
