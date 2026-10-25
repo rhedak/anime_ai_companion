@@ -11,6 +11,10 @@ export function createStudio(io) {
   /** The pack she is wearing: the form starts from it, until the user picks another. */
   let active = "";
   let sourceTouched = false;
+  /** The image makers the server offers, and the one that is chosen. */
+  /** @type {{ value: string, label: string, kind: string }[]} */
+  let makers = [];
+  let maker = "";
   /** @type {HTMLElement | null} */
   let panel = null;
   let jobId = "";
@@ -44,6 +48,8 @@ export function createStudio(io) {
     const outfit = el("textarea", { id: "studio-outfit", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
     const look = el("textarea", { id: "studio-look", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
     const count = el("select", { id: "studio-count", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
+    const makerSelect = el("select", { id: "studio-maker", ariaLabel: "Which image maker draws it" });
+    makerSelect.onchange = () => io.send({ type: "studio-backend", value: makerSelect.value });
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
@@ -67,6 +73,8 @@ export function createStudio(io) {
       "div",
       { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
       el("div", { className: "gallery-title", textContent: "Pack studio: a draft of her in a new outfit, drawn on this computer" }),
+      el("label", { textContent: "Image maker (web services cost money or allowance; the next question says what)", htmlFor: "studio-maker" }),
+      makerSelect,
       el("label", { textContent: "Draw from", htmlFor: "studio-source" }),
       source,
       el("label", { textContent: "New pack", htmlFor: "studio-name" }),
@@ -88,6 +96,7 @@ export function createStudio(io) {
     zoom = el("div", { className: "studio-zoom", hidden: true }, el("img", { alt: "" }));
     io.host()?.append(zoom);
     fillSources();
+    fillMakers();
     source.onchange?.(new Event("change"));
     outfit.focus();
     io.send({ type: "studio-state" }); // a job that is already going (or waiting for the pick) is shown again
@@ -311,6 +320,14 @@ export function createStudio(io) {
     }
   }
 
+  function fillMakers() {
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
+    if (!select) return;
+    select.replaceChildren(...makers.map((m) => new Option(m.label, m.value)));
+    if (makers.some((m) => m.value === maker)) select.value = maker;
+    else select.selectedIndex = -1;
+  }
+
   function fillSources() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
@@ -322,6 +339,8 @@ export function createStudio(io) {
   }
 
   function running(/** @type {boolean} */ busy) {
+    const picker = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
+    if (picker) picker.disabled = busy;
     const start = /** @type {HTMLButtonElement | null} */ (panel?.querySelector(".pack-confirm-buttons button"));
     if (start) start.disabled = busy;
     const stop = q(".pack-confirm-buttons button:nth-child(2)");
@@ -336,6 +355,9 @@ export function createStudio(io) {
         case "studio-state":
           on = msg.on === true;
           if (on) document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
+          makers = Array.isArray(msg.backends) ? msg.backends.filter((/** @type {any} */ b) => b && typeof b.value === "string" && typeof b.label === "string") : [];
+          maker = typeof msg.backend === "string" ? msg.backend : "";
+          fillMakers();
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
           active = typeof msg.active === "string" ? msg.active : "";
           if (!on) close();

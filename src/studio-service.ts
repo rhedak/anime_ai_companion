@@ -29,7 +29,7 @@ export interface StudioDeps {
   dataDir: string;
   /** data/frames: where a finished pack is installed. */
   framesDir: string;
-  settings: { studioBackend: string | null; studioBudgetUsd?: number };
+  settings: { studioBackend: string | null; studioBudgetUsd?: number; studioLocalBackend?: string | null };
   saveSettings(): Promise<void>;
   broadcast: Broadcast;
   remoteRefusal(): string;
@@ -116,6 +116,27 @@ export function createStudioService(deps: StudioDeps) {
   let knownSources: string[] = [];
   const disabled = process.env.COMPANION_NO_STUDIO === "1";
   const budget = () => deps.settings.studioBudgetUsd ?? 5;
+  const isLocal = (url: string | null): url is string => Boolean(url) && !PAID_SERVICES.includes(url as string) && !BROWSER_BACKENDS.includes(url as string);
+  /** Chooses the backend, and keeps the last address of a model on this computer so the list can go back to it. */
+  const setBackend = (url: string): void => {
+    if (isLocal(deps.settings.studioBackend)) deps.settings.studioLocalBackend = deps.settings.studioBackend;
+    if (isLocal(url)) deps.settings.studioLocalBackend = url;
+    deps.settings.studioBackend = url;
+  };
+  /** The choices of the page's "Image maker" list. A local address is only offered when one is saved (`/studio backend <address>` sets it). */
+  const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser" }[] => {
+    const saved = deps.settings.studioBackend;
+    const local = saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) ? saved : deps.settings.studioLocalBackend;
+    return [
+      ...(local ? [{ value: local, label: `A model on this computer (${local})`, kind: "local" as const }] : []),
+      { value: "xai", label: "xAI Grok Imagine API (paid per picture, XAI_API_KEY)", kind: "paid" },
+      { value: "gemini", label: "Google Gemini API (paid per picture, GEMINI_API_KEY)", kind: "paid" },
+      { value: "openai", label: "OpenAI API (paid per picture, OPENAI_API_KEY)", kind: "paid" },
+      { value: "grok-web", label: "Grok Imagine website through your Chrome (uses Claude and your Grok allowance)", kind: "browser" },
+      { value: "gemini-web", label: "Google Gemini website through your Chrome (uses Claude and your Gemini allowance)", kind: "browser" },
+      { value: "chatgpt-web", label: "ChatGPT website through your Chrome (uses Claude and your ChatGPT allowance)", kind: "browser" },
+    ];
+  };
   /** What the open job has cost so far (a paid backend only), also kept in the job's folder so a carried-on job keeps counting. */
   let spent = 0;
   const readSpend = async (dir: string): Promise<number> => {
@@ -153,6 +174,8 @@ export function createStudioService(deps: StudioDeps) {
       type: "studio-state",
       on,
       backend: deps.settings.studioBackend,
+      /** What the page may offer in its "Image maker" list: the local server (its saved address, if any) and each web service, with what it costs the user. */
+      backends: backendChoices(),
       sources: on ? (knownSources = await deps.sources()) : [],
       /** The pack the form starts from. */
       active: deps.activeSource(),
@@ -490,6 +513,17 @@ export function createStudioService(deps: StudioDeps) {
     );
   }
 
+  /** The page's "Image maker" list: switches the backend for the next question (nothing is checked or started here: the approval card names what it will use). */
+  async function chooseBackend(value: unknown, send: Send): Promise<void> {
+    if (running) return send({ type: "studio-error", message: "A job is running. Stop it first." });
+    const url = typeof value === "string" && backendChoices().some((c) => c.value === value) ? checkBackendUrl(value) : null;
+    if (!url) return send({ type: "studio-error", message: "That is not one of the image makers." });
+    setBackend(url);
+    await deps.saveSettings();
+    pending = null;
+    await announce();
+  }
+
   /** Removes a job of an earlier session from the disk (only one that is listed as carry-on-able, never the open one). Packs already installed are not touched. */
   async function discard(id: string, send: Send): Promise<void> {
     if (running || waiting || pending) return send({ type: "studio-error", message: "Finish or stop the job that is open first." });
@@ -571,7 +605,7 @@ export function createStudioService(deps: StudioDeps) {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
         if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or `grok-web` / `gemini-web` / `chatgpt-web` (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
-        deps.settings.studioBackend = url;
+        setBackend(url);
         await deps.saveSettings();
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
@@ -607,6 +641,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
         else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
+        else if (msg.type === "studio-backend") await chooseBackend(msg.value, send);
         else if (msg.type === "studio-discard" && typeof msg.id === "string") await discard(msg.id, send);
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);

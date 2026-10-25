@@ -402,6 +402,35 @@ process.stdin.on("end", () => {
   }
 });
 
+test("the page's image maker list: the choices say what they cost, a choice is saved, and nothing odd gets in", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const state = await t.service.stateMessage();
+    assert.deepEqual(state.backends.map((b: any) => b.kind), ["local", "paid", "paid", "paid", "browser", "browser", "browser"]);
+    assert.equal(state.backends[0].value, t.fake.url, "the saved local address is the first choice");
+    assert.equal(state.backend, t.fake.url);
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-backend", value: "chatgpt-web" }, send, false);
+    assert.equal(t.settings.studioBackend, "chatgpt-web");
+    assert.equal((await t.service.stateMessage()).backend, "chatgpt-web");
+    assert.equal((await t.service.stateMessage()).backends[0].value, t.fake.url, "the local address stays in the list after a web service is chosen");
+    await t.service.message({ type: "studio-backend", value: t.fake.url }, send, false);
+    assert.equal(t.settings.studioBackend, t.fake.url);
+    for (const bad of ["http://example.com", "xai; rm -rf", 5, "", "grok-web "]) {
+      await t.service.message({ type: "studio-backend", value: bad }, send, false);
+      assert.match(me.at(-1)?.message ?? "", /not one of the image makers/);
+    }
+    assert.equal(t.settings.studioBackend, t.fake.url, "nothing odd was saved");
+    const phone: Record<string, any>[] = [];
+    await t.service.message({ type: "studio-backend", value: "xai" }, (m) => phone.push(m as any), true);
+    assert.equal(t.settings.studioBackend, t.fake.url, "a phone cannot choose");
+  } finally {
+    await t.cleanup();
+  }
+});
+
 test("the number of first pictures can be one to four, and a value outside that means four", async () => {
   const t = await setup();
   try {
