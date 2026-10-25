@@ -138,13 +138,14 @@ These follow `AGENTS.md` ("Safety") and the position in `pack-image-models.md` (
   `uv run` and added to `check.sh` only when `uv` is present (`check.sh` already fails on skipped tests, so they are either run or not listed).
 - A **manual in-app checklist** per milestone (below) with the real model, kept in this file; real-model runs are never in CI.
 
-## The paid web backend (xAI Grok Imagine)
+## The paid web backends (xAI Grok Imagine, Google Gemini)
 
-`/studio backend xai` points the studio at xAI's image service instead of a model on this computer (`xaiBackend` in `src/studio/backend.ts`; the
+`/studio backend xai` (or `gemini`) points the studio at a paid image service instead of a model on this computer (`paidBackend` in `src/studio/backend.ts`, one adapter per service: where it is, how a request looks, how the picture and the cost are read; **a third service, OpenAI, is another adapter** and the `imagine` package already has its payload). xAI first (the
 endpoint and payload follow the `imagine` package's grok client: `POST https://api.x.ai/v1/images/edits`, the picture as a data URI, `b64_json`
 back, `grok-imagine-image-2.0` at `1k`, the cost in `usage.cost_in_usd_ticks`). It is the one web service there is an adapter for, and it **costs money per picture**.
 
-- **The key** is `XAI_API_KEY` in the environment the app is started from (for example `~/.zshrc`; a daemon started without that file has no key
+- **Gemini** (`gemini-3.1-flash-image` at `1K`, `COMPANION_GEMINI_MODEL` names another): `POST …/v1beta/models/<model>:generateContent` with the picture as an `inline_data` part, `x-goog-api-key`, the key from `GEMINI_API_KEY` (or `GOOGLE_API_KEY`, as in `imagine`). The answer carries no price, only token counts, so the cost is worked out from them with the published per-million-token prices kept in `GEMINI_PRICES` (checked against ai.google.dev/gemini-api/docs/pricing; update them when the prices change). A model that is not in that table is not metered, and the job stops after its first picture. Measured: 1 picture, about 6.8 cents.
+- **The key** is `XAI_API_KEY` (or `GEMINI_API_KEY`) in the environment the app is started from (for example `~/.zshrc`; a daemon started without that file has no key
   and the studio says so). The app never writes it anywhere (not settings, not `data/`, not a job file, not the transcript), never sends it to the
   page or the brain, reads it at the moment of each call, puts it in one header to `api.x.ai`, and takes it out of every error text. The address
   `https://api.x.ai` is fixed; `COMPANION_XAI_BASE` (loopback http only) exists for tests.
