@@ -330,3 +330,42 @@ test("the Gemini backend: the key (GEMINI_API_KEY or GOOGLE_API_KEY), an inline_
     restore("COMPANION_GEMINI_MODEL", saved.model);
   }
 });
+
+test("the OpenAI backend: a form with the picture at its own size, the key in a bearer header, and a cost worked out from the token counts", async () => {
+  const saved = { key: process.env.OPENAI_API_KEY, base: process.env.COMPANION_OPENAI_BASE, model: process.env.COMPANION_OPENAI_MODEL };
+  const restore = (name: string, v: string | undefined) => (v === undefined ? delete process.env[name] : (process.env[name] = v));
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 80, [255, 0, 255, 255]))), prompt: "a coat", seed: 1, width: 64, height: 80 };
+  const fake = await startFakeBackend({ openai: {} });
+  try {
+    process.env.COMPANION_OPENAI_BASE = fake.url;
+    delete process.env.COMPANION_OPENAI_MODEL;
+    delete process.env.OPENAI_API_KEY;
+    await assert.rejects(makeBackend("openai", { limitUsd: 1, spentUsd: 0 }).info(), /OPENAI_API_KEY is not set/);
+    process.env.OPENAI_API_KEY = "sk-secret-key-1234567890";
+    const spends: number[] = [];
+    const b = makeBackend("openai", { limitUsd: 5, spentUsd: 0, onSpend: (n) => spends.push(n) });
+    assert.equal((await b.info()).model, "gpt-image-2.5-sunburst");
+    const picture = await decode(await b.edit(req));
+    assert.deepEqual([picture.w, picture.h], [64, 80], "asked for the size of the picture sent");
+    const sent = fake.requests.at(-1) as any;
+    assert.equal(sent.path, "/images/edits");
+    assert.equal(sent.authorization, "Bearer sk-secret-key-1234567890");
+    assert.deepEqual([sent.body.model, sent.body.size, sent.body.quality, sent.body.prompt], ["gpt-image-2.5-sunburst", "64x80", "high", "a coat"]);
+    // 100 text tokens at $5, 300 image tokens at $8 and 4000 output tokens at $30 per million.
+    assert.ok(Math.abs(spends[0] - 0.1229) < 1e-9, `got ${spends[0]}`);
+  } finally {
+    await fake.stop();
+  }
+  const blind = await startFakeBackend({ openai: { noUsage: true } });
+  try {
+    process.env.COMPANION_OPENAI_BASE = blind.url;
+    const b = makeBackend("openai", { limitUsd: 5, spentUsd: 0 });
+    await b.edit(req);
+    await assert.rejects(b.edit(req), /did not say what the last picture cost/);
+  } finally {
+    await blind.stop();
+    restore("OPENAI_API_KEY", saved.key);
+    restore("COMPANION_OPENAI_BASE", saved.base);
+    restore("COMPANION_OPENAI_MODEL", saved.model);
+  }
+});

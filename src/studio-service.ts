@@ -558,7 +558,7 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai` or `gemini` (each needs its API key, XAI_API_KEY or GEMINI_API_KEY, in this app's environment).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment).");
         deps.settings.studioBackend = url;
         await deps.saveSettings();
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);

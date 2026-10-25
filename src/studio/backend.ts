@@ -43,11 +43,14 @@ const text = (v: unknown, max = 200): string | null => (typeof v === "string" &&
 /** The paid web services there is an adapter for. Each is paid per picture, so each has its own approval text (studio-service.ts) and a spending limit. */
 export const XAI = "xai";
 export const GEMINI = "gemini";
-export const PAID_SERVICES: readonly string[] = [XAI, GEMINI];
+export const OPENAI = "openai";
+export const PAID_SERVICES: readonly string[] = [XAI, GEMINI, OPENAI];
 export const XAI_BASE = "https://api.x.ai/v1";
 export const XAI_MODEL = "grok-imagine-image-2.0";
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 export const GEMINI_MODEL = "gemini-3.1-flash-image";
+export const OPENAI_BASE = "https://api.openai.com/v1";
+export const OPENAI_MODEL = "gpt-image-2.5-sunburst";
 const USD_TICKS = 10_000_000_000; // xAI reports `usage.cost_in_usd_ticks`: 10 000 000 000 ticks are one dollar
 
 /** The address the user may give: plain http on this computer, or the name of a paid web service (`xai`, `gemini`). */
@@ -85,7 +88,7 @@ interface PaidAdapter {
   model: string;
   modelEnv: string;
   headers(key: string): Record<string, string>;
-  request(kind: "edit" | "generate", req: { prompt: string; image?: Buffer }, model: string): { path: string; body: Record<string, unknown> };
+  request(kind: "edit" | "generate", req: { prompt: string; image?: Buffer; width: number; height: number }, model: string): { path: string; body?: Record<string, unknown>; form?: FormData };
   /** The picture (base64) and what the call cost in dollars (null: the answer does not say), or why there is no picture. */
   read(json: Record<string, any>, model: string): { image: string | null; costUsd: number | null; why?: string };
   /** The service's own words for an error. */
@@ -166,7 +169,61 @@ const geminiAdapter: PaidAdapter = {
   detail: (json) => text(json.error?.message, 300) ?? text(json.message, 300),
 };
 
-const ADAPTERS: Record<string, PaidAdapter> = { [XAI]: xaiAdapter, [GEMINI]: geminiAdapter };
+/**
+ * Dollars per million tokens, from OpenAI's published pricing (developers.openai.com/api/docs/pricing). The answer's `usage` has the token counts and
+ * no price. A model that is not here is not metered (the job stops after its first picture); `gpt-image-1.5` also bills text output, which an image
+ * answer does not have.
+ */
+const OPENAI_PRICES: Record<string, { text: number; image: number; out: number }> = {
+  "gpt-image-2.5-sunburst": { text: 5, image: 8, out: 30 },
+  "gpt-image-2.5-flare": { text: 5, image: 8, out: 30 },
+  "gpt-image-2": { text: 5, image: 8, out: 30 },
+  "gpt-image-1.5": { text: 5, image: 8, out: 32 },
+  "gpt-image-1-mini": { text: 2, image: 2.5, out: 8 },
+};
+
+const openaiAdapter: PaidAdapter = {
+  service: OPENAI,
+  label: "OpenAI",
+  keyEnv: ["OPENAI_API_KEY"],
+  baseUrl: OPENAI_BASE,
+  baseEnv: "COMPANION_OPENAI_BASE",
+  model: OPENAI_MODEL,
+  modelEnv: "COMPANION_OPENAI_MODEL",
+  headers: (key) => ({ authorization: `Bearer ${key}` }),
+  // The edits endpoint takes a form with the picture as a file; the output is asked for at the size of the picture sent (any size with sides in
+  // multiples of 16 is allowed), so nothing has to be stretched afterwards. `quality: high` is what `imagine` uses for reference-guided work,
+  // from OpenAI's own guide; `input_fidelity` is left out because the gpt-image-2 models do not take it.
+  request: (kind, req, model) => {
+    const size = `${req.width}x${req.height}`;
+    if (kind === "generate") return { path: "/images/generations", body: { model, prompt: req.prompt, n: 1, size, quality: "high" } };
+    const form = new FormData();
+    form.set("model", model);
+    form.set("prompt", req.prompt);
+    form.set("n", "1");
+    form.set("size", size);
+    form.set("quality", "high");
+    form.set("image[]", new Blob([new Uint8Array(req.image ?? Buffer.alloc(0))], { type: "image/png" }), "picture.png");
+    return { path: "/images/edits", form };
+  },
+  read: (json, model) => {
+    const item = Array.isArray(json.data) ? json.data[0] : null;
+    const price = OPENAI_PRICES[model];
+    const u = json.usage;
+    let costUsd: number | null = null;
+    if (price && u && Number.isFinite(u.output_tokens)) {
+      const d = u.input_tokens_details;
+      const textIn = Number(d?.text_tokens) || 0;
+      // Without the split every input token is counted at the dearer (image) price, so the limit errs on the safe side.
+      const imageIn = d ? Number(d.image_tokens) || 0 : Number(u.input_tokens) || 0;
+      costUsd = (textIn * price.text + imageIn * price.image + Number(u.output_tokens) * price.out) / 1_000_000;
+    }
+    return { image: text(item?.b64_json, 80_000_000), costUsd };
+  },
+  detail: (json) => text(json.error?.message, 300) ?? text(json.message, 300),
+};
+
+const ADAPTERS: Record<string, PaidAdapter> = { [XAI]: xaiAdapter, [GEMINI]: geminiAdapter, [OPENAI]: openaiAdapter };
 
 /** The name of the environment variable the key of a paid service is read from, for what the user is told. */
 export const keyName = (service: string): string => ADAPTERS[service]?.keyEnv[0] ?? "";
@@ -190,18 +247,18 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
     return (k.length >= 8 ? message.split(k).join("…") : message).slice(0, 400);
   };
 
-  async function call(kind: "edit" | "generate", req: { prompt: string; image?: Buffer }, signal?: AbortSignal): Promise<Buffer> {
+  async function call(kind: "edit" | "generate", req: { prompt: string; image?: Buffer; width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
     if (!key()) throw new BackendError(missing());
     if (unmetered) throw new BackendError(`${adapter.label} did not say what the last picture cost, so the spending limit cannot be kept. Nothing more is drawn.`);
     if (spent >= options.limitUsd) throw new BackendError(`The spending limit for this pack ($${options.limitUsd.toFixed(2)}) is reached ($${spent.toFixed(2)} spent). Nothing more is drawn; raise it with /studio budget <dollars> and carry on.`);
-    const { path, body } = adapter.request(kind, req, model);
+    const { path, body, form } = adapter.request(kind, req, model);
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       try {
         res = await doFetch(`${base}${path}`, {
           method: "POST",
-          headers: { "content-type": "application/json", "user-agent": "anaico-pack-studio", ...adapter.headers(key()) },
-          body: JSON.stringify(adapter.service === XAI ? { model, ...body } : body),
+          headers: { ...(form ? {} : { "content-type": "application/json" }), "user-agent": "anaico-pack-studio", ...adapter.headers(key()) },
+          body: form ?? JSON.stringify(adapter.service === XAI ? { model, ...body } : body),
           signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5 * 60_000)]) : AbortSignal.timeout(5 * 60_000),
         });
       } catch (error) {
@@ -240,8 +297,8 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
       return { name: `${adapter.label} (paid web service)`, model, revision: null, licence: null, edit: true, generate: true, paid: { host: new URL(base).host, keyName: adapter.keyEnv[0] } };
     },
     // The services take no seed: a picture drawn again is a new draw all the same.
-    edit: (req, signal) => call("edit", { prompt: req.prompt, image: req.image }, signal),
-    generate: (req, signal) => call("generate", { prompt: req.prompt }, signal),
+    edit: (req, signal) => call("edit", { prompt: req.prompt, image: req.image, width: req.width, height: req.height }, signal),
+    generate: (req, signal) => call("generate", { prompt: req.prompt, width: req.width, height: req.height }, signal),
   };
 }
 
