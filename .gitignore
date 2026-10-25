@@ -30,3 +30,4 @@ trailer/.sample-pack/
 # the desktop shell's staged contents and installer
 /app/stage/
 /app/dist/
+trailer/.redraw/

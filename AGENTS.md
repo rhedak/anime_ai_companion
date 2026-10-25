@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.6.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install

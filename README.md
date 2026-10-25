@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="site/assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading: three activities of picture packs, animated" width="100%"><br>
-  <sub>Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and reads.</sub>
+  <img src="site/assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa splashing water at you: three activities of picture packs, animated" width="100%"><br>
+  <sub>Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and splashes water at you.</sub>
 </p>
 
 <h1 align="center">Anime AI Companion</h1>
@@ -62,7 +62,7 @@ An **activity** is something a pack's character does for a while instead of just
   <tr>
     <td align="center"><img src="site/assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="200"><br><sub>Risa plays tennis</sub></td>
     <td align="center"><img src="site/assets/activity-dancing.gif" alt="Franzi dances in a dirndl" width="200"><br><sub>Franzi dances</sub></td>
-    <td align="center"><img src="site/assets/activity-reading.gif" alt="Risa reads a book on a wooden chair" width="200"><br><sub>Risa reads</sub></td>
+    <td align="center"><img src="site/assets/activity-swimming.gif" alt="Risa splashes water toward you" width="200"><br><sub>Risa splashes</sub></td>
     <td align="center"><img src="site/assets/activity-cooking.gif" alt="Franzi cooks in a frying pan" width="200"><br><sub>Franzi cooks</sub></td>
   </tr>
 </table>
@@ -79,11 +79,11 @@ The **pack studio** turns *"a dark green hooded coat over a white knitted sweate
 
 | Image maker | What it costs you |
 | --- | --- |
-| **A model on your computer** (a loopback server you run, such as FLUX.2 klein) | Nothing but time and about 22 GB of memory |
+| **A model on your computer** (a loopback server you run, such as FLUX.2 klein; [how to set it up](site/pages/local-model.md)) | Nothing but time and about 22 GB of memory |
 | **An API** (xAI, Google Gemini, OpenAI) with your own key | Paid per picture: counted live, with a limit per pack |
 | **A website you are signed in to** (Grok Imagine, Gemini, ChatGPT), driven through Claude in Chrome | No per-picture bill: it uses your Claude allowance and the site's. Slower; free accounts run out |
 
-Every picture is checked and tried up to three times, you look at the whole pack before anything is written, and in chat she can suggest an outfit but **never starts it**. It is off at every start. [How the studio works](docs/pack-studio.md)
+Every picture is checked and tried up to three times, you look at the whole pack before anything is written, and in chat she can suggest an outfit but **never starts it**. It is off at every start. None of these suits you? `/studio handover` gives you a prompt to copy into any AI agent that makes pictures, with a [guide for agents](site/pages/agent-guide.md). [How the studio works](docs/pack-studio.md)
 
 </td>
     <td valign="top" width="300"><img src="site/assets/wardrobe.gif" alt="Risa in five outfits, one after the other" width="300"><br><img src="site/assets/studio.png" alt="The pack studio panel with a finished set to review" width="300"></td>
@@ -125,7 +125,7 @@ day whether a newer version exists (it never installs anything).
 ## Quick start
 
 ```bash
-git clone --branch v0.6.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
