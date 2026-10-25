@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="site/assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading: three of her activities, animated" width="100%">
+  <img src="site/assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading: three activities of picture packs, animated" width="100%"><br>
+  <sub>Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and reads.</sub>
 </p>
 
 <h1 align="center">Anime AI Companion</h1>
@@ -7,8 +8,8 @@
 <p align="center">
   <b>A face for your coding agent.</b><br>
   A free, open-source anime character on <b>your own computer</b>, in front of Claude Code, Cursor, opencode or a local Ollama model.<br>
-  She asks before every command, answers from your phone, plays tennis when you ask,<br>
-  and you can have her drawn in a new outfit of your own.
+  She asks before every command and answers from your phone. Drawn by code, she redraws herself on request;<br>
+  in picture packs she dances and plays tennis. And you can have new outfits made for her.
 </p>
 
 <p align="center">
@@ -32,24 +33,30 @@ The **demo** is a live Risa in your browser: nothing to install and nothing sent
 | | |
 | --- | --- |
 | **She asks first.** | In work mode she reads, edits and runs commands in your project folder, and **every command and file change waits for you**, with the exact text or diff on a card. Looser modes are opt-in and come back to "ask" at every start. A phone on your network can answer the cards. |
-| **She has a life of her own.** | Seven expressions, blinking, a mouth that moves while she talks, and **activities**: dancing, swimming, cooking, reading, tennis. Ask her to play tennis and the picture turns into a loop where the ball comes at you and she hits it back. |
-| **You dress her.** | The **pack studio** draws her a whole new set of pictures from an outfit you describe, with an image model *you* choose: one on your computer, an API key, or a website you already use. A card says what it costs before anything is drawn. |
-| **She redraws herself.** | "Blue hair and glasses, please." Save looks, switch between 19 built-in characters, import a character card, or wear picture packs instead of the drawn character. |
+| **She can look two ways.** | **Drawn by code** (the default), so she can change her hair, eyes, glasses and clothes the moment you ask, or in **picture packs**: sets of pictures (made with AI) with polished art and activities such as dancing and tennis. [Both below.](#two-ways-she-can-look) |
+| **You dress her.** | The **pack studio** draws a whole new picture pack from an outfit you describe, with an image model *you* choose: one on your computer, an API key, or a website you already use. A card says what it costs before anything is drawn. |
 | **Your brain, your login.** | It runs on your own computer with the agent you already use. Nothing is hosted, and there is no telemetry. |
 
-### She is drawn by code, so she can redraw herself
+## Two ways she can look
+
+| | Drawn by code (the default) | Picture packs |
+| --- | --- | --- |
+| **What it is** | A vector drawing made by code ([anime-character-creator](https://github.com/rhedak/anime-character-creator)): hair, eyes, glasses, hats and clothes are parameters. | A folder of pictures: the seven expressions with blinks and mouths, poses, and optional activities. Pictures made with AI, bundled, downloaded on request, or made by you. |
+| **Strength** | **She can redraw herself in an instant**: "mint green hair", "glasses and a witch hat". Every change is reversible, looks can be saved, and there are many built-in characters. | Polished art, a fixed outfit per pack, and **activities**: dancing, swimming, cooking, reading, tennis. |
+| **Limit** | Simpler, less polished. | A pack cannot change its hair or clothes: another outfit is another pack (the studio makes them). |
 
 <table>
   <tr>
     <td valign="top">
-      The character you meet first is <b>not a picture</b>: she is a vector drawing made by code (the <a href="https://github.com/rhedak/anime-character-creator">anime-character-creator</a>), so hair, eyes, glasses, hats and clothes are parameters. She is not as polished as the picture packs below, but <b>she can change anything, in an instant</b>: ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking. Every change is reversible, and you can save the looks you like.
-      <br><br><sub>The picture shows the app's own drawing, answered by its built-in script: no model was needed to change her.</sub>
+      <b>Drawn by code.</b> The picture shows the app's own drawing, answered by its built-in script: no model was needed to change her. Ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking.
     </td>
     <td width="330"><img src="site/assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short" width="330"></td>
   </tr>
 </table>
 
-### She does things with you
+### Picture packs and their activities
+
+An **activity** is something a pack's character does for a while instead of just talking. Ask her to play tennis and her picture turns into a loop where the ball comes at you and she hits it back. These four are picture packs (original characters, made with AI).
 
 <table>
   <tr>
@@ -60,7 +67,7 @@ The **demo** is a live Risa in your browser: nothing to install and nothing sent
   </tr>
 </table>
 
-Risa and Franzi are original characters, and their pictures were made with AI (MIT licence, details in each pack).
+Risa and Franzi are original characters, and their pictures were made with AI (MIT licence, details in each pack). You can make packs like these with the pack studio; the drawn character above is code, not pictures.
 
 ## Make her a new outfit
 

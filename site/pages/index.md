@@ -8,7 +8,7 @@ wide: true
 
 # Anime AI Companion
 
-<p class="lead"><b>A face for your coding agent.</b> A free, open-source anime character on <b>your own computer</b>, in front of Claude Code, Cursor, opencode or a local model. She asks before every command, answers from your phone, plays tennis when you ask, and you can have her drawn in a new outfit of your own.</p>
+<p class="lead"><b>A face for your coding agent.</b> A free, open-source anime character on <b>your own computer</b>, in front of Claude Code, Cursor, opencode or a local model. She asks before every command and answers from your phone. Drawn by code, she redraws herself on request; in picture packs she dances and plays tennis. And you can have new outfits made for her.</p>
 
 <div class="btns">
 <a class="btn primary" href="download.html">Download</a>
@@ -18,7 +18,7 @@ wide: true
 <p class="fine">Windows, macOS and Linux · MIT licence · no account, no telemetry, nothing hosted</p>
 
 </div>
-<div class="stage"><img src="assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading a book: three of her activities, animated" width="900" height="342"></div>
+<div class="stage"><img src="assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa reading a book: three activities of picture packs, animated" width="900" height="342"><p class="fine">Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and reads.</p></div>
 </div>
 
 <div class="cards">
@@ -33,11 +33,11 @@ In work mode she reads, edits and runs commands in your project folder, and **ev
 </div>
 <div class="card"><span class="tag">Alive</span>
 
-### She has a life of her own
+### She looks two ways
 
-Seven expressions, blinking, a mouth that moves while she talks, and **activities**: she dances, swims, cooks, reads and plays tennis with you.
+**Drawn by code**, she redraws her hair, eyes and clothes the moment you ask. **In picture packs**, she has polished art and **activities**: she dances, swims, cooks, reads and plays tennis with you.
 
-[Picture packs](picture-packs.html)
+[Two ways to look](#drawn-by-code-or-picture-packs)
 
 </div>
 <div class="card"><span class="tag">New</span>
@@ -51,16 +51,14 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 </div>
 </div>
 
-## She is drawn by code, so she can redraw herself
+## Drawn by code, or picture packs
 
 <div class="split redraw">
 <div>
 
-The character you meet first is **not a picture**. She is a vector drawing made by code (the [anime-character-creator](https://github.com/rhedak/anime-character-creator)): hair, eyes, glasses, hats, a coat or a skirt are all parameters. She is not as polished as the picture packs below, but **she can change anything, in an instant**: ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking, with every change reversible.
+**Drawn by code** is the character you meet first, and the default. She is a vector drawing made by code (the [anime-character-creator](https://github.com/rhedak/anime-character-creator)): hair, eyes, glasses, hats, a coat or a skirt are all parameters. She is not as polished as a picture pack, but **she can change anything, in an instant**: ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking, with every change reversible. The picture on the right is the app's own drawing, answered by its built-in script: no model was needed to change her.
 
-Save the looks you like, or switch to one of the built-in characters. The picture on the right is the app's own drawing, answered by its built-in script: no model was needed to change her.
-
-[Her looks](looks.html)
+**Picture packs** replace the drawing with sets of pictures made with AI, by someone else or by you: seven expressions with blinks and mouths, poses, and optional activities (below). The art is polished, but a pack is one outfit: it cannot change its hair or clothes, so another outfit is another pack. [Her looks](looks.html) · [Picture packs](picture-packs.html)
 
 </div>
 <div class="shot"><img src="assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short, each time when asked" width="480" height="598" loading="lazy"></div>
@@ -68,7 +66,7 @@ Save the looks you like, or switch to one of the built-in characters. The pictur
 
 ## She does things with you
 
-An **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, cooking, reading and swimming work the same way, in the picture packs that have them.
+In a picture pack that has one, an **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, cooking, reading and swimming work the same way. The drawn character has none: they are pictures.
 
 <div class="reel">
 <figure><img src="assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="300" height="342" loading="lazy"><figcaption>Risa plays tennis</figcaption></figure>
@@ -81,7 +79,7 @@ An **activity** is something she does for a while instead of just talking. Ask h
 
 ## Make her a new outfit
 
-The **pack studio** turns *"a dark green hooded coat over a white knitted sweater"* into a complete picture pack: seven expressions with blinks and talking mouths, waves and cheers, all cut out and ready to wear. You pick the image maker, and a card says what it will use before anything is drawn.
+The **pack studio** turns *"a dark green hooded coat over a white knitted sweater"* into a complete picture pack (a new outfit for a character, not a change to the drawn one): seven expressions with blinks and talking mouths, waves and cheers, all cut out and ready to wear. You pick the image maker, and a card says what it will use before anything is drawn.
 
 <div class="split studio">
 <div>
@@ -120,7 +118,7 @@ Risa's dress, casual and school outfits, and the green coat and the tennis outfi
 - **Approvals you can read.** Every command and file change waits for you, with the exact text. Looser modes are opt-in and come back to "ask" at every start.
 - **Your brain, your login.** Claude Code, Cursor, opencode or a local Ollama model, on your own computer with the account you already have. [Brains](brains.html)
 - **Carry on from your phone.** One flag lets your phone join the session over your own network and answer the cards. [From your phone](phone.html)
-- **She redraws herself.** "Blue hair and glasses, please." Save looks, switch to any of 19 built-in characters, or import a character card. [Her looks](looks.html)
+- **She redraws herself.** "Blue hair and glasses, please," while she is the drawn character. Save looks, switch to any of 19 built-in characters, or import a character card. [Her looks](looks.html)
 
 ## Start in a minute
 
