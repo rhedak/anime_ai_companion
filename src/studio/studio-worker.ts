@@ -16,6 +16,7 @@ try {
   const parsed = parseJob(workerData.job);
   if (!parsed.ok) throw new Error(parsed.reason);
   const backend = makeBackend(parsed.job.backend.url, {
+    dir: workerData.dir,
     limitUsd: Number(workerData.limitUsd) || 0,
     spentUsd: Number(workerData.spentUsd) || 0,
     onSpend: (usd) => send({ type: "spend", usd }),

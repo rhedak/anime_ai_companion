@@ -6,7 +6,7 @@ import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
-import { BackendError, checkBackendUrl, makeBackend, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, checkBackendUrl, makeBackend, GROK_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
@@ -133,6 +133,13 @@ export function createStudioService(deps: StudioDeps) {
       (more * each > budget() ? ` That limit is lower than the likely cost of the whole pack: raise it with /studio budget <dollars>, or the job will stop part way.` : "")
     );
   };
+  /** The warning before the browser is driven: not a bill, but Claude's allowance, the site's, the user's time and their real account. */
+  const browserNote = (info: BackendInfo): string =>
+    `THIS DRIVES YOUR CHROME. For every picture the app starts Claude Code with the Claude in Chrome extension, which opens ${info.browser?.site} in your browser, signed in as you, uploads the picture and your words, and downloads the result. ` +
+    `It is not charged per picture, but it uses your Claude allowance (every step and screenshot) and the site's own allowance on your account, and it is slow: minutes a picture, an hour or more for a whole pack. ` +
+    `Stay at the computer while it runs: you can stop it at any moment, and when the site asks for a login, a captcha, a payment or anything else the job stops and says so. Your source pictures and your words go to that site. ` +
+    `Automating a website may be against its terms and could put your account at risk: that, and what is drawn, is your responsibility. ` +
+    `You approve once for the whole pack instead of for every click: until it is done, that Claude process may use your Chrome through the extension (and has no other tool).`;
   /** The warning before anything is paid for. */
   const paidNote = (info: BackendInfo, pictures: number): string =>
     `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (${info.paid?.keyName}). ` +
@@ -397,13 +404,15 @@ export function createStudioService(deps: StudioDeps) {
       folder: join(deps.framesDir, name),
       pictures: parsed.job.seeds.length,
       paid: checked.info.paid ? { host: checked.info.paid.host, limit: budget() } : null,
+      browser: checked.info.browser ?? null,
       note:
         (checked.info.paid ? `${paidNote(checked.info, parsed.job.seeds.length)} ` : "") +
+        (checked.info.browser ? `${browserNote(checked.info)} ` : "") +
         (() => {
           const n = parsed.job.seeds.length;
           const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
           const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to ${join(deps.framesDir, name)}. `;
-          return checked.info.paid
+          return checked.info.paid || checked.info.browser
             ? `This draws ${what}. ${rest}`
             : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ${rest}`;
         })() +
@@ -472,7 +481,9 @@ export function createStudioService(deps: StudioDeps) {
     await announce();
     reply({ type: "studio-open" });
     say(
-      checked.info.paid
+      checked.info.browser
+        ? `The pack studio is on, drawing with ${describe(checked.info)}. ${browserNote(checked.info)} ${RESPONSIBILITY} It is off again after a restart.`
+        : checked.info.paid
         ? `The pack studio is on, drawing with ${describe(checked.info)}. THIS IS PAID: every picture is charged by ${checked.info.paid.host} to the account of your ${checked.info.paid.keyName}, and your source pictures are sent there. The limit is ${dollars(budget())} per pack (/studio budget changes it). Keeping the key safe is your responsibility. ${RESPONSIBILITY} It is off again after a restart.`
         : `The pack studio is on, drawing with ${describe(checked.info)}. It makes draft packs on this computer. ${RESPONSIBILITY} It is off again after a restart.`,
     );
@@ -558,9 +569,10 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or `grok-web` (the Grok Imagine website through Claude in Chrome: needs Claude Code and its Chrome extension).");
         deps.settings.studioBackend = url;
         await deps.saveSettings();
+        if (url === GROK_WEB) return say("Image backend set to the Grok Imagine website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.");
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
       if (word === "budget") {

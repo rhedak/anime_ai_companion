@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,6 +12,8 @@ import { findStudioTags, usableName } from "../src/studio/tags.ts";
 import { decode, encodePng, flatten, label, makeRaster, openSquare, resize, type Raster } from "../src/studio/raster.ts";
 import { runBase, type StudioEvent } from "../src/studio/runner.ts";
 import { startFakeBackend } from "./helpers/image-backend.ts";
+import { chromeBackend, readAnswer } from "../src/studio/chrome-backend.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 
 /** A red disc with a soft 3 pixel edge and a hole in it, on a transparent picture: a figure whose alpha we know. */
 function figure(size = 96): Raster {
@@ -367,5 +369,75 @@ test("the OpenAI backend: a form with the picture at its own size, the key in a 
     restore("OPENAI_API_KEY", saved.key);
     restore("COMPANION_OPENAI_BASE", saved.base);
     restore("COMPANION_OPENAI_MODEL", saved.model);
+  }
+});
+
+/** A stand-in `claude` for the browser backend: reads the task on stdin, "downloads" the picture it was told to upload, and answers like the real agent. */
+function chromeStandIn(dir: string, downloads: string, mode: "ok" | "login" | "nodownload" | "hang" = "ok"): string {
+  return writeStandIn(
+    dir,
+    "claude",
+    `
+const fs = require("fs");
+const path = require("path");
+let task = "";
+process.stdin.on("data", (c) => (task += c));
+process.stdin.on("end", () => {
+  fs.appendFileSync(${JSON.stringify(join(dir, "calls.log"))}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), task }) + "\\n");
+  const mode = ${JSON.stringify(mode)};
+  if (mode === "hang") return setTimeout(() => {}, 60000);
+  if (mode === "login") return console.log("I opened the page.\\nFAILED: the page asked me to sign in");
+  const file = /Upload this file[^:]*: (\\S+)/.exec(task)[1];
+  const id = "1437a575-d926-4ec1-a880-" + String(Date.now() % 1e12).padStart(12, "0");
+  if (mode === "ok") fs.writeFileSync(path.join(${JSON.stringify(downloads)}, "grok-image-" + id + ".jpg"), fs.readFileSync(file));
+  console.log("All done.\\nDONE " + id);
+});
+`,
+  );
+}
+
+test("the browser backend: one fixed task for a cut-down claude, the picture it downloaded picked up, and honest failures", async () => {
+  const root = await mkdtemp(join(tmpdir(), "studio-chrome-"));
+  const downloads = join(root, "Downloads");
+  await mkdir(downloads);
+  const job = join(root, "job");
+  const req = { image: Buffer.from(await encodePng(makeRaster(64, 80, [255, 0, 255, 255]))), prompt: "change her outfit to a red scarf", seed: 1, width: 64, height: 80 };
+  try {
+    const program = chromeStandIn(join(root, "bin"), downloads);
+    await writeFile(join(downloads, "grok-image-old.jpg"), "an earlier download that is not ours");
+    const b = chromeBackend({ dir: job, downloads, program, timeoutMs: 20_000 });
+    const info = await b.info();
+    assert.deepEqual([info.browser?.site, info.edit, info.generate, info.paid], ["grok.com/imagine", true, false, undefined]);
+    const picture = await decode(await b.edit(req));
+    assert.deepEqual([picture.w, picture.h], [64, 80]);
+    const call = JSON.parse((await readFile(join(root, "bin", "calls.log"), "utf8")).trim().split("\n")[0]);
+    const flag = (name: string) => call.args[call.args.indexOf(name) + 1];
+    assert.deepEqual([flag("--tools"), flag("--allowedTools"), flag("--setting-sources"), call.args.includes("--chrome"), call.args.includes("--strict-mcp-config")], ["", "mcp__claude-in-chrome__*", "", true, true], "no tool but the extension's, nothing from the user's settings");
+    assert.equal(call.cwd.replace(/^\/private/, ""), join(job, "web").replace(/^\/private/, ""));
+    assert.match(call.task, /https:\/\/grok\.com\/imagine/);
+    assert.match(call.task, /<<<PROMPT\nchange her outfit to a red scarf\nPROMPT>>>/);
+    assert.deepEqual((await readdir(downloads)).sort(), ["grok-image-old.jpg"], "our download was taken out of the user's folder, theirs was left");
+    assert.ok((await readdir(join(job, "web"))).some((n) => n.startsWith("out-1")), "a copy stays in the job");
+
+    const login = chromeBackend({ dir: job, downloads, program: chromeStandIn(join(root, "bin2"), downloads, "login"), timeoutMs: 20_000 });
+    await assert.rejects(login.edit(req), /Grok Imagine in your Chrome: the page asked me to sign in/);
+    const none = chromeBackend({ dir: job, downloads, program: chromeStandIn(join(root, "bin3"), downloads, "nodownload"), timeoutMs: 20_000 });
+    await assert.rejects(none.edit(req), /no download appeared/);
+
+    const slow = chromeBackend({ dir: job, downloads, program: chromeStandIn(join(root, "bin4"), downloads, "hang"), timeoutMs: 1500 });
+    await assert.rejects(slow.edit(req), /took longer than/);
+    const abort = new AbortController();
+    const stopped = chromeBackend({ dir: job, downloads, program: chromeStandIn(join(root, "bin5"), downloads, "hang"), timeoutMs: 20_000 }).edit(req, abort.signal);
+    setTimeout(() => abort.abort(), 500);
+    await assert.rejects(stopped, /stopped/);
+
+    const capped = chromeBackend({ dir: job, downloads, program, maxPictures: 1, timeoutMs: 20_000 });
+    await capped.edit(req);
+    await assert.rejects(capped.edit(req), /stops there/);
+    assert.deepEqual(readAnswer("blah\nDONE 1437a575-d926-4ec1-a880-babbd529d65d"), { ok: true, postId: "1437a575-d926-4ec1-a880-babbd529d65d" });
+    assert.equal(readAnswer("hmm").ok, false);
+    await assert.rejects(chromeBackend({ dir: job, downloads, program: join(root, "missing") }).info(), /needs Claude Code/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

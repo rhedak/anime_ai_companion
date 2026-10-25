@@ -1,4 +1,5 @@
 import { isLoopbackHttp } from "../pack-index.ts";
+import { chromeBackend } from "./chrome-backend.ts";
 
 /**
  * What the pack studio needs from an image model, and nothing else: draw a picture from words, or change a picture by words.
@@ -13,6 +14,8 @@ import { isLoopbackHttp } from "../pack-index.ts";
 export interface BackendInfo {
   /** Set for a service that bills per picture and is reached over the internet: the host that receives the pictures. */
   paid?: { host: string; keyName: string };
+  /** Set for a website drawn through the user's own browser (Claude in Chrome): not paid per picture, but it uses Claude and the site's allowance. */
+  browser?: { site: string };
   name: string;
   model: string | null;
   revision: string | null;
@@ -44,6 +47,7 @@ const text = (v: unknown, max = 200): string | null => (typeof v === "string" &&
 export const XAI = "xai";
 export const GEMINI = "gemini";
 export const OPENAI = "openai";
+export const GROK_WEB = "grok-web";
 export const PAID_SERVICES: readonly string[] = [XAI, GEMINI, OPENAI];
 export const XAI_BASE = "https://api.x.ai/v1";
 export const XAI_MODEL = "grok-imagine-image-2.0";
@@ -55,7 +59,7 @@ const USD_TICKS = 10_000_000_000; // xAI reports `usage.cost_in_usd_ticks`: 10 0
 
 /** The address the user may give: plain http on this computer, or the name of a paid web service (`xai`, `gemini`). */
 export function checkBackendUrl(value: unknown): string | null {
-  if (typeof value === "string" && PAID_SERVICES.includes(value)) return value;
+  if (typeof value === "string" && (PAID_SERVICES.includes(value) || value === GROK_WEB)) return value;
   if (!isLoopbackHttp(value)) return null;
   return String(value).replace(/\/+$/, "");
 }
@@ -305,13 +309,14 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
 export const xaiBackend = (options: PaidOptions): ImageBackend => paidBackend(xaiAdapter, options);
 
 /** The client for a backend address: a paid web service by name, or the loopback server. A paid one carries the limit and a counter of what is spent. */
-export function makeBackend(url: string, paid?: Omit<PaidOptions, "fetch" | "baseUrl" | "sleep">): ImageBackend {
+export function makeBackend(url: string, paid?: Omit<PaidOptions, "fetch" | "baseUrl" | "sleep"> & { dir?: string }): ImageBackend {
+  if (url === GROK_WEB) return chromeBackend({ dir: paid?.dir ?? "." });
   const adapter = ADAPTERS[url];
   return adapter ? paidBackend(adapter, paid ?? { limitUsd: 0, spentUsd: 0 }) : httpBackend(url);
 }
 
 export function httpBackend(baseUrl: string, options: { timeoutMs?: number; fetch?: typeof fetch } = {}): ImageBackend {
-  const url = PAID_SERVICES.includes(baseUrl) ? null : checkBackendUrl(baseUrl);
+  const url = PAID_SERVICES.includes(baseUrl) || baseUrl === GROK_WEB ? null : checkBackendUrl(baseUrl);
   if (!url) throw new BackendError("The image backend address has to be http on this computer (127.0.0.1 or localhost).");
   const doFetch = options.fetch ?? fetch;
   // A picture takes seconds on a fast machine and minutes on a slow one; the first one may also load the model.

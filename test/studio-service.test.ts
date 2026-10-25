@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { readPack } from "../src/frame-pack.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
 import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
+import { writeStandIn } from "./helpers/standin.ts";
 
 /** A figure on a clear picture, like a pack's neutral. */
 async function neutral(): Promise<Buffer> {
@@ -349,6 +350,54 @@ test("a paid backend: the warning comes before anything is drawn, what the base 
     else process.env.COMPANION_XAI_BASE = saved.base;
     await t.cleanup();
     await poor.cleanup();
+  }
+});
+
+test("the browser backend: the card says what it uses, a picture is drawn through the (stand-in) Chrome agent, and the job goes on like any other", async () => {
+  const root = await mkdtemp(join(tmpdir(), "studio-browser-"));
+  const downloads = join(root, "Downloads");
+  await mkdir(downloads);
+  const bin = join(root, "bin");
+  writeStandIn(
+    bin,
+    "claude",
+    `
+const fs = require("fs"), path = require("path");
+let task = "";
+process.stdin.on("data", (c) => (task += c));
+process.stdin.on("end", () => {
+  const file = /Upload this file[^:]*: (\\S+)/.exec(task)[1];
+  const id = "1437a575-d926-4ec1-a880-" + String(Date.now() % 1e12).padStart(12, "0");
+  fs.writeFileSync(path.join(${JSON.stringify(downloads)}, "grok-image-" + id + ".jpg"), fs.readFileSync(file));
+  console.log("DONE " + id);
+});
+`,
+  );
+  const saved = { path: process.env.PATH, downloads: process.env.COMPANION_BROWSER_DOWNLOADS };
+  process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
+  process.env.COMPANION_BROWSER_DOWNLOADS = downloads;
+  const t = await setup({ backendUrl: "grok-web" });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    assert.match(t.said.at(-1) ?? "", /THIS DRIVES YOUR CHROME.*Stay at the computer.*terms.*approve once for the whole pack/s);
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-web", outfit: "a red scarf", pictures: 1 }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.deepEqual([card?.browser?.site, card?.paid], ["grok.com/imagine", null]);
+    assert.match(card?.note, /THIS DRIVES YOUR CHROME/);
+    await t.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    assert.equal(t.sent.filter((m) => m.type === "studio-candidate").length, 1);
+    assert.equal(t.fake.requests.length, 0, "the loopback backend was not used");
+    assert.deepEqual(await readdir(downloads), [], "the download was picked up");
+    assert.deepEqual((await t.service.stateMessage()).spend, null, "nothing is billed");
+  } finally {
+    process.env.PATH = saved.path;
+    if (saved.downloads === undefined) delete process.env.COMPANION_BROWSER_DOWNLOADS;
+    else process.env.COMPANION_BROWSER_DOWNLOADS = saved.downloads;
+    await t.cleanup();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

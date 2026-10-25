@@ -387,7 +387,8 @@ export function createStudio(io) {
           const box = q(".studio-confirm");
           if (!box) return true;
           const paid = msg.paid && typeof msg.paid === "object";
-          const yes = el("button", { type: "button", textContent: paid ? `Draw ${msg.pictures} pictures (paid)` : `Draw ${msg.pictures} pictures` });
+          const browser = msg.browser && typeof msg.browser === "object";
+          const yes = el("button", { type: "button", textContent: paid ? `Draw ${msg.pictures} pictures (paid)` : browser ? `Draw ${msg.pictures} pictures (drives your Chrome)` : `Draw ${msg.pictures} pictures` });
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();
@@ -401,7 +402,7 @@ export function createStudio(io) {
             status("Starting…");
           };
           box.replaceChildren(
-            el("div", { className: paid ? "pack-confirm studio-paid" : "pack-confirm", role: "alertdialog" }, el("p", { textContent: String(msg.note) }), el("div", { className: "pack-confirm-buttons" }, yes, no)),
+            el("div", { className: paid || browser ? "pack-confirm studio-paid" : "pack-confirm", role: "alertdialog" }, el("p", { textContent: String(msg.note) }), el("div", { className: "pack-confirm-buttons" }, yes, no)),
           );
           status("");
           yes.focus();
