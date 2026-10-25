@@ -284,9 +284,9 @@ test("the Risa (dress) pack that ships with the app is complete, with a wave, a 
   assert.deepEqual(r.pack.gestures, { cheer: ["cheer-1.webp", "cheer-2.webp"], wave: ["wave-1.webp", "wave-2.webp"] });
   const core = [...r.pack.files.keys()].filter((f) => !f.startsWith("activity-"));
   assert.equal(core.length, names.length * 5 + 4, "rest, blink and three mouths per emotion, plus the four gesture pictures");
-  const loop = Array.from({ length: 64 }, (_, n) => `activity-dancing-${n + 1}.webp`);
-  assert.deepEqual(r.pack.activities, { dancing: { loop, talk: [] } }, "a 64-picture dancing loop (12 a second), no talking set");
-  assert.equal(r.pack.files.size, core.length + 64);
+  const loop = Array.from({ length: 55 }, (_, n) => `activity-dancing-${n + 1}.webp`);
+  assert.deepEqual(r.pack.activities, { dancing: { loop, talk: [] } }, "a 55-picture dancing loop (12 a second), no talking set");
+  assert.equal(r.pack.files.size, core.length + 55);
   assert.match(r.pack.credit ?? "", /original character/);
   assert.match(r.pack.terms ?? "", /MIT/);
   const notes = r.pack.notes.join("\n");

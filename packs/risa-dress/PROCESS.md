@@ -46,20 +46,21 @@ by hand. This one shows her adult look, and none of its pictures was retouched b
    as lossless WebP, with the same file names as before and as the other Risa and Franzi packs: 39 pictures, plus
    `NOTICE.md`, `credit.txt`, `look.txt` and this file.
 
-## The dancing activity (64 pictures: a dance loop)
+## The dancing activity (55 pictures: a dance loop)
 
 Replaces the earlier two six-picture sample loops (silent and talking). Made on 25 October 2026 on Grok Imagine in the owner's signed-in Chrome, with the owner's Grok allowance (nothing was paid per picture). The same method as the `risa-bikini` loop of the packs repository.
 
 1. **Key picture.** The pack's `neutral` picture was put on flat magenta and edited on Grok Imagine into a picture of her dancing: one arm raised in the air, the other hand holding the side of her skirt, her weight on one foot, her head tilted, her mouth closed. The owner approved it before the video was made.
 2. **Video.** One video (720p, 6 seconds, 896 x 1024, 24 a second): she sways, turns and waves her raised arm, her skirt swinging. The first and the last frames (frames 3 and 137 of the 145; a difference of 1.2 of a 12-a-second step, the loosest loop of the new ones) close the loop.
-   Every second frame of that stretch is a picture. In three of the video's frames (83, 85 and 87) her raised arm fades into the background and her hand floats by itself, so those three were left out; the dance jumps a little there.
+   Every second frame of that stretch is a picture. In several of the video's frames her arm fades into the background or into her hair and a hand floats by itself, or only a ghost of the forearm is left: the video's frames 83, 85 and 87 first, and after the owner
+   saw more glitch frames in the loop, 17, 59, 61, 63, 75, 77, 79 and 81 (and 89) were left out as well, every picture was looked at at 430 pixels, and the dance jumps a little in three places (about a quarter of a second each).
 3. **Cutting out.** Each frame was cut out of the magenta with the studio's matting (key magenta), scaled to 940 x 1070 and saved as lossy WebP (quality 90, lossless transparency), as the app allows for long loops. The picture was not moved: she turns and sways, so her head cannot be matched to `neutral`'s.
 4. **No talking set.** She turns and tilts her head while she dances, so the open mouths of the other packs would not sit right on her face; the silent loop goes on while she speaks.
 
 ### Faults that are left
 
 - Looked at as contact sheets and a GIF, not every picture. Her raised hand touches or leaves the top of the picture in some frames, and the hand of a few frames is soft or half see-through. She is smaller in the picture than in `neutral` (the video shows her down to the knees).
-- The jump where three frames were left out, and the loop point (the closing pair differs by a little more than one step), are visible. The pictures are soft, as the video is only 896 x 1024.
+- The jumps where frames were left out, a few frames with a faint arm or hand (a forearm that is a little see-through), and the loop point (the closing pair differs by a little more than one step), are visible. The pictures are soft, as the video is only 896 x 1024.
 - The earlier two six-picture loops are kept in the owner's `ref/` folder of the packs repository.
 
 ## Licence
