@@ -50,7 +50,7 @@ export function recipe(file: string, prompt: string): string {
     prompt,
     `PROMPT>>>`,
     `5. Wait for the picture. The page changes to a post page whose address contains /imagine/post/ and shows it, usually within 10 to 40 seconds. If there is none after 120 seconds, answer FAILED: no picture.`,
-    `6. Open the post's actions (the round button at the top right of the picture page, named Post actions), find the button named Download in the sheet that opens (scroll to it with find and scroll_to) and click it once. Choose nothing else there: not Make Video, not Remove Background, not Regenerate.`,
+    `6. Download the picture: call find with the query "Download button" and click the control it returns by its ref. It is a button named exactly Download. In a wide window it sits in the column of round icons at the right of the picture; in a narrow one it is inside the sheet opened by Post actions or More options (scroll to it with scroll_to). Never click an icon by its position: the same column holds a trash can (delete), Share, Make Video, Remove Background and Regenerate, and you must not touch those. Click Download once, then take a screenshot to check you are still on the same post page.`,
     `7. Wait 3 seconds, close the tab you opened, and answer with one line: DONE followed by the post id (the long id after /imagine/post/ in the address).`,
     ``,
     `Do not describe the picture. The last line of your answer is the DONE line or the FAILED line.`,
