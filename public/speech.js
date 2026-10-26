@@ -3,7 +3,7 @@
 /** Text as it should be read aloud: no markdown, code blocks or raw links. */
 export function speechText(text) {
   return text
-    .replace(/```[\s\S]*?```/g, " (code) ")
+    .replace(/```[\s\S]*?```/g, " (a code block) ")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/https?:\/\/\S+/g, " link ")
     .replace(/[*_#>~|]+/g, " ")

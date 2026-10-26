@@ -39,6 +39,8 @@ export interface StudioDeps {
   readSource(name: string): Promise<SourceFrames | null>;
   /** The pack she is wearing now, or null (the drawn avatar): a new outfit is drawn from it unless the user picks another. */
   activeSource(): string | null;
+  /** While she is drawn: the pack of her own character to start from, if it is on this computer. */
+  drawnSource?(): string | null;
   /** Tell the page about the packs again (a new one is there). */
   refreshPacks(): Promise<void>;
   /** Something to tell her with her next message. */
@@ -179,7 +181,7 @@ export function createStudioService(deps: StudioDeps) {
       backends: backendChoices(),
       sources: on ? (knownSources = await deps.sources()) : [],
       /** The pack the form starts from. */
-      active: deps.activeSource(),
+      active: deps.activeSource() ?? deps.drawnSource?.() ?? null,
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
       /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
@@ -212,7 +214,7 @@ export function createStudioService(deps: StudioDeps) {
     if (deps.mode() !== "chat" || disabled) return;
     const sources = await deps.sources();
     const valid: StudioProposal = {};
-    const active = deps.activeSource();
+    const active = deps.activeSource() ?? deps.drawnSource?.() ?? null;
     // The pack to draw from: the one she named if it exists, else the one she is wearing.
     if (p.source && sources.includes(p.source)) valid.source = p.source;
     else if (active && sources.includes(active)) valid.source = active;
@@ -446,7 +448,7 @@ export function createStudioService(deps: StudioDeps) {
         (() => {
           const n = parsed.job.seeds.length;
           const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
-          const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to ${join(deps.framesDir, name)}. `;
+          const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to data/frames/${name}. `;
           return checked.info.paid || checked.info.browser
             ? `This draws ${what}. ${rest}`
             : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ${rest}`;
@@ -622,22 +624,24 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or `grok-web` / `gemini-web` / `chatgpt-web` (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: xai, gemini or openai (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or grok-web / gemini-web / chatgpt-web (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
         setBackend(url);
         await deps.saveSettings();
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
       if (word === "handover") {
-        const active = deps.activeSource();
+        const active = deps.activeSource() ?? deps.drawnSource?.() ?? null;
         const prompt = handoverPrompt({ source: active, outfit: rest.join(" ") });
         // While she is the drawn avatar there is no picture of her to attach: say which pictures there are.
         const packs = active ? [] : (await deps.sources()).slice(0, 8);
         const which = active
           ? ` (${active}: its folder is data/frames/${active}/ or packs/${active}/ in the app's folder)`
           : `. She is the drawn avatar now, so there is no picture of her to attach: take the neutral picture of a pack (${packs.length ? `${packs.join(", ")}: the file neutral.webp in data/frames/<pack>/ or packs/<pack>/ in the app's folder` : "none is on this computer yet: /frames lists the ones you can download"}), or a picture of the character you want`;
+        // The prompt itself goes to the page as its own message, which shows it with a Copy button; the notice says what to do with it.
+        reply({ type: "studio-handover", prompt, guide: HANDOVER_GUIDE, inChat: true });
         return say(
-          `A handover prompt: copy the text between the lines into an AI agent that can make pictures (a chat website, an agent, whatever you use) and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.\n\n--- copy from here ---\n${prompt}\n--- to here ---`,
+          `A handover prompt for an AI agent that can make pictures (a chat website, an agent, whatever you use): copy it below and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}).${rest.length === 0 ? " Add your outfit in /studio handover <outfit words> to have it filled in." : ""} Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.`,
         );
       }
       if (word === "budget") {

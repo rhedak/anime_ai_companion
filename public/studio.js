@@ -2,10 +2,12 @@
  * The pack studio's panel (docs/pack-studio.md): a form, the question before anything is drawn, the pictures to pick from, and the result.
  * It only sends and shows; every rule (off at every start, nothing from a phone, one job at a time) is the server's.
  *
- * @param {{ send: (msg: object) => void, host: () => Element | null, say: (text: string) => void }} io
+ * @param {{ attention?: (text: string) => boolean, send: (msg: object) => void, host: () => Element | null, say: (text: string) => void }} io
  */
 export function createStudio(io) {
   let on = false;
+  /** The user pressed "Not now" on the card: the cancel that follows is not a stop. */
+  let declined = false;
   /** @type {string[]} */
   let sources = [];
   /** The pack she is wearing: the form starts from it, until the user picks another. */
@@ -406,9 +408,23 @@ export function createStudio(io) {
           return true;
         case "studio-handover": {
           // The prompt for an AI agent of the user's choice: shown whole, with a button that copies it (nothing is sent from here).
-          const box = q(".studio-handover");
-          if (!box || typeof msg.prompt !== "string") return true;
+          if (typeof msg.prompt !== "string") return true;
           const text = msg.prompt;
+          const box = q(".studio-handover");
+          if (!box) {
+            // From the chat command: the prompt in the chat, read-only, with a button that copies it.
+            /** @type {any} */
+            const shown = io.say("");
+            const field = el("textarea", { className: "studio-handover-text", rows: 10, readOnly: true, ariaLabel: "Handover prompt" });
+            field.value = text;
+            const button = el("button", { type: "button", textContent: "Copy the prompt" });
+            button.onclick = () => {
+              field.select();
+              navigator.clipboard?.writeText(text).then(() => (button.textContent = "Copied"), () => (button.textContent = "Select the text and copy it"));
+            };
+            shown?.append(field, button);
+            return true;
+          }
           const area = el("textarea", { className: "studio-handover-text", rows: 10, readOnly: true, ariaLabel: "Handover prompt" });
           area.value = text;
           const copy = el("button", { type: "button", textContent: "Copy the prompt" });
@@ -436,6 +452,7 @@ export function createStudio(io) {
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();
+            declined = true;
             io.send({ type: "studio-cancel" });
             status("");
           };
@@ -464,10 +481,12 @@ export function createStudio(io) {
         case "studio-review":
           running(false);
           showReview(String(msg.id), msg);
+          io.attention?.(msg.flagged?.length ? "Pack ready: look at the flagged pictures" : "Pack ready to review");
           status(msg.flagged?.length ? `Done. ${msg.flagged.length} picture(s) did not pass every check: look at them.` : "Done. Look at the pack, then use it.");
           return true;
         case "studio-candidates-done":
           running(false);
+          io.attention?.("Pick a picture");
           status(typeof msg.text === "string" && msg.text ? msg.text : "Pick the one you like. Nothing is saved until you do.");
           return true;
         case "studio-installed": {
@@ -481,6 +500,7 @@ export function createStudio(io) {
         }
         case "studio-error": {
           running(false);
+          io.attention?.("The studio stopped");
           status(String(msg.message), true);
           // A job that stopped part way is still on disk: one button carries it on from the picture that failed.
           q(".studio-retry")?.remove();
@@ -499,7 +519,8 @@ export function createStudio(io) {
           running(false);
           q(".studio-confirm")?.replaceChildren();
           q(".studio-candidates")?.replaceChildren();
-          status("Stopped.");
+          status(declined ? "Nothing was drawn." : "Stopped.");
+          declined = false;
           return true;
         default:
           return false;

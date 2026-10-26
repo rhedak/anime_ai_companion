@@ -435,6 +435,16 @@ describe("chatting", { skip }, () => {
     assert.equal(inputs(server).length, before);
   });
 
+  test("/welcome gives a short tour of what is here, and says which brain she has", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("/welcome");
+    const tour = await c.next((e) => e.type === "notice" && /A short tour/.test(e.text), 5000, from);
+    assert.match(tour.text, /Her brain is /);
+    for (const word of ["Looks…", "Work tab", "/studio on", "/studio handover", "/phone", "/help", "/doctor"]) assert.ok(tour.text.includes(word), word);
+  });
+
   test("commands are answered in the order they were typed, even when an earlier one has to wait for something", async () => {
     const c = await server.client();
     await c.next("history");
@@ -1909,7 +1919,8 @@ describe("the pack studio: she proposes words, the page fills the form, nothing 
     c.say("STUDIO before it is on");
     await c.next("done", 8000, from);
     assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0, "off: the page is not opened by her tag");
-    const asked = c.since(from).find((e) => e.type === "studio-ask");
+    // Her tag is checked against this computer after her reply is done (it reads the packs), so the question can come a moment later.
+    const asked = await c.next((e) => e.type === "studio-ask", 8000, from);
     assert.equal(asked?.name, "risa-autumn", "off: the user is asked whether to turn it on, with her words");
     assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /pack studio is on/);
 
@@ -2264,6 +2275,48 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
       ws.close();
     } finally {
       await server.stop();
+    }
+  });
+});
+
+describe("the tour on a first start", { skip }, () => {
+  test("a new data folder gets the tour once, and a second connection does not", async () => {
+    const mine = await startServer({ env: { COMPANION_NO_WELCOME: "0" } });
+    try {
+      const first = await mine.client();
+      const tour = await first.next((e) => e.type === "notice" && /A short tour/.test(e.text), 8000);
+      assert.match(tour.text, /\/welcome/);
+      const second = await mine.client();
+      await second.next("history");
+      await new Promise((r) => setTimeout(r, 600));
+      assert.equal(second.events.some((e: any) => e.type === "notice" && /A short tour/.test(e.text)), false, "it comes once per computer");
+    } finally {
+      await mine.stop();
+    }
+  });
+});
+
+describe("the activities of each pack, for the gallery's filter", { skip }, () => {
+  test("the packs message says which packs have which activities, also one that is only in its character's file", async () => {
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    const mine = await startServer({
+      dataFiles: {
+        "frames/characters/risa.txt": "Risa\nA shy young woman with long red hair.\nactivity: swimming = swim\nactivity: tennis = tennis\n",
+        "frames/risa-swim/neutral.png": tiny,
+        "frames/risa-swim/look.txt": "character: risa\nYou wear a swimsuit.\n",
+        "frames/risa-swim/activity-swimming-1.png": tiny,
+        "frames/risa-coat/neutral.png": tiny,
+        "frames/risa-coat/look.txt": "character: risa\nYou wear a coat.\n",
+      },
+    });
+    try {
+      const c = await mine.client();
+      const msg = await c.next((e) => e.type === "packs" && e.activities, 8000);
+      assert.deepEqual(msg.activities["risa-swim"], ["swimming"]);
+      assert.deepEqual(msg.activities["risa-tennis"], ["tennis"], "an outfit that is not on this computer is known from the character's file");
+      assert.equal(msg.activities["risa-coat"], undefined, "a pack with no animation has none");
+    } finally {
+      await mine.stop();
     }
   });
 });

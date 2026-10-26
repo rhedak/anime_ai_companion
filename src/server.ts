@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
+import { welcomeText } from "./welcome.ts";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +66,8 @@ const host = "127.0.0.1";
 let lan = process.argv.includes("--lan");
 let bindHost = lan ? "0.0.0.0" : host;
 const lanTokenPath = join(dataDir, "lan-token");
+/** Exists once the tour (`welcomeText`) was shown on this computer: it comes once, then only by `/welcome`. */
+const welcomedPath = join(dataDir, "welcomed");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
 /** `/phone` asked whether to turn phone access on, and the answer is still due. Only that question can be answered with yes. */
 let lanAsked = false;
@@ -92,6 +95,7 @@ const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
 const settingsPath = join(dataDir, "settings.json");
 const firstStart = !existsSync(settingsPath);
+const welcome = (): string => welcomeText({ brain: basicMode ? null : provider.name, docs: "https://rhedak.github.io/anime_ai_companion/" });
 const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
@@ -187,7 +191,12 @@ async function refreshActivityIndex(): Promise<void> {
     if (who) for (const activity of await packActivities(packDirs, name)) (index[who.id] ??= {})[activity] = outfitName(name, who.id);
   }
   activityIndex = index;
+  const defaults: Record<string, string> = {};
+  for (const [id, who] of Object.entries(await readCharacters(packDirs))) if (who.defaultPack && names.includes(who.defaultPack)) defaults[id] = who.defaultPack;
+  defaultPacks = defaults;
 }
+/** Per character id, the outfit pack that stands for her (the `default:` line of her file) when it is on this computer: what the studio starts from while she is drawn. */
+let defaultPacks: Record<string, string> = {};
 const refreshOutfits = async () => {
   if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
   outfitCache = await outfitsOfActiveCharacter();
@@ -219,11 +228,27 @@ function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "de
     .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade, character: pack.character, sizes: pack.sizes, host: new URL(pack.url).hostname }));
 }
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
+/**
+ * Per pack (on this computer or only on the pack list), the activities it has an animation for: its own loop pictures, and what its character's file says for an outfit that is
+ * not downloaded. The gallery's activity filter uses it.
+ */
+async function packActivityNames(names: string[], characters: Record<string, { id: string }>): Promise<Record<string, string[]>> {
+  const out: Record<string, Set<string>> = {};
+  for (const [id, byActivity] of Object.entries(activityIndex)) {
+    for (const [activity, outfit] of Object.entries(byActivity)) (out[`${id}-${outfit}`] ??= new Set()).add(activity);
+  }
+  for (const name of names) {
+    if (characters[name]) continue; // its character's entries above already include what its folder has
+    for (const activity of await packActivities(packDirs, name)) (out[name] ??= new Set()).add(activity);
+  }
+  return Object.fromEntries(Object.entries(out).map(([name, set]) => [name, [...set].sort()]));
+}
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
   const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
-  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names), updates };
+  const characters = await packCharacters(packDirs, names);
+  return { type: "packs", names, characters, active: settings.framePack, remote: remotePacks(names), updates, activities: await packActivityNames(names, characters) };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.
@@ -716,6 +741,7 @@ const personaVoice = createPersonaService({
 const studio = createStudioService({
   mode: () => mode,
   activeSource: () => settings.framePack,
+  drawnSource: () => defaultPacks[avatar.basePreset?.toLowerCase() ?? ""] ?? null,
   dataDir,
   framesDir,
   settings,
@@ -1127,6 +1153,10 @@ const slashCommands: Record<
     run: (ctx: CommandContext) => void | Promise<void>;
   }
 > = {
+  welcome: {
+    help: "a short tour of what is here, and the command for each thing",
+    run: ({ say }) => say(welcome()),
+  },
   help: {
     help: "list these commands",
     run: ({ say }) => {
@@ -1779,6 +1809,11 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(queue.message()));
   void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
+  // After the history, which the page draws over everything shown before it.
+  if (!remote && process.env.COMPANION_NO_WELCOME !== "1" && !existsSync(welcomedPath)) {
+    ws.send(JSON.stringify({ type: "notice", text: welcome() }));
+    void mkdir(dataDir, { recursive: true }).then(() => writeFile(welcomedPath, "1\n")).catch(() => {});
+  }
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
   greetBasic();
   const offer = basicMode && !remote ? opencodeOffer() : null; // with no brain at all, the way out is one click away

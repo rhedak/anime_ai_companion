@@ -27,3 +27,15 @@ for (const button of document.querySelectorAll(".copy")) {
     setTimeout(() => (button.textContent = "Copy"), 1600);
   });
 }
+
+// The looping pictures are small videos: with "reduce motion" on they stay still on their first picture, and a click or tap plays or pauses one.
+{
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  for (const video of document.querySelectorAll("video[autoplay]")) {
+    if (still) {
+      video.removeAttribute("autoplay");
+      video.pause();
+    }
+    video.addEventListener("click", () => (video.paused ? video.play() : video.pause()));
+  }
+}

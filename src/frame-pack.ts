@@ -20,7 +20,7 @@
  */
 import type { Dirent } from "node:fs";
 import { open, readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { GESTURES } from "../public/frames.js";
 
 export interface PackEmotion {
@@ -340,7 +340,7 @@ async function readPackIn(dir: string, name: string, emotions: string[]): Promis
   const terms = lines.slice(1).join(" ");
   if (credit.length > MAX_CREDIT) notes.push(`credit.txt is longer than ${MAX_CREDIT} characters and was not used.`);
   if (terms.length > MAX_TERMS) notes.push(`The terms in credit.txt (after its first line) are longer than ${MAX_TERMS} characters and were not used.`);
-  if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read NOTICE.md in ${folder} before you use or share it.`);
+  if (names.includes("NOTICE.md")) notes.push(`This pack comes with terms of use: read the NOTICE.md in the pack's folder (${basename(folder)}, in data/frames or the app's packs folder) before you use or share it.`);
   const usable = credit && credit.length <= MAX_CREDIT;
   const lookRaw = clean(await readFile(join(folder, "look.txt"), "utf8").catch(() => ""));
   const lookLines = lookRaw.split(/\n/).map((l) => l.trim());

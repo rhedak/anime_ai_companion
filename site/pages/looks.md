@@ -36,7 +36,7 @@ one back. The characters come from [anime-character-creator](https://github.com/
 **Looks → Packs…** shows each set of your own pictures next to the drawn character, grouped by character: one with several
 outfits is a tile that opens a row of them. A pack that is not installed yet shows its preview and **Download**; the page asks first and
 says the size and which server is contacted. While a pack is on, she knows what the pictures show, and she can change into another outfit of her
-character herself when you ask. See [Picture packs](picture-packs.html).
+character herself when you ask. A row of buttons above the gallery (**swimming**, **tennis**, **dancing** and so on) narrows it to the packs, installed or not, that have a loop for that activity. See [Picture packs](picture-packs.html).
 
 ![The packs gallery](assets/packs.png)
 

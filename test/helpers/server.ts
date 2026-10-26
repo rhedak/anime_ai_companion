@@ -270,6 +270,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       STANDIN_LOG: log,
       STANDIN_DELAY: String(options.delay ?? 0),
       COMPANION_NO_NUDGE: "1",
+      COMPANION_NO_WELCOME: "1", // the tour on a first start would be a notice in every test; the one test of it turns it on
       COMPANION_PACK_INDEX: "off", // tests never fetch the real pack list; one that needs it points this at a local server
       ANAICO_PARENT_RESTARTS: "1", // /restart exits 75 instead of spawning a server the test would leak
       ...options.env,
