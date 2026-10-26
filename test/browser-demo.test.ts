@@ -695,14 +695,9 @@ test("presets, moods, gestures, and the things she is honest about", () => {
 });
 
 const creatorSrc = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/ts/src");
-test("on the adult body she says she cannot give hair tips, and asks for nothing the drawing would not show", () => {
-  const adult = reply("pink tips", { presets: PRESETS, body: "adult_female" }).text;
-  assert.doesNotMatch(adult, /hair_tip_color/);
-  assert.match(adult, /can't give my hair coloured tips yet/);
-  const mixed = reply("blue eyes and pink tips", { presets: PRESETS, body: "adult_female" }).text;
-  assert.match(mixed, /eye_color=#3a6fe0/);
-  assert.doesNotMatch(mixed, /hair_tip_color/);
-  assert.match(reply("pink tips", { presets: PRESETS, body: "tall_chibi_long_torso" }).text, /hair_tip_color=#ff88cc/);
+test("hair tips are asked for on every body (the adult woman too since the creator's 0.7.2), and refused only for a body the list names", () => {
+  assert.match(reply("pink tips", { presets: PRESETS, body: "adult_female" }).text, /hair_tip_color=#ff88cc/);
+  assert.match(reply("blue eyes and pink tips", { presets: PRESETS, body: "tall_chibi_long_torso" }).text, /eye_color=#3a6fe0 hair_tip_color=#ff88cc/);
 });
 test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(join(creatorSrc, "render.ts")) ? false : "the creator's TypeScript is not next to this repo (set CREATOR_SRC to its ts/src folder)" }, async () => {
   const { createRenderOps } = await import("../src/render-ops.ts");

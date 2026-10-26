@@ -119,7 +119,7 @@ export const GREETING =
   "I can also show you what work mode looks like.";
 
 const HELP =
-  "[emotion:happy] Here is what I can do in this demo: change my hair (colour, style), my eyes, glasses, a hat, a coat or a skirt; " +
+  "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the 21 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
   "The Undo button above my picture takes back the last change. I can't chat freely here: that needs a real language model, and the real app has one.";
@@ -157,7 +157,7 @@ export const basicGreeting = (name = "Risa") =>
   `${NEEDS_BRAIN} You can keep trying the script in the meantime.`;
 
 const HELP_BASIC =
-  "[emotion:happy] Here is what I can do with just a script: change my hair (colour, style), my eyes, glasses, a hat, a coat or a skirt; " +
+  "[emotion:happy] Here is what I can do with just a script: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. Type /show and I run through ' +
   `every emotion and gesture. I can't chat freely or work on files: that needs a brain. ${NEEDS_BRAIN}`;
 

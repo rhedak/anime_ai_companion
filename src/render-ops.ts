@@ -301,7 +301,7 @@ export function createRenderOps(c: Creator) {
   // draws underwear, and nothing the model sends takes her down to just that.
   const MODEL_LOCKED: Record<string, string> = { face_age: "her age is fixed; she is always drawn as an adult" };
   // Bodies that accept `hair_tip_color` and show nothing (a copy of BODIES_WITHOUT_HAIR_TIPS in public/hair-tips.js, which this file cannot import; a test keeps them equal).
-  const NO_HAIR_TIPS = ["adult_female"];
+  const NO_HAIR_TIPS: string[] = [];
   const COVERING = ["tunic_color", "coat_color", "robe_color", "skirt_color", "trouser_color"];
 
   /** Raise ValueError if the model may not make this change to this character. */

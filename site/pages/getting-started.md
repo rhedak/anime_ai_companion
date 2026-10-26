@@ -19,7 +19,7 @@ This page is the route from source. For a ready-made app with its own window, [d
 ## Install and run
 
 ```bash
-git clone --branch v0.7.1 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
