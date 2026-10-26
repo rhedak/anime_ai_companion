@@ -61,7 +61,7 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 **Picture packs** replace the drawing with sets of pictures made with AI, by someone else or by you: seven expressions with blinks and mouths, poses, and optional activities (below). The art is polished, but a pack is one outfit: it cannot change its hair or clothes, so another outfit is another pack. [Her looks](looks.html) · [Picture packs](picture-packs.html)
 
 </div>
-<div class="shot"><video src="assets/redraw.mp4" aria-label="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short, each time when asked" width="480" height="598" autoplay muted loop playsinline></video></div>
+<div class="shot"><video src="assets/redraw.mp4" aria-label="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, puts on a red coat, and cuts her hair short, each time when asked" width="480" height="598" autoplay muted loop playsinline></video></div>
 </div>
 
 ## She does things with you

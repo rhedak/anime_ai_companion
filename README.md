@@ -50,7 +50,7 @@ The **demo** is a live Risa in your browser: nothing to install and nothing sent
     <td valign="top">
       <b>Drawn by code.</b> The picture shows the app's own drawing, answered by its built-in script: no model was needed to change her. Ask for "mint green hair" or "glasses and a witch hat" and she is redrawn on the spot, still blinking and talking.
     </td>
-    <td width="330"><img src="site/assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short" width="330"></td>
+    <td width="330"><img src="site/assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, puts on a red coat, and cuts her hair short" width="330"></td>
   </tr>
 </table>
 
