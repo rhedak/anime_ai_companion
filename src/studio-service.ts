@@ -629,10 +629,15 @@ export function createStudioService(deps: StudioDeps) {
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
       if (word === "handover") {
-        const prompt = handoverPrompt({ source: deps.activeSource(), outfit: rest.join(" ") });
+        const active = deps.activeSource();
+        const prompt = handoverPrompt({ source: active, outfit: rest.join(" ") });
+        // While she is the drawn avatar there is no picture of her to attach: say which pictures there are.
+        const packs = active ? [] : (await deps.sources()).slice(0, 8);
+        const which = active
+          ? ` (${active}: its folder is data/frames/${active}/ or packs/${active}/ in the app's folder)`
+          : `. She is the drawn avatar now, so there is no picture of her to attach: take the neutral picture of a pack (${packs.length ? `${packs.join(", ")}: the file neutral.webp in data/frames/<pack>/ or packs/<pack>/ in the app's folder` : "none is on this computer yet: /frames lists the ones you can download"}), or a picture of the character you want`;
         return say(
-          `A handover prompt: copy the text between the lines into an AI agent that can make pictures (a chat website, an agent, whatever you use) and attach the neutral picture of the pack you want to start from` +
-            `${deps.activeSource() ? ` (${deps.activeSource()}: its folder is data/frames/${deps.activeSource()}/ or packs/${deps.activeSource()}/ in the app's folder)` : ""}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.\n\n--- copy from here ---\n${prompt}\n--- to here ---`,
+          `A handover prompt: copy the text between the lines into an AI agent that can make pictures (a chat website, an agent, whatever you use) and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.\n\n--- copy from here ---\n${prompt}\n--- to here ---`,
         );
       }
       if (word === "budget") {

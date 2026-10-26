@@ -648,3 +648,20 @@ test("with no image maker the studio opens anyway, the list can choose one, and 
     await t.cleanup();
   }
 });
+
+test("/studio handover says what to attach when she is the drawn avatar and there is no pack picture", async () => {
+  const t = await setup({ backendUrl: null });
+  try {
+    t.active.value = null;
+    await t.service.command("handover a blue raincoat", t.say, false, () => {});
+    const said = t.said.at(-1) ?? "";
+    assert.match(said, /She is the drawn avatar now, so there is no picture of her to attach/);
+    assert.match(said, /risa-dress/, "the packs she could start from are named");
+    assert.match(said, /a blue raincoat/);
+    t.active.value = "risa-dress";
+    await t.service.command("handover", t.say, false, () => {});
+    assert.doesNotMatch(t.said.at(-1) ?? "", /drawn avatar now/);
+  } finally {
+    await t.cleanup();
+  }
+});
