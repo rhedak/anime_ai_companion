@@ -1724,6 +1724,9 @@ const turns = createTurnService({
   activePack: () => activePack,
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
   activity: setActivity,
+  presets: () => avatar.presetNames,
+  knownActivities: () => Object.keys(activePack ? animatedActivities(activePack, activityIndex[activePack.character?.id ?? ""]) : (drawnActivities() ?? {})),
+  currentActivity: () => activity,
   chatMode: () => mode === "chat",
   sceneNote: () => (mode === "chat" && sceneId ? sceneNoteText : null),
   sceneEndedByHer: () => {

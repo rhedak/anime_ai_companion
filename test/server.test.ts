@@ -2320,3 +2320,111 @@ describe("the activities of each pack, for the gallery's filter", { skip }, () =
     }
   });
 });
+
+describe("a small model that answers a clear request in words and writes no tag", { skip }, () => {
+  let fake: ReturnType<typeof createServer>;
+  const sent: string[] = [];
+  /** What the fake model says to the last message: words only, unless the message asks for a tagged or a refusing answer. */
+  const answer = (text: string): string => (/REFUSE/.test(text) ? "Sorry, I can't do that right now." : /TAGGED/.test(text) ? "[activity swimming] Yes, let's swim!" : "Yes! That sounds so fun!");
+  before(async () => {
+    fake = createServer(async (req: IncomingMessage, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-small:3b" }] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: ["completion"] }));
+      const last = body.messages.at(-1);
+      sent.push(String(last.content));
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.write(JSON.stringify({ message: { role: "assistant", content: answer(String(last.content)) }, done: false }) + "\n");
+      res.end(JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+  });
+  after(() => void fake?.close());
+  /** A server whose data folder has a pack with a swimming loop (a one-pixel picture is enough for the server). */
+  const start = async () => {
+    const server = await startServer({ settings: { provider: "ollama" }, env: { OLLAMA_HOST: `http://127.0.0.1:${(fake.address() as AddressInfo).port}` } });
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(frames, { recursive: true });
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    mkdirSync(join(frames, "ann-swim"), { recursive: true });
+    writeFileSync(join(frames, "ann-swim", "neutral.png"), tiny);
+    writeFileSync(join(frames, "ann-swim", "look.txt"), "You wear a swimsuit.\n");
+    writeFileSync(join(frames, "ann-swim", "activity-swimming-1.png"), tiny);
+    return server;
+  };
+
+  test("the app makes the look change and starts the activity itself, once, and tells her", async () => {
+    sent.length = 0;
+    const server = await start();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      // a look request with no [avatar] tag in her answer
+      let from = c.mark;
+      c.say("make your hair mint green");
+      await c.done(from);
+      const look = await c.next((e) => e.type === "avatar" && e.applied.some((a: string) => /^hair_color=/.test(a)), 8000, from);
+      assert.ok(look.applied.length > 0);
+      // an activity request: the pack has it
+      c.say("/frames ann-swim");
+      await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+      from = c.mark;
+      c.say("let's go swimming");
+      await c.done(from);
+      await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, from);
+      assert.ok(c.since(from).some((e) => e.type === "notice" && /started swimming for you/.test(e.text)), "the page says the app did it");
+      from = c.mark;
+      c.say("and now?");
+      await c.done(from);
+      assert.match(sent.at(-1)!, /so the app started it/, "she is told on her next message");
+      // ending it
+      from = c.mark;
+      c.say("stop");
+      await c.done(from);
+      assert.equal((await c.next((e) => e.type === "activity", 8000, from)).name, null);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("nothing is done when her answer carries the tag, refuses, or is not a request", async () => {
+    sent.length = 0;
+    const server = await start();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      c.say("/frames ann-swim");
+      await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim");
+      let from = c.mark;
+      c.say("let's go swimming TAGGED");
+      await c.done(from);
+      await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, from);
+      assert.ok(!c.since(from).some((e) => e.type === "notice" && /started swimming/.test(e.text)), "her own tag counts, the app adds nothing");
+      from = c.mark;
+      c.say("stop REFUSE");
+      await c.done(from);
+      from = c.mark;
+      c.say("do you like swimming?");
+      await c.done(from);
+      assert.ok(!c.since(from).some((e) => e.type === "activity" || e.type === "avatar"), "a question changes nothing");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a brain that writes its tags (Claude Code) is not second-guessed", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("make your hair mint green");
+      await c.done(from);
+      assert.ok(!c.since(from).some((e) => e.type === "avatar"), "no look change without her tag");
+    } finally {
+      await server.stop();
+    }
+  });
+});

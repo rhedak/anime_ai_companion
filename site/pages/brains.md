@@ -85,6 +85,8 @@ You can also start with it: `COMPANION_PROVIDER=ollama npm start` uses the first
 but it does not reliably write her `[emotion:...]` and `[avatar ...]` tags: her face then stays flat, and asking her to change her hair or her
 clothes does nothing, however it is worded.
 
+For Ollama and opencode there is a safety net for the clearest requests. When you ask for a look change the built-in script understands ("make your hair mint green"), or say "let's go swimming" for an activity she has, and her answer carries no tag, the app makes the change itself, says so, and tells her on her next message. It does nothing when her answer says no, when you only ask a question, or in work mode. Claude Code and Cursor write their tags and are not second-guessed.
+
 **Work mode with a local model is experimental, and the quality is your responsibility.** If Ollama reports that the
 model supports tool calls (a recent Qwen or Llama, for example; `ollama show <model>` lists its capabilities), the **Work** button
 works with it. She can then read files, search, run a command, create a file and edit one in your project folder. How well a local model

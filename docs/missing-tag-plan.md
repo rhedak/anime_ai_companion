@@ -1,6 +1,6 @@
 # Plan: when a small model does not write the tag
 
-Status: a plan, nothing built. Written 2026-10-27 after reading how Hob (FrigadeHQ/hob, `app/src/main/agent/claims.ts`) catches a model that says it did something it did not.
+Status: way A built (`src/intent.ts`, `carryOutRequest` in `src/turn-service.ts`, `test/intent.test.ts`, the last `describe` of `test/server.test.ts`); way B and `[outfit …]` not built. Written 2026-10-27 after reading how Hob (FrigadeHQ/hob, `app/src/main/agent/claims.ts`) catches a model that says it did something it did not.
 
 ## The problem
 
