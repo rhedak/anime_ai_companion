@@ -2315,7 +2315,15 @@ function openGallery(kind = "presets") {
           return chip;
         }),
       );
-      return grid.replaceChildren(...packTiles());
+      const tiles = packTiles();
+      // A filter whose packs are neither here nor on the pack list (the list is off or could not be reached) would leave an empty box.
+      if (!tiles.length) {
+        const none = document.createElement("p");
+        none.className = "gallery-empty";
+        none.textContent = `No pack with ${activityFilter} is on this computer or on the pack list (it may be off or out of reach). Choose All to see every pack.`;
+        return grid.replaceChildren(none);
+      }
+      return grid.replaceChildren(...tiles);
     }
     grid.replaceChildren(
       ...presetNames.map((name) => {
