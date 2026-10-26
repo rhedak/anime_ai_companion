@@ -1919,7 +1919,8 @@ describe("the pack studio: she proposes words, the page fills the form, nothing 
     c.say("STUDIO before it is on");
     await c.next("done", 8000, from);
     assert.equal(c.since(from).filter((e) => e.type === "studio-proposal").length, 0, "off: the page is not opened by her tag");
-    const asked = c.since(from).find((e) => e.type === "studio-ask");
+    // Her tag is checked against this computer after her reply is done (it reads the packs), so the question can come a moment later.
+    const asked = await c.next((e) => e.type === "studio-ask", 8000, from);
     assert.equal(asked?.name, "risa-autumn", "off: the user is asked whether to turn it on, with her words");
     assert.doesNotMatch(server.claudeLog().filter((e) => e.kind === "in").at(-1)!.text!, /pack studio is on/);
 
