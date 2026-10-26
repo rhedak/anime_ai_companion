@@ -31,3 +31,6 @@ trailer/.sample-pack/
 /app/stage/
 /app/dist/
 trailer/.redraw/
+
+# local picture galleries made by scripts/ (activity-gallery.py)
+/local/

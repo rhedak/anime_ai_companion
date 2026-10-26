@@ -60,6 +60,7 @@ The scripts have switches for them; set them in the environment of every script 
 - Character files: add `activity: <name> = <outfit>` in the packs repo's `packs-src/characters/<id>.txt` and the app's `packs/characters/<id>.txt` (and its test).
 - Verify with the app's own tools in the app repo: `readPack` (the activities and no size notes), `node src/pack-archive-cli.ts build <folder> -o x.tar` then `restore` and compare visible pixels (colour under fully transparent pixels does not matter). Expect about 5 to 8 MB for 47 frames; talk frames are about 1 KB patches.
 - Install it into the dev app (`cp -R` into `~/.anaico-dev/data/frames/`), restart `shell/dev-app.sh`, and let the owner try it (see `record-app-demo` for a video). Open the packs PR only when asked; **publishing** belongs to `release-companion` and waits for the app release.
+- To see every activity loop at once (a new one included, nothing to register): `uv run --with pillow --with numpy python -I scripts/activity-gallery.py` makes a GIF and MP4 for each into the git-ignored `local/activity-gallery/`, with an `index.html` (`--talk`, `--only`, `--bg`; the script's docstring lists them).
 - Keep the Grok originals and cutouts in an untracked `ref/` folder of the packs repo (do not commit them; they are the owner's working files).
 
 ## Motion from a Grok video (worked for Franzi's dancing)
