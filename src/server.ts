@@ -1796,6 +1796,7 @@ wss.on("connection", (ws) => {
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
   ws.on("close", () => clients.delete(ws));
+  let commandChain: Promise<void> = Promise.resolve();
   ws.on("message", async (raw) => {
     let msg: any;
     try {
@@ -1813,12 +1814,21 @@ wss.on("connection", (ws) => {
       if ((bang || command) && images.length) say("Commands run on their own, so the attached picture was not sent.");
       if (bang) return remote ? say(remoteRefusal) : void (await runBang(bang[1], say));
       if (command) {
-        const known = slashCommands[command.name];
-        if (!known) say(`Unknown command /${command.name}. Try /help.`);
-        else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
-        else if (known.claudeOnly && settings.provider !== "claude") {
-          say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
-        } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
+        // One at a time, in the order they were typed: a command that waits for something (`/frames` asks the pack list) must not be answered after the
+        // quick ones sent behind it. Only commands queue; stopping and every other message stay immediate.
+        commandChain = commandChain
+          .then(async () => {
+            const known = slashCommands[command.name];
+            if (!known) say(`Unknown command /${command.name}. Try /help.`);
+            else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
+            else if (known.claudeOnly && settings.provider !== "claude") {
+              say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
+            } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
+          })
+          .catch((err) => {
+            console.error(`/${command.name} failed:`, err);
+            say(`/${command.name} failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         return;
       }
       turns.submit(msg.text, images, say);

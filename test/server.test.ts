@@ -435,6 +435,20 @@ describe("chatting", { skip }, () => {
     assert.equal(inputs(server).length, before);
   });
 
+  test("commands are answered in the order they were typed, even when an earlier one has to wait for something", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("/frames nopack-order");
+    c.say("/nosuchcommand-second");
+    c.say("/rename x<>");
+    await c.next((e) => e.type === "notice" && /A name can have/.test(e.text), 8000, from);
+    const texts = c.events.slice(from).filter((e: any) => e.type === "notice").map((e: any) => String(e.text));
+    const at = (re: RegExp) => texts.findIndex((t) => re.test(t));
+    assert.ok(at(/nopack-order/) >= 0 && at(/nosuchcommand-second/) >= 0 && at(/A name can have/) >= 0, texts.join(" | "));
+    assert.ok(at(/nopack-order/) < at(/nosuchcommand-second/) && at(/nosuchcommand-second/) < at(/A name can have/), "in the order sent: " + texts.join(" | "));
+  });
+
   test("/permissions names the mode the way the documentation does: ask, not manual", async () => {
     const c = await server.client();
     await c.next("history");
