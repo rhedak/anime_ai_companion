@@ -511,7 +511,14 @@ export function createStudioService(deps: StudioDeps) {
   async function turnOn(say: Say, reply: (msg: unknown) => void): Promise<void> {
     if (disabled) return say("The pack studio is turned off (COMPANION_NO_STUDIO).");
     const checked = await check();
-    if (!checked.ok) return say(checked.reason);
+    if (!checked.ok) {
+      // Not usable yet (no image maker chosen, a model that is not running, a key that is missing): the studio still opens, because its
+      // "Image maker" list is the way to choose another one. Nothing is drawn before the next question checks again (`start`, `resume`).
+      on = true;
+      await announce();
+      reply({ type: "studio-open" });
+      return say(`${checked.reason}\n\nThe pack studio is open anyway: choose another image maker in its list, and the next question checks it. It is off again after a restart.`);
+    }
     on = true;
     await announce();
     reply({ type: "studio-open" });

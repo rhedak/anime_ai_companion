@@ -67,7 +67,8 @@ test("the studio is off until /studio on, needs a backend that answers, and is r
     await t.service.command("backend http://127.0.0.1:9", t.say, false, () => {});
     await t.service.command("on", t.say, false, () => {});
     assert.match(t.said.at(-1) ?? "", /did not answer/);
-    assert.equal(t.service.enabled(), false);
+    assert.equal(t.service.enabled(), true, "it opens anyway, so the Image maker list can choose another maker");
+    await t.service.command("off", t.say, false, () => {});
     await t.service.command("backend " + t.fake.url, t.say, false, () => {});
     await t.service.command("on", t.say, true, () => {});
     assert.equal(t.said.at(-1), "only on the computer");
@@ -536,8 +537,9 @@ test("the yes to the question needs a backend that answers, and says why when it
   try {
     const answers: Record<string, any>[] = [];
     await t.service.message({ type: "studio-on" }, (m: unknown) => answers.push(m as Record<string, any>), false);
-    assert.equal(t.service.enabled(), false);
-    assert.match(answers[0].text, /No image maker is chosen yet/);
+    assert.equal(t.service.enabled(), true, "the studio opens so that the list can choose a maker");
+    assert.match(String(answers.find((m) => m.type === "notice")?.text), /No image maker is chosen yet/);
+    assert.ok(answers.some((m) => m.type === "studio-open"));
   } finally {
     await t.cleanup();
   }
@@ -588,7 +590,8 @@ test("a model on this computer is always in the image maker list, and when it is
     assert.match(help, /did not answer/);
     assert.match(help, /you need an image model running/);
     assert.match(help, /rhedak\.github\.io\/anime_ai_companion\/local-model\.html/);
-    assert.equal(t.service.enabled(), false);
+    assert.equal(t.service.enabled(), true);
+    assert.ok(t.sent.some((m) => m.type === "studio-state" && m.on === true), "and the page is told it is open");
   } finally {
     await t.cleanup();
   }
@@ -601,7 +604,7 @@ test("a local server that has no model downloaded gets the same instructions ins
     const help = t.said.at(-1) ?? "";
     assert.match(help, /no model downloaded yet/);
     assert.match(help, /local-model\.html/);
-    assert.equal(t.service.enabled(), false);
+    assert.equal(t.service.enabled(), true);
   } finally {
     await t.cleanup();
   }
@@ -621,6 +624,26 @@ test("/studio handover gives a prompt for any AI agent, with the studio off, and
     assert.equal(t.service.enabled(), false);
     await t.service.command("handover", t.say, true, () => {});
     assert.match(t.said.at(-1) ?? "", /only on the computer/, "a phone gets no handover");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("with no image maker the studio opens anyway, the list can choose one, and nothing is drawn before a maker works", async () => {
+  const t = await setup({ backendUrl: null });
+  try {
+    const opened: Record<string, any>[] = [];
+    await t.service.command("on", t.say, false, (m) => opened.push(m as Record<string, any>));
+    assert.ok(opened.some((m) => m.type === "studio-open"));
+    assert.match(t.said.at(-1) ?? "", /open anyway: choose another image maker/);
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-none", outfit: "a long scarf" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /No image maker is chosen yet/, "drawing still checks the maker first");
+    assert.equal(me.some((m) => m.type === "studio-confirm"), false);
+    await t.service.command("backend " + t.fake.url, t.say, false, () => {});
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-none", outfit: "a long scarf" }, send, false);
+    assert.ok(me.some((m) => m.type === "studio-confirm"), "with a working maker the card comes");
   } finally {
     await t.cleanup();
   }
