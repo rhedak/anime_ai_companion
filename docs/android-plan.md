@@ -42,6 +42,8 @@ Why Capacitor and not a home-screen page: an installed page already works, but o
 
 The missing-tag fallback (`src/intent.ts`) does not exist on the on-device entry, since the demo's stand-in server does not run the turn service. Add it there only if small models turn out to skip tags often.
 
+The phone side of the connection (pairing, a key kept in the Android Keystore, a pinned TLS certificate, and what a paired phone may ask the computer for) is in `docs/phone-security-plan.md`; phase 1 here ships the connect screen with the existing token, and moves to that pairing when it exists.
+
 ## Safety and wording
 
 - The app sends nothing anywhere by itself. The token is stored only in the app's private storage, never logged, never put in a URL that is kept (the first visit removes it from the address, as for a browser).
