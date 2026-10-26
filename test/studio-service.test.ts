@@ -27,9 +27,11 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
   const notes: string[] = [];
   const mode = { value: "chat" as "chat" | "work" };
   const active = { value: null as string | null };
+  const drawn = { value: null as string | null };
   const service = createStudioService({
     mode: () => mode.value,
     activeSource: () => active.value,
+    drawnSource: () => drawn.value,
     dataDir,
     framesDir,
     settings,
@@ -54,7 +56,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     await fake.stop();
     await rm(dataDir, { recursive: true, force: true });
   };
-  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, active, say: (t: string) => said.push(t) };
+  return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, active, drawn, say: (t: string) => said.push(t) };
 }
 
 test("the studio is off until /studio on, needs a backend that answers, and is refused from a phone", async () => {
@@ -665,6 +667,20 @@ test("/studio handover says what to attach when she is the drawn avatar and ther
     t.active.value = "risa-dress";
     await t.service.command("handover", t.say, false, () => {});
     assert.doesNotMatch(t.said.at(-1) ?? "", /drawn avatar now/);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("while she is drawn the form starts from her own character's pack, and a pack she wears wins", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    assert.equal((await t.service.stateMessage()).active, null);
+    t.drawn.value = "risa-dress";
+    assert.equal((await t.service.stateMessage()).active, "risa-dress");
+    t.active.value = "franzi-dress";
+    assert.equal((await t.service.stateMessage()).active, "franzi-dress");
   } finally {
     await t.cleanup();
   }

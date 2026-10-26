@@ -187,7 +187,12 @@ async function refreshActivityIndex(): Promise<void> {
     if (who) for (const activity of await packActivities(packDirs, name)) (index[who.id] ??= {})[activity] = outfitName(name, who.id);
   }
   activityIndex = index;
+  const defaults: Record<string, string> = {};
+  for (const [id, who] of Object.entries(await readCharacters(packDirs))) if (who.defaultPack && names.includes(who.defaultPack)) defaults[id] = who.defaultPack;
+  defaultPacks = defaults;
 }
+/** Per character id, the outfit pack that stands for her (the `default:` line of her file) when it is on this computer: what the studio starts from while she is drawn. */
+let defaultPacks: Record<string, string> = {};
 const refreshOutfits = async () => {
   if (activePack?.character) await refreshPackIndex(false); // the outfits that can be downloaded come from the pack list
   outfitCache = await outfitsOfActiveCharacter();
@@ -716,6 +721,7 @@ const personaVoice = createPersonaService({
 const studio = createStudioService({
   mode: () => mode,
   activeSource: () => settings.framePack,
+  drawnSource: () => defaultPacks[avatar.basePreset?.toLowerCase() ?? ""] ?? null,
   dataDir,
   framesDir,
   settings,

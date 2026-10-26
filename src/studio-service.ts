@@ -39,6 +39,8 @@ export interface StudioDeps {
   readSource(name: string): Promise<SourceFrames | null>;
   /** The pack she is wearing now, or null (the drawn avatar): a new outfit is drawn from it unless the user picks another. */
   activeSource(): string | null;
+  /** While she is drawn: the pack of her own character to start from, if it is on this computer. */
+  drawnSource?(): string | null;
   /** Tell the page about the packs again (a new one is there). */
   refreshPacks(): Promise<void>;
   /** Something to tell her with her next message. */
@@ -179,7 +181,7 @@ export function createStudioService(deps: StudioDeps) {
       backends: backendChoices(),
       sources: on ? (knownSources = await deps.sources()) : [],
       /** The pack the form starts from. */
-      active: deps.activeSource(),
+      active: deps.activeSource() ?? deps.drawnSource?.() ?? null,
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
       /** A job the page should be showing: drawing, waiting for the pick, or waiting for the review. */
       job: job ? { id: job.id, picking: waiting?.kind === "pick", reviewing: waiting?.kind === "review", text: lastText } : null,
@@ -212,7 +214,7 @@ export function createStudioService(deps: StudioDeps) {
     if (deps.mode() !== "chat" || disabled) return;
     const sources = await deps.sources();
     const valid: StudioProposal = {};
-    const active = deps.activeSource();
+    const active = deps.activeSource() ?? deps.drawnSource?.() ?? null;
     // The pack to draw from: the one she named if it exists, else the one she is wearing.
     if (p.source && sources.includes(p.source)) valid.source = p.source;
     else if (active && sources.includes(active)) valid.source = active;
@@ -629,7 +631,7 @@ export function createStudioService(deps: StudioDeps) {
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
       if (word === "handover") {
-        const active = deps.activeSource();
+        const active = deps.activeSource() ?? deps.drawnSource?.() ?? null;
         const prompt = handoverPrompt({ source: active, outfit: rest.join(" ") });
         // While she is the drawn avatar there is no picture of her to attach: say which pictures there are.
         const packs = active ? [] : (await deps.sources()).slice(0, 8);
