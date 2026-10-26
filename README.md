@@ -117,7 +117,7 @@ day whether a newer version exists (it never installs anything).
 **From source** (Node.js 22.18 or newer, and one brain: Claude Code, Cursor, opencode or Ollama; without one she runs a small built-in script and says so):
 
 ```bash
-git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.1 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install

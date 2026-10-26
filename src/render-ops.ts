@@ -418,10 +418,12 @@ export function createRenderOps(c: Creator) {
     const face = dictFor(getItem(character, "face"), "update");
     const override = req instanceof Map && req.has("face") ? req.get("face") : new Map();
     for (const [k, v] of c.pyDict(override)) face.set(k, v);
+    // Eyes are open in every frame but the blink, unless the request says `eyes_shut` (a happy drawn with its eyes closed). A face's own `eyes_closed` stays ignored, as recorded.
+    const held = req instanceof Map && req.get("eyes_shut") === true;
     if (req instanceof Map && req.has("poses")) {
       // one frame per pose (a pose overrides top-level fields such as right_arm_out), mouth at rest
       face.set("mouth_open", first(getItem(req, "mouth")));
-      face.set("eyes_closed", false);
+      face.set("eyes_closed", held);
       const out: string[] = [];
       for (const pose of iterate(req.get("poses"))) {
         const posed = new Map<unknown, unknown>(character);
@@ -434,7 +436,7 @@ export function createRenderOps(c: Creator) {
     const mouth = getItem(req, "mouth");
     for (const open of iterate(mouth)) {
       face.set("mouth_open", open);
-      face.set("eyes_closed", false);
+      face.set("eyes_closed", held);
       svgs.push(render(character));
     }
     // one extra frame for blinking: eyes shut, mouth as at rest

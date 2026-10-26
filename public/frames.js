@@ -46,9 +46,22 @@ const known = (emotions, emotion) => (emotion in emotions ? emotion : "neutral")
  * The two adult cuts (the creator after 0.5.1 draws both faces straight and symmetric) share an open-smile happy: the shared one, a small mouth 0.3 open, read as a smirk on them.
  */
 const ADULT_HAPPY = { mouth_width: 1.5, mouth_curve: 1.5, mouth_open: 0.6, blush: 1.3, eye_openness: 0.8, brow_tilt: 0 };
+/**
+ * Risa's happy is the reference's laugh: eyes shut in a smile and the creator's D mouth (0.7.1), as wide as the reference's (1.55) and as shallow (0.9 open, at rest).
+ * `eyes_closed` is not a face field of the request (the frames op keeps eyes open but for the blink): `framesRequest` turns it into `eyes_shut`, which the op honours, so her happy has no open-eyed frames.
+ */
+const RISA_HAPPY = { mouth_width: 1.55, mouth_curve: 1.5, mouth_open: 0.9, blush: 1.3, eyes_closed: true, brow_tilt: 0 };
 export const CUT_FACES = {
-  long_straight_fringed: { happy: ADULT_HAPPY }, // Risa
+  long_straight_fringed: { happy: RISA_HAPPY }, // Risa
   swept_ponytail: { happy: ADULT_HAPPY }, // Franzi
+};
+
+/**
+ * Talking frames (the openings after the resting one) where the shared rule, never below the rest, would leave a laugh that does not move: Risa's happy rests at 0.9, so
+ * her talking mouth narrows and opens again around it.
+ */
+export const CUT_TALK = {
+  long_straight_fringed: { happy: [0.4, 0.65, 0.9] },
 };
 
 /** The face of an emotion for this character: `emotions.json`'s, with the character's own tuning over it. */
@@ -59,17 +72,18 @@ const faceOf = (emotions, character, emotion) => {
 
 /** The request for four mouth openings (for talking) and a blink, in this emotion's face. */
 export function framesRequest(emotions, character, emotion) {
-  const face = faceOf(emotions, character, emotion);
+  const { eyes_closed: shut, ...face } = faceOf(emotions, character, emotion);
   const rest = face.mouth_open ?? character.face?.mouth_open ?? 0;
-  const mouth = [rest, Math.max(rest, 0.3), Math.max(rest, 0.55), Math.max(rest, 0.85)];
-  return { op: "frames", character, face, mouth };
+  const talk = CUT_TALK[character?.hairstyle]?.[known(emotions, emotion)] ?? [Math.max(rest, 0.3), Math.max(rest, 0.55), Math.max(rest, 0.85)];
+  const mouth = [rest, ...talk];
+  return shut ? { op: "frames", character, face, mouth, eyes_shut: true } : { op: "frames", character, face, mouth };
 }
 
 /** The request for the two poses of a gesture, or null for an unknown gesture. */
 export function gestureRequest(emotions, character, emotion, gesture) {
   const poses = gesturePoses(character, gesture);
   if (!poses) return null;
-  const face = faceOf(emotions, character, emotion);
+  const { eyes_closed: shut, ...face } = faceOf(emotions, character, emotion);
   const rest = face.mouth_open ?? character.face?.mouth_open ?? 0;
-  return { op: "frames", character, face, mouth: [rest], poses };
+  return shut ? { op: "frames", character, face, mouth: [rest], poses, eyes_shut: true } : { op: "frames", character, face, mouth: [rest], poses };
 }

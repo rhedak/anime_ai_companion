@@ -328,8 +328,8 @@ export class AvatarService {
     const key = `${this.version}:${name}`;
     const hit = this.frameCache.get(key);
     if (hit) return hit;
-    const { character, face, mouth } = framesRequest(this.opts.emotions, this.character, name);
-    const { svgs } = await this.call("frames", { character, face, mouth });
+    const { character, face, mouth, eyes_shut } = framesRequest(this.opts.emotions, this.character, name);
+    const { svgs } = await this.call("frames", { character, face, mouth, eyes_shut });
     this.frameCache.set(key, svgs);
     return svgs;
   }
@@ -345,8 +345,8 @@ export class AvatarService {
     const key = `${this.version}:${name}:gesture:${gesture}`;
     const hit = this.frameCache.get(key);
     if (hit) return hit;
-    const { character, face, mouth, poses } = request;
-    const { svgs } = await this.call("frames", { character, face, mouth, poses });
+    const { character, face, mouth, poses, eyes_shut } = request;
+    const { svgs } = await this.call("frames", { character, face, mouth, poses, eyes_shut });
     this.frameCache.set(key, svgs);
     return svgs;
   }

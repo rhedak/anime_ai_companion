@@ -82,4 +82,17 @@ describe("render-ops against the recorded replies", { skip }, () => {
     assert.deepEqual(bare.get("applied"), ["tunic_color=none"]);
     assert.deepEqual(rejected(bare), ["trouser_color"]);
   });
+
+  test("a request with eyes_shut keeps them shut in every frame; without it only the blink frame has them shut", () => {
+    const risa = ops.handle(new Map([["op", "base"], ["name", "risa"]])).get("character");
+    const frames = (shut?: boolean) =>
+      (ops.handle(new Map<string, unknown>([["op", "frames"], ["character", creator.loadsText(creator.dumps(risa))], ["mouth", [0.9, 0.4]], ...(shut === undefined ? [] : [["eyes_shut", shut] as [string, unknown]])])).get("svgs") as string[]);
+    const open = frames();
+    assert.equal(open.length, 3);
+    assert.notEqual(open[0], open[2], "the blink frame differs from the resting one");
+    const shut = frames(true);
+    assert.equal(shut[0], shut[2], "the resting frame is the blink frame");
+    assert.notEqual(shut[1], open[1], "a talking frame has the eyes shut too");
+    assert.deepEqual(frames(false), open);
+  });
 });
