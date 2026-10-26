@@ -2,7 +2,7 @@
  * The pack studio's panel (docs/pack-studio.md): a form, the question before anything is drawn, the pictures to pick from, and the result.
  * It only sends and shows; every rule (off at every start, nothing from a phone, one job at a time) is the server's.
  *
- * @param {{ send: (msg: object) => void, host: () => Element | null, say: (text: string) => void }} io
+ * @param {{ attention?: (text: string) => boolean, send: (msg: object) => void, host: () => Element | null, say: (text: string) => void }} io
  */
 export function createStudio(io) {
   let on = false;
@@ -481,10 +481,12 @@ export function createStudio(io) {
         case "studio-review":
           running(false);
           showReview(String(msg.id), msg);
+          io.attention?.(msg.flagged?.length ? "Pack ready: look at the flagged pictures" : "Pack ready to review");
           status(msg.flagged?.length ? `Done. ${msg.flagged.length} picture(s) did not pass every check: look at them.` : "Done. Look at the pack, then use it.");
           return true;
         case "studio-candidates-done":
           running(false);
+          io.attention?.("Pick a picture");
           status(typeof msg.text === "string" && msg.text ? msg.text : "Pick the one you like. Nothing is saved until you do.");
           return true;
         case "studio-installed": {
@@ -498,6 +500,7 @@ export function createStudio(io) {
         }
         case "studio-error": {
           running(false);
+          io.attention?.("The studio stopped");
           status(String(msg.message), true);
           // A job that stopped part way is still on disk: one button carries it on from the picture that failed.
           q(".studio-retry")?.remove();

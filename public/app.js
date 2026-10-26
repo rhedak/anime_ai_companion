@@ -10,11 +10,17 @@ import { splitNarration } from "./narration.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 import { createStudio } from "./studio.js";
+import { createAttention } from "./attention.js";
 
 /** An element of the page by its id. Typed loosely on purpose: the markup is index.html's, and each id is one kind of element. @type {(id: string) => any} */
 const $ = (id) => document.getElementById(id);
 let ws = null;
+const attention = createAttention(document);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) attention.clear();
+});
 const studio = createStudio({
+  attention: (text) => attention.notify(text),
   send: (msg) => ws?.send(JSON.stringify(msg)),
   host: () => document.querySelector(".stage"),
   say: (text) => addMsg("sys", text),
@@ -757,7 +763,7 @@ function renderName() {
   const name = state.name ?? "Risa";
   const heading = $("name");
   if (heading.tagName === "H1") heading.textContent = name;
-  document.title = name;
+  attention.setName(name);
   $("name-reset").hidden = !state.nameSet;
 }
 

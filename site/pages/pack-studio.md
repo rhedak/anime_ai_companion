@@ -33,6 +33,8 @@ In chat you can also just ask her ("could you have a tennis outfit made?"). She 
 4. **The review.** A marked picture failed a check (the mark says which); **Draw again** redraws it, with its blink and mouths.
 5. **Use this pack** writes the pack to `data/frames/<name>`, and **Show her as …** puts it on.
 
+When the four pictures are ready, the pack is ready to review or the job stops while this tab is in the background, the tab's title gets a mark and the words ("● Pack ready to review · Risa") until you look at it again. Nothing is played and nothing is asked.
+
 A job stays on disk (`data/studio/<job>/`), so it can be carried on after a restart or a failure (**Try again from here**, or *Carry on …* in the panel). **Delete** removes an old one.
 
 ## The image makers
