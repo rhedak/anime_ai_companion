@@ -23,7 +23,7 @@ export async function neutralFramePath(folder: string): Promise<string | null> {
 
 /** Resizes the neutral frame to about 200 px wide. Throws only when the picture cannot be read. */
 export async function makePackThumb(source: string, width = THUMB_WIDTH): Promise<Buffer> {
-  return sharp(source).resize({ width, withoutEnlargement: true }).webp({ quality: 80, alphaQuality: 100, effort: 4 }).toBuffer();
+  return Buffer.from(await sharp(source).resize({ width, withoutEnlargement: true }).webp({ quality: 80, alphaQuality: 100, effort: 4 }).toBuffer());
 }
 
 export interface WrittenThumb {

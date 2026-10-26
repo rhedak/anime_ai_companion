@@ -12,7 +12,7 @@ It is a **draft maker**: the pictures are as good as the image model, and the ch
 
 ## Start it
 
-Type `/studio on` (or choose **Make a pack…** in the Looks menu). It is **off at every start**, it checks that the image maker answers (and that its key, or Claude Code, is there), and it is refused from a phone. Then fill in the form:
+Type `/studio on` (or choose **Make a pack…** in the Looks menu). It is **off at every start**, it checks that the image maker answers (and that its key, or Claude Code, is there) and says what is missing, but opens anyway so you can choose another maker in its **Image maker** list, and it is refused from a phone. Then fill in the form:
 
 | Field | What it is |
 | --- | --- |
