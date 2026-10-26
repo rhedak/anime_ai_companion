@@ -135,6 +135,16 @@ export function pickOpenCodeModel(models: OpenCodeModel[], wanted: string | null
   );
 }
 
+/**
+ * What opencode starts with when the user has not picked a model in the menu: its own free "Big Pickle". Without this a computer that has an `OPENAI_API_KEY` (or another
+ * provider's key) in its environment starts on a paid model, and one with none on a model it cannot use. null when this opencode does not list it: its own default stays.
+ */
+export const DEFAULT_OPENCODE_MODEL = "opencode/big-pickle";
+
+export function defaultOpenCodeModel(models: OpenCodeModel[]): string | null {
+  return models.find((m) => m.id === DEFAULT_OPENCODE_MODEL)?.id ?? null;
+}
+
 export function displayModel(models: OpenCodeModel[], id: string): string {
   return models.find((m) => m.id === id)?.name ?? id;
 }

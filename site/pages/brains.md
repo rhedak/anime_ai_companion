@@ -61,7 +61,7 @@ Code modes.
 ## opencode
 
 Pick **opencode** and she is driven by `opencode acp`, signed into whichever models your opencode install already
-knows (choose one in the menu, or leave opencode's default). Sign in once with `opencode auth login`. Chat mode has
+knows (choose one in the menu; until you do, the app uses opencode's free Big Pickle). Sign in once with `opencode auth login`. Chat mode has
 no tools: opencode is told to ask about every tool, and the app refuses each request without showing a card. Work
 mode asks with the approval card. The menu offers **Ask**, **Plan** and **Run everything**, which lets every tool
 run without a card and resets to Ask at every start. Every start is isolated: your project's own `opencode.json`,

@@ -55,7 +55,7 @@ Everything has a default. Set these as environment variables when you start the 
 | `COMPANION_MODEL` | `haiku` | model used for chat |
 | `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
 | `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent), `opencode` or `ollama` (local models); also switchable in the UI |
-| `COMPANION_OPENCODE_MODEL` | opencode's own default | model for opencode, `provider/model` (e.g. `opencode/big-pickle`) |
+| `COMPANION_OPENCODE_MODEL` | `opencode/big-pickle` (free) | model for opencode, `provider/model`; with none chosen the app uses opencode's free Big Pickle, whatever else opencode or your environment would pick |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
 | `COMPANION_OLLAMA_TOOLS` | unset | model names (comma separated) or `all` that you vouch can use tools, when your Ollama cannot report it |
 | `COMPANION_OLLAMA_CTX` | `16384` | context size asked of Ollama in work mode with tools |

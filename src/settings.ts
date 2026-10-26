@@ -18,7 +18,7 @@ export interface Settings {
   ollamaModel: string | null;
   /** Model id from the Cursor agent's catalog. Null until the first session picks one. */
   cursorModel: string | null;
-  /** Model id from opencode's catalog, `provider/model`. Null keeps opencode's own default. */
+  /** Model id from opencode's catalog, `provider/model`. Null means the free `opencode/big-pickle` (src/providers/opencode-acp.ts), not opencode's own default. */
   opencodeModel: string | null;
   /** Folder she works in, in work mode. null until the user picks one. */
   projectDir: string | null;

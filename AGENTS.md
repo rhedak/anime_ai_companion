@@ -247,6 +247,7 @@ A command named `agent` is not necessarily that binary.
   opencode, so chat mode is `ask` with the refusal on the provider side). Keep the isolation
   env (`OPENCODE_DISABLE_PROJECT_CONFIG=1`) that leaves the project's config, plugins and MCP
   servers unloaded.
+- With no model chosen (`opencodeModel` null), the app sets the free `opencode/big-pickle` when this opencode lists it (`defaultOpenCodeModel` in `src/providers/opencode-acp.ts`), because opencode's own default follows the environment: with an `OPENAI_API_KEY` set it starts on a paid OpenAI model. A pick in the menu is saved and wins; it is never saved for the default.
 - Approvals are the same `session/request_permission` card as Cursor; the permission parser is
   shared (`permissionResult` in `cursor-acp.ts`). Auto and Accept edits stay Claude-only. There is
   no opencode `--force`, so Run Everything is not a flag: the opt-in **Everything** permission mode
