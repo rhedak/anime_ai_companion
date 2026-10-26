@@ -66,7 +66,7 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 
 ## She does things with you
 
-In a picture pack that has one, an **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, cooking, reading and swimming work the same way. The drawn character has none: they are pictures.
+In a picture pack that has one, an **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, swimming and cooking work the same way, and so does reading (Risa's casual outfit, not shown here). The drawn character has none: they are pictures.
 
 <div class="reel">
 <figure><video src="assets/activity-tennis.mp4" aria-label="Risa hits a tennis ball toward you" width="300" height="342" autoplay muted loop playsinline></video><figcaption>Risa plays tennis</figcaption></figure>
