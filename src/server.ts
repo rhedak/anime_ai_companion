@@ -228,11 +228,27 @@ function remotePacks(names: string[]): (Pick<PackIndexEntry, "id" | "name" | "de
     .map((pack) => ({ id: pack.id, name: pack.name, description: pack.description, credit: pack.credit, aiMade: pack.aiMade, character: pack.character, sizes: pack.sizes, host: new URL(pack.url).hostname }));
 }
 /** The packs the Looks menu offers, and which one is on. `remote` is what can be downloaded. */
+/**
+ * Per pack (on this computer or only on the pack list), the activities it has an animation for: its own loop pictures, and what its character's file says for an outfit that is
+ * not downloaded. The gallery's activity filter uses it.
+ */
+async function packActivityNames(names: string[], characters: Record<string, { id: string }>): Promise<Record<string, string[]>> {
+  const out: Record<string, Set<string>> = {};
+  for (const [id, byActivity] of Object.entries(activityIndex)) {
+    for (const [activity, outfit] of Object.entries(byActivity)) (out[`${id}-${outfit}`] ??= new Set()).add(activity);
+  }
+  for (const name of names) {
+    if (characters[name]) continue; // its character's entries above already include what its folder has
+    for (const activity of await packActivities(packDirs, name)) (out[name] ??= new Set()).add(activity);
+  }
+  return Object.fromEntries(Object.entries(out).map(([name, set]) => [name, [...set].sort()]));
+}
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
   const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
-  return { type: "packs", names, characters: await packCharacters(packDirs, names), active: settings.framePack, remote: remotePacks(names), updates };
+  const characters = await packCharacters(packDirs, names);
+  return { type: "packs", names, characters, active: settings.framePack, remote: remotePacks(names), updates, activities: await packActivityNames(names, characters) };
 };
 await refreshPack();
 // Start in work mode when there is a folder to work in, unless --chat says otherwise.

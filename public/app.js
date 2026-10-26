@@ -1369,6 +1369,8 @@ function handle(msg) {
       packUpdates = new Map(Array.isArray(msg.updates) ? msg.updates.filter((u) => u && typeof u.id === "string").map((u) => [u.id, u]) : []);
       // The browser demo names the preview of every pack its list has, also of one it has fetched (it has no previews folder for them); the app has /pack-thumb/<name>.
       packThumbs = msg.thumbs && typeof msg.thumbs === "object" ? Object.fromEntries(Object.entries(msg.thumbs).filter(([, url]) => typeof url === "string" && url.startsWith("https://"))) : {};
+      packActivityNames = msg.activities && typeof msg.activities === "object" ? Object.fromEntries(Object.entries(msg.activities).filter(([, list]) => Array.isArray(list)).map(([name, list]) => [name, list.map(String)])) : {};
+      if (activityFilter && !Object.values(packActivityNames).some((list) => list.includes(activityFilter))) activityFilter = null;
       activePackName = msg.active ?? null;
       renderLooksMenu();
       const openGallery = /** @type {HTMLElement | null} */ (document.querySelector(".gallery"));
@@ -2202,9 +2204,14 @@ function outfitLabel(pack, character) {
 }
 
 /** The packs as tiles: the drawn avatar, then one tile per character (a character with several outfits opens a row of them) and one per pack without a character. */
+/** Per pack, the activities it has an animation for (the server says), and the one the gallery is filtered by, if any. */
+let packActivityNames = {};
+let activityFilter = null;
+
 function packTiles() {
+  const hasActivity = (name) => !activityFilter || (packActivityNames[name] ?? []).includes(activityFilter);
   /** @type {HTMLElement[]} */
-  const tiles = [packItem(null, null)];
+  const tiles = activityFilter ? [] : [packItem(null, null)]; // the drawn avatar has no activities
   const offered = new Map(remotePacks.filter((pack) => !packNames.includes(pack.id)).map((pack) => [pack.id, pack]));
   // Packs on this computer first, then the ones that can be downloaded, each in its character's group (the index says which character).
   const groups = new Map();
@@ -2215,8 +2222,8 @@ function packTiles() {
     group.who ??= who;
     group.names.push(name);
   };
-  for (const name of packNames) add(name, packCharacters[name]);
-  for (const [name, pack] of offered) add(name, pack.character);
+  for (const name of packNames) if (hasActivity(name)) add(name, packCharacters[name]);
+  for (const [name, pack] of offered) if (hasActivity(name)) add(name, pack.character);
   for (const { who, names } of groups.values()) {
     if (!who) {
       tiles.push(packItem(names[0], offered.get(names[0]) ?? null));
@@ -2271,16 +2278,40 @@ function openGallery(kind = "presets") {
   box.setAttribute("aria-label", packs ? "Choose a picture pack" : "Choose a preset character");
   const grid = document.createElement("div");
   grid.className = "gallery-grid";
+  const filterRow = document.createElement("div");
+  filterRow.className = "gallery-filter";
+  filterRow.setAttribute("role", "group");
+  filterRow.setAttribute("aria-label", "Show only packs with this activity");
   box.append(
     Object.assign(document.createElement("div"), {
       className: "gallery-title",
       textContent: packs ? "Packs: your own pictures instead of the drawn avatar" : "Presets: pick a character",
     }),
+    ...(packs ? [filterRow] : []),
     grid,
   );
   document.querySelector(".stage").append(box);
   const fill = () => {
     if (packs) {
+      // The activities the packs have (the server says), as buttons: one narrows the gallery to the packs that can do it. Nothing to choose from, no row.
+      const kinds = [...new Set(Object.values(packActivityNames).flat())].sort();
+      filterRow.hidden = kinds.length === 0;
+      filterRow.replaceChildren(
+        ...(kinds.length ? [null, ...kinds] : []).map((kind) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "chip";
+          chip.textContent = kind ?? "All";
+          chip.setAttribute("aria-pressed", String((activityFilter ?? null) === kind));
+          chip.onclick = (ev) => {
+            ev.stopPropagation(); // the row is rebuilt below: a click on a node that has left the gallery would be read as a click outside it
+            activityFilter = kind;
+            fill();
+            /** @type {HTMLElement | null} */ (box.querySelector(`.gallery-filter [aria-pressed="true"]`))?.focus();
+          };
+          return chip;
+        }),
+      );
       return grid.replaceChildren(...packTiles());
     }
     grid.replaceChildren(

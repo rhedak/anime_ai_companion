@@ -343,3 +343,8 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio-zoom.beside { right: auto; width: calc(100% - 576px); }
 
 .studio-handover-text { width: 100%; font-family: var(--mono, monospace); font-size: 12px; box-sizing: border-box; }
+
+.gallery-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 8px; }
+.gallery-filter[hidden] { display: none; }
+.gallery-filter .chip { padding: 3px 10px; border-radius: 999px; font-size: var(--font-size-small); background: var(--panel-2, rgba(255,255,255,.08)); color: var(--text); border: 1px solid transparent; }
+.gallery-filter .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft, rgba(255,150,120,.18)); }

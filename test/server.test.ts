@@ -2294,3 +2294,28 @@ describe("the tour on a first start", { skip }, () => {
     }
   });
 });
+
+describe("the activities of each pack, for the gallery's filter", { skip }, () => {
+  test("the packs message says which packs have which activities, also one that is only in its character's file", async () => {
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    const mine = await startServer({
+      dataFiles: {
+        "frames/characters/risa.txt": "Risa\nA shy young woman with long red hair.\nactivity: swimming = swim\nactivity: tennis = tennis\n",
+        "frames/risa-swim/neutral.png": tiny,
+        "frames/risa-swim/look.txt": "character: risa\nYou wear a swimsuit.\n",
+        "frames/risa-swim/activity-swimming-1.png": tiny,
+        "frames/risa-coat/neutral.png": tiny,
+        "frames/risa-coat/look.txt": "character: risa\nYou wear a coat.\n",
+      },
+    });
+    try {
+      const c = await mine.client();
+      const msg = await c.next((e) => e.type === "packs" && e.activities, 8000);
+      assert.deepEqual(msg.activities["risa-swim"], ["swimming"]);
+      assert.deepEqual(msg.activities["risa-tennis"], ["tennis"], "an outfit that is not on this computer is known from the character's file");
+      assert.equal(msg.activities["risa-coat"], undefined, "a pack with no animation has none");
+    } finally {
+      await mine.stop();
+    }
+  });
+});
