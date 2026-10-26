@@ -1,4 +1,4 @@
-// Chat narration: a short action on its own line, written *like this*, is shown in its own italic bubble.
+// Chat narration: a short action written *like this*, on its own line or in the middle of one, is shown in its own italic bubble.
 // [narration]...[/narration], [narration: ...] and [narration ...] are the same thing, in either mode.
 // A fenced code block is left untouched. In work mode, pass { asterisks: false }: a line of asterisks there is ordinary emphasis.
 
@@ -18,6 +18,9 @@ function actionText(body) {
   if (/:\s*$/.test(text)) return "";
   return text;
 }
+
+/** *two or more words* inside a line, not touching other asterisks or letters (bold and a*b*c are left alone). */
+const INLINE_ACTION = /(?<![*\w])\*(?![*\s])([^*\n]*[^*\s])\*(?![*\w])/g;
 
 /** A whole line that is only *an action* or _an action_. Empty when it is emphasis, a bullet or bold. */
 function lineAction(line) {
@@ -65,7 +68,21 @@ function splitLines(text, asterisks, pending) {
     if (action) {
       flush();
       parts.push({ kind: "narration", text: action });
-    } else speech.push(lines[i]);
+    } else {
+      // A model often writes the action in the middle of a line ("Hi! *gives a little wave* What's up?"): the words before and after stay speech, the action is its own bubble.
+      let rest = 0;
+      for (const m of lines[i].matchAll(INLINE_ACTION)) {
+        const text = actionText(m[1]);
+        if (!text) continue;
+        const before = lines[i].slice(rest, m.index).trim();
+        if (before) speech.push(before);
+        flush();
+        parts.push({ kind: "narration", text });
+        rest = m.index + m[0].length;
+      }
+      const tail = rest ? lines[i].slice(rest).trim() : lines[i];
+      if (tail || !rest) speech.push(tail);
+    }
   }
   flush();
   return parts;

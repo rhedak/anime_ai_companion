@@ -15,6 +15,24 @@ test("a line that is only an action becomes its own narration, and what she says
   assert.deepEqual(splitNarration("_she folds her arms_"), [narration("she folds her arms")]);
 });
 
+test("an action in the middle of a line is its own narration, with the words around it kept as speech", () => {
+  assert.deepEqual(splitNarration("Hi there! I'm Risa, nice to meet you! *gives a little wave* What's on your mind today?"), [
+    speech("Hi there! I'm Risa, nice to meet you!"),
+    narration("gives a little wave"),
+    speech("What's on your mind today?"),
+  ]);
+  assert.deepEqual(splitNarration("Yes! Tennis sounds so fun! *bounces on her toes and grabs an imaginary racket* I'll serve first."), [
+    speech("Yes! Tennis sounds so fun!"),
+    narration("bounces on her toes and grabs an imaginary racket"),
+    speech("I'll serve first."),
+  ]);
+  assert.deepEqual(splitNarration("Okay *she nods slowly*"), [speech("Okay"), narration("she nods slowly")]);
+  assert.deepEqual(splitNarration("*smiles warmly* Hello *waves at you* again"), [narration("smiles warmly"), speech("Hello"), narration("waves at you"), speech("again")]);
+  // one word, bold, a label and work mode are not narration
+  assert.deepEqual(splitNarration("I *really* mean it, **this is bold**, and *Note:* this."), [speech("I *really* mean it, **this is bold**, and *Note:* this.")]);
+  assert.deepEqual(splitNarration("Hi! *she waves a bit* Bye", { asterisks: false }), [speech("Hi! *she waves a bit* Bye")]);
+});
+
 test("emphasis, bullets, bold and a one-word line stay in the speech", () => {
   assert.deepEqual(splitNarration("I *really* don't mind."), [speech("I *really* don't mind.")]);
   assert.deepEqual(splitNarration("* one\n* two"), [speech("* one\n* two")]);
