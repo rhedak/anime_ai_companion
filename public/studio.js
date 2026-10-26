@@ -6,6 +6,8 @@
  */
 export function createStudio(io) {
   let on = false;
+  /** The user pressed "Not now" on the card: the cancel that follows is not a stop. */
+  let declined = false;
   /** @type {string[]} */
   let sources = [];
   /** The pack she is wearing: the form starts from it, until the user picks another. */
@@ -436,6 +438,7 @@ export function createStudio(io) {
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();
+            declined = true;
             io.send({ type: "studio-cancel" });
             status("");
           };
@@ -499,7 +502,8 @@ export function createStudio(io) {
           running(false);
           q(".studio-confirm")?.replaceChildren();
           q(".studio-candidates")?.replaceChildren();
-          status("Stopped.");
+          status(declined ? "Nothing was drawn." : "Stopped.");
+          declined = false;
           return true;
         default:
           return false;

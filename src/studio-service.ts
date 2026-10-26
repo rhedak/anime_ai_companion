@@ -446,7 +446,7 @@ export function createStudioService(deps: StudioDeps) {
         (() => {
           const n = parsed.job.seeds.length;
           const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
-          const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to ${join(deps.framesDir, name)}. `;
+          const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to data/frames/${name}. `;
           return checked.info.paid || checked.info.browser
             ? `This draws ${what}. ${rest}`
             : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ${rest}`;
@@ -622,7 +622,7 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: `xai`, `gemini` or `openai` (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or `grok-web` / `gemini-web` / `chatgpt-web` (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: xai, gemini or openai (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or grok-web / gemini-web / chatgpt-web (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
         setBackend(url);
         await deps.saveSettings();
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);

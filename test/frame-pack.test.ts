@@ -258,7 +258,7 @@ test("a pack can carry its credit and its terms, and packs are found in the user
     const only = await readPack([mine, shipped], "only-shipped", emotions);
     assert.ok(only.ok);
     assert.equal(only.pack.credit, undefined);
-    assert.match(only.pack.notes.join("\n"), /terms of use: read NOTICE\.md in .*only-shipped/);
+    assert.match(only.pack.notes.join("\n"), /terms of use: read the NOTICE\.md in the pack.s folder \(only-shipped/);
     assert.deepEqual([...only.pack.files.keys()], ["neutral.png"]); // the text files are never served
 
     await writeFile(join(shipped, "only-shipped", "credit.txt"), "x".repeat(301));

@@ -22,7 +22,7 @@ test("speechText drops markdown, code and links", () => {
   assert.equal(speechText("**Bold** and _it_"), "Bold and it");
   assert.equal(speechText("See https://example.com/x?y=1 ok"), "See link ok");
   assert.equal(speechText("Great job 😸✨ really"), "Great job really");
-  assert.equal(speechText("Run:\n```sh\nrm -rf /\n```\ndone"), "Run: (code) done");
+  assert.equal(speechText("Run:\n```sh\nrm -rf /\n```\ndone"), "Run: (a code block) done");
 });
 
 test("describeVoices puts the page language first and marks online voices", () => {
