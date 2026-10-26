@@ -143,7 +143,7 @@ The full documentation is on the **[documentation site](https://rhedak.github.io
 
 ## Safety in short
 
-She asks before every command and file change; looser modes are opt-in and come back to "ask" at every start. The server listens on `127.0.0.1` only, unless you turn on phone access yourself (`--lan`, or the yes to `/phone`), and then a secret token is needed. The page has a strict Content-Security-Policy, everything the model chooses is validated, and a character card is treated as text from a stranger. Other software on your computer can still reach the port, so run it on a computer only you use. The details are on the [safety page](https://rhedak.github.io/anime_ai_companion/safety.html); found a problem? Please open an issue, or report it privately if it is serious.
+She asks before every command and file change; looser modes are opt-in and come back to "ask" at every start. The server listens on `127.0.0.1` only, unless you turn on phone access yourself (`--lan`, or the yes to `/phone`), and then a phone has to be allowed on the computer first. The page has a strict Content-Security-Policy, everything the model chooses is validated, and a character card is treated as text from a stranger. Other software on your computer can still reach the port, so run it on a computer only you use. The details are on the [safety page](https://rhedak.github.io/anime_ai_companion/safety.html); found a problem? Please open an issue, or report it privately if it is serious.
 
 ## Using it with your Claude account
 

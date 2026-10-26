@@ -1,5 +1,5 @@
 ---
-description: Carry on a session from your phone over your own network, with a QR code and a secret token.
+description: Carry on a session from your phone over your own network: a link and QR code that work once, and a yes on the computer.
 ---
 
 # From your phone
@@ -13,12 +13,24 @@ at every start**: you ask for it each time, like a looser permission mode.
 ## Connect
 
 1. **Start with `--lan`, or type `/phone` and answer Turn on** (your system may ask once to allow incoming
-   connections). It shows a few links ending in `?t=<token>`, one per way the phone can reach the
+   connections). It shows a few links ending in `/pair?e=<code>`, one per way the phone can reach the
    computer: the Wi-Fi address first, then other addresses such as Tailscale, then its `.local` name, with a
-   **QR code** for the first one. Type `/phone` again to see them again.
-2. **Open the link on the phone**, on the same Wi-Fi or on your private network. The first visit signs the phone
-   in (a cookie) and removes the token from the address.
-3. **`/phone new`** makes a new token and signs every phone out. **`/phone off`** turns phone access off again.
+   **QR code** for the first one. The code works **once** and for **two minutes**; type `/phone` again for a new one.
+2. **Open the link on the phone**, on the same Wi-Fi or on your private network. The phone shows four digits.
+3. **On the computer, a card says "A phone wants to connect" with the same four digits.** Check that they match
+   and press **Allow** (or **Deny**). The phone then opens her and stays signed in; the link and its code are of no
+   use to anyone else.
+4. **`/phone devices`** lists the phones you allowed, **`/phone revoke 1`** (or `all`) removes one, **`/phone new`**
+   makes a new link, and **`/phone off`** turns phone access off again (the allowed phones stay on the list and can
+   come in when it is turned on). An allowed phone is good for **90 days from its last use**, so one you use now
+   and then never has to be allowed again; one you stop using expires by itself.
+
+The computer's page has to be open to answer the card (the desktop app, or the page in a browser on the computer).
+With nothing open there, the phone waits, and the card appears when a page opens, until the two minutes are over.
+
+The old shared link of earlier versions (`?t=<token>`) still works for one more release when you start with
+`--lan`, with the same limits as before; it is listed on the card and counted by `/phone devices`, and it goes away
+in the release after this one.
 
 ## What a phone can do
 
@@ -48,10 +60,11 @@ permissions) open as a sheet from the bottom that scrolls when the list is long.
 
 ## Away from home
 
-The token is a password, and the connection is plain `http`, so use it only on a network you trust (not café
+Pairing keeps a leaked link or QR code useless after one use, but the connection is still plain `http`: someone on the
+same network could read what you send, and take over a signed-in phone. Use it only on a network you trust (not café
 Wi-Fi), and not through a tunnel you do not control. For use away from home, put the computer and the phone on a
-private network such as Tailscale and use the computer's address there; `--lan` lists it among the links. The token
-is saved in `data/lan-token`, readable only by you.
+private network such as Tailscale and use the computer's address there; the links list it. The phones you allowed are
+saved in `data/phone-devices.json`, readable only by you, and only as a hash.
 
 ## If the page does not load
 

@@ -157,7 +157,7 @@ function askLan() {
   box.setAttribute("aria-label", "Turn on phone access?");
   const text = document.createElement("p");
   text.textContent =
-    "Turn on phone access? Devices on your network (your Wi-Fi) can then open her with a secret link, and anyone who has the link can chat with her and her coding agent, so share it with nobody. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
+    "Turn on phone access? Devices on your network (your Wi-Fi) can then ask to connect: a phone opens a link that works once, and you allow it here before it gets in. A phone that was allowed can chat with her and her coding agent for 90 days, so allow only your own. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Turn on" });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
   const answer = (value) => {
@@ -175,8 +175,35 @@ function askLan() {
   log.scrollTop = log.scrollHeight;
 }
 
-function addPhoneCard(links, rows) {
-  const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. They work like a password, so keep them to yourself:");
+/** "A phone wants to connect": only the page on the computer gets this. The phone shows the same four digits; Allow lets that phone in for 90 days. */
+function askPair(msg) {
+  document.querySelector(`.phone-pair[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys phone-pair";
+  box.dataset.id = String(msg.id);
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "A phone wants to connect");
+  const text = document.createElement("p");
+  text.textContent = `A phone (${msg.name}) wants to connect. Check that it shows ${msg.code}. Allow it only if it is yours: it can then chat with her and her coding agent until you remove it (/phone revoke).`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Allow" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Deny" });
+  const answer = (choice) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "phone-pair-answer", id: msg.id, choice }));
+    box.remove();
+  };
+  yes.onclick = () => answer("allow");
+  no.onclick = () => answer("deny");
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addPhoneCard(links, rows, legacy = []) {
+  const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. The link works once and for two minutes; the phone then shows four digits and you allow it here:");
   const ns = "http://www.w3.org/2000/svg";
   const n = rows.length;
   const quiet = 4; // the blank border a scanner needs
@@ -198,6 +225,12 @@ function addPhoneCard(links, rows) {
   list.textContent = links.join("\n");
   list.style.whiteSpace = "pre-wrap";
   div.append(svg, list);
+  if (legacy.length) {
+    const old = document.createElement("div");
+    old.style.cssText = "margin-top:10px;word-break:break-all;font-family:monospace;font-size:.85em;white-space:pre-wrap";
+    old.textContent = `The old link (it stays for one more release, works like a password with fewer rights, and is not asked about; keep it to yourself):\n${legacy.join("\n")}`;
+    div.append(old);
+  }
   log.scrollTop = log.scrollHeight;
 }
 
@@ -1419,7 +1452,13 @@ function handle(msg) {
       askLan();
       break;
     case "phone":
-      if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String));
+      if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String), Array.isArray(msg.legacy) ? msg.legacy.map(String) : []);
+      break;
+    case "phone-pair":
+      askPair(msg);
+      break;
+    case "phone-pair-done":
+      document.querySelector(`.phone-pair[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
       break;
     case "status":
       statusText = msg.text;

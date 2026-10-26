@@ -44,7 +44,7 @@ ignored, and so are gestures unless the pack has pose pictures for them; she is 
 | `data/looks/` | your saved looks, one file each |
 | `data/frames/` | your own [picture packs](picture-packs.html) |
 | `data/custom.css` | your interface changes |
-| `data/lan-token` | the phone access token, readable only by you |
+| `data/phone-devices.json` | the phones you allowed (only a hash of each one's key), readable only by you |
 | `workspace/` | her own folder in chat mode |
 
 All of it is git-ignored and yours. Permission modes and phone access are deliberately **not** saved: they are off at

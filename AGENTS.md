@@ -134,8 +134,13 @@ The server can run an agent that edits files and runs commands. These are not op
   user's own `--lan` flag (`src/lan.ts`), or the yes to the question `/phone` asks (`setLan` in `src/server.ts`, which moves
   the listener to `0.0.0.0` without a restart): off at every start, never a default, never an env var or a saved
   setting. The yes counts only from a socket on this computer and only while `/phone`'s question is open (`lanAsked`); a phone
-  can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the token cookie and an allowed `Host`
-  and `Origin`. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
+  can neither turn it on nor off. Behind it, every non-loopback request and WebSocket needs the cookie of a phone that was allowed
+  on this computer (or, with `--lan` only and for one more release, the old shared token) and an allowed `Host` and `Origin`. A phone
+  is allowed by a pairing (`src/phone-pairing.ts`, `src/phone-devices.ts`, `src/phone-service.ts`, `docs/phone-security-plan.md`): the link
+  `/phone` shows carries a code that works once and expires in two minutes, the phone shows four digits, and a card on a page on **this computer**
+  (`phone-pair`, answered by `phone-pair-answer`, ignored from a phone) says Allow; the phone then gets a credential of its own
+  (`data/phone-devices.json` keeps only its SHA-256, owner-only), good for 90 days from its last use, removed by `/phone revoke`. Only
+  `/pair`, `/pair.js`, `/pair/start` and `/pair/status` are open before that, and they hand out nothing without the code and the yes. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
   turn on `/setup` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
   Run everything, and it may set the work folder by a typed path (`/work <path>` or the folder field);
   `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the

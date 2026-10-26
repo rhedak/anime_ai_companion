@@ -16,6 +16,25 @@ import { pathOf, systemPathDirs, writeStandIn } from "./helpers/standin.ts";
 // They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
 const skip = cannotRunServer() ?? false;
 
+/**
+ * Pairs a phone the way a person does: the phone opens the link's code and shows four digits, the page on the computer is asked and allows it, and the phone's next
+ * question gets its own cookie. Returns the cookie (`anaico=…`) for a request or a socket from the network.
+ */
+async function pairPhone(c: Client, lanIp: string, port: number, link: string, answer: "allow" | "deny" = "allow"): Promise<string | null> {
+  const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(link)?.[1];
+  assert.ok(code, "the link carries a pairing code");
+  const base = `http://${lanIp}:${port}`;
+  const from = c.mark;
+  const started = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) });
+  const body = (await started.json()) as { id: string; code: string };
+  const ask = await c.next("phone-pair", 5000, from);
+  assert.equal(ask.code, body.code, "the computer shows the digits the phone shows");
+  c.send({ type: "phone-pair-answer", id: ask.id, choice: answer });
+  const status = await fetch(`${base}/pair/status?id=${encodeURIComponent(body.id)}`);
+  const cookie = status.headers.getSetCookie().map((line) => line.split(";")[0]).find((line) => line.startsWith("anaico="));
+  return answer === "allow" ? (cookie ?? null) : null;
+}
+
 /** A new conversation, so a test does not depend on the one before it. */
 async function fresh(c: Client): Promise<void> {
   const from = c.mark;
@@ -1685,15 +1704,17 @@ describe("/phone turns phone access on after a question, and /phone off turns it
     c.send({ type: "lan-answer", yes: true });
     const card = await c.next("phone", 8000, from);
     assert.ok(card.links.length > 0 && card.qr.length > 0);
-    const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
-    assert.ok(token, "the link carries the secret token");
-    assert.match(server.data("lan-token") ?? "", new RegExp(token!));
+    assert.match(card.links[0], /\/pair\?e=[A-Za-z0-9_-]{12}$/, "the link carries a pairing code, not a shared token");
+    assert.equal(card.legacy, undefined, "the old shared link exists only with --lan");
+    assert.equal(server.data("lan-token"), null);
 
     if (lanIp) {
-      assert.equal(await reach(), 401, "another device is let in only with the token");
-      assert.equal(await reach(`/?t=${token}`), 302, "and with it, it is signed in");
+      assert.equal(await reach(), 401, "another device is let in only when it was allowed");
+      assert.equal(await reach("/?t=anything"), 401, "a token in the address gets nothing");
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie, "the phone got its own cookie after the computer allowed it");
       // A device on the network is a phone: it may not turn anything on or off.
-      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: cookie } });
       const heard: any[] = [];
       ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
       await new Promise<void>((resolve, reject) => {
@@ -1794,6 +1815,145 @@ describe("/phone turns phone access on after a question, and /phone off turns it
     from = c.mark;
     c.say("/phone off");
     assert.match((await c.next("notice", 5000, from)).text, /already off/);
+  });
+});
+
+describe("pairing a phone: a link that works once, a yes on the computer, a credential of its own", { skip }, () => {
+  const lanIp = Object.values(networkInterfaces())
+    .flatMap((list) => list ?? [])
+    .find((i) => i.family === "IPv4" && !i.internal)?.address;
+  const turnOn = async (server: RunningServer): Promise<{ c: Client; card: any }> => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.say("/phone");
+    await c.next("lan-offer", 5000, from);
+    from = c.mark;
+    c.send({ type: "lan-answer", yes: true });
+    return { c, card: await c.next("phone", 8000, from) };
+  };
+  const open = (port: number, cookie: string) =>
+    new Promise<WebSocket | null>((resolve) => {
+      const ws = new WebSocket(`ws://${lanIp}:${port}/ws`, { headers: { Origin: `http://${lanIp}:${port}`, Cookie: cookie } });
+      ws.once("open", () => resolve(ws));
+      ws.once("error", () => resolve(null));
+      ws.once("unexpected-response", () => resolve(null));
+    });
+
+  test("the code works once, a denied phone gets nothing, and the computer's card is not for a phone", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const base = `http://${lanIp}:${server.port}`;
+      const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1];
+      assert.equal((await fetch(`${base}/pair`)).status, 200, "the pairing page is open to the network");
+      assert.equal((await fetch(`${base}/pair.js`)).status, 200);
+      assert.equal((await fetch(`${base}/app.js`)).status, 401, "the rest of the page is not");
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { origin: "http://evil.example" }, body: JSON.stringify({ code }) })).status, 403, "a page on another site cannot start it");
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code: "wrong" }) })).status, 400);
+      // denied: no cookie, and the socket is refused
+      assert.equal(await pairPhone(c, lanIp, server.port, card.links[0], "deny"), null);
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) })).status, 400, "the code was used by the first phone, denied or not");
+      // a phone cannot answer the card, even a phone that is let in
+      const next = await turnOnAgain(c);
+      const cookie = await pairPhone(c, lanIp, server.port, next, "allow");
+      assert.ok(cookie);
+      const ws = await open(server.port, cookie!);
+      assert.ok(ws, "an allowed phone opens a socket");
+      const phoneAsk = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code: (await newLink(c)).code }) });
+      const asked = (await phoneAsk.json()) as { id: string };
+      const from = c.mark;
+      ws!.send(JSON.stringify({ type: "phone-pair-answer", id: asked.id, choice: "allow" }));
+      await new Promise((r) => setTimeout(r, 400));
+      const status = await (await fetch(`${base}/pair/status?id=${encodeURIComponent(asked.id)}`)).json();
+      assert.equal((status as { state: string }).state, "waiting", "a phone's answer is ignored");
+      assert.ok(!c.since(from).some((e) => e.type === "phone-pair-done"));
+      ws!.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  /** A new /phone card, as the page on the computer gets it. */
+  const newLink = async (c: Client): Promise<{ code: string; link: string }> => {
+    const from = c.mark;
+    c.say("/phone");
+    const card = await c.next("phone", 5000, from);
+    return { code: /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1], link: card.links[0] };
+  };
+  const turnOnAgain = async (c: Client): Promise<string> => (await newLink(c)).link;
+
+  test("/phone devices lists the phone, /phone revoke closes it and ends its cookie, and only a hash is on disk", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie);
+      const credential = cookie!.slice("anaico=".length);
+      assert.ok(!(server.data("phone-devices.json") ?? "").includes(credential), "the credential is not on disk");
+      const ws = await open(server.port, cookie!);
+      assert.ok(ws);
+      const closed = new Promise<void>((resolve) => ws!.once("close", () => resolve()));
+      let from = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, from)).text, /1\. .*last used now, good for 90 more days/);
+      from = c.mark;
+      c.say("/phone revoke 1");
+      assert.match((await c.next("notice", 5000, from)).text, /Removed/);
+      await closed;
+      const reach = await fetch(`http://${lanIp}:${server.port}/`, { headers: { cookie: cookie! }, redirect: "manual" });
+      assert.equal(reach.status, 401, "the cookie no longer works");
+      assert.equal(await open(server.port, cookie!), null);
+      from = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, from)).text, /No phone has been allowed yet/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a phone that asked while no page was open on the computer is shown on the card when one opens", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1];
+      const base = `http://${lanIp}:${server.port}`;
+      const started = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) });
+      assert.equal(started.status, 200);
+      const later = await server.client();
+      const ask = await later.next("phone-pair", 8000);
+      assert.equal(ask.code, ((await started.json()) as { code: string }).code);
+      void c;
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("with --lan the old shared link still works for this release, marked as old", async () => {
+    if (!lanIp) return;
+    const server = await startServer({ args: ["--lan"] });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("/phone");
+      const card = await c.next("phone", 8000, from);
+      assert.match(card.links[0], /\/pair\?e=/);
+      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.legacy?.[0] ?? "")?.[1];
+      assert.ok(token, "the old link is on the card");
+      assert.equal((await fetch(`http://${lanIp}:${server.port}/?t=${token}`, { redirect: "manual" })).status, 302);
+      const ws = await open(server.port, `anaico=${token}`);
+      assert.ok(ws, "a phone with the old link still gets in");
+      const at = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, at)).text, /1 connected with the old shared link/);
+      ws!.close();
+    } finally {
+      await server.stop();
+    }
   });
 });
 
@@ -2247,9 +2407,9 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
       from = c.mark;
       c.send({ type: "lan-answer", yes: true });
       const card = await c.next("phone", 8000, from);
-      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
-      assert.ok(token);
-      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie);
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: cookie } });
       const heard: any[] = [];
       ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
       await new Promise<void>((resolve, reject) => {

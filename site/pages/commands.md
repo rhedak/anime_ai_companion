@@ -30,7 +30,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | `/frames [name\|off]` | show her with a [picture pack](picture-packs.html); alone, lists the packs |
 | `/play [name] [end]` | play a short scene in chat (`/play` lists them; `/play key` is The spare key; `/play room` is a short story you are both trapped in, and the page asks you to wait while she writes it; `/play room 5 1 3 1` sets steps, hints, herrings and traps; a trap starts that room over; she explains the thread when you finish or `/play end`). In work mode, `/play` switches to chat |
 | `/show` | she plays every emotion, a blink, talking and her gestures, naming each |
-| `/phone [new\|off]` | the link and QR code for your [phone](phone.html); with phone access off it asks whether to turn it on (until the next start); `new` makes a new token, `off` turns it off |
+| `/phone [devices\|revoke <n\|all>\|new\|off]` | a link and QR code that let one [phone](phone.html) connect (you allow it on the computer); with phone access off it asks whether to turn it on (until the next start); `devices` lists the phones you allowed, `revoke` removes them, `new` makes a new link, `off` turns it off |
 | `/status` | brain, model, mode, folder and session id |
 | `/restart` | restart the server. The page reconnects, and the conversation stays. Phone access and permissions go back to how they are at every start. Not from a phone |
 | `/doctor` | check what the app needs (Node, the character creator, the brains, which opencode it uses, her data folder) and say what is missing and how to fix it; it only looks, changes nothing and is not available from a phone. Paste its output into a bug report |

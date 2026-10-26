@@ -32,7 +32,9 @@ import { animatedActivities, drawnActivityNote, gestureNote, packActivities, rea
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
-import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
+import { cookieName, cookieValue, isLoopbackAddress, loadToken, newToken, pairLinks, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
+import { describeDevice } from "./phone-devices.ts";
+import { createPhoneService } from "./phone-service.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureView } from "../public/frames.js";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -526,6 +528,21 @@ function ollamaNotReady(): string {
 /** Approvals waiting for an answer, so a reloaded tab can show them again. */
 const pendingPermissions = new Map<string, PermissionRequest>();
 
+/**
+ * Phones that were allowed on this computer (src/phone-service.ts). The old shared token (`lanToken`) exists only when the server was started with `--lan`, for one more release;
+ * a phone that is allowed through `/phone` has its own credential. The cards about a phone go to the pages on this computer only, never to a phone.
+ */
+const phone = createPhoneService({
+  devicesPath: join(dataDir, "phone-devices.json"),
+  notify: (message) => {
+    const data = JSON.stringify(message);
+    for (const c of clients) if (c.readyState === c.OPEN && !remoteSockets.has(c)) c.send(data);
+  },
+});
+await phone.load();
+/** The id of the allowed phone behind a network socket (none for one that came in with the old link), so `/phone revoke` can close it. */
+const socketDevice = new WeakMap<WebSocket, string>();
+
 const server = createServer(
   createRequestHandler({
     host,
@@ -534,6 +551,7 @@ const server = createServer(
     customCssPath,
     lan: () => lan,
     lanToken: () => lanToken,
+    phone,
     transcript,
     packDirs,
     emotionNames: () => Object.keys(emotions),
@@ -553,10 +571,14 @@ const remoteSockets = new WeakSet<WebSocket>();
 server.on("upgrade", (req, socket, head) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const local = isLoopbackAddress(req.socket.remoteAddress);
-  const ok = local ? allowedOrigins.has(String(req.headers.origin)) : lan && socketAllowed(req, lanToken);
+  const ok = local ? allowedOrigins.has(String(req.headers.origin)) : lan && socketAllowed(req, lanToken, undefined, phone.isDevice);
   if (path === "/ws" && ok) {
     wss.handleUpgrade(req, socket, head, (ws) => {
-      if (!local) remoteSockets.add(ws);
+      if (!local) {
+        remoteSockets.add(ws);
+        const device = phone.deviceId(cookieValue(req.headers.cookie, cookieName));
+        if (device) socketDevice.set(ws, device);
+      }
       wss.emit("connection", ws, req);
     });
   } else {
@@ -1035,11 +1057,17 @@ setInterval(() => void backgroundPackCheck().catch(() => {}), 3600_000).unref();
  * Moves the listener between this machine only and the whole network without a restart, for `/phone` in the desktop app (which starts the server without `--lan`).
  * The page on this machine stays connected (its WebSocket is already upgraded), and phones are signed out when it goes off. Returns what went wrong, or null.
  */
+/** The /phone card: a fresh pairing link (it works once, for two minutes) with its QR code, and the old shared link too while it still exists. */
+function phoneCard(send: (message: unknown) => void): void {
+  const { code } = phone.newCode();
+  const links = pairLinks(port, code);
+  send({ type: "phone", links, qr: qrRows(links[0]), ...(lanToken ? { legacy: phoneLinks(port, lanToken) } : {}) });
+}
+
 async function setLan(on: boolean): Promise<string | null> {
   if (on === lan) return null;
   const before = bindHost;
   const after = on ? "0.0.0.0" : host;
-  if (on) lanToken = await loadToken(lanTokenPath);
   const listenOn = (where: string) =>
     new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -1401,13 +1429,30 @@ const slashCommands: Record<
     run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
-    help: "show the link for controlling her from a phone on this network (it asks first if phone access is off; `/phone new` makes a new link, `/phone off` turns it off)",
+    help: "let a phone connect: shows a link that works once (you allow the phone on this computer); `/phone devices` lists the phones that were allowed, `/phone revoke <number|all>` removes them, `/phone new` makes a new link, `/phone off` turns phone access off",
     run: async ({ args, say, reply, remote }) => {
       if (remote) return say(remoteRefusal);
-      if (args.trim() === "off") {
+      const [word, rest] = args.trim().split(/\s+/, 2);
+      if (word === "off") {
         if (!lan) return say("Phone access is already off.");
         const failed = await setLan(false);
-        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her.");
+        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her. The phones that were allowed stay on the list (/phone devices) and can come in again when it is turned on.");
+      }
+      if (word === "devices") {
+        const list = phone.list();
+        const old = [...clients].filter((c) => remoteSockets.has(c) && !socketDevice.has(c) && c.readyState === c.OPEN).length;
+        const lines = list.map((d, i) => describeDevice(d, i + 1));
+        if (old) lines.push(`${old} connected with the old shared link (it ends with the next release)`);
+        return say(lines.length ? `${lines.join("\n")}\n/phone revoke <number|all> removes one.` : "No phone has been allowed yet. /phone shows a link for one.");
+      }
+      if (word === "revoke") {
+        const which = rest === "all" ? "all" : /^\d+$/.test(rest ?? "") ? Number(rest) : null;
+        if (which === null) return say("Say which: /phone revoke 1 (the number /phone devices shows) or /phone revoke all.");
+        const gone = await phone.devices.revoke(which);
+        if (!gone.length) return say("There is no such phone. /phone devices lists them.");
+        const ids = new Set(gone.map((d) => d.id));
+        for (const c of clients) if (remoteSockets.has(c) && ids.has(socketDevice.get(c) ?? "")) c.close();
+        return say(`Removed: ${gone.map((d) => d.name).join(", ")}. It has to be allowed again to come back.`);
       }
       if (!lan) {
         // The answer comes from the page on this computer (`lan-answer`), and only to this question.
@@ -1415,13 +1460,12 @@ const slashCommands: Record<
         reply({ type: "lan-offer" });
         return say("Phone access is off. The page asks whether to turn it on. It stays on until you restart, and is off again at every start.");
       }
-      if (args.trim() === "new") {
+      if (word === "new" && lanToken) {
         lanToken = await saveToken(lanTokenPath, newToken());
-        for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
-        say("Made a new link. Phones that used the old one are signed out.");
+        for (const c of clients) if (remoteSockets.has(c) && !socketDevice.has(c)) c.close(); // every phone on the old shared link has to use the new one
+        say("Made a new old-style link. Phones that used the old one are signed out; phones that were allowed are not (/phone revoke).");
       }
-      const links = phoneLinks(port, lanToken);
-      reply({ type: "phone", links, qr: qrRows(links[0]) });
+      phoneCard(reply);
     },
   },
   play: {
@@ -1804,6 +1848,7 @@ wss.on("connection", (ws) => {
     })
     .catch((err) => console.error("could not send the packs:", err));
   if (!remote) void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
+  if (!remote) for (const card of phone.waitingCards()) ws.send(JSON.stringify(card)); // a phone asked while no page was open here
   ws.send(JSON.stringify(modeInfo()));
   if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
@@ -2038,8 +2083,13 @@ wss.on("connection", (ws) => {
       if (msg.yes !== true) return say("Phone access stays off.");
       const failed = await setLan(true);
       if (failed) return say(failed);
-      const links = phoneLinks(port, lanToken);
-      ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+      phoneCard((m) => ws.send(JSON.stringify(m)));
+    } else if (msg.type === "phone-pair-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
+      // A phone asked to connect and this computer answers: never a phone, whatever it sends.
+      if (remote) return;
+      const answered = phone.answer(msg.id, msg.choice === "allow");
+      if (!answered) return ws.send(JSON.stringify({ type: "notice", text: "That phone's request has run out. /phone shows a new link." }));
+      ws.send(JSON.stringify({ type: "notice", text: answered.state === "allowed" ? `Allowed ${answered.name}. /phone devices lists the phones that may come in; /phone revoke removes one.` : `Denied ${answered.name}.` }));
     } else if (msg.type === "look-refresh-answer") {
       const preset = avatar.refreshOffer?.preset;
       if (preset && (await avatar.answerRefresh(msg.yes === true))) {
@@ -2151,7 +2201,10 @@ if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) 
 
 server.listen(port, bindHost, () => {
   console.log(`Companion ready: http://${host}:${port}  (${provider.name})`);
-  if (lan) console.log(`Phone access is on. Open one of these on the phone (it is a password, keep it to yourself):\n  ${phoneLinks(port, lanToken).join("\n  ")}`);
+  if (lan) {
+    console.log("Phone access is on. A phone connects with the link that /phone shows in the companion's chat: it works once, and you allow the phone there.");
+    if (lanToken) console.log(`The old shared link still works for this release (it is a password, keep it to yourself, and it ends with the next release):\n  ${phoneLinks(port, lanToken).join("\n  ")}`);
+  }
   if (process.argv.includes("--open")) openBrowser(`http://${host}:${port}`);
   void shareNudge(
     [

@@ -2,7 +2,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { frameMime, isPackName, readPack, type FramePack } from "./frame-pack.ts";
-import { gateRequest, isLoopbackAddress, sessionCookie } from "./lan.ts";
+import { cookieName, cookieValue, gateRequest, hostHeaderAllowed, isLoopbackAddress, sessionCookie } from "./lan.ts";
+import { DEVICE_DAYS } from "./phone-devices.ts";
+import type { PhoneHttp } from "./phone-service.ts";
 import { checkShownImage } from "./shown-images.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -16,7 +18,10 @@ export interface HttpDeps {
   customCssPath: string;
   /** Whether phone access is on (`--lan`, or turned on from /phone): devices on the network may come in, with the token. Asked per request: it can change while the server runs. */
   lan(): boolean;
+  /** The old shared token (`--lan` only, for one more release); empty when it is off. */
   lanToken(): string;
+  /** Pairing and the cookies of phones that were allowed on the computer. */
+  phone?: PhoneHttp;
   transcript: Pick<Transcript, "findShown">;
   /** Where picture packs live. */
   packDirs: string[];
@@ -67,8 +72,14 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
   /** Whether this request may go on. Another device (--lan) needs the token; everything else is refused. */
   function letThrough(req: IncomingMessage, res: ServerResponse): boolean {
     if (isLoopbackAddress(req.socket.remoteAddress)) return true;
-    const gate = deps.lan() ? gateRequest(req, deps.lanToken()) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
-    if (gate.action === "allow") return true;
+    const gate = deps.lan() ? gateRequest(req, deps.lanToken(), undefined, deps.phone?.isDevice) : { action: "refuse" as const, status: 401 as const, text: "Not available." };
+    if (gate.action === "allow") {
+      // A phone that is let in again and again stays let in: the page load renews its cookie (the 90 days start over).
+      const path = (req.url ?? "/").split("?")[0];
+      const cookie = cookieValue(req.headers.cookie, cookieName);
+      if ((path === "/" || path === "/index.html") && cookie && deps.phone?.isDevice(cookie)) res.setHeader("set-cookie", sessionCookie(cookie, DEVICE_DAYS));
+      return true;
+    }
     if (gate.action === "sign-in") {
       res.writeHead(302, { "set-cookie": sessionCookie(deps.lanToken()), location: gate.location, "cache-control": "no-store", ...headers }).end();
     } else {
@@ -77,7 +88,49 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
     return false;
   }
 
+  /**
+   * The pairing routes, open to the network while phone access is on, because the phone has no credential yet: the page, and the two calls it makes. Everything they hand out
+   * is useless without the code from a fresh link and a yes on the computer.
+   */
+  async function pairing(req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+    if (isLoopbackAddress(req.socket.remoteAddress) || !deps.lan() || !deps.phone) return false;
+    if (path !== "/pair" && path !== "/pair.js" && path !== "/pair/start" && path !== "/pair/status") return false;
+    const plain = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", ...headers };
+    const json = (status: number, body: unknown, extra: Record<string, string> = {}) => res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...headers, ...extra }).end(JSON.stringify(body));
+    if (!hostHeaderAllowed(req.headers.host)) return void res.writeHead(421, plain).end("Unknown host."), true;
+    if (path === "/pair" || path === "/pair.js") {
+      const body = await readFile(join(deps.publicDir, path === "/pair" ? "pair.html" : "pair.js")).catch(() => null);
+      if (!body) return void res.writeHead(404).end("Not found"), true;
+      res.writeHead(200, { "content-type": path === "/pair" ? mime[".html"] : mime[".js"], "cache-control": "no-store", ...headers }).end(body);
+      return true;
+    }
+    if (path === "/pair/start" && req.method === "POST") {
+      if (req.headers.origin !== `http://${req.headers.host}`) return void res.writeHead(403, plain).end("Wrong origin."), true;
+      let raw = "";
+      for await (const chunk of req) {
+        raw += chunk;
+        if (raw.length > 2000) return void res.writeHead(413, plain).end("Too large."), true;
+      }
+      let code: unknown;
+      try {
+        code = (JSON.parse(raw) as { code?: unknown }).code;
+      } catch {}
+      const result = deps.phone.start(code, req.socket.remoteAddress ?? "", req.headers["user-agent"]);
+      if (!result.ok) return json(result.status, { error: result.reason }), true;
+      json(200, { id: result.request.id, code: result.request.code, seconds: Math.max(0, Math.round((result.request.expiresAt - Date.now()) / 1000)) });
+      return true;
+    }
+    if (path === "/pair/status" && req.method === "GET") {
+      const answer = await deps.phone.status(new URL(req.url ?? "/", "http://localhost").searchParams.get("id"));
+      json(200, { state: answer.state }, answer.setCookie ? { "set-cookie": answer.setCookie } : {});
+      return true;
+    }
+    res.writeHead(405, plain).end("Not allowed.");
+    return true;
+  }
+
   return async (req, res) => {
+    if (await pairing(req, res, new URL(req.url ?? "/", "http://localhost").pathname)) return;
     if (!letThrough(req, res)) return;
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
     const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
