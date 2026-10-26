@@ -10,6 +10,7 @@ instead of being sent to her, while paths like `/etc/hosts` are sent as usual.
 | Command | What it does |
 | --- | --- |
 | `/help` | list the commands |
+| `/welcome` | a short tour of what is here and the command for each thing; it is also shown once on the first start of a new data folder |
 | `/compact [focus]` | summarise the conversation to free up context; she keeps the gist |
 | `/clear`, `/new` | start a fresh conversation, like **New chat** |
 | `/resume [number]` | list earlier conversations in the current folder (newest first), or continue one |

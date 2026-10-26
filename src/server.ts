@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
+import { welcomeText } from "./welcome.ts";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +66,8 @@ const host = "127.0.0.1";
 let lan = process.argv.includes("--lan");
 let bindHost = lan ? "0.0.0.0" : host;
 const lanTokenPath = join(dataDir, "lan-token");
+/** Exists once the tour (`welcomeText`) was shown on this computer: it comes once, then only by `/welcome`. */
+const welcomedPath = join(dataDir, "welcomed");
 let lanToken = lan ? await loadToken(lanTokenPath) : "";
 /** `/phone` asked whether to turn phone access on, and the answer is still due. Only that question can be answered with yes. */
 let lanAsked = false;
@@ -92,6 +95,7 @@ const personaWork = await readFile(join(root, "persona-work.md"), "utf8");
 
 const settingsPath = join(dataDir, "settings.json");
 const firstStart = !existsSync(settingsPath);
+const welcome = (): string => welcomeText({ brain: basicMode ? null : provider.name, docs: "https://rhedak.github.io/anime_ai_companion/" });
 const settings = await loadSettings(settingsPath);
 
 // A set of pictures shown instead of the drawn avatar (data/frames/<name>, see src/frame-pack.ts).
@@ -1133,6 +1137,10 @@ const slashCommands: Record<
     run: (ctx: CommandContext) => void | Promise<void>;
   }
 > = {
+  welcome: {
+    help: "a short tour of what is here, and the command for each thing",
+    run: ({ say }) => say(welcome()),
+  },
   help: {
     help: "list these commands",
     run: ({ say }) => {
@@ -1785,6 +1793,11 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify(queue.message()));
   void skills.maybeNotice((text) => ws.send(JSON.stringify({ type: "notice", text })));
   ws.send(JSON.stringify({ type: "history", items: transcript.snapshot() }));
+  // After the history, which the page draws over everything shown before it.
+  if (!remote && process.env.COMPANION_NO_WELCOME !== "1" && !existsSync(welcomedPath)) {
+    ws.send(JSON.stringify({ type: "notice", text: welcome() }));
+    void mkdir(dataDir, { recursive: true }).then(() => writeFile(welcomedPath, "1\n")).catch(() => {});
+  }
   cards.greet(); // an empty conversation opens with her greeting, if the card has one
   greetBasic();
   const offer = basicMode && !remote ? opencodeOffer() : null; // with no brain at all, the way out is one click away

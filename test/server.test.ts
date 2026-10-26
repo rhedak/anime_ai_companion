@@ -435,6 +435,16 @@ describe("chatting", { skip }, () => {
     assert.equal(inputs(server).length, before);
   });
 
+  test("/welcome gives a short tour of what is here, and says which brain she has", async () => {
+    const c = await server.client();
+    await c.next("history");
+    const from = c.mark;
+    c.say("/welcome");
+    const tour = await c.next((e) => e.type === "notice" && /A short tour/.test(e.text), 5000, from);
+    assert.match(tour.text, /Her brain is /);
+    for (const word of ["Looks…", "Work tab", "/studio on", "/studio handover", "/phone", "/help", "/doctor"]) assert.ok(tour.text.includes(word), word);
+  });
+
   test("commands are answered in the order they were typed, even when an earlier one has to wait for something", async () => {
     const c = await server.client();
     await c.next("history");
@@ -2264,6 +2274,23 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
       ws.close();
     } finally {
       await server.stop();
+    }
+  });
+});
+
+describe("the tour on a first start", { skip }, () => {
+  test("a new data folder gets the tour once, and a second connection does not", async () => {
+    const mine = await startServer({ env: { COMPANION_NO_WELCOME: "0" } });
+    try {
+      const first = await mine.client();
+      const tour = await first.next((e) => e.type === "notice" && /A short tour/.test(e.text), 8000);
+      assert.match(tour.text, /\/welcome/);
+      const second = await mine.client();
+      await second.next("history");
+      await new Promise((r) => setTimeout(r, 600));
+      assert.equal(second.events.some((e: any) => e.type === "notice" && /A short tour/.test(e.text)), false, "it comes once per computer");
+    } finally {
+      await mine.stop();
     }
   });
 });
