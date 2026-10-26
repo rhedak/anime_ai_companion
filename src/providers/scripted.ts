@@ -8,6 +8,8 @@ export interface ScriptedOptions {
   pack: () => boolean;
   /** The id of that pack's character (look.txt's `character:` line), whose voice the script speaks in; empty when there is none. */
   character?: () => string;
+  /** The body of her drawn look (`body` of the character), for what that body does not draw. */
+  body?: () => string | undefined;
 }
 
 /**
@@ -35,7 +37,7 @@ export class ScriptedProvider implements Provider {
   send(text: string, onEvent: (event: ProviderEvent) => void): void {
     // The server puts a "(system note, not from the user: …)" line in front when something waits to be said; the script reads only the user's words.
     text = text.replace(/^\(system note, not from the user:[\s\S]*?\)\n\n/, "");
-    const answer = reply(text, { presets: this.opts.presets(), pack: this.opts.pack(), character: this.opts.character?.() ?? "", basic: true, recent: this.recent }).text;
+    const answer = reply(text, { presets: this.opts.presets(), pack: this.opts.pack(), character: this.opts.character?.() ?? "", basic: true, recent: this.recent, body: this.opts.body?.() }).text;
     this.recent = [...this.recent, text, answer.replace(/\[[^\]\n]*\]/g, " ")].slice(-8);
     // Streamed in small pieces, the way a model's answer arrives, so her mouth moves and the tags play as they do for a real brain.
     const pieces = answer.match(/\S+\s*/g) ?? [];

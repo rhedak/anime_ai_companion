@@ -83,6 +83,23 @@ describe("render-ops against the recorded replies", { skip }, () => {
     assert.deepEqual(rejected(bare), ["trouser_color"]);
   });
 
+  test("hair tips are refused on a body that does not draw them (the list is the page's file, kept equal to this file's copy)", async () => {
+    const { BODIES_WITHOUT_HAIR_TIPS } = await import("../public/hair-tips.js");
+    const bodies = Object.keys(creator.PRESETS).map((name) => [name, (ops.handle(new Map([["op", "base"], ["name", name]])).get("character") as Map<string, unknown>).get("body") as string] as const);
+    const patch = (name: string, set: Record<string, unknown>) =>
+      ops.handle(new Map<string, unknown>([["op", "patch"], ["character", creator.loadsText(creator.dumps(ops.handle(new Map([["op", "base"], ["name", name]])).get("character")))], ["set", new Map(Object.entries(set))]]));
+    const without = bodies.find(([, body]) => BODIES_WITHOUT_HAIR_TIPS.includes(body));
+    const withTips = bodies.find(([, body]) => !BODIES_WITHOUT_HAIR_TIPS.includes(body));
+    assert.ok(without && withTips, "a preset with and one without tips");
+    const refused = patch(without[0], { hair_tip_color: "#ff88cc" });
+    assert.deepEqual(refused.get("applied"), []);
+    assert.match(String((refused.get("rejected") as Map<string, unknown>[])[0].get("reason")), /does not draw hair tips/);
+    assert.deepEqual(patch(without[0], { hair_tip_color: "none" }).get("applied"), ["hair_tip_color=none"]);
+    assert.deepEqual(patch(withTips[0], { hair_tip_color: "#ff88cc" }).get("applied"), ["hair_tip_color=#ff88cc"]);
+    // The copy in render-ops is the page's list: a preset on one of those bodies is refused, every other is not.
+    for (const [name, body] of bodies) assert.equal(((patch(name, { hair_tip_color: "#ff88cc" }).get("rejected") as unknown[]).length > 0), BODIES_WITHOUT_HAIR_TIPS.includes(body), `${name} (${body})`);
+  });
+
   test("a request with eyes_shut keeps them shut in every frame; without it only the blink frame has them shut", () => {
     const risa = ops.handle(new Map([["op", "base"], ["name", "risa"]])).get("character");
     const frames = (shut?: boolean) =>

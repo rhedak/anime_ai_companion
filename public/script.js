@@ -3,6 +3,8 @@
 // understands several requests in one message ("blue eyes and glasses and a witch hat"); anything else gets an honest answer about what
 // the demo can do.
 
+import { drawsHairTips } from "./hair-tips.js";
+
 /** Colour words and what they mean as a hex colour. */
 const COLOURS = {
   red: "#d02a2a",
@@ -117,7 +119,7 @@ export const GREETING =
   "I can also show you what work mode looks like.";
 
 const HELP =
-  "[emotion:happy] Here is what I can do in this demo: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
+  "[emotion:happy] Here is what I can do in this demo: change my hair (colour, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the 21 characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. ' +
   'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. ' +
   "The Undo button above my picture takes back the last change. I can't chat freely here: that needs a real language model, and the real app has one.";
@@ -155,7 +157,7 @@ export const basicGreeting = (name = "Risa") =>
   `${NEEDS_BRAIN} You can keep trying the script in the meantime.`;
 
 const HELP_BASIC =
-  "[emotion:happy] Here is what I can do with just a script: change my hair (colour, ombre tips, style), my eyes, glasses, a hat, a coat or a skirt; " +
+  "[emotion:happy] Here is what I can do with just a script: change my hair (colour, style), my eyes, glasses, a hat, a coat or a skirt; " +
   'turn into one of the characters ("become Linnea"); show a mood ("be shy"); or wave. You can ask for several things at once. Type /show and I run through ' +
   `every emotion and gesture. I can't chat freely or work on files: that needs a brain. ${NEEDS_BRAIN}`;
 
@@ -230,7 +232,7 @@ export const personaFor = (character = "") => VOICES[character]?.persona ?? "";
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean, character?: string, model?: boolean, recent?: string[], basic?: boolean }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `character`: that pack's character id, whose voice she speaks in; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `recent`: the last lines of the conversation, newest last, for "that colour"
+ * @param {{ presets?: string[], pack?: boolean, character?: string, model?: boolean, recent?: string[], basic?: boolean, body?: string | null }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `character`: that pack's character id, whose voice she speaks in; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `body`: the body of her drawn look, for what that body does not draw (hair tips); `recent`: the last lines of the conversation, newest last, for "that colour"
  * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
@@ -314,7 +316,8 @@ export function reply(input, context = {}) {
       continue;
     }
     if (/\b(tips|ombre|ends)\b/.test(c) && colour) {
-      ask("hair_tip_color", colour.hex, `${colour.name} tips`);
+      if (drawsHairTips(context.body)) ask("hair_tip_color", colour.hex, `${colour.name} tips`);
+      else missing.push("I can't give my hair coloured tips yet: my drawing does not show them (only some of the other characters have them).");
       continue;
     }
     const style = STYLES.find(([rx]) => rx.test(c));

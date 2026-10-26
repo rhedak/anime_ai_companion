@@ -562,7 +562,7 @@ export function createLocalSocket({
     }
     // The last few lines, without tags, so "that colour" can mean one she or the visitor just named.
     const recent = history.slice(-7, -1).map((h) => String(h.text).replace(/\[[^\]\n]*\]/g, " "));
-    const answered = reply(text, { presets, pack: pack !== null, character: characterId(), model: Boolean(model?.ready()), recent });
+    const answered = reply(text, { presets, pack: pack !== null, character: characterId(), body: character?.body, model: Boolean(model?.ready()), recent });
     if (answered.scene === "work") return workScene();
     if (answered.needsModel && model?.ready()) return modelReply();
     await speak(answered.text);

@@ -300,11 +300,14 @@ export function createRenderOps(c: Creator) {
   // cannot be drawn younger, and she keeps at least one covering garment: the creator always
   // draws underwear, and nothing the model sends takes her down to just that.
   const MODEL_LOCKED: Record<string, string> = { face_age: "her age is fixed; she is always drawn as an adult" };
+  // Bodies that accept `hair_tip_color` and show nothing (a copy of BODIES_WITHOUT_HAIR_TIPS in public/hair-tips.js, which this file cannot import; a test keeps them equal).
+  const NO_HAIR_TIPS = ["adult_female"];
   const COVERING = ["tunic_color", "coat_color", "robe_color", "skirt_color", "trouser_color"];
 
   /** Raise ValueError if the model may not make this change to this character. */
   function checkAllowed(character: unknown, section: string, name: string, value: unknown): void {
     if (own(MODEL_LOCKED, name)) throw err("ValueError", MODEL_LOCKED[name] as string);
+    if (name === "hair_tip_color" && value !== null && NO_HAIR_TIPS.includes(getItem(character, "body") as string)) throw err("ValueError", "this body does not draw hair tips yet");
     if (name === "height" && (value as number) < 1.0) throw err("ValueError", "height must be 1.0 or more");
     if (section === "outfit" && COVERING.includes(name) && value === null) {
       const outfit = dictFor(getItem(character, "outfit"), "get");
