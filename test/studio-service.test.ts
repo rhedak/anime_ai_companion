@@ -614,9 +614,12 @@ test("/studio handover gives a prompt for any AI agent, with the studio off, and
   const t = await setup({ backendUrl: null });
   try {
     t.active.value = "risa-dress";
-    await t.service.command("handover a dark green winter coat over a white sweater", t.say, false, () => {});
-    const said = t.said.at(-1) ?? "";
-    assert.match(said, /--- copy from here ---/);
+    const replies: Record<string, any>[] = [];
+    await t.service.command("handover a dark green winter coat over a white sweater", t.say, false, (m) => replies.push(m as Record<string, any>));
+    const handover = replies.find((m) => m.type === "studio-handover");
+    assert.ok(handover?.inChat, "the prompt goes to the page as its own message, which has the Copy button");
+    const said = `${t.said.at(-1) ?? ""}\n${handover?.prompt ?? ""}`;
+    assert.match(said, /I use a local anime companion app/);
     assert.match(said, /a dark green winter coat over a white sweater/);
     assert.match(said, /risa-dress/);
     assert.match(said, /agent-guide\.html/);
@@ -653,11 +656,12 @@ test("/studio handover says what to attach when she is the drawn avatar and ther
   const t = await setup({ backendUrl: null });
   try {
     t.active.value = null;
-    await t.service.command("handover a blue raincoat", t.say, false, () => {});
+    const replies: Record<string, any>[] = [];
+    await t.service.command("handover a blue raincoat", t.say, false, (m) => replies.push(m as Record<string, any>));
     const said = t.said.at(-1) ?? "";
     assert.match(said, /She is the drawn avatar now, so there is no picture of her to attach/);
     assert.match(said, /risa-dress/, "the packs she could start from are named");
-    assert.match(said, /a blue raincoat/);
+    assert.match(String(replies.find((m) => m.type === "studio-handover")?.prompt), /a blue raincoat/);
     t.active.value = "risa-dress";
     await t.service.command("handover", t.say, false, () => {});
     assert.doesNotMatch(t.said.at(-1) ?? "", /drawn avatar now/);

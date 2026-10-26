@@ -408,9 +408,23 @@ export function createStudio(io) {
           return true;
         case "studio-handover": {
           // The prompt for an AI agent of the user's choice: shown whole, with a button that copies it (nothing is sent from here).
-          const box = q(".studio-handover");
-          if (!box || typeof msg.prompt !== "string") return true;
+          if (typeof msg.prompt !== "string") return true;
           const text = msg.prompt;
+          const box = q(".studio-handover");
+          if (!box) {
+            // From the chat command: the prompt in the chat, read-only, with a button that copies it.
+            /** @type {any} */
+            const shown = io.say("");
+            const field = el("textarea", { className: "studio-handover-text", rows: 10, readOnly: true, ariaLabel: "Handover prompt" });
+            field.value = text;
+            const button = el("button", { type: "button", textContent: "Copy the prompt" });
+            button.onclick = () => {
+              field.select();
+              navigator.clipboard?.writeText(text).then(() => (button.textContent = "Copied"), () => (button.textContent = "Select the text and copy it"));
+            };
+            shown?.append(field, button);
+            return true;
+          }
           const area = el("textarea", { className: "studio-handover-text", rows: 10, readOnly: true, ariaLabel: "Handover prompt" });
           area.value = text;
           const copy = el("button", { type: "button", textContent: "Copy the prompt" });

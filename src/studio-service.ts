@@ -636,8 +636,10 @@ export function createStudioService(deps: StudioDeps) {
         const which = active
           ? ` (${active}: its folder is data/frames/${active}/ or packs/${active}/ in the app's folder)`
           : `. She is the drawn avatar now, so there is no picture of her to attach: take the neutral picture of a pack (${packs.length ? `${packs.join(", ")}: the file neutral.webp in data/frames/<pack>/ or packs/<pack>/ in the app's folder` : "none is on this computer yet: /frames lists the ones you can download"}), or a picture of the character you want`;
+        // The prompt itself goes to the page as its own message, which shows it with a Copy button; the notice says what to do with it.
+        reply({ type: "studio-handover", prompt, guide: HANDOVER_GUIDE, inChat: true });
         return say(
-          `A handover prompt: copy the text between the lines into an AI agent that can make pictures (a chat website, an agent, whatever you use) and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.\n\n--- copy from here ---\n${prompt}\n--- to here ---`,
+          `A handover prompt for an AI agent that can make pictures (a chat website, an agent, whatever you use): copy it below and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.`,
         );
       }
       if (word === "budget") {
