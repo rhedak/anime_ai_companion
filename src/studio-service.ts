@@ -641,7 +641,7 @@ export function createStudioService(deps: StudioDeps) {
         // The prompt itself goes to the page as its own message, which shows it with a Copy button; the notice says what to do with it.
         reply({ type: "studio-handover", prompt, guide: HANDOVER_GUIDE, inChat: true });
         return say(
-          `A handover prompt for an AI agent that can make pictures (a chat website, an agent, whatever you use): copy it below and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}). Add your outfit in /studio handover <outfit words> to have it filled in. Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.`,
+          `A handover prompt for an AI agent that can make pictures (a chat website, an agent, whatever you use): copy it below and attach the neutral picture of the pack you want to start from${which}. It links to the guide the agent follows (${HANDOVER_GUIDE}).${rest.length === 0 ? " Add your outfit in /studio handover <outfit words> to have it filled in." : ""} Nothing is sent from here: you copy it, and what the agent makes is yours to check and yours to answer for.`,
         );
       }
       if (word === "budget") {

@@ -1389,6 +1389,9 @@ function handle(msg) {
     case "studio-preview":
     case "studio-full":
     case "studio-ask":
+    case "studio-handover":
+    case "studio-spend":
+    case "studio-review":
       studio.handle(msg);
       break;
     case "pack-offer":
