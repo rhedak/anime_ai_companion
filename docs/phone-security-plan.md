@@ -63,8 +63,8 @@ Not planned: an SSH server inside the app (it needs the system's sshd or a large
 4. **Layer 2** proper, if the spike works, then `/setup` and friends for the strong tier.
 5. **Layer 3** docs at any time.
 
-## Open questions
+## Decisions (owner, 2026-10-27)
 
-- The legacy shared token: keep working for one release (restricted exactly as today, marked in `/phone devices`), or end at once? It would be the only way to reach a headless `--daemon` server from a phone until the computer has a page to answer cards. The leaning: keep it for one release behind `--lan`, with a warning.
-- A headless server has no local page for the pairing and ask cards. Allow answering them from the terminal (`anaico --phone-allow`), or say it needs the app open?
-- Expiry: 90 days renewed on use, or never?
+- **The legacy shared token stays for one release** behind `--lan`, restricted exactly as today, and marked in `/phone devices` as legacy with a warning at start and in `/phone`. It ends in the release after layer 1a ships.
+- **A headless server needs the app open** to answer the pairing and ask cards. With no local page connected, a phone is told "open the app on the computer to allow this"; there is no terminal path.
+- **A device's access lasts 90 days, renewed on every use**, so a phone used at least every three months never has to pair again; an unused one expires by itself.
