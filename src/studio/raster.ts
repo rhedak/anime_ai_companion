@@ -25,20 +25,31 @@ const own = (data: Buffer): Uint8ClampedArray => {
 };
 
 export async function decode(input: Buffer | string): Promise<Raster> {
-  const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { w: info.width, h: info.height, data: own(data) };
+  try {
+    const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return { w: info.width, h: info.height, data: own(data) };
+  } catch (error) {
+    const what = typeof input === "string" ? `file ${input}` : `${input.length} bytes starting ${Buffer.from(input.subarray(0, 8)).toString("hex")}`;
+    throw new Error(`${error instanceof Error ? error.message : String(error)} (${what})`);
+  }
 }
+
+/**
+ * Bytes copied into a Buffer of Node's own. What `toBuffer()` returns can be backed by memory that sharp frees on its own schedule, and on Node 26 a picture
+ * held across a thread hop (handed to the studio's worker) was found overwritten (a PNG of 854 bytes starting with a0806200 instead of 89504e47).
+ */
+const kept = async (pending: Promise<Buffer>): Promise<Buffer> => Buffer.from(await pending);
 
 function toSharp(r: Raster): Sharp {
   return sharp(Buffer.from(r.data.buffer, r.data.byteOffset, r.data.length), { raw: { width: r.w, height: r.h, channels: 4 } });
 }
 
-export const encodePng = (r: Raster): Promise<Buffer> => toSharp(r).png().toBuffer();
+export const encodePng = (r: Raster): Promise<Buffer> => kept(toSharp(r).png().toBuffer());
 
 /** Lossless WebP keeps the colour under clear pixels (`exact`), which the pack archive compares; lossy takes a quality and keeps the alpha exact. */
 export function encodeWebp(r: Raster, options: { lossless: true } | { quality: number }): Promise<Buffer> {
-  if ("lossless" in options) return toSharp(r).webp({ lossless: true, exact: true, effort: 4 }).toBuffer();
-  return toSharp(r).webp({ quality: options.quality, alphaQuality: 100, effort: 4 }).toBuffer();
+  if ("lossless" in options) return kept(toSharp(r).webp({ lossless: true, exact: true, effort: 4 }).toBuffer());
+  return kept(toSharp(r).webp({ quality: options.quality, alphaQuality: 100, effort: 4 }).toBuffer());
 }
 
 /** Scales with the alpha premultiplied (sharp does that for RGBA), so an edge keeps its colour. */

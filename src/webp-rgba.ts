@@ -47,7 +47,7 @@ export async function decodeRgba(bytes: Buffer): Promise<RgbaImage | null> {
 
 export async function encodeRgba(image: RgbaImage, effort: number = BUILD_EFFORT): Promise<Buffer | null> {
   try {
-    const out = await sharp(image.data, { raw: { width: image.width, height: image.height, channels: 4 } }).webp({ ...encodeOptions, effort }).toBuffer();
+    const out = Buffer.from(await sharp(image.data, { raw: { width: image.width, height: image.height, channels: 4 } }).webp({ ...encodeOptions, effort }).toBuffer());
     return out;
   } catch {
     return null;
