@@ -18,7 +18,7 @@ wide: true
 <p class="fine">Windows, macOS and Linux · MIT licence · no account, no telemetry, nothing hosted</p>
 
 </div>
-<div class="stage"><img src="assets/hero-activities.gif" alt="Franzi dancing, Risa playing tennis and Risa splashing water at you: three activities of picture packs, animated" width="900" height="342"><p class="fine">Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and splashes water at you.</p></div>
+<div class="stage"><video src="assets/hero-activities.mp4" aria-label="Franzi dancing, Risa playing tennis and Risa splashing water at you: three activities of picture packs, animated" width="900" height="342" autoplay muted loop playsinline></video><p class="fine">Picture packs (pictures made with AI): Franzi dances, Risa plays tennis and splashes water at you.</p></div>
 </div>
 
 <div class="cards">
@@ -61,7 +61,7 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 **Picture packs** replace the drawing with sets of pictures made with AI, by someone else or by you: seven expressions with blinks and mouths, poses, and optional activities (below). The art is polished, but a pack is one outfit: it cannot change its hair or clothes, so another outfit is another pack. [Her looks](looks.html) · [Picture packs](picture-packs.html)
 
 </div>
-<div class="shot"><img src="assets/redraw.gif" alt="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short, each time when asked" width="480" height="598" loading="lazy"></div>
+<div class="shot"><video src="assets/redraw.mp4" aria-label="The drawn Risa changes her hair to mint green, puts on glasses and a witch hat, changes her eyes and tips, and cuts her hair short, each time when asked" width="480" height="598" autoplay muted loop playsinline></video></div>
 </div>
 
 ## She does things with you
@@ -69,10 +69,10 @@ Describe an outfit and the **pack studio** draws her a whole new set of pictures
 In a picture pack that has one, an **activity** is something she does for a while instead of just talking. Ask her to play tennis and her picture turns into the loop below: the ball comes at you, she hits it back. Dancing, cooking, reading and swimming work the same way. The drawn character has none: they are pictures.
 
 <div class="reel">
-<figure><img src="assets/activity-tennis.gif" alt="Risa hits a tennis ball toward you" width="300" height="342" loading="lazy"><figcaption>Risa plays tennis</figcaption></figure>
-<figure><img src="assets/activity-dancing.gif" alt="Franzi dances in a dirndl" width="300" height="342" loading="lazy"><figcaption>Franzi dances</figcaption></figure>
-<figure><img src="assets/activity-swimming.gif" alt="Risa splashes water toward you" width="300" height="342" loading="lazy"><figcaption>Risa splashes</figcaption></figure>
-<figure><img src="assets/activity-cooking.gif" alt="Franzi cooks in a frying pan" width="300" height="342" loading="lazy"><figcaption>Franzi cooks</figcaption></figure>
+<figure><video src="assets/activity-tennis.mp4" aria-label="Risa hits a tennis ball toward you" width="300" height="342" autoplay muted loop playsinline></video><figcaption>Risa plays tennis</figcaption></figure>
+<figure><video src="assets/activity-dancing.mp4" aria-label="Franzi dances in a dirndl" width="300" height="342" autoplay muted loop playsinline></video><figcaption>Franzi dances</figcaption></figure>
+<figure><video src="assets/activity-swimming.mp4" aria-label="Risa splashes water toward you" width="300" height="342" autoplay muted loop playsinline></video><figcaption>Risa splashes</figcaption></figure>
+<figure><video src="assets/activity-cooking.mp4" aria-label="Franzi cooks in a frying pan" width="300" height="342" autoplay muted loop playsinline></video><figcaption>Franzi cooks</figcaption></figure>
 </div>
 
 <p class="fine">Risa and Franzi are original characters, and their pictures were made with AI (MIT licence, details in each pack). Packs of other characters are downloads on request, never in this repository.</p>
@@ -108,7 +108,7 @@ Risa's dress, casual and school outfits, and the green coat and the tennis outfi
 [Picture packs](picture-packs.html)
 
 </div>
-<div class="shot"><img src="assets/wardrobe.gif" alt="Risa in five outfits, one after the other" width="300" height="342" loading="lazy"></div>
+<div class="shot"><video src="assets/wardrobe.mp4" aria-label="Risa in five outfits, one after the other" width="300" height="342" autoplay muted loop playsinline></video></div>
 </div>
 
 ## A coding agent you can watch

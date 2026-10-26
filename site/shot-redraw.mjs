@@ -51,5 +51,7 @@ execFileSync("uv", ["run", "--with", "pillow", "python", "-I", join(import.meta.
 const palette = join(work, "palette.png");
 execFileSync("ffmpeg", ["-v", "error", "-framerate", "10", "-i", join(work, "c%04d.png"), "-vf", "palettegen=max_colors=128:stats_mode=full", palette]);
 execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", "10", "-i", join(work, "c%04d.png"), "-i", palette, "-lavfi", "paletteuse=dither=bayer:bayer_scale=4", "-loop", "0", join(out, "redraw.gif")]);
-console.log("wrote redraw.gif from", frames.length, "pictures");
+// The site plays the same pictures as a looping video; the GIF stays for the README.
+execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", "10", "-i", join(work, "c%04d.png"), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "27", "-movflags", "+faststart", "-an", join(out, "redraw.mp4")]);
+console.log("wrote redraw.gif and redraw.mp4 from", frames.length, "pictures");
 process.exit(0);

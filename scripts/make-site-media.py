@@ -49,6 +49,10 @@ def gif(images, target, colors=96):
         palette = f"{tmp}/palette.png"
         subprocess.run(["ffmpeg", "-v", "error", "-framerate", str(FPS), "-i", f"{tmp}/f%04d.png", "-vf", f"palettegen=max_colors={colors}:stats_mode=full", palette], check=True)
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", f"{tmp}/f%04d.png", "-i", palette, "-lavfi", "paletteuse=dither=bayer:bayer_scale=4", "-loop", "0", str(target)], check=True)
+        # The site plays the same pictures as a looping video (a quarter of the weight of the GIF or less); the GIF stays for the README, where video does not play.
+        video = target.with_suffix(".mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", f"{tmp}/f%04d.png", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "27", "-movflags", "+faststart", "-an", str(video)], check=True)
+        print(f"{video}: {video.stat().st_size // 1024} KB")
     print(f"{target}: {len(images)} pictures, {target.stat().st_size // 1024} KB")
 
 

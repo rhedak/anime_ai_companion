@@ -91,7 +91,7 @@ li { margin: .25em 0; }
 .hero .lead { font-size: 1.28rem; line-height: 1.5; margin: .2em 0 1em; }
 .hero .lead b { color: var(--accent); }
 .hero .stage { background: #1f1840; border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; border: 1px solid var(--line); }
-.hero .stage img { width: 100%; display: block; }
+.hero .stage img, .hero .stage video { width: 100%; height: auto; display: block; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 1.1em 0 .4em; }
 .btn { display: inline-block; padding: 11px 20px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; font-weight: 650; color: var(--text); background: var(--panel); }
 .btn:hover { filter: brightness(1.12); }
@@ -105,10 +105,10 @@ li { margin: .25em 0; }
 .reel { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); margin: 1.2em 0; }
 .reel figure { margin: 0; background: #1f1840; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
 .reel figcaption { padding: 8px 12px 10px; font-size: .88rem; color: #cfc8ea; }
-.reel img { width: 100%; display: block; }
+.reel img, .reel video { width: 100%; height: auto; display: block; }
 .split { display: grid; gap: 26px; align-items: center; margin: 1.4em 0; }
 .split .shot { background: #1f1840; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
-.split .shot img { width: 100%; display: block; }
+.split .shot img, .split .shot video { width: 100%; height: auto; display: block; }
 .wide table { font-size: .93rem; }
 @media (max-width: 699px) {
   .doc.wide h1 { font-size: 2.2rem; }
