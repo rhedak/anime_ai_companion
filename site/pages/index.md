@@ -125,7 +125,7 @@ Risa's dress, casual and school outfits, and the green coat and the tennis outfi
 **Easiest:** [download the app](download.html) (Windows, macOS, Linux) and open it, or [try the demo](demo/) first: a live Risa in your browser, nothing to install and nothing sent anywhere. From source you need Node.js 22.18 or newer and one brain (for example a signed-in `claude`):
 
 ```bash
-git clone --branch v0.6.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install

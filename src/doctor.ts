@@ -213,7 +213,7 @@ export async function checkAll(p: Probe): Promise<DoctorLine[]> {
   if (ollamaModels === null) add("warn", `Ollama: nothing answers at ${host}`, "Only needed for local models. Install it from https://ollama.com, run `ollama serve`, and `ollama pull llama3.2`.");
   else if (ollamaModels === 0) add("warn", `Ollama answers at ${host}, but has no models`, "Pull one, for example: ollama pull llama3.2");
   else add("ok", `Ollama at ${host} with ${ollamaModels} model${ollamaModels === 1 ? "" : "s"}`);
-  if (!found.length) add("fail", "No brain found: she needs Claude Code, Cursor, opencode or Ollama", "Install one of them (the README says how), then run this again.");
+  if (!found.length) add("fail", "No brain found: she needs Claude Code, Cursor, opencode or Ollama", "Install one of them (the Brains page of the documentation says how), then run this again.");
 
   // Port
   if (p.app) add("ok", `Running on port ${p.port}`);
