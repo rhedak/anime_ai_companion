@@ -82,4 +82,30 @@ describe("render-ops against the recorded replies", { skip }, () => {
     assert.deepEqual(bare.get("applied"), ["tunic_color=none"]);
     assert.deepEqual(rejected(bare), ["trouser_color"]);
   });
+
+  test("hair tips are accepted on every body but those the page's list names (empty since the creator's 0.7.2), and the list matches this file's copy", async () => {
+    const { BODIES_WITHOUT_HAIR_TIPS } = await import("../public/hair-tips.js");
+    const base = (name: string) => ops.handle(new Map([["op", "base"], ["name", name]])).get("character");
+    const patch = (name: string, set: Record<string, unknown>) =>
+      ops.handle(new Map<string, unknown>([["op", "patch"], ["character", creator.loadsText(creator.dumps(base(name)))], ["set", new Map(Object.entries(set))]]));
+    for (const name of Object.keys(creator.PRESETS)) {
+      const body = (base(name) as Map<string, unknown>).get("body") as string;
+      const refused = (patch(name, { hair_tip_color: "#ff88cc" }).get("rejected") as unknown[]).length > 0;
+      assert.equal(refused, BODIES_WITHOUT_HAIR_TIPS.includes(body), `${name} (${body})`);
+      assert.deepEqual(patch(name, { hair_tip_color: "none" }).get("applied"), ["hair_tip_color=none"]);
+    }
+  });
+
+  test("a request with eyes_shut keeps them shut in every frame; without it only the blink frame has them shut", () => {
+    const risa = ops.handle(new Map([["op", "base"], ["name", "risa"]])).get("character");
+    const frames = (shut?: boolean) =>
+      (ops.handle(new Map<string, unknown>([["op", "frames"], ["character", creator.loadsText(creator.dumps(risa))], ["mouth", [0.9, 0.4]], ...(shut === undefined ? [] : [["eyes_shut", shut] as [string, unknown]])])).get("svgs") as string[]);
+    const open = frames();
+    assert.equal(open.length, 3);
+    assert.notEqual(open[0], open[2], "the blink frame differs from the resting one");
+    const shut = frames(true);
+    assert.equal(shut[0], shut[2], "the resting frame is the blink frame");
+    assert.notEqual(shut[1], open[1], "a talking frame has the eyes shut too");
+    assert.deepEqual(frames(false), open);
+  });
 });

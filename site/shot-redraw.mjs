@@ -29,7 +29,7 @@ try {
       await sleep(gap);
     }
   };
-  const asks = ["make your hair mint green", "put on glasses and a witch hat", "blue eyes and pink tips", "short hair"];
+  const asks = ["make your hair mint green", "put on glasses and a witch hat", "a red coat", "short hair"];
   await b.evaluate(`(() => { const s = document.createElement('style'); s.id = 'no-bubble'; s.textContent = '#bubble { display: none !important; }'; document.head.append(s); })()`); // her first words (how to get a brain) are not the point of this picture
   await grab("", 8);
   await b.evaluate(`document.getElementById('no-bubble')?.remove()`);

@@ -428,7 +428,7 @@ const providers: Record<ProviderName, Provider> = {
     resumeSessionId: opencodeResumable,
   }),
 };
-const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null, character: () => activePack?.characterId ?? "" });
+const scripted = new ScriptedProvider({ presets: () => avatar.presetNames, pack: () => activePack !== null, character: () => activePack?.characterId ?? "", body: () => (avatar.character as { body?: string }).body });
 let provider: Provider = basicMode ? scripted : providers[settings.provider];
 
 /** Shown when work mode starts with a local model: how well it uses tools is up to the model, and so is the responsibility. */

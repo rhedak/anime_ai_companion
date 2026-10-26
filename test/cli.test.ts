@@ -21,9 +21,9 @@ test("--help lists --version", () => {
   assert.match(run.stdout, /--version/);
 });
 
-test("every environment variable the code reads is in the README's table, so none is left undocumented", () => {
-  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+test("every environment variable the code reads is in the documentation's table (the getting-started page), so none is left undocumented", () => {
+  const readme = readFileSync(new URL("../site/pages/getting-started.md", import.meta.url), "utf8");
   for (const name of ["ANAICO_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_AGENT", "OPENCODE_BIN", "OLLAMA_MODEL", "CREATOR_SRC"]) {
-    assert.ok(readme.includes(name), `${name} is not in README.md`);
+    assert.ok(readme.includes(name), `${name} is not in site/pages/getting-started.md`);
   }
 });

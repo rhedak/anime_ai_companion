@@ -300,11 +300,14 @@ export function createRenderOps(c: Creator) {
   // cannot be drawn younger, and she keeps at least one covering garment: the creator always
   // draws underwear, and nothing the model sends takes her down to just that.
   const MODEL_LOCKED: Record<string, string> = { face_age: "her age is fixed; she is always drawn as an adult" };
+  // Bodies that accept `hair_tip_color` and show nothing (a copy of BODIES_WITHOUT_HAIR_TIPS in public/hair-tips.js, which this file cannot import; a test keeps them equal).
+  const NO_HAIR_TIPS: string[] = [];
   const COVERING = ["tunic_color", "coat_color", "robe_color", "skirt_color", "trouser_color"];
 
   /** Raise ValueError if the model may not make this change to this character. */
   function checkAllowed(character: unknown, section: string, name: string, value: unknown): void {
     if (own(MODEL_LOCKED, name)) throw err("ValueError", MODEL_LOCKED[name] as string);
+    if (name === "hair_tip_color" && value !== null && NO_HAIR_TIPS.includes(getItem(character, "body") as string)) throw err("ValueError", "this body does not draw hair tips yet");
     if (name === "height" && (value as number) < 1.0) throw err("ValueError", "height must be 1.0 or more");
     if (section === "outfit" && COVERING.includes(name) && value === null) {
       const outfit = dictFor(getItem(character, "outfit"), "get");
@@ -418,10 +421,12 @@ export function createRenderOps(c: Creator) {
     const face = dictFor(getItem(character, "face"), "update");
     const override = req instanceof Map && req.has("face") ? req.get("face") : new Map();
     for (const [k, v] of c.pyDict(override)) face.set(k, v);
+    // Eyes are open in every frame but the blink, unless the request says `eyes_shut` (a happy drawn with its eyes closed). A face's own `eyes_closed` stays ignored, as recorded.
+    const held = req instanceof Map && req.get("eyes_shut") === true;
     if (req instanceof Map && req.has("poses")) {
       // one frame per pose (a pose overrides top-level fields such as right_arm_out), mouth at rest
       face.set("mouth_open", first(getItem(req, "mouth")));
-      face.set("eyes_closed", false);
+      face.set("eyes_closed", held);
       const out: string[] = [];
       for (const pose of iterate(req.get("poses"))) {
         const posed = new Map<unknown, unknown>(character);
@@ -434,7 +439,7 @@ export function createRenderOps(c: Creator) {
     const mouth = getItem(req, "mouth");
     for (const open of iterate(mouth)) {
       face.set("mouth_open", open);
-      face.set("eyes_closed", false);
+      face.set("eyes_closed", held);
       svgs.push(render(character));
     }
     // one extra frame for blinking: eyes shut, mouth as at rest

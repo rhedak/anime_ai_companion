@@ -1,8 +1,8 @@
 # Notes for agents
 
 A local anime companion. The browser talks to a Node server; a provider is the brain
-(Claude Code, Cursor, or Ollama); a worker thread running the creator's TypeScript draws her. The README is the product
-description; this file is what an agent needs beyond it. Find which of these the user wants:
+(Claude Code, Cursor, or Ollama); a worker thread running the creator's TypeScript draws her. The README is the short product
+description (the full documentation is the site, `site/`); this file is what an agent needs beyond it. Find which of these the user wants:
 
 - **Run it** (use the app): the first section.
 - **Customise it** (their own persona, looks, colours, drawing): the second.
@@ -17,7 +17,7 @@ Clone both repos **side by side** (the drawing code is a separate repo), the cre
 (`creator.ref` in `package.json`; its `main` may be ahead, and a test keeps these commands in step with the pin):
 
 ```bash
-git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -28,9 +28,9 @@ No Python is needed: the creator's TypeScript draws her inside the server. `npm 
 `nvm install 22 && nvm use 22` fixes that. (Python is only for the optional picture-pack tools in `python/`, which `docs/frame-packs.md` describes.)
 
 - `npm link` puts the `anaico` command on the PATH. `anaico` starts in work mode for the folder it is run
-  from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart`, `--doctor` are in the README.
+  from and opens the browser; `anaico --chat`, `--daemon`, `--status`, `--stop`, `--restart`, `--doctor` are on the documentation site (`site/pages/getting-started.md`).
 - The server listens on `127.0.0.1` only. `PORT` changes the port; `COMPANION_PROVIDER` is
-  `claude`, `cursor`, `opencode` or `ollama` (also switchable in the page). The README has the full table. With `ollama` and no
+  `claude`, `cursor`, `opencode` or `ollama` (also switchable in the page). The getting-started page of the site (`site/pages/getting-started.md`) has the full table. With `ollama` and no
   `OLLAMA_MODEL`, the first installed model is used (in memory only, never saved as the user's choice). Use a model of about 3B or
   bigger: a 0.5B one chats but does not write her `[emotion:…]` and `[avatar …]` tags.
 - Everything personal is in `data/` (settings, chat log, her current look, `custom.css`) and `workspace/`.

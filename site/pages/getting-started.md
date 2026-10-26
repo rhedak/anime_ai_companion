@@ -19,7 +19,7 @@ This page is the route from source. For a ready-made app with its own window, [d
 ## Install and run
 
 ```bash
-git clone --branch v0.7.0 https://github.com/rhedak/anime-character-creator.git
+git clone --branch v0.7.2 https://github.com/rhedak/anime-character-creator.git
 git clone https://github.com/rhedak/anime_ai_companion.git
 cd anime_ai_companion
 npm install
@@ -52,16 +52,24 @@ Everything has a default. Set these as environment variables when you start the 
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `COMPANION_PROVIDER` | `claude` | `claude`, `cursor`, `opencode` or `ollama` (also switchable in the page) |
-| `COMPANION_MODEL` | `haiku` | model for chat (Claude Code) |
-| `COMPANION_WORK_MODEL` | `sonnet` | model for work mode (Claude Code) |
-| `COMPANION_OPENCODE_MODEL` | opencode's default | model for opencode, as `provider/model` |
-| `COMPANION_PRESET` | `risa` | the starting character (any preset of the creator) |
-| `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://127.0.0.1:11434`, first installed | where Ollama listens and which model to use |
+| `COMPANION_MODEL` | `haiku` | model used for chat |
+| `COMPANION_WORK_MODEL` | `sonnet` | model used in work mode |
+| `COMPANION_PROVIDER` | `claude` | `claude` (Claude Code), `cursor` (Cursor agent), `opencode` or `ollama` (local models); also switchable in the UI |
+| `COMPANION_OPENCODE_MODEL` | opencode's own default | model for opencode, `provider/model` (e.g. `opencode/big-pickle`) |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | where Ollama is listening |
+| `COMPANION_OLLAMA_TOOLS` | unset | model names (comma separated) or `all` that you vouch can use tools, when your Ollama cannot report it |
+| `COMPANION_OLLAMA_CTX` | `16384` | context size asked of Ollama in work mode with tools |
+| `OLLAMA_MODEL` | first installed | model to use with Ollama. A model you name here is saved to `data/settings.json` like a pick in the menu; the first-installed default is only used, never saved |
+| `COMPANION_PRESET` | `risa` | starting character (any preset of the creator) |
 | `CREATOR_SRC` | `../anime-character-creator/ts/src` | the creator's TypeScript folder (its `ts/src`), which draws her |
-| `PORT` | `3737` | the port |
-| `COMPANION_NO_NUDGE` | unset | `1` silences the weekly "you have local changes" reminder |
-| `COMPANION_PACK_INDEX` | a placeholder URL | https address of the downloadable pack list; `off` skips it ([picture packs](picture-packs.html)) |
+| `ANAICO_HOME` | `~/.anaico` | where the pinned creator copy is cloned when none is found next to this repo |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's own folder, which she reads sessions and skills from |
+| `CURSOR_AGENT` | `cursor-agent` | the command that starts the Cursor agent |
+| `OPENCODE_BIN` | `opencode` | the command that starts opencode |
+| `PORT` | `3737` | |
+| `COMPANION_NO_SHELL` | unset | set to `1` to turn off the `!command` box ([safety](safety.html)) |
+| `COMPANION_NO_NUDGE` | unset | set to `1` to silence the friendly reminder below |
+| `COMPANION_PACK_INDEX` | the packs repository's list on GitHub Pages | https address of `packs/index.json` for packs that can be downloaded; `off` skips it. See [picture packs](picture-packs.html) |
 
 Your own data lives in `data/` (settings, chat log, current look, saved looks, `custom.css`) and `workspace/`.
 Both are git-ignored and belong to you.

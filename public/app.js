@@ -7,6 +7,7 @@ import { createDemo } from "./demo.js";
 import { GESTURES } from "./frames.js";
 import { normalizeTags } from "./tags.js";
 import { splitNarration } from "./narration.js";
+import { orderPresets } from "./preset-order.js";
 import { composing } from "./ime.js";
 import { createErrorReporter, installErrorReporting } from "./errors.js";
 import { createStudio } from "./studio.js";
@@ -1358,7 +1359,7 @@ function handle(msg) {
     case "looks":
       $("undo-look").disabled = !msg.canUndo;
       lastLooks = msg;
-      presetNames = msg.presets ?? [];
+      presetNames = orderPresets(msg.presets ?? []);
       currentPreset = msg.current ?? null;
       renderLooksMenu();
       break;

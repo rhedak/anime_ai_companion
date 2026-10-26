@@ -18,8 +18,8 @@ If a `CLAUDE.local.md` exists, it describes this particular machine and wins whe
   another agent could be editing files while you are. Look at `git status` before assuming a change is yours.
 - **Tell the user what a restart costs.** After edits to `persona.md`, `emotions.json` or the creator, the
   server must restart, and an existing Claude conversation keeps its old persona until `/clear`.
-- **Long chats use the plan fast.** If the user asks why a message used so much, the answer is in the README
-  ("Automatic compaction, and long conversations") and in the Claude Code notes of `AGENTS.md`.
+- **Long chats use the plan fast.** If the user asks why a message used so much, the answer is on the documentation site
+  ("Long conversations" on the chatting page, `site/pages/chatting.md`) and in the Claude Code notes of `AGENTS.md`.
 - **When a change touches one provider,** say what Claude Code, Cursor and Ollama each do now; they differ in
   permission modes, system prompts and model ids.
 - Never add `--dangerously-skip-permissions`, a loose default permission mode, or anything that serves

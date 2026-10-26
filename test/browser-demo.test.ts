@@ -97,14 +97,24 @@ test("the page's request for frames is answered with the same request the server
 test("the adult cuts (Risa's and Franzi's) have their own happy over emotions.json's; every other emotion, and every other cut, is asked for as emotions.json says", () => {
   const emotions = { neutral: {}, happy: { mouth_curve: 1.6, brow_tilt: -0.1, blush: 1.0, eye_openness: 0.7, mouth_open: 0.3 }, sad: { mouth_curve: -1.4 } };
   const risa = { hairstyle: "long_straight_fringed", face: { mouth_open: 0 } };
-  assert.deepEqual(framesRequest(emotions, risa, "happy").face, { ...emotions.happy, ...CUT_FACES.long_straight_fringed.happy });
-  assert.equal(framesRequest(emotions, risa, "happy").face.mouth_open, 0.6);
+  const { eyes_closed: shut, ...risaHappy } = CUT_FACES.long_straight_fringed.happy;
+  assert.equal(shut, true, "Risa's happy has her eyes shut, as the reference's does");
+  const happy = framesRequest(emotions, risa, "happy");
+  assert.deepEqual(happy.face, { ...emotions.happy, ...risaHappy });
+  assert.equal(happy.eyes_shut, true, "the shut eyes reach the frames op as its own flag, not as a face field it would ignore");
+  assert.equal(happy.face.mouth_open, 0.9);
+  assert.equal((happy.face as Record<string, number>).mouth_width, 1.55);
+  assert.deepEqual(happy.mouth, [0.9, 0.4, 0.65, 0.9], "her laugh closes a little around its rest while she talks, so it moves");
+  assert.equal(framesRequest(emotions, risa, "sad").eyes_shut, undefined);
   assert.deepEqual(framesRequest(emotions, risa, "sad").face, emotions.sad);
-  assert.deepEqual(framesRequest(emotions, { hairstyle: "swept_ponytail" }, "happy").face, { ...emotions.happy, ...CUT_FACES.swept_ponytail.happy });
-  assert.deepEqual(CUT_FACES.swept_ponytail, CUT_FACES.long_straight_fringed, "the two adult cuts share the open smile");
+  const franzi = framesRequest(emotions, { hairstyle: "swept_ponytail" }, "happy");
+  assert.deepEqual(franzi.face, { ...emotions.happy, ...CUT_FACES.swept_ponytail.happy });
+  assert.equal(franzi.eyes_shut, undefined, "Franzi's happy keeps open eyes");
+  assert.deepEqual(franzi.mouth, [0.6, 0.6, 0.6, 0.85], "and the shared talking rule (never below the rest)");
   assert.deepEqual(framesRequest(emotions, { hairstyle: "long_parted" }, "happy").face, emotions.happy, "a chibi hairstyle keeps the shared happy");
   assert.deepEqual(framesRequest(emotions, {}, "happy").face, emotions.happy);
-  assert.deepEqual(gestureRequest(emotions, { ...risa, body: "adult_female" }, "happy", "wave")!.face, framesRequest(emotions, risa, "happy").face);
+  assert.deepEqual(gestureRequest(emotions, { ...risa, body: "adult_female" }, "happy", "wave")!.face, happy.face);
+  assert.equal(gestureRequest(emotions, { ...risa, body: "adult_female" }, "happy", "wave")!.eyes_shut, true);
 });
 
 test("the adult body's gestures bend the elbow and close the fist, the chibi's swing the arm; only the adult cheer comes with a wider view", async () => {
@@ -685,6 +695,10 @@ test("presets, moods, gestures, and the things she is honest about", () => {
 });
 
 const creatorSrc = process.env.CREATOR_SRC ?? resolve(repo, "../anime-character-creator/ts/src");
+test("hair tips are asked for on every body (the adult woman too since the creator's 0.7.2), and refused only for a body the list names", () => {
+  assert.match(reply("pink tips", { presets: PRESETS, body: "adult_female" }).text, /hair_tip_color=#ff88cc/);
+  assert.match(reply("blue eyes and pink tips", { presets: PRESETS, body: "tall_chibi_long_torso" }).text, /eye_color=#3a6fe0 hair_tip_color=#ff88cc/);
+});
 test("every redraw she can ask for is something the creator's patch op accepts (checked against its real schema)", { skip: existsSync(join(creatorSrc, "render.ts")) ? false : "the creator's TypeScript is not next to this repo (set CREATOR_SRC to its ts/src folder)" }, async () => {
   const { createRenderOps } = await import("../src/render-ops.ts");
   const { loadCreator } = await import("../src/creator-load.ts");
