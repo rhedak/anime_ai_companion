@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { removeDir } from "./helpers/platform.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -555,4 +555,46 @@ test("closing while a turn is in flight does not start the agent again", async (
     provider.close();
     removeDir(dir);
   }
+});
+
+/** A fake opencode whose own default is a paid model (as with an OPENAI_API_KEY in the environment): it logs every model the app sets. */
+const paidDefaultAgent = ('import { appendFileSync } from "node:fs";\n' + fakeAgent)
+  .replace('currentValue: "opencode/big-pickle"', 'currentValue: "openai/gpt-paid"')
+  .replace('{ value: "opencode/big-pickle", name: "big-pickle" },', '{ value: "openai/gpt-paid", name: "gpt-paid" }, { value: "opencode/big-pickle", name: "big-pickle" },')
+  .replace('if (msg.method === "session/set_mode" || msg.method === "session/set_config_option") return reply(msg.id, {});', 'if (msg.method === "session/set_config_option") { appendFileSync(process.env.SET_LOG, msg.params.value + "\\n"); return reply(msg.id, {}); }\n  if (msg.method === "session/set_mode") return reply(msg.id, {});');
+
+async function modelsSet(agent: string, model: string): Promise<string[]> {
+  const dir = await mkdtemp(join(tmpdir(), "opencode-acp-"));
+  const script = join(dir, "fake.mjs");
+  const log = join(dir, "set.log");
+  await writeFile(script, agent);
+  await writeFile(log, "");
+  const provider = new OpenCodeProvider({
+    config: config({ cwd: dir, model }),
+    chatCwd: dir,
+    persona: () => "You are Mio.",
+    versionOf: async () => "2.1.3",
+    spawnAgent: (_args, cwd) => spawn(process.execPath, [script], { cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, SET_LOG: log } }),
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      provider.send("hi", (event) => {
+        if (event.type === "done") resolve();
+        if (event.type === "error") reject(new Error(event.message));
+      });
+    });
+    return (await readFile(log, "utf8")).split("\n").filter(Boolean);
+  } finally {
+    provider.close();
+    removeDir(dir);
+  }
+}
+
+test("with no model chosen the free Big Pickle is used, not opencode's own (paid) default", async () => {
+  assert.deepEqual(await modelsSet(paidDefaultAgent, ""), ["opencode/big-pickle"]);
+});
+
+test("a model the user chose is kept, and an opencode without Big Pickle keeps its own default", async () => {
+  assert.deepEqual(await modelsSet(paidDefaultAgent, "openai/gpt-paid"), [], "the chosen model is already the current one");
+  assert.deepEqual(await modelsSet(paidDefaultAgent.replace('{ value: "opencode/big-pickle", name: "big-pickle" },', ""), ""), [], "no Big Pickle in the list: nothing is changed");
 });

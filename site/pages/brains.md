@@ -61,7 +61,7 @@ Code modes.
 ## opencode
 
 Pick **opencode** and she is driven by `opencode acp`, signed into whichever models your opencode install already
-knows (choose one in the menu, or leave opencode's default). Sign in once with `opencode auth login`. Chat mode has
+knows (choose one in the menu; until you do, the app uses opencode's free Big Pickle). Sign in once with `opencode auth login`. Chat mode has
 no tools: opencode is told to ask about every tool, and the app refuses each request without showing a card. Work
 mode asks with the approval card. The menu offers **Ask**, **Plan** and **Run everything**, which lets every tool
 run without a card and resets to Ask at every start. Every start is isolated: your project's own `opencode.json`,
@@ -84,6 +84,8 @@ You can also start with it: `COMPANION_PROVIDER=ollama npm start` uses the first
 **Use a model of about 3B or bigger** (`llama3.2`, `qwen2.5:3b` or `qwen2.5:7b`, for example). A very small one such as `qwen2.5:0.5b` chats,
 but it does not reliably write her `[emotion:...]` and `[avatar ...]` tags: her face then stays flat, and asking her to change her hair or her
 clothes does nothing, however it is worded.
+
+For Ollama and opencode there is a safety net for the clearest requests. When you ask for a look change the built-in script understands ("make your hair mint green"), or say "let's go swimming" for an activity she has, and her answer carries no tag, the app makes the change itself, says so, and tells her on her next message. It does nothing when her answer says no, when you only ask a question, or in work mode. Claude Code and Cursor write their tags and are not second-guessed.
 
 **Work mode with a local model is experimental, and the quality is your responsibility.** If Ollama reports that the
 model supports tool calls (a recent Qwen or Llama, for example; `ollama show <model>` lists its capabilities), the **Work** button

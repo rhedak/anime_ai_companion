@@ -13,6 +13,7 @@ import {
   opencodeSupportsPure,
   parseModels,
   permissionResult,
+  defaultOpenCodeModel,
   pickOpenCodeModel,
   promptBlocks,
   type AcpPermission,
@@ -368,8 +369,10 @@ export class OpenCodeProvider implements Provider {
       await this.request("session/set_mode", { sessionId, modeId }).catch(() => undefined);
       this.appliedMode = modeId;
     }
-    const wanted = pickOpenCodeModel(this.models, this.config.model);
-    if (this.config.model.trim() && !wanted) throw new Error(`Unknown opencode model "${this.config.model}".`);
+    // A model the user chose wins; with none chosen it is the free Big Pickle (when this opencode has it), not whatever opencode or the environment would pick.
+    const chosen = pickOpenCodeModel(this.models, this.config.model);
+    if (this.config.model.trim() && !chosen) throw new Error(`Unknown opencode model "${this.config.model}".`);
+    const wanted = chosen ?? defaultOpenCodeModel(this.models);
     if (wanted && wanted !== this.currentModelId) {
       await this.request("session/set_config_option", { sessionId, configId: "model", value: wanted }).catch(() => undefined);
       this.currentModelId = wanted;

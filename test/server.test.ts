@@ -16,6 +16,25 @@ import { pathOf, systemPathDirs, writeStandIn } from "./helpers/standin.ts";
 // They are the safety net for changing server.ts: what the page is told, in what order, for the things people actually do.
 const skip = cannotRunServer() ?? false;
 
+/**
+ * Pairs a phone the way a person does: the phone opens the link's code and shows four digits, the page on the computer is asked and allows it, and the phone's next
+ * question gets its own cookie. Returns the cookie (`anaico=…`) for a request or a socket from the network.
+ */
+async function pairPhone(c: Client, lanIp: string, port: number, link: string, answer: "allow" | "deny" = "allow"): Promise<string | null> {
+  const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(link)?.[1];
+  assert.ok(code, "the link carries a pairing code");
+  const base = `http://${lanIp}:${port}`;
+  const from = c.mark;
+  const started = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) });
+  const body = (await started.json()) as { id: string; code: string };
+  const ask = await c.next("phone-pair", 5000, from);
+  assert.equal(ask.code, body.code, "the computer shows the digits the phone shows");
+  c.send({ type: "phone-pair-answer", id: ask.id, choice: answer });
+  const status = await fetch(`${base}/pair/status?id=${encodeURIComponent(body.id)}`);
+  const cookie = status.headers.getSetCookie().map((line) => line.split(";")[0]).find((line) => line.startsWith("anaico="));
+  return answer === "allow" ? (cookie ?? null) : null;
+}
+
 /** A new conversation, so a test does not depend on the one before it. */
 async function fresh(c: Client): Promise<void> {
   const from = c.mark;
@@ -1685,15 +1704,17 @@ describe("/phone turns phone access on after a question, and /phone off turns it
     c.send({ type: "lan-answer", yes: true });
     const card = await c.next("phone", 8000, from);
     assert.ok(card.links.length > 0 && card.qr.length > 0);
-    const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
-    assert.ok(token, "the link carries the secret token");
-    assert.match(server.data("lan-token") ?? "", new RegExp(token!));
+    assert.match(card.links[0], /\/pair\?e=[A-Za-z0-9_-]{12}$/, "the link carries a pairing code, not a shared token");
+    assert.equal(card.legacy, undefined, "the old shared link exists only with --lan");
+    assert.equal(server.data("lan-token"), null);
 
     if (lanIp) {
-      assert.equal(await reach(), 401, "another device is let in only with the token");
-      assert.equal(await reach(`/?t=${token}`), 302, "and with it, it is signed in");
+      assert.equal(await reach(), 401, "another device is let in only when it was allowed");
+      assert.equal(await reach("/?t=anything"), 401, "a token in the address gets nothing");
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie, "the phone got its own cookie after the computer allowed it");
       // A device on the network is a phone: it may not turn anything on or off.
-      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: cookie } });
       const heard: any[] = [];
       ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
       await new Promise<void>((resolve, reject) => {
@@ -1760,8 +1781,14 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       assert.match((await waitHeard(from, (e) => e.type === "notice")).text, /only possible on the computer itself/, "a phone still cannot run !command");
 
       from = heard.length;
+      const askedAt = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
-      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn on Auto");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Asked on the computer: turn on Auto/.test(e.text))).text, /Asked on the computer/, "a phone asks for Auto, it does not just get it");
+      const autoCard = await c.next("remote-ask", 5000, askedAt);
+      assert.match(autoCard.label, /turn on Auto/);
+      assert.equal((await waitHeard(from, (e) => e.type === "mode")).permissionMode, "manual", "the selector on the phone stays where it was");
+      c.send({ type: "remote-ask-answer", id: autoCard.id, choice: "deny" });
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /said no/.test(e.text))).text, /Auto did not happen/);
 
       from = heard.length;
       ws.send(JSON.stringify({ type: "user", text: "/chrome on" }));
@@ -1773,10 +1800,17 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       assert.equal((await waitHeard(from, (e) => e.type === "mode")).claudeChrome, false, "the checkbox is told to snap back");
 
       from = heard.length;
+      const everyAt = c.mark;
       ws.send(JSON.stringify({ type: "user", text: "/permissions everything" }));
-      const ever = await waitHeard(from, (e) => e.type === "notice");
-      assert.doesNotMatch(ever.text, /only possible on the computer itself/, "Run everything is not refused just because it came from a phone");
-      assert.match(ever.text, /Cursor or opencode/, "this brain is Claude, which has no Run everything");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Asked on the computer/.test(e.text))).text, /turn on Run everything/, "Run everything is asked for too");
+      const everyCard = await c.next("remote-ask", 5000, everyAt);
+      c.send({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" });
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Cursor or opencode/.test(e.text))).text, /Cursor or opencode/, "after the yes the command ran: this brain is Claude, which has no Run everything");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Allowed on the computer/.test(e.text))).text, /Run everything/);
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" }));
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(heard.slice(from).some((e) => e.type === "notice"), false, "a phone cannot answer a question, not even the one it raised");
 
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
@@ -1794,6 +1828,242 @@ describe("/phone turns phone access on after a question, and /phone off turns it
     from = c.mark;
     c.say("/phone off");
     assert.match((await c.next("notice", 5000, from)).text, /already off/);
+  });
+});
+
+describe("pairing a phone: a link that works once, a yes on the computer, a credential of its own", { skip }, () => {
+  const lanIp = Object.values(networkInterfaces())
+    .flatMap((list) => list ?? [])
+    .find((i) => i.family === "IPv4" && !i.internal)?.address;
+  const turnOn = async (server: RunningServer): Promise<{ c: Client; card: any }> => {
+    const c = await server.client();
+    await c.next("history");
+    let from = c.mark;
+    c.say("/phone");
+    await c.next("lan-offer", 5000, from);
+    from = c.mark;
+    c.send({ type: "lan-answer", yes: true });
+    return { c, card: await c.next("phone", 8000, from) };
+  };
+  const open = (port: number, cookie: string) =>
+    new Promise<WebSocket | null>((resolve) => {
+      const ws = new WebSocket(`ws://${lanIp}:${port}/ws`, { headers: { Origin: `http://${lanIp}:${port}`, Cookie: cookie } });
+      ws.once("open", () => resolve(ws));
+      ws.once("error", () => resolve(null));
+      ws.once("unexpected-response", () => resolve(null));
+    });
+
+  test("the code works once, a denied phone gets nothing, and the computer's card is not for a phone", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const base = `http://${lanIp}:${server.port}`;
+      const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1];
+      assert.equal((await fetch(`${base}/pair`)).status, 200, "the pairing page is open to the network");
+      assert.equal((await fetch(`${base}/pair.js`)).status, 200);
+      assert.equal((await fetch(`${base}/app.js`)).status, 401, "the rest of the page is not");
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { origin: "http://evil.example" }, body: JSON.stringify({ code }) })).status, 403, "a page on another site cannot start it");
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code: "wrong" }) })).status, 400);
+      // denied: no cookie, and the socket is refused
+      assert.equal(await pairPhone(c, lanIp, server.port, card.links[0], "deny"), null);
+      assert.equal((await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) })).status, 400, "the code was used by the first phone, denied or not");
+      // a phone cannot answer the card, even a phone that is let in
+      const next = await turnOnAgain(c);
+      const cookie = await pairPhone(c, lanIp, server.port, next, "allow");
+      assert.ok(cookie);
+      const ws = await open(server.port, cookie!);
+      assert.ok(ws, "an allowed phone opens a socket");
+      const phoneAsk = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code: (await newLink(c)).code }) });
+      const asked = (await phoneAsk.json()) as { id: string };
+      const from = c.mark;
+      ws!.send(JSON.stringify({ type: "phone-pair-answer", id: asked.id, choice: "allow" }));
+      await new Promise((r) => setTimeout(r, 400));
+      const status = await (await fetch(`${base}/pair/status?id=${encodeURIComponent(asked.id)}`)).json();
+      assert.equal((status as { state: string }).state, "waiting", "a phone's answer is ignored");
+      assert.ok(!c.since(from).some((e) => e.type === "phone-pair-done"));
+      ws!.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  /** A new /phone card, as the page on the computer gets it. */
+  const newLink = async (c: Client): Promise<{ code: string; link: string }> => {
+    const from = c.mark;
+    c.say("/phone");
+    const card = await c.next("phone", 5000, from);
+    return { code: /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1], link: card.links[0] };
+  };
+  const turnOnAgain = async (c: Client): Promise<string> => (await newLink(c)).link;
+
+  test("/phone devices lists the phone, /phone revoke closes it and ends its cookie, and only a hash is on disk", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie);
+      const credential = cookie!.slice("anaico=".length);
+      assert.ok(!(server.data("phone-devices.json") ?? "").includes(credential), "the credential is not on disk");
+      const ws = await open(server.port, cookie!);
+      assert.ok(ws);
+      const closed = new Promise<void>((resolve) => ws!.once("close", () => resolve()));
+      let from = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, from)).text, /1\. .*last used now, good for 90 more days/);
+      from = c.mark;
+      c.say("/phone revoke 1");
+      assert.match((await c.next("notice", 5000, from)).text, /Removed/);
+      await closed;
+      const reach = await fetch(`http://${lanIp}:${server.port}/`, { headers: { cookie: cookie! }, redirect: "manual" });
+      assert.equal(reach.status, 401, "the cookie no longer works");
+      assert.equal(await open(server.port, cookie!), null);
+      from = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, from)).text, /No phone has been allowed yet/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a phone that asked while no page was open on the computer is shown on the card when one opens", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const code = /[?&]e=([A-Za-z0-9_-]+)/.exec(card.links[0])![1];
+      const base = `http://${lanIp}:${server.port}`;
+      const started = await fetch(`${base}/pair/start`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ code }) });
+      assert.equal(started.status, 200);
+      const later = await server.client();
+      const ask = await later.next("phone-pair", 8000);
+      assert.equal(ask.code, ((await started.json()) as { code: string }).code);
+      void c;
+    } finally {
+      await server.stop();
+    }
+  });
+
+  /** A paired phone's socket with what it heard, and a way to wait for it. */
+  const phoneSocket = async (port: number, cookie: string) => {
+    const ws = await open(port, cookie);
+    assert.ok(ws, "the phone opens a socket");
+    const heard: any[] = [];
+    ws!.on("message", (raw) => heard.push(JSON.parse(String(raw))));
+    const wait = async (test: (e: any) => boolean, from = 0, ms = 5000) => {
+      const begun = Date.now();
+      for (;;) {
+        const found = heard.slice(from).find(test);
+        if (found) return found;
+        if (Date.now() - begun > ms) throw new Error(`timed out; the phone heard: ${heard.slice(from).map((e) => e.type).join(", ") || "nothing"}`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    return { ws: ws!, heard, wait };
+  };
+
+  test("Always for this phone: Accept edits is remembered on the device and not asked again, Run everything is still asked", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      let ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      const question = await c.next("remote-ask", 5000, ask);
+      assert.equal(question.always, true);
+      c.send({ type: "remote-ask-answer", id: question.id, choice: "always" });
+      await phoneSide.wait((e) => e.type === "notice" && /will not be asked about it again/.test(e.text));
+      ask = c.mark;
+      c.say("/permissions ask");
+      await c.next((e) => e.type === "mode" && e.permissionMode !== "acceptEdits", 5000, ask);
+      ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      await c.next((e) => e.type === "mode" && e.permissionMode === "acceptEdits", 5000, ask);
+      assert.ok(!c.since(ask).some((e) => e.type === "remote-ask"), "no card the second time");
+      await phoneSide.wait((e) => e.type === "notice" && /Done: this phone may turn on Accept edits without asking/.test(e.text));
+      phoneSide.ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a phone asks for Accept edits: the card is for the computer, the yes does it for everyone, and a closed phone takes its question along", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      let ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      const question = await c.next("remote-ask", 5000, ask);
+      assert.equal(question.label, "turn on Accept edits");
+      assert.ok(!phoneSide.heard.some((e) => e.type === "remote-ask"), "the question is not shown on the phone");
+      assert.ok(!c.since(ask).some((e) => e.type === "mode" && e.permissionMode === "acceptEdits"), "nothing changed yet");
+      c.send({ type: "remote-ask-answer", id: question.id, choice: "allow" });
+      assert.equal((await c.next((e) => e.type === "mode" && e.permissionMode === "acceptEdits", 5000, ask)).permissionMode, "acceptEdits", "the computer's page sees the mode");
+      await phoneSide.wait((e) => e.type === "notice" && /Allowed on the computer: turn on Accept edits/.test(e.text));
+      // a question the phone leaves behind is taken back
+      c.say("/permissions ask");
+      ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "user", text: "/permissions accept" }));
+      const second = await c.next("remote-ask", 5000, ask);
+      phoneSide.ws.close();
+      await c.next((e) => e.type === "remote-ask-done" && e.id === second.id, 5000, ask);
+      // a page that opens later gets a question that is still waiting
+      const phoneAgain = await phoneSocket(server.port, cookie!);
+      phoneAgain.ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      await new Promise((r) => setTimeout(r, 300));
+      const later = await server.client();
+      assert.match((await later.next("remote-ask", 8000)).label, /turn on Auto/);
+      phoneAgain.ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("with no page open on the computer a phone cannot ask, and is told to open it", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      c.close();
+      await new Promise((r) => setTimeout(r, 400));
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      assert.match((await phoneSide.wait((e) => e.type === "notice" && /Not possible now/.test(e.text))).text, /open the companion on the computer/);
+      phoneSide.ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("with --lan the old shared link still works for this release, marked as old", async () => {
+    if (!lanIp) return;
+    const server = await startServer({ args: ["--lan"] });
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("/phone");
+      const card = await c.next("phone", 8000, from);
+      assert.match(card.links[0], /\/pair\?e=/);
+      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.legacy?.[0] ?? "")?.[1];
+      assert.ok(token, "the old link is on the card");
+      assert.equal((await fetch(`http://${lanIp}:${server.port}/?t=${token}`, { redirect: "manual" })).status, 302);
+      const ws = await open(server.port, `anaico=${token}`);
+      assert.ok(ws, "a phone with the old link still gets in");
+      const at = c.mark;
+      c.say("/phone devices");
+      assert.match((await c.next("notice", 5000, at)).text, /1 connected with the old shared link/);
+      ws!.close();
+    } finally {
+      await server.stop();
+    }
   });
 });
 
@@ -2229,7 +2499,7 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
     }
   });
 
-  test("a phone can choose Run everything; Auto stays on the computer", async () => {
+  test("a phone asks for Auto and Run everything, and nothing happens until the computer says yes", async () => {
     const server = await startServer({
       settings: { provider: "cursor" },
       homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "allowlist" }) },
@@ -2247,9 +2517,9 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
       from = c.mark;
       c.send({ type: "lan-answer", yes: true });
       const card = await c.next("phone", 8000, from);
-      const token = /[?&]t=([A-Za-z0-9_-]{32})/.exec(card.links[0])?.[1];
-      assert.ok(token);
-      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: `anaico=${token}` } });
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      assert.ok(cookie);
+      const ws = new WebSocket(`ws://${lanIp}:${server.port}/ws`, { headers: { Origin: `http://${lanIp}:${server.port}`, Cookie: cookie } });
       const heard: any[] = [];
       ws.on("message", (raw) => heard.push(JSON.parse(String(raw))));
       await new Promise<void>((resolve, reject) => {
@@ -2266,12 +2536,21 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
         }
       };
       let at = heard.length;
+      let ask = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
-      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /only possible on the computer itself/);
+      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /Asked on the computer: turn on Auto/);
+      const autoCard = await c.next("remote-ask", 5000, ask);
+      c.send({ type: "remote-ask-answer", id: autoCard.id, choice: "allow" });
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Cursor here has Ask, Plan and Run everything/.test(e.text))).text, /Auto and Accept edits are Claude Code modes/, "after the yes it is the same answer the computer would have got");
       at = heard.length;
+      ask = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "everything" }));
+      assert.equal((await waitHeard(at, (e) => e.type === "mode")).permissionMode, "manual", "Run everything does not happen until the computer says yes");
+      const everyCard = await c.next("remote-ask", 5000, ask);
+      assert.match(everyCard.label, /turn on Run everything/);
+      c.send({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" });
       assert.equal((await waitHeard(at, (e) => e.type === "mode" && e.permissionMode === "everything")).permissionMode, "everything");
-      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Run everything/.test(e.text))).text, /without a card/);
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /without a card/.test(e.text))).text, /without a card/);
       ws.close();
     } finally {
       await server.stop();
@@ -2317,6 +2596,114 @@ describe("the activities of each pack, for the gallery's filter", { skip }, () =
       assert.equal(msg.activities["risa-coat"], undefined, "a pack with no animation has none");
     } finally {
       await mine.stop();
+    }
+  });
+});
+
+describe("a small model that answers a clear request in words and writes no tag", { skip }, () => {
+  let fake: ReturnType<typeof createServer>;
+  const sent: string[] = [];
+  /** What the fake model says to the last message: words only, unless the message asks for a tagged or a refusing answer. */
+  const answer = (text: string): string => (/REFUSE/.test(text) ? "Sorry, I can't do that right now." : /TAGGED/.test(text) ? "[activity swimming] Yes, let's swim!" : "Yes! That sounds so fun!");
+  before(async () => {
+    fake = createServer(async (req: IncomingMessage, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      if (req.url === "/api/tags") return void res.end(JSON.stringify({ models: [{ name: "qwen3-small:3b" }] }));
+      if (req.url === "/api/show") return void res.end(JSON.stringify({ capabilities: ["completion"] }));
+      const last = body.messages.at(-1);
+      sent.push(String(last.content));
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.write(JSON.stringify({ message: { role: "assistant", content: answer(String(last.content)) }, done: false }) + "\n");
+      res.end(JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n");
+    });
+    await new Promise<void>((r) => fake.listen(0, "127.0.0.1", r));
+  });
+  after(() => void fake?.close());
+  /** A server whose data folder has a pack with a swimming loop (a one-pixel picture is enough for the server). */
+  const start = async () => {
+    const server = await startServer({ settings: { provider: "ollama" }, env: { OLLAMA_HOST: `http://127.0.0.1:${(fake.address() as AddressInfo).port}` } });
+    const frames = join(server.dir, "data", "frames");
+    mkdirSync(frames, { recursive: true });
+    const tiny = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    mkdirSync(join(frames, "ann-swim"), { recursive: true });
+    writeFileSync(join(frames, "ann-swim", "neutral.png"), tiny);
+    writeFileSync(join(frames, "ann-swim", "look.txt"), "You wear a swimsuit.\n");
+    writeFileSync(join(frames, "ann-swim", "activity-swimming-1.png"), tiny);
+    return server;
+  };
+
+  test("the app makes the look change and starts the activity itself, once, and tells her", async () => {
+    sent.length = 0;
+    const server = await start();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      // a look request with no [avatar] tag in her answer
+      let from = c.mark;
+      c.say("make your hair mint green");
+      await c.done(from);
+      const look = await c.next((e) => e.type === "avatar" && e.applied.some((a: string) => /^hair_color=/.test(a)), 8000, from);
+      assert.ok(look.applied.length > 0);
+      // an activity request: the pack has it
+      c.say("/frames ann-swim");
+      await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim", 8000, from);
+      from = c.mark;
+      c.say("let's go swimming");
+      await c.done(from);
+      await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, from);
+      assert.ok(c.since(from).some((e) => e.type === "notice" && /started swimming for you/.test(e.text)), "the page says the app did it");
+      from = c.mark;
+      c.say("and now?");
+      await c.done(from);
+      assert.match(sent.at(-1)!, /so the app started it/, "she is told on her next message");
+      // ending it
+      from = c.mark;
+      c.say("stop");
+      await c.done(from);
+      assert.equal((await c.next((e) => e.type === "activity", 8000, from)).name, null);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("nothing is done when her answer carries the tag, refuses, or is not a request", async () => {
+    sent.length = 0;
+    const server = await start();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      c.say("/frames ann-swim");
+      await c.next((e) => e.type === "pack" && e.pack?.name === "ann-swim");
+      let from = c.mark;
+      c.say("let's go swimming TAGGED");
+      await c.done(from);
+      await c.next((e) => e.type === "activity" && e.name === "swimming", 8000, from);
+      assert.ok(!c.since(from).some((e) => e.type === "notice" && /started swimming/.test(e.text)), "her own tag counts, the app adds nothing");
+      from = c.mark;
+      c.say("stop REFUSE");
+      await c.done(from);
+      from = c.mark;
+      c.say("do you like swimming?");
+      await c.done(from);
+      assert.ok(!c.since(from).some((e) => e.type === "activity" || e.type === "avatar"), "a question changes nothing");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a brain that writes its tags (Claude Code) is not second-guessed", async () => {
+    const server = await startServer();
+    try {
+      const c = await server.client();
+      await c.next("history");
+      const from = c.mark;
+      c.say("make your hair mint green");
+      await c.done(from);
+      assert.ok(!c.since(from).some((e) => e.type === "avatar"), "no look change without her tag");
+    } finally {
+      await server.stop();
     }
   });
 });

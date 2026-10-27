@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Connect to the companion</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #1f1840; color: #eee; font: 17px/1.5 system-ui, sans-serif; }
+    main { max-width: 22rem; padding: 24px; text-align: center; }
+    h1 { font-size: 1.2rem; font-weight: 600; }
+    #digits { font-size: 3rem; letter-spacing: 0.25em; margin: 12px 0; font-variant-numeric: tabular-nums; }
+    p { color: #cbc6e8; }
+    #problem { color: #ffb4a2; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Connecting this phone</h1>
+    <div id="digits" aria-live="polite"></div>
+    <p id="text">One moment…</p>
+    <p id="problem" role="alert"></p>
+  </main>
+  <script src="pair.js"></script>
+</body>
+</html>

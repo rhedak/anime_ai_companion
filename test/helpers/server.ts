@@ -199,6 +199,8 @@ export interface ServerOptions {
   homeFiles?: Record<string, string | Buffer>;
   /** Extra stand-in programs on the server's PATH, by name. The script is Node; a #! line is optional. */
   standIns?: Record<string, string>;
+  /** Extra arguments for the server (`--lan`, say). */
+  args?: string[];
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
@@ -258,7 +260,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   await new Promise<void>((r) => probe.close(() => r()));
 
   const output: string[] = [];
-  const child: ChildProcess = spawn(process.execPath, ["src/server.ts"], {
+  const child: ChildProcess = spawn(process.execPath, ["src/server.ts", ...(options.args ?? [])], {
     cwd: app,
     env: {
       // Only the stand-in `claude` is reachable: a real one cannot start from a test.

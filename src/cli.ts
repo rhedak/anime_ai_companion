@@ -36,8 +36,9 @@ if (args.includes("--help") || args.includes("-h")) {
   (no flags)   start the companion in work mode for the current folder and open the browser
   --chat       start in chat mode (no tools); the current folder is still pre-filled for Work
   --no-open    do not open the browser
-  --lan        also let devices on your network in (your phone): it prints a link with a secret token, and
-               /phone in the chat shows it again. Off again at every start. Only on a network you trust.
+  --lan        also let devices on your network in (your phone): /phone in the chat shows a link that works once, and you
+               allow the phone on the computer. The old shared link still works with this flag for one more release.
+               Off again at every start. Only on a network you trust.
 
   --daemon     run the server in the background; it keeps running after you close the terminal.
                Log: data/server.log

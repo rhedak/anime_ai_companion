@@ -157,7 +157,7 @@ function askLan() {
   box.setAttribute("aria-label", "Turn on phone access?");
   const text = document.createElement("p");
   text.textContent =
-    "Turn on phone access? Devices on your network (your Wi-Fi) can then open her with a secret link, and anyone who has the link can chat with her and her coding agent, so share it with nobody. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
+    "Turn on phone access? Devices on your network (your Wi-Fi) can then ask to connect: a phone opens a link that works once, and you allow it here before it gets in. A phone that was allowed can chat with her and her coding agent for 90 days, so allow only your own. Your system may ask to allow incoming connections once. It stays on until you restart the app, and you can turn it off with /phone off.";
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Turn on" });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });
   const answer = (value) => {
@@ -175,8 +175,68 @@ function askLan() {
   log.scrollTop = log.scrollHeight;
 }
 
-function addPhoneCard(links, rows) {
-  const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. They work like a password, so keep them to yourself:");
+/** "A phone wants to connect": only the page on the computer gets this. The phone shows the same four digits; Allow lets that phone in for 90 days. */
+function askPair(msg) {
+  document.querySelector(`.phone-pair[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys phone-pair";
+  box.dataset.id = String(msg.id);
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "A phone wants to connect");
+  const text = document.createElement("p");
+  text.textContent = `A phone (${msg.name}) wants to connect. Check that it shows ${msg.code}. Allow it only if it is yours: it can then chat with her and her coding agent until you remove it (/phone revoke).`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Allow" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Deny" });
+  const answer = (choice) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "phone-pair-answer", id: msg.id, choice }));
+    box.remove();
+  };
+  yes.onclick = () => answer("allow");
+  no.onclick = () => answer("deny");
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
+/** "A phone asks for something": Accept edits, Auto, Run everything. Only the page on the computer gets it; Allow does it once, as if it had been typed here. */
+function askRemote(msg) {
+  document.querySelector(`.remote-ask[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys remote-ask";
+  box.dataset.id = String(msg.id);
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "A phone asks for something");
+  const text = document.createElement("p");
+  text.textContent = `${msg.device} asks to ${msg.label}. Allow it only if you asked for that on the phone.${msg.always ? " Allow does it once; Always lets this phone do it without asking again (/phone revoke takes that back)." : " It does it once, now; it asks again next time."}`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Allow" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Deny" });
+  const answer = (choice) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "remote-ask-answer", id: msg.id, choice }));
+    box.remove();
+  };
+  yes.onclick = () => answer("allow");
+  no.onclick = () => answer("deny");
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes);
+  if (msg.always) {
+    const always = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Always for this phone" });
+    always.onclick = () => answer("always");
+    buttons.append(always);
+  }
+  buttons.append(no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addPhoneCard(links, rows, legacy = []) {
+  const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. The link works once and for two minutes; the phone then shows four digits and you allow it here:");
   const ns = "http://www.w3.org/2000/svg";
   const n = rows.length;
   const quiet = 4; // the blank border a scanner needs
@@ -198,6 +258,12 @@ function addPhoneCard(links, rows) {
   list.textContent = links.join("\n");
   list.style.whiteSpace = "pre-wrap";
   div.append(svg, list);
+  if (legacy.length) {
+    const old = document.createElement("div");
+    old.style.cssText = "margin-top:10px;word-break:break-all;font-family:monospace;font-size:.85em;white-space:pre-wrap";
+    old.textContent = `The old link (it stays for one more release, works like a password with fewer rights, and is not asked about; keep it to yourself):\n${legacy.join("\n")}`;
+    div.append(old);
+  }
   log.scrollTop = log.scrollHeight;
 }
 
@@ -844,6 +910,12 @@ function renderMode() {
   $("use-skills").checked = Boolean(state.claudeSkills);
   $("chromerow").hidden = state.mode !== "work" || state.provider !== "claude";
   $("use-chrome").checked = Boolean(state.claudeChrome);
+  // A phone can see these and turn them off, but only the computer turns them on (the server refuses it from a phone).
+  for (const id of ["use-setup", "use-skills", "use-chrome"]) {
+    const box = $(id);
+    box.disabled = onPhone && !box.checked;
+    box.parentElement.classList.toggle("computer-only", box.disabled);
+  }
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
   permissionMenu.hidden = !work;
@@ -1419,7 +1491,19 @@ function handle(msg) {
       askLan();
       break;
     case "phone":
-      if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String));
+      if (Array.isArray(msg.links) && Array.isArray(msg.qr)) addPhoneCard(msg.links.map(String), msg.qr.map(String), Array.isArray(msg.legacy) ? msg.legacy.map(String) : []);
+      break;
+    case "phone-pair":
+      askPair(msg);
+      break;
+    case "remote-ask":
+      askRemote(msg);
+      break;
+    case "remote-ask-done":
+      document.querySelector(`.remote-ask[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
+      break;
+    case "phone-pair-done":
+      document.querySelector(`.phone-pair[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
       break;
     case "status":
       statusText = msg.text;
@@ -1507,6 +1591,7 @@ function handle(msg) {
       break;
     case "hello":
       onPhone = msg.remote === true;
+      if (state) renderMode();
       $("status").textContent = "connected";
       $("status").title = msg.provider;
       $("dot").classList.add("on");

@@ -37,7 +37,7 @@ export async function saveToken(path: string, token: string): Promise<string> {
 }
 
 export function tokenMatches(candidate: unknown, token: string): boolean {
-  if (typeof candidate !== "string") return false;
+  if (typeof candidate !== "string" || !token) return false; // no token set (the old shared link is off) matches nothing, not even an empty one
   const a = Buffer.from(candidate);
   const b = Buffer.from(token);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -51,10 +51,13 @@ export function cookieValue(header: string | undefined, name: string): string | 
   return undefined;
 }
 
-/** The `Set-Cookie` that keeps a device signed in. No `Secure`: the page is plain http on the local network. */
-export function sessionCookie(token: string): string {
-  return `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`;
+/** The `Set-Cookie` that keeps a device signed in (the days a phone's credential lasts, renewed on use). No `Secure`: the page is plain http on the local network. */
+export function sessionCookie(value: string, days = 365): string {
+  return `${cookieName}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${days * 86400}`;
 }
+
+/** Whether a cookie value is the credential of a phone that was allowed on the computer (`PhoneDevices.check`). */
+export type DeviceCheck = (cookie: string | undefined) => boolean;
 
 /**
  * Whether a `Host` header names something on the local network: an IP address, `localhost`, or a `.local`
@@ -78,6 +81,7 @@ export function gateRequest(
   req: { url?: string; headers: { host?: string; cookie?: string } },
   token: string,
   ownName?: string,
+  isDevice?: DeviceCheck,
 ): Gate {
   if (!hostHeaderAllowed(req.headers.host, ownName)) return { action: "refuse", status: 421, text: "Unknown host." };
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -87,7 +91,8 @@ export function gateRequest(
     url.searchParams.delete("t");
     return { action: "sign-in", location: url.pathname + url.search };
   }
-  if (tokenMatches(cookieValue(req.headers.cookie, cookieName), token)) return { action: "allow" };
+  const cookie = cookieValue(req.headers.cookie, cookieName);
+  if (isDevice?.(cookie) || tokenMatches(cookie, token)) return { action: "allow" };
   return { action: "refuse", status: 401, text: "Open the phone link from the companion on the computer (type /phone in its chat)." };
 }
 
@@ -96,13 +101,11 @@ export function socketAllowed(
   req: { headers: { host?: string; origin?: string; cookie?: string } },
   token: string,
   ownName?: string,
+  isDevice?: DeviceCheck,
 ): boolean {
   const { host, origin, cookie } = req.headers;
-  return (
-    hostHeaderAllowed(host, ownName) &&
-    origin === `http://${host}` &&
-    tokenMatches(cookieValue(cookie, cookieName), token)
-  );
+  const value = cookieValue(cookie, cookieName);
+  return hostHeaderAllowed(host, ownName) && origin === `http://${host}` && (Boolean(isDevice?.(value)) || tokenMatches(value, token));
 }
 
 /**
@@ -122,8 +125,14 @@ export function lanHosts(interfaces = networkInterfaces(), ownName = hostname())
   return [...physical, ...other, ownName.endsWith(".local") ? ownName : `${ownName}.local`];
 }
 
+/** The old shared link (`--lan` only, for one more release). */
 export function phoneLinks(port: number, token: string, hosts = lanHosts()): string[] {
   return hosts.map((h) => `http://${h}:${port}/?t=${token}`);
+}
+
+/** The pairing link: its code works once and expires in two minutes, and the computer has to allow the phone it was opened on. */
+export function pairLinks(port: number, code: string, hosts = lanHosts()): string[] {
+  return hosts.map((h) => `http://${h}:${port}/pair?e=${code}`);
 }
 
 /** A QR code as rows of "1" (dark) and "0", for the page to draw; scanning it opens the link. */

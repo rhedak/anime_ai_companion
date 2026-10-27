@@ -32,7 +32,10 @@ import { animatedActivities, drawnActivityNote, gestureNote, packActivities, rea
 import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-install.ts";
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
-import { isLoopbackAddress, loadToken, newToken, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
+import { cookieName, cookieValue, isLoopbackAddress, loadToken, newToken, pairLinks, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
+import { REMEMBERABLE, describeDevice } from "./phone-devices.ts";
+import { createPhoneService } from "./phone-service.ts";
+import { createRemoteAsks } from "./remote-ask.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureView } from "../public/frames.js";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -526,6 +529,22 @@ function ollamaNotReady(): string {
 /** Approvals waiting for an answer, so a reloaded tab can show them again. */
 const pendingPermissions = new Map<string, PermissionRequest>();
 
+/**
+ * Phones that were allowed on this computer (src/phone-service.ts). The old shared token (`lanToken`) exists only when the server was started with `--lan`, for one more release;
+ * a phone that is allowed through `/phone` has its own credential. The cards about a phone go to the pages on this computer only, never to a phone.
+ */
+/** Sends to the pages on this computer, never to a phone. */
+const toComputer = (message: unknown): void => {
+  const data = JSON.stringify(message);
+  for (const c of clients) if (c.readyState === c.OPEN && !remoteSockets.has(c)) c.send(data);
+};
+const phone = createPhoneService({ devicesPath: join(dataDir, "phone-devices.json"), notify: toComputer });
+await phone.load();
+/** What a phone asks for and only the computer may allow (src/remote-ask.ts): the question is a card on a page here. */
+const remoteAsks = createRemoteAsks({ computerOnline: () => [...clients].some((c) => c.readyState === c.OPEN && !remoteSockets.has(c)), notify: toComputer });
+/** The id of the allowed phone behind a network socket (none for one that came in with the old link), so `/phone revoke` can close it. */
+const socketDevice = new WeakMap<WebSocket, string>();
+
 const server = createServer(
   createRequestHandler({
     host,
@@ -534,6 +553,7 @@ const server = createServer(
     customCssPath,
     lan: () => lan,
     lanToken: () => lanToken,
+    phone,
     transcript,
     packDirs,
     emotionNames: () => Object.keys(emotions),
@@ -553,10 +573,14 @@ const remoteSockets = new WeakSet<WebSocket>();
 server.on("upgrade", (req, socket, head) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const local = isLoopbackAddress(req.socket.remoteAddress);
-  const ok = local ? allowedOrigins.has(String(req.headers.origin)) : lan && socketAllowed(req, lanToken);
+  const ok = local ? allowedOrigins.has(String(req.headers.origin)) : lan && socketAllowed(req, lanToken, undefined, phone.isDevice);
   if (path === "/ws" && ok) {
     wss.handleUpgrade(req, socket, head, (ws) => {
-      if (!local) remoteSockets.add(ws);
+      if (!local) {
+        remoteSockets.add(ws);
+        const device = phone.deviceId(cookieValue(req.headers.cookie, cookieName));
+        if (device) socketDevice.set(ws, device);
+      }
       wss.emit("connection", ws, req);
     });
   } else {
@@ -859,20 +883,45 @@ interface CommandContext {
   remote: boolean;
 }
 
-/** What a phone may not do: anything that loosens approvals past Run everything, or that runs on this machine without a card. Naming a project folder by its path, and Run everything, are allowed. */
+/**
+ * What a phone may not do by itself. Some of it it may *ask* for: the computer then shows a card and does it only on a yes (`remoteAsks`): Accept edits, Auto and Run
+ * everything, and saving notes without asking. The rest stays on the computer, as it runs without a card or reaches into it: `!commands`, `/restart`, `/setup`, `/skills`
+ * and `/chrome` on (a later layer may let the Android app ask for those), the folder dialog, card import. Naming a project folder by its path is allowed.
+ */
 const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
-/** Auto and Accept edits stay on the computer. Run everything may be chosen from a phone. */
-const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === "auto";
+const askableMode = (mode: unknown): mode is "acceptEdits" | "auto" | "everything" => mode === "acceptEdits" || mode === "auto" || mode === "everything";
+const modeWords: Record<string, string> = { acceptEdits: "Accept edits", auto: "Auto", everything: "Run everything" };
 
-/** The slash commands that would turn on Auto or Accept edits, load the user's hooks, or drive Chrome on this computer. `/work <path>` and `/permissions everything` are allowed. */
-function remoteBlocked(name: string, args: string): boolean {
+/** `never`: refused on a phone. `ask`: the computer is asked (with the words for the card). Otherwise the command is allowed. */
+function remoteGate(name: string, args: string): { gate: "never" } | { gate: "ask"; label: string; mode?: string } | null {
   const a = args.trim().toLowerCase();
-  if (name === "restart") return true; // it stops and starts the server on this computer
-  if (name === "setup") return a === "on";
-  if (name === "chrome") return a === "on"; // it drives the browser on this computer
-  if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
-  if (name === "permissions") return Object.hasOwn(permissionNames, a) && remoteBlockedMode(permissionNames[a]);
-  return false;
+  if (name === "restart") return { gate: "never" }; // it stops and starts the server on this computer
+  if (name === "setup") return a === "on" ? { gate: "never" } : null;
+  if (name === "chrome") return a === "on" ? { gate: "never" } : null; // it drives the browser on this computer
+  if (name === "memory") return a === "auto" ? { gate: "ask", label: "save notes about you without asking" } : null; // saving notes without asking loosens a card
+  if (name === "permissions" && Object.hasOwn(permissionNames, a) && askableMode(permissionNames[a])) return { gate: "ask", label: `turn on ${modeWords[permissionNames[a]]}`, mode: permissionNames[a] };
+  return null;
+}
+
+/** The name of the phone behind a socket, for the card on the computer. */
+const phoneName = (ws: WebSocket): string => {
+  const id = socketDevice.get(ws);
+  return phone.list().find((d) => d.id === id)?.name ?? "A phone (old link)";
+};
+
+/** Asks the computer, and tells the phone what happened (or why it could not be asked). */
+function askComputer(ws: WebSocket, label: string, apply: () => void | Promise<void>, mode?: string): void {
+  const tell = (text: string) => ws.readyState === ws.OPEN && ws.send(JSON.stringify({ type: "notice", text }));
+  const id = socketDevice.get(ws);
+  const rememberable = Boolean(id && mode && (REMEMBERABLE as readonly string[]).includes(mode));
+  if (id && mode && phone.devices.allows(id, mode)) {
+    void Promise.resolve(apply()); // the person said "always" for this phone on the computer
+    tell(`Done: this phone may ${label} without asking (you allowed it on the computer; /phone revoke removes that).`);
+    return;
+  }
+  const asked = remoteAsks.ask(ws, phoneName(ws), label, apply, tell, rememberable && id && mode ? () => phone.devices.grant(id, mode) : undefined);
+  if (!asked.ok) tell(asked.reason);
+  else tell(`Asked on the computer: ${label}. It happens only if someone there says yes (it asks for two minutes).`);
 }
 
 /** Shows a picture pack (by folder name) or, with null, the drawn avatar again. Used by /frames and the Looks menu. */
@@ -1035,11 +1084,17 @@ setInterval(() => void backgroundPackCheck().catch(() => {}), 3600_000).unref();
  * Moves the listener between this machine only and the whole network without a restart, for `/phone` in the desktop app (which starts the server without `--lan`).
  * The page on this machine stays connected (its WebSocket is already upgraded), and phones are signed out when it goes off. Returns what went wrong, or null.
  */
+/** The /phone card: a fresh pairing link (it works once, for two minutes) with its QR code, and the old shared link too while it still exists. */
+function phoneCard(send: (message: unknown) => void): void {
+  const { code } = phone.newCode();
+  const links = pairLinks(port, code);
+  send({ type: "phone", links, qr: qrRows(links[0]), ...(lanToken ? { legacy: phoneLinks(port, lanToken) } : {}) });
+}
+
 async function setLan(on: boolean): Promise<string | null> {
   if (on === lan) return null;
   const before = bindHost;
   const after = on ? "0.0.0.0" : host;
-  if (on) lanToken = await loadToken(lanTokenPath);
   const listenOn = (where: string) =>
     new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -1401,13 +1456,30 @@ const slashCommands: Record<
     run: () => broadcast(demoMessage(Object.keys(emotions), GESTURE_NAMES, activePack)),
   },
   phone: {
-    help: "show the link for controlling her from a phone on this network (it asks first if phone access is off; `/phone new` makes a new link, `/phone off` turns it off)",
+    help: "let a phone connect: shows a link that works once (you allow the phone on this computer); `/phone devices` lists the phones that were allowed, `/phone revoke <number|all>` removes them, `/phone new` makes a new link, `/phone off` turns phone access off",
     run: async ({ args, say, reply, remote }) => {
       if (remote) return say(remoteRefusal);
-      if (args.trim() === "off") {
+      const [word, rest] = args.trim().split(/\s+/, 2);
+      if (word === "off") {
         if (!lan) return say("Phone access is already off.");
         const failed = await setLan(false);
-        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her.");
+        return say(failed ?? "Phone access is off: phones are signed out and only this computer can reach her. The phones that were allowed stay on the list (/phone devices) and can come in again when it is turned on.");
+      }
+      if (word === "devices") {
+        const list = phone.list();
+        const old = [...clients].filter((c) => remoteSockets.has(c) && !socketDevice.has(c) && c.readyState === c.OPEN).length;
+        const lines = list.map((d, i) => describeDevice(d, i + 1));
+        if (old) lines.push(`${old} connected with the old shared link (it ends with the next release)`);
+        return say(lines.length ? `${lines.join("\n")}\n/phone revoke <number|all> removes one.` : "No phone has been allowed yet. /phone shows a link for one.");
+      }
+      if (word === "revoke") {
+        const which = rest === "all" ? "all" : /^\d+$/.test(rest ?? "") ? Number(rest) : null;
+        if (which === null) return say("Say which: /phone revoke 1 (the number /phone devices shows) or /phone revoke all.");
+        const gone = await phone.devices.revoke(which);
+        if (!gone.length) return say("There is no such phone. /phone devices lists them.");
+        const ids = new Set(gone.map((d) => d.id));
+        for (const c of clients) if (remoteSockets.has(c) && ids.has(socketDevice.get(c) ?? "")) c.close();
+        return say(`Removed: ${gone.map((d) => d.name).join(", ")}. It has to be allowed again to come back.`);
       }
       if (!lan) {
         // The answer comes from the page on this computer (`lan-answer`), and only to this question.
@@ -1415,13 +1487,12 @@ const slashCommands: Record<
         reply({ type: "lan-offer" });
         return say("Phone access is off. The page asks whether to turn it on. It stays on until you restart, and is off again at every start.");
       }
-      if (args.trim() === "new") {
+      if (word === "new" && lanToken) {
         lanToken = await saveToken(lanTokenPath, newToken());
-        for (const c of clients) if (remoteSockets.has(c)) c.close(); // every signed-in phone has to use the new link
-        say("Made a new link. Phones that used the old one are signed out.");
+        for (const c of clients) if (remoteSockets.has(c) && !socketDevice.has(c)) c.close(); // every phone on the old shared link has to use the new one
+        say("Made a new old-style link. Phones that used the old one are signed out; phones that were allowed are not (/phone revoke).");
       }
-      const links = phoneLinks(port, lanToken);
-      reply({ type: "phone", links, qr: qrRows(links[0]) });
+      phoneCard(reply);
     },
   },
   play: {
@@ -1724,6 +1795,9 @@ const turns = createTurnService({
   activePack: () => activePack,
   wearOutfit: (name: string) => void wearOutfit(name).catch((err) => console.error("outfit change failed:", err)),
   activity: setActivity,
+  presets: () => avatar.presetNames,
+  knownActivities: () => Object.keys(activePack ? animatedActivities(activePack, activityIndex[activePack.character?.id ?? ""]) : (drawnActivities() ?? {})),
+  currentActivity: () => activity,
   chatMode: () => mode === "chat",
   sceneNote: () => (mode === "chat" && sceneId ? sceneNoteText : null),
   sceneEndedByHer: () => {
@@ -1801,6 +1875,7 @@ wss.on("connection", (ws) => {
     })
     .catch((err) => console.error("could not send the packs:", err));
   if (!remote) void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
+  if (!remote) for (const card of [...phone.waitingCards(), ...remoteAsks.waiting()]) ws.send(JSON.stringify(card)); // a phone asked while no page was open here
   ws.send(JSON.stringify(modeInfo()));
   if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
@@ -1830,7 +1905,10 @@ wss.on("connection", (ws) => {
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
-  ws.on("close", () => clients.delete(ws));
+  ws.on("close", () => {
+    clients.delete(ws);
+    remoteAsks.drop(ws); // a phone that is gone takes its questions with it
+  });
   let commandChain: Promise<void> = Promise.resolve();
   ws.on("message", async (raw) => {
     let msg: any;
@@ -1854,8 +1932,10 @@ wss.on("connection", (ws) => {
         commandChain = commandChain
           .then(async () => {
             const known = slashCommands[command.name];
+            const gate = remote ? remoteGate(command.name, command.args) : null;
             if (!known) say(`Unknown command /${command.name}. Try /help.`);
-            else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
+            else if (gate?.gate === "never") say(remoteRefusal);
+            else if (gate?.gate === "ask") askComputer(ws, gate.label, () => known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote: false }), gate.mode);
             else if (known.claudeOnly && settings.provider !== "claude") {
               say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
             } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
@@ -1892,8 +1972,10 @@ wss.on("connection", (ws) => {
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
-      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && remoteBlockedMode(msg.mode)) && request.tool !== "ExitPlanMode") {
-        changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && request.tool !== "ExitPlanMode") {
+        const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+        if (remote && askableMode(msg.mode)) askComputer(ws, `turn on ${modeWords[msg.mode]}`, () => changePermissionMode(msg.mode, say), msg.mode);
+        else changePermissionMode(msg.mode, say);
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
         // The approved plan ends plan mode inside Claude Code; keep the selector truthful.
@@ -1929,8 +2011,12 @@ wss.on("connection", (ws) => {
       }
       changeClaudeChrome(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
-      if (remote && remoteBlockedMode(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
-      changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (remote && askableMode(msg.value)) {
+        askComputer(ws, `turn on ${modeWords[msg.value]}`, () => changePermissionMode(msg.value, say), msg.value);
+        return void ws.send(JSON.stringify(modeInfo())); // the selector on the phone stays where it is until the computer says yes
+      }
+      changePermissionMode(msg.value, say);
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
@@ -2035,8 +2121,18 @@ wss.on("connection", (ws) => {
       if (msg.yes !== true) return say("Phone access stays off.");
       const failed = await setLan(true);
       if (failed) return say(failed);
-      const links = phoneLinks(port, lanToken);
-      ws.send(JSON.stringify({ type: "phone", links, qr: qrRows(links[0]) }));
+      phoneCard((m) => ws.send(JSON.stringify(m)));
+    } else if (msg.type === "remote-ask-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "always" || msg.choice === "deny")) {
+      // A phone asked for something and this computer answers: never a phone, whatever it sends.
+      if (remote) return;
+      const answered = await remoteAsks.answer(msg.id, msg.choice === "always" ? "always" : msg.choice === "allow");
+      if (!answered) ws.send(JSON.stringify({ type: "notice", text: "That question has run out: the phone has to ask again." }));
+    } else if (msg.type === "phone-pair-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
+      // A phone asked to connect and this computer answers: never a phone, whatever it sends.
+      if (remote) return;
+      const answered = phone.answer(msg.id, msg.choice === "allow");
+      if (!answered) return ws.send(JSON.stringify({ type: "notice", text: "That phone's request has run out. /phone shows a new link." }));
+      ws.send(JSON.stringify({ type: "notice", text: answered.state === "allowed" ? `Allowed ${answered.name}. /phone devices lists the phones that may come in; /phone revoke removes one.` : `Denied ${answered.name}.` }));
     } else if (msg.type === "look-refresh-answer") {
       const preset = avatar.refreshOffer?.preset;
       if (preset && (await avatar.answerRefresh(msg.yes === true))) {
@@ -2148,7 +2244,10 @@ if (provider instanceof CursorProvider || provider instanceof OpenCodeProvider) 
 
 server.listen(port, bindHost, () => {
   console.log(`Companion ready: http://${host}:${port}  (${provider.name})`);
-  if (lan) console.log(`Phone access is on. Open one of these on the phone (it is a password, keep it to yourself):\n  ${phoneLinks(port, lanToken).join("\n  ")}`);
+  if (lan) {
+    console.log("Phone access is on. A phone connects with the link that /phone shows in the companion's chat: it works once, and you allow the phone there.");
+    if (lanToken) console.log(`The old shared link still works for this release (it is a password, keep it to yourself, and it ends with the next release):\n  ${phoneLinks(port, lanToken).join("\n  ")}`);
+  }
   if (process.argv.includes("--open")) openBrowser(`http://${host}:${port}`);
   void shareNudge(
     [

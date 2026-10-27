@@ -4,6 +4,7 @@ import { findActivityTags, findAvatarTags, findImageTags, findOutfitTags, normal
 import { coldCache, formatIdle, formatTokens, type ConversationState } from "./cache-guard.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureNote, type FramePack } from "./frame-pack.ts";
+import { TAG_SKIPPING_BRAINS, lookRequest, refuses, wantedActivity, wantsActivityEnd } from "./intent.ts";
 import type { ImageInput } from "./images.ts";
 import type { createCardService } from "./card-service.ts";
 import type { createMemoryService } from "./memory-service.ts";
@@ -31,6 +32,10 @@ export interface TurnDeps {
   wearOutfit(name: string): void;
   /** She wrote `[activity name]` (or `[activity end]`, null): `outfitChosen` is true when the same reply already named an outfit. Chat mode only; the caller decides. */
   activity(name: string | null, outfitChosen: boolean): void;
+  /** The names of the starting characters (for "become Linnea"), and the activities she has now and the one that is on: what a clear request in words can name (src/intent.ts). */
+  presets(): string[];
+  knownActivities(): string[];
+  currentActivity(): string | null;
   /** Whether activities are allowed now: chat mode only, as with her notes (a file she reads in work mode must not be able to start one). */
   chatMode(): boolean;
   /** The short scene that is on, told again with each message, or null. */
@@ -116,19 +121,59 @@ export function createTurnService(deps: TurnDeps) {
           deps.notes.pushOnce(`Your look is a fixed set of pictures now: [avatar ...] tags change nothing, so do not use them. ${gestureNote(deps.activePack())}`);
           continue;
         }
-        deps.avatar
-          .applyPatch(tags[seen])
-          .then(({ applied, rejected }) => {
-            if (applied.length) {
-              deps.transcript.look(applied);
-              deps.broadcast({ type: "avatar", version: deps.avatar.version, applied });
-              deps.broadcast(deps.looksInfo());
-            }
-            if (rejected.length) deps.notes.push("Your avatar tag had problems: " + rejected.map((r) => `${r.key}: ${r.reason}`).join("; ") + ".");
-          })
-          .catch((err) => console.error("avatar patch failed:", err));
+        void applyAvatarTag(tags[seen]);
       }
     };
+  }
+
+  /** One `[avatar …]` change: applied, said to the page and written in the log; what was refused goes to her on her next message. Resolves when it has landed. */
+  function applyAvatarTag(tag: Record<string, string>): Promise<string[]> {
+    return deps.avatar
+      .applyPatch(tag)
+      .then(({ applied, rejected }) => {
+        if (applied.length) {
+          deps.transcript.look(applied);
+          deps.broadcast({ type: "avatar", version: deps.avatar.version, applied });
+          deps.broadcast(deps.looksInfo());
+        }
+        if (rejected.length) deps.notes.push("Your avatar tag had problems: " + rejected.map((r) => `${r.key}: ${r.reason}`).join("; ") + ".");
+        return applied;
+      })
+      .catch((err) => {
+        console.error("avatar patch failed:", err);
+        return [];
+      });
+  }
+
+  /**
+   * A clear request in the user's words that her reply did not carry out because she wrote no tag for it (a small model answering in words alone): the app does it, once, and
+   * tells her on her next message so she knows. Chat mode, the brains in TAG_SKIPPING_BRAINS, never when her reply says no or already wrote the tag (src/intent.ts).
+   */
+  async function carryOutRequest(userText: string, reply: string): Promise<void> {
+    if (!deps.chatMode() || !TAG_SKIPPING_BRAINS.includes(deps.brain()) || refuses(reply)) return;
+    const wroteActivity = findActivityTags(reply).length > 0;
+    if (!wroteActivity) {
+      const active = deps.currentActivity();
+      if (wantsActivityEnd(userText, active)) {
+        deps.activity(null, false);
+        deps.broadcast({ type: "notice", text: `The app ended ${active} for you: her reply had no tag for it.` });
+        deps.notes.push(`The user asked to stop "${active}" and your reply had no [activity end] tag, so the app ended it. Write [activity end] yourself when the user is done.`);
+        return;
+      }
+      const wanted = wantedActivity(userText, deps.knownActivities());
+      if (wanted && wanted !== active) {
+        deps.activity(wanted, false);
+        deps.broadcast({ type: "notice", text: `The app started ${wanted} for you: her reply had no tag for it.` });
+        deps.notes.push(`The user asked for "${wanted}" and your reply had no [activity ${wanted}] tag, so the app started it. Write the tag yourself when the user asks for an activity.`);
+        return;
+      }
+    }
+    if (deps.activePack() || findAvatarTags(reply).length > 0) return;
+    const tags = lookRequest(userText, deps.presets());
+    if (!tags.length) return;
+    const applied: string[] = [];
+    for (const tag of tags) applied.push(...(await applyAvatarTag(tag)));
+    if (applied.length) deps.notes.push(`The user asked for a change to your look (${applied.join(", ")}) and your reply had no [avatar …] tag, so the app made it. Write the tag yourself when the user asks for a change.`);
   }
 
   /** The pictures named by `[image path]` tags in a finished reply, checked and registered. */
@@ -207,6 +252,7 @@ export function createTurnService(deps: TurnDeps) {
             deps.transcript.images(images);
             deps.broadcast({ type: "images", images: images.map(({ id, name }) => ({ id, name })) });
           }
+          if (event.type === "done" && !opts.raw) await carryOutRequest(userText, reply).catch((err) => console.error("request fallback failed:", err));
           if (event.type === "done") {
             // After a /compact, the size the CLI reports still describes the conversation before it.
             const compacted = opts.raw && /^\/compact\b/.test(userText);
