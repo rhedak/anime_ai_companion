@@ -140,9 +140,12 @@ The server can run an agent that edits files and runs commands. These are not op
   `/phone` shows carries a code that works once and expires in two minutes, the phone shows four digits, and a card on a page on **this computer**
   (`phone-pair`, answered by `phone-pair-answer`, ignored from a phone) says Allow; the phone then gets a credential of its own
   (`data/phone-devices.json` keeps only its SHA-256, owner-only), good for 90 days from its last use, removed by `/phone revoke`. Only
-  `/pair`, `/pair.js`, `/pair/start` and `/pair/status` are open before that, and they hand out nothing without the code and the yes. Such a socket (`remoteSockets`) may not run `!command`, turn on Auto or Accept edits,
-  turn on `/setup` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may choose
-  Run everything, and it may set the work folder by a typed path (`/work <path>` or the folder field);
+  `/pair`, `/pair.js`, `/pair/start` and `/pair/status` are open before that, and they hand out nothing without the code and the yes. Such a socket (`remoteSockets`) may not run `!command`, `/restart`,
+  turn on `/setup`, `/skills` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may **ask** for Accept edits, Auto,
+  Run everything and `/memory auto` (`remoteGate` in `src/server.ts`, `src/remote-ask.ts`): a card on a page on **this computer** (`remote-ask`, answered by
+  `remote-ask-answer`, ignored from a phone) says Allow or Deny, an Allow does the one thing as if it had been typed there, and nothing is remembered; a
+  question ends on Deny, after two minutes, or with the phone's socket, at most three wait, and with no page open on the computer the phone is told so. It
+  may set the work folder by a typed path (`/work <path>` or the folder field);
   `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the
   forbidden things must check `remote` too, and loopback must keep working unchanged (a local proxy would
   otherwise be a way in).

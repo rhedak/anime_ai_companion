@@ -1,6 +1,6 @@
 # Plan: a safer phone, and more of what Remote Control can do
 
-Status: layer 1a (pairing, per-device credentials, `/phone devices`, `/phone revoke`, 90 days renewed on use, the old token only with `--lan`) is built on `dev` (`src/phone-*.ts`, `public/pair.*`, `test/phone-devices.test.ts`, the pairing `describe` of `test/server.test.ts`); 1b, layer 2 and layer 3 are not. Written 2026-10-27. It changes rules written in `AGENTS.md` ("Safety": the phone's limits, `remoteBlockedMode`, `remoteBlocked`), so each layer waits for the owner's go. Goes with `docs/android-plan.md` (layer 2 is the Android app).
+Status: layers 1a and 1b (a phone that asks, `src/remote-ask.ts`, the `remote-ask` card, `remoteGate`; Run everything moved from allowed to askable) are built on `dev`; layer 1a (pairing, per-device credentials, `/phone devices`, `/phone revoke`, 90 days renewed on use, the old token only with `--lan`) is built on `dev` (`src/phone-*.ts`, `public/pair.*`, `test/phone-devices.test.ts`, the pairing `describe` of `test/server.test.ts`); 1b, layer 2 and layer 3 are not. Written 2026-10-27. It changes rules written in `AGENTS.md` ("Safety": the phone's limits, `remoteBlockedMode`, `remoteBlocked`), so each layer waits for the owner's go. Goes with `docs/android-plan.md` (layer 2 is the Android app).
 
 ## Why
 

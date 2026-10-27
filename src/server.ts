@@ -35,6 +35,7 @@ import type { PackIndexEntry } from "./pack-index.ts";
 import { cookieName, cookieValue, isLoopbackAddress, loadToken, newToken, pairLinks, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
 import { describeDevice } from "./phone-devices.ts";
 import { createPhoneService } from "./phone-service.ts";
+import { createRemoteAsks } from "./remote-ask.ts";
 import { demoMessage } from "./demo.ts";
 import { gestureView } from "../public/frames.js";
 import { formatClientError, perMinute } from "./client-errors.ts";
@@ -532,14 +533,15 @@ const pendingPermissions = new Map<string, PermissionRequest>();
  * Phones that were allowed on this computer (src/phone-service.ts). The old shared token (`lanToken`) exists only when the server was started with `--lan`, for one more release;
  * a phone that is allowed through `/phone` has its own credential. The cards about a phone go to the pages on this computer only, never to a phone.
  */
-const phone = createPhoneService({
-  devicesPath: join(dataDir, "phone-devices.json"),
-  notify: (message) => {
-    const data = JSON.stringify(message);
-    for (const c of clients) if (c.readyState === c.OPEN && !remoteSockets.has(c)) c.send(data);
-  },
-});
+/** Sends to the pages on this computer, never to a phone. */
+const toComputer = (message: unknown): void => {
+  const data = JSON.stringify(message);
+  for (const c of clients) if (c.readyState === c.OPEN && !remoteSockets.has(c)) c.send(data);
+};
+const phone = createPhoneService({ devicesPath: join(dataDir, "phone-devices.json"), notify: toComputer });
 await phone.load();
+/** What a phone asks for and only the computer may allow (src/remote-ask.ts): the question is a card on a page here. */
+const remoteAsks = createRemoteAsks({ computerOnline: () => [...clients].some((c) => c.readyState === c.OPEN && !remoteSockets.has(c)), notify: toComputer });
 /** The id of the allowed phone behind a network socket (none for one that came in with the old link), so `/phone revoke` can close it. */
 const socketDevice = new WeakMap<WebSocket, string>();
 
@@ -881,20 +883,38 @@ interface CommandContext {
   remote: boolean;
 }
 
-/** What a phone may not do: anything that loosens approvals past Run everything, or that runs on this machine without a card. Naming a project folder by its path, and Run everything, are allowed. */
+/**
+ * What a phone may not do by itself. Some of it it may *ask* for: the computer then shows a card and does it only on a yes (`remoteAsks`): Accept edits, Auto and Run
+ * everything, and saving notes without asking. The rest stays on the computer, as it runs without a card or reaches into it: `!commands`, `/restart`, `/setup`, `/skills`
+ * and `/chrome` on (a later layer may let the Android app ask for those), the folder dialog, card import. Naming a project folder by its path is allowed.
+ */
 const remoteRefusal = "That is only possible on the computer itself, not from a phone.";
-/** Auto and Accept edits stay on the computer. Run everything may be chosen from a phone. */
-const remoteBlockedMode = (mode: unknown) => mode === "acceptEdits" || mode === "auto";
+const askableMode = (mode: unknown): mode is "acceptEdits" | "auto" | "everything" => mode === "acceptEdits" || mode === "auto" || mode === "everything";
+const modeWords: Record<string, string> = { acceptEdits: "Accept edits", auto: "Auto", everything: "Run everything" };
 
-/** The slash commands that would turn on Auto or Accept edits, load the user's hooks, or drive Chrome on this computer. `/work <path>` and `/permissions everything` are allowed. */
-function remoteBlocked(name: string, args: string): boolean {
+/** `never`: refused on a phone. `ask`: the computer is asked (with the words for the card). Otherwise the command is allowed. */
+function remoteGate(name: string, args: string): { gate: "never" } | { gate: "ask"; label: string } | null {
   const a = args.trim().toLowerCase();
-  if (name === "restart") return true; // it stops and starts the server on this computer
-  if (name === "setup") return a === "on";
-  if (name === "chrome") return a === "on"; // it drives the browser on this computer
-  if (name === "memory") return a === "auto"; // saving notes without asking loosens a card
-  if (name === "permissions") return Object.hasOwn(permissionNames, a) && remoteBlockedMode(permissionNames[a]);
-  return false;
+  if (name === "restart") return { gate: "never" }; // it stops and starts the server on this computer
+  if (name === "setup") return a === "on" ? { gate: "never" } : null;
+  if (name === "chrome") return a === "on" ? { gate: "never" } : null; // it drives the browser on this computer
+  if (name === "memory") return a === "auto" ? { gate: "ask", label: "save notes about you without asking" } : null; // saving notes without asking loosens a card
+  if (name === "permissions" && Object.hasOwn(permissionNames, a) && askableMode(permissionNames[a])) return { gate: "ask", label: `turn on ${modeWords[permissionNames[a]]}` };
+  return null;
+}
+
+/** The name of the phone behind a socket, for the card on the computer. */
+const phoneName = (ws: WebSocket): string => {
+  const id = socketDevice.get(ws);
+  return phone.list().find((d) => d.id === id)?.name ?? "A phone (old link)";
+};
+
+/** Asks the computer, and tells the phone what happened (or why it could not be asked). */
+function askComputer(ws: WebSocket, label: string, apply: () => void | Promise<void>): void {
+  const tell = (text: string) => ws.readyState === ws.OPEN && ws.send(JSON.stringify({ type: "notice", text }));
+  const asked = remoteAsks.ask(ws, phoneName(ws), label, apply, tell);
+  if (!asked.ok) tell(asked.reason);
+  else tell(`Asked on the computer: ${label}. It happens only if someone there says yes (it asks for two minutes).`);
 }
 
 /** Shows a picture pack (by folder name) or, with null, the drawn avatar again. Used by /frames and the Looks menu. */
@@ -1848,7 +1868,7 @@ wss.on("connection", (ws) => {
     })
     .catch((err) => console.error("could not send the packs:", err));
   if (!remote) void studio.stateMessage().then((m) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m)));
-  if (!remote) for (const card of phone.waitingCards()) ws.send(JSON.stringify(card)); // a phone asked while no page was open here
+  if (!remote) for (const card of [...phone.waitingCards(), ...remoteAsks.waiting()]) ws.send(JSON.stringify(card)); // a phone asked while no page was open here
   ws.send(JSON.stringify(modeInfo()));
   if (cursorEverythingNotice) ws.send(JSON.stringify({ type: "notice", text: cursorEverythingNotice }));
   ws.send(JSON.stringify(looksInfo()));
@@ -1878,7 +1898,10 @@ wss.on("connection", (ws) => {
   const question = turns.heldQuestion();
   if (question) ws.send(JSON.stringify(question));
   void refreshOllamaModels();
-  ws.on("close", () => clients.delete(ws));
+  ws.on("close", () => {
+    clients.delete(ws);
+    remoteAsks.drop(ws); // a phone that is gone takes its questions with it
+  });
   let commandChain: Promise<void> = Promise.resolve();
   ws.on("message", async (raw) => {
     let msg: any;
@@ -1902,8 +1925,10 @@ wss.on("connection", (ws) => {
         commandChain = commandChain
           .then(async () => {
             const known = slashCommands[command.name];
+            const gate = remote ? remoteGate(command.name, command.args) : null;
             if (!known) say(`Unknown command /${command.name}. Try /help.`);
-            else if (remote && remoteBlocked(command.name, command.args)) say(remoteRefusal);
+            else if (gate?.gate === "never") say(remoteRefusal);
+            else if (gate?.gate === "ask") askComputer(ws, gate.label, () => known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote: false }));
             else if (known.claudeOnly && settings.provider !== "claude") {
               say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
             } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
@@ -1940,8 +1965,10 @@ wss.on("connection", (ws) => {
       provider.respondPermission(msg.id, decision);
       broadcast({ type: "permission-resolved", id: msg.id, decision });
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
-      if (decision !== "deny" && permissionModes.includes(msg.mode) && !(remote && remoteBlockedMode(msg.mode)) && request.tool !== "ExitPlanMode") {
-        changePermissionMode(msg.mode, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      if (decision !== "deny" && permissionModes.includes(msg.mode) && request.tool !== "ExitPlanMode") {
+        const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+        if (remote && askableMode(msg.mode)) askComputer(ws, `turn on ${modeWords[msg.mode]}`, () => changePermissionMode(msg.mode, say));
+        else changePermissionMode(msg.mode, say);
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
         // The approved plan ends plan mode inside Claude Code; keep the selector truthful.
@@ -1977,8 +2004,12 @@ wss.on("connection", (ws) => {
       }
       changeClaudeChrome(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
-      if (remote && remoteBlockedMode(msg.value)) return ws.send(JSON.stringify({ type: "notice", text: remoteRefusal }));
-      changePermissionMode(msg.value, (text) => ws.send(JSON.stringify({ type: "notice", text })));
+      const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
+      if (remote && askableMode(msg.value)) {
+        askComputer(ws, `turn on ${modeWords[msg.value]}`, () => changePermissionMode(msg.value, say));
+        return void ws.send(JSON.stringify(modeInfo())); // the selector on the phone stays where it is until the computer says yes
+      }
+      changePermissionMode(msg.value, say);
     } else if (msg.type === "provider" && (msg.provider === "claude" || msg.provider === "ollama" || msg.provider === "cursor" || msg.provider === "opencode")) {
       const notice = (text: string) => ws.send(JSON.stringify({ type: "notice", text }));
       if (provider.busy) return notice("Wait for her to finish the current reply first.");
@@ -2084,6 +2115,11 @@ wss.on("connection", (ws) => {
       const failed = await setLan(true);
       if (failed) return say(failed);
       phoneCard((m) => ws.send(JSON.stringify(m)));
+    } else if (msg.type === "remote-ask-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
+      // A phone asked for something and this computer answers: never a phone, whatever it sends.
+      if (remote) return;
+      const answered = await remoteAsks.answer(msg.id, msg.choice === "allow");
+      if (!answered) ws.send(JSON.stringify({ type: "notice", text: "That question has run out: the phone has to ask again." }));
     } else if (msg.type === "phone-pair-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
       // A phone asked to connect and this computer answers: never a phone, whatever it sends.
       if (remote) return;

@@ -1781,8 +1781,14 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       assert.match((await waitHeard(from, (e) => e.type === "notice")).text, /only possible on the computer itself/, "a phone still cannot run !command");
 
       from = heard.length;
+      const askedAt = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
-      assert.match((await waitHeard(from, (e) => e.type === "notice" && /only possible on the computer itself/.test(e.text))).text, /only possible on the computer itself/, "a phone cannot turn on Auto");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Asked on the computer: turn on Auto/.test(e.text))).text, /Asked on the computer/, "a phone asks for Auto, it does not just get it");
+      const autoCard = await c.next("remote-ask", 5000, askedAt);
+      assert.match(autoCard.label, /turn on Auto/);
+      assert.equal((await waitHeard(from, (e) => e.type === "mode")).permissionMode, "manual", "the selector on the phone stays where it was");
+      c.send({ type: "remote-ask-answer", id: autoCard.id, choice: "deny" });
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /said no/.test(e.text))).text, /Auto did not happen/);
 
       from = heard.length;
       ws.send(JSON.stringify({ type: "user", text: "/chrome on" }));
@@ -1794,10 +1800,17 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       assert.equal((await waitHeard(from, (e) => e.type === "mode")).claudeChrome, false, "the checkbox is told to snap back");
 
       from = heard.length;
+      const everyAt = c.mark;
       ws.send(JSON.stringify({ type: "user", text: "/permissions everything" }));
-      const ever = await waitHeard(from, (e) => e.type === "notice");
-      assert.doesNotMatch(ever.text, /only possible on the computer itself/, "Run everything is not refused just because it came from a phone");
-      assert.match(ever.text, /Cursor or opencode/, "this brain is Claude, which has no Run everything");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Asked on the computer/.test(e.text))).text, /turn on Run everything/, "Run everything is asked for too");
+      const everyCard = await c.next("remote-ask", 5000, everyAt);
+      c.send({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" });
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Cursor or opencode/.test(e.text))).text, /Cursor or opencode/, "after the yes the command ran: this brain is Claude, which has no Run everything");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Allowed on the computer/.test(e.text))).text, /Run everything/);
+      from = heard.length;
+      ws.send(JSON.stringify({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" }));
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(heard.slice(from).some((e) => e.type === "notice"), false, "a phone cannot answer a question, not even the one it raised");
 
       ws.send(JSON.stringify({ type: "lan-answer", yes: true }));
       ws.close();
@@ -1927,6 +1940,76 @@ describe("pairing a phone: a link that works once, a yes on the computer, a cred
       const ask = await later.next("phone-pair", 8000);
       assert.equal(ask.code, ((await started.json()) as { code: string }).code);
       void c;
+    } finally {
+      await server.stop();
+    }
+  });
+
+  /** A paired phone's socket with what it heard, and a way to wait for it. */
+  const phoneSocket = async (port: number, cookie: string) => {
+    const ws = await open(port, cookie);
+    assert.ok(ws, "the phone opens a socket");
+    const heard: any[] = [];
+    ws!.on("message", (raw) => heard.push(JSON.parse(String(raw))));
+    const wait = async (test: (e: any) => boolean, from = 0, ms = 5000) => {
+      const begun = Date.now();
+      for (;;) {
+        const found = heard.slice(from).find(test);
+        if (found) return found;
+        if (Date.now() - begun > ms) throw new Error(`timed out; the phone heard: ${heard.slice(from).map((e) => e.type).join(", ") || "nothing"}`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    return { ws: ws!, heard, wait };
+  };
+
+  test("a phone asks for Accept edits: the card is for the computer, the yes does it for everyone, and a closed phone takes its question along", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      let ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      const question = await c.next("remote-ask", 5000, ask);
+      assert.equal(question.label, "turn on Accept edits");
+      assert.ok(!phoneSide.heard.some((e) => e.type === "remote-ask"), "the question is not shown on the phone");
+      assert.ok(!c.since(ask).some((e) => e.type === "mode" && e.permissionMode === "acceptEdits"), "nothing changed yet");
+      c.send({ type: "remote-ask-answer", id: question.id, choice: "allow" });
+      assert.equal((await c.next((e) => e.type === "mode" && e.permissionMode === "acceptEdits", 5000, ask)).permissionMode, "acceptEdits", "the computer's page sees the mode");
+      await phoneSide.wait((e) => e.type === "notice" && /Allowed on the computer: turn on Accept edits/.test(e.text));
+      // a question the phone leaves behind is taken back
+      c.say("/permissions ask");
+      ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "user", text: "/permissions accept" }));
+      const second = await c.next("remote-ask", 5000, ask);
+      phoneSide.ws.close();
+      await c.next((e) => e.type === "remote-ask-done" && e.id === second.id, 5000, ask);
+      // a page that opens later gets a question that is still waiting
+      const phoneAgain = await phoneSocket(server.port, cookie!);
+      phoneAgain.ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
+      await new Promise((r) => setTimeout(r, 300));
+      const later = await server.client();
+      assert.match((await later.next("remote-ask", 8000)).label, /turn on Auto/);
+      phoneAgain.ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("with no page open on the computer a phone cannot ask, and is told to open it", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      c.close();
+      await new Promise((r) => setTimeout(r, 400));
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      assert.match((await phoneSide.wait((e) => e.type === "notice" && /Not possible now/.test(e.text))).text, /open the companion on the computer/);
+      phoneSide.ws.close();
     } finally {
       await server.stop();
     }
@@ -2389,7 +2472,7 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
     }
   });
 
-  test("a phone can choose Run everything; Auto stays on the computer", async () => {
+  test("a phone asks for Auto and Run everything, and nothing happens until the computer says yes", async () => {
     const server = await startServer({
       settings: { provider: "cursor" },
       homeFiles: { ".cursor/cli-config.json": JSON.stringify({ approvalMode: "allowlist" }) },
@@ -2426,12 +2509,21 @@ describe("Cursor's own unrestricted setting", { skip }, () => {
         }
       };
       let at = heard.length;
+      let ask = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "auto" }));
-      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /only possible on the computer itself/);
+      assert.match((await waitHeard(at, (e) => e.type === "notice")).text, /Asked on the computer: turn on Auto/);
+      const autoCard = await c.next("remote-ask", 5000, ask);
+      c.send({ type: "remote-ask-answer", id: autoCard.id, choice: "allow" });
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Cursor here has Ask, Plan and Run everything/.test(e.text))).text, /Auto and Accept edits are Claude Code modes/, "after the yes it is the same answer the computer would have got");
       at = heard.length;
+      ask = c.mark;
       ws.send(JSON.stringify({ type: "permission-mode", value: "everything" }));
+      assert.equal((await waitHeard(at, (e) => e.type === "mode")).permissionMode, "manual", "Run everything does not happen until the computer says yes");
+      const everyCard = await c.next("remote-ask", 5000, ask);
+      assert.match(everyCard.label, /turn on Run everything/);
+      c.send({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" });
       assert.equal((await waitHeard(at, (e) => e.type === "mode" && e.permissionMode === "everything")).permissionMode, "everything");
-      assert.match((await waitHeard(at, (e) => e.type === "notice" && /Run everything/.test(e.text))).text, /without a card/);
+      assert.match((await waitHeard(at, (e) => e.type === "notice" && /without a card/.test(e.text))).text, /without a card/);
       ws.close();
     } finally {
       await server.stop();

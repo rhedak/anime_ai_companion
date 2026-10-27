@@ -35,11 +35,18 @@ in the release after this one.
 ## What a phone can do
 
 Chat, answer the approval cards, stop her, switch between chat and work, type a project folder (`/work ~/project` or
-the folder field), choose **Run everything**, and change her look.
+the folder field), and change her look.
 
-What it cannot do, because these run without a card or reach into the computer: `!commands`, Auto and Accept edits,
-`/setup on`, `/skills on`, `/chrome on`, importing or resetting a character card, opening her notes file, and the system's folder
-dialog (that opens on the computer). The home folder and `/` still cannot be a
+**What it can ask for.** Accept edits, Auto (Claude Code), Run everything (Cursor, opencode) and saving notes about you
+without asking are looser than "ask before everything", so a phone cannot just turn them on. It asks: a card appears on
+the computer, "Chrome on Android asks to turn on Accept edits: Allow or Deny". Allow does it once, right then, as if you had typed
+it there, and the next time asks again; Deny, two minutes without an answer, or the phone going away end the question. The
+phone's menu stays where it was until you say yes. With nothing open on the computer to answer, the phone is told to
+open the app there and ask again. The same goes for the choice on an approval card that says "from now on".
+
+**What it cannot do**, because these run without a card or reach into the computer: `!commands`, `/restart`,
+`/setup on`, `/skills on`, `/chrome on`, importing or resetting a character card, opening her notes file, installing a brain,
+and the system's folder dialog (that opens on the computer). The home folder and `/` still cannot be a
 project folder. Typing while she answers (the queue) works from a phone; the microphone button does not, because
 browsers only allow a microphone on `localhost` or HTTPS.
 

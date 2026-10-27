@@ -202,6 +202,33 @@ function askPair(msg) {
   log.scrollTop = log.scrollHeight;
 }
 
+/** "A phone asks for something": Accept edits, Auto, Run everything. Only the page on the computer gets it; Allow does it once, as if it had been typed here. */
+function askRemote(msg) {
+  document.querySelector(`.remote-ask[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
+  const box = document.createElement("div");
+  box.className = "msg sys remote-ask";
+  box.dataset.id = String(msg.id);
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-label", "A phone asks for something");
+  const text = document.createElement("p");
+  text.textContent = `${msg.device} asks to ${msg.label}. Allow it only if you asked for that on the phone. It does it once, now; it asks again next time.`;
+  const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Allow" });
+  const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Deny" });
+  const answer = (choice) => {
+    yes.disabled = true;
+    no.disabled = true;
+    ws?.send(JSON.stringify({ type: "remote-ask-answer", id: msg.id, choice }));
+    box.remove();
+  };
+  yes.onclick = () => answer("allow");
+  no.onclick = () => answer("deny");
+  const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
+  buttons.append(yes, no);
+  box.append(text, buttons);
+  log.append(box);
+  log.scrollTop = log.scrollHeight;
+}
+
 function addPhoneCard(links, rows, legacy = []) {
   const div = addMsg("sys", "Scan this with the phone's camera, or open one of these links on it. The link works once and for two minutes; the phone then shows four digits and you allow it here:");
   const ns = "http://www.w3.org/2000/svg";
@@ -1456,6 +1483,12 @@ function handle(msg) {
       break;
     case "phone-pair":
       askPair(msg);
+      break;
+    case "remote-ask":
+      askRemote(msg);
+      break;
+    case "remote-ask-done":
+      document.querySelector(`.remote-ask[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
       break;
     case "phone-pair-done":
       document.querySelector(`.phone-pair[data-id="${CSS.escape(String(msg.id))}"]`)?.remove();
