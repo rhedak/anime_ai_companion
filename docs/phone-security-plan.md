@@ -39,7 +39,7 @@ Needs the Capacitor shell (`docs/android-plan.md`). A browser on the phone canno
 
 ## Layer 3: for people who already have a tunnel
 
-Document, not build: `ssh -L 3737:127.0.0.1:3737 computer` (Termux, ConnectBot), Tailscale, and WireGuard. Tell them plainly what a tunnel to loopback means: the server sees the computer itself, so the tunnel gets **every** right of a local page, `!commands` included; use it only for a tunnel you own. Tailscale's `serve` gives HTTPS with a real certificate and `*.ts.net` name, which would also let a browser phone use WebCrypto later; not planned now.
+Done 2026-10-27 (the "Away from home" section of `site/pages/phone.md`). Document, not build: `ssh -L 3737:127.0.0.1:3737 computer` (Termux, ConnectBot), Tailscale, and WireGuard. Tell them plainly what a tunnel to loopback means: the server sees the computer itself, so the tunnel gets **every** right of a local page, `!commands` included; use it only for a tunnel you own. Tailscale's `serve` gives HTTPS with a real certificate and `*.ts.net` name, which would also let a browser phone use WebCrypto later; not planned now.
 
 Not planned: an SSH server inside the app (it needs the system's sshd or a large dependency, and widens what is exposed), WebAuthn, and our own encrypted channel over `http` (the page's own code would still arrive unprotected).
 

@@ -71,9 +71,22 @@ permissions) open as a sheet from the bottom that scrolls when the list is long.
 
 Pairing keeps a leaked link or QR code useless after one use, but the connection is still plain `http`: someone on the
 same network could read what you send, and take over a signed-in phone. Use it only on a network you trust (not café
-Wi-Fi), and not through a tunnel you do not control. For use away from home, put the computer and the phone on a
-private network such as Tailscale and use the computer's address there; the links list it. The phones you allowed are
-saved in `data/phone-devices.json`, readable only by you, and only as a hash.
+Wi-Fi). The phones you allowed are saved in `data/phone-devices.json`, readable only by you, and only as a hash.
+
+For use away from home, put the computer and the phone on a **private network you own** and use the computer's address
+there. Two ways that keep the pairing and its limits:
+
+- **Tailscale** (or another WireGuard-based network such as plain WireGuard): install it on both, start with `--lan`, and
+  open the link `/phone` lists for the computer's Tailscale address. The phone is a network phone like any other: the card,
+  the four digits and the limits above all apply, and the traffic between the two is encrypted by the network.
+- **Your router's own VPN** does the same: the phone appears on your home network from outside.
+
+**A tunnel to the computer's loopback is different, and gives more than you may expect.** `ssh -L 3737:127.0.0.1:3737
+computer` (from Termux or ConnectBot on the phone), Tailscale's `serve`, a Cloudflare tunnel or any reverse proxy on the
+computer reaches the app as the computer itself. The app cannot tell, so that connection gets **every right of the page
+on the computer**: `!commands`, Auto and Run everything without a card, `/restart`, and the rest. It needs no pairing, no
+yes and no code. Use it only for a tunnel you own and control end to end, never a public address, and know that anyone
+who gets through it has your computer. Turning phone access off (`/phone off`) does not close it.
 
 ## If the page does not load
 
