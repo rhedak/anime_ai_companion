@@ -58,9 +58,9 @@ Out of scope for now: a model inside the app (LiteRT, MediaPipe, llama.cpp as a 
 ### Phase 0: toolchain and project skeleton (small)
 
 Needs the owner's go to install software on this Mac.
-- [ ] Install a JDK 21 (`brew install openjdk@21`) and point `JAVA_HOME` at it; `java -version` must answer.
-- [ ] Install the Android SDK command-line tools (or Android Studio), accept the licences, install platform 35 (or the current one), build-tools and platform-tools (`adb`).
-- [ ] Turn on developer options and USB or wireless debugging on the A54; `adb devices` shows it.
+- [x] Install a JDK 21 (`brew install openjdk@21`) and point `JAVA_HOME` at it; `java -version` must answer. (2026-10-28: OpenJDK 21.0.13 at `/opt/homebrew/opt/openjdk@21`.)
+- [x] Install the Android SDK command-line tools, accept the licences, install platform 35, build-tools 35.0.0 and platform-tools. (2026-10-28: `brew install --cask android-commandlinetools`; the SDK root is `/opt/homebrew/share/android-commandlinetools`, platform-tools 37.0.1, adb 1.0.41. Not Android Studio.)
+- [ ] Turn on developer options and USB or wireless debugging on the A54 (owner); `adb devices` shows it. As of 2026-10-28 it lists no device.
 - [ ] Create `android/` as a Capacitor project (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`), `minSdk 26`, app id `io.github.rhedak.anaico` (the same id as the desktop app), its own `package.json` and lockfile (D2).
 - [ ] Until phase 4, `check.sh` and the release workflow must not touch `android/`.
 - [ ] A debug APK builds with `./gradlew assembleDebug` and installs on the A54 showing a placeholder page.
