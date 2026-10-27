@@ -70,13 +70,13 @@
           <button id="workbar-collapse" type="button" class="icon small" aria-expanded="true" aria-controls="workbody" title="Hide work settings" aria-label="Hide work settings">−</button>
         </div>
         <label id="setuprow" class="setuprow" title="Load your own Claude Code settings, hooks, rules and MCP servers, like in a terminal. Hooks run commands, so it is off until you turn it on.">
-          <input type="checkbox" id="use-setup"> Use my Claude Code setup <span class="muted">(settings, hooks, MCP servers)</span>
+          <input type="checkbox" id="use-setup"> Use my Claude Code setup <span class="muted">(settings, hooks, MCP servers)</span><span class="computer-hint"> Set it on the computer.</span>
         </label>
         <label id="skillsrow" class="setuprow" title="Let her use your own skills (~/.claude/skills) by name. This loads your user settings, but not their hooks. A folder's own skills stay off unless you use your whole Claude Code setup. Off until you turn it on.">
-          <input type="checkbox" id="use-skills"> Use my skills <span class="muted">(your user settings apply, hooks stay off)</span>
+          <input type="checkbox" id="use-skills"> Use my skills <span class="muted">(your user settings apply, hooks stay off)</span><span class="computer-hint"> Set it on the computer.</span>
         </label>
         <label id="chromerow" class="setuprow" title="Let her use your Chrome through the Claude in Chrome extension. The extension must already be installed and signed into the same Claude account. Browser actions use the same approvals as her other tools. Off until you turn it on, and off again when the server restarts.">
-          <input type="checkbox" id="use-chrome"> Use my Chrome <span class="muted">(Claude in Chrome, same approvals as her other tools)</span>
+          <input type="checkbox" id="use-chrome"> Use my Chrome <span class="muted">(Claude in Chrome, same approvals as her other tools)</span><span class="computer-hint"> Set it on the computer.</span>
         </label>
         <div id="workinfo" class="workinfo"></div>
         </div>

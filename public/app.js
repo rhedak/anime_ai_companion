@@ -910,6 +910,12 @@ function renderMode() {
   $("use-skills").checked = Boolean(state.claudeSkills);
   $("chromerow").hidden = state.mode !== "work" || state.provider !== "claude";
   $("use-chrome").checked = Boolean(state.claudeChrome);
+  // A phone can see these and turn them off, but only the computer turns them on (the server refuses it from a phone).
+  for (const id of ["use-setup", "use-skills", "use-chrome"]) {
+    const box = $(id);
+    box.disabled = onPhone && !box.checked;
+    box.parentElement.classList.toggle("computer-only", box.disabled);
+  }
   const work = state.mode === "work";
   $("permission-mode").value = state.permissionMode;
   permissionMenu.hidden = !work;
@@ -1585,6 +1591,7 @@ function handle(msg) {
       break;
     case "hello":
       onPhone = msg.remote === true;
+      if (state) renderMode();
       $("status").textContent = "connected";
       $("status").title = msg.provider;
       $("dot").classList.add("on");
