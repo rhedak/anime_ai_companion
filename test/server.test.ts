@@ -1963,6 +1963,33 @@ describe("pairing a phone: a link that works once, a yes on the computer, a cred
     return { ws: ws!, heard, wait };
   };
 
+  test("Always for this phone: Accept edits is remembered on the device and not asked again, Run everything is still asked", async () => {
+    if (!lanIp) return;
+    const server = await startServer();
+    try {
+      const { c, card } = await turnOn(server);
+      const cookie = await pairPhone(c, lanIp, server.port, card.links[0]);
+      const phoneSide = await phoneSocket(server.port, cookie!);
+      let ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      const question = await c.next("remote-ask", 5000, ask);
+      assert.equal(question.always, true);
+      c.send({ type: "remote-ask-answer", id: question.id, choice: "always" });
+      await phoneSide.wait((e) => e.type === "notice" && /will not be asked about it again/.test(e.text));
+      ask = c.mark;
+      c.say("/permissions ask");
+      await c.next((e) => e.type === "mode" && e.permissionMode !== "acceptEdits", 5000, ask);
+      ask = c.mark;
+      phoneSide.ws.send(JSON.stringify({ type: "permission-mode", value: "acceptEdits" }));
+      await c.next((e) => e.type === "mode" && e.permissionMode === "acceptEdits", 5000, ask);
+      assert.ok(!c.since(ask).some((e) => e.type === "remote-ask"), "no card the second time");
+      await phoneSide.wait((e) => e.type === "notice" && /Done: this phone may turn on Accept edits without asking/.test(e.text));
+      phoneSide.ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
   test("a phone asks for Accept edits: the card is for the computer, the yes does it for everyone, and a closed phone takes its question along", async () => {
     if (!lanIp) return;
     const server = await startServer();

@@ -33,7 +33,7 @@ import { createPackInstaller, packIndexUrl, type PackUpdate } from "./pack-insta
 import { packUpdateChecksOn } from "./update-setting.ts";
 import type { PackIndexEntry } from "./pack-index.ts";
 import { cookieName, cookieValue, isLoopbackAddress, loadToken, newToken, pairLinks, phoneLinks, qrRows, saveToken, socketAllowed } from "./lan.ts";
-import { describeDevice } from "./phone-devices.ts";
+import { REMEMBERABLE, describeDevice } from "./phone-devices.ts";
 import { createPhoneService } from "./phone-service.ts";
 import { createRemoteAsks } from "./remote-ask.ts";
 import { demoMessage } from "./demo.ts";
@@ -893,13 +893,13 @@ const askableMode = (mode: unknown): mode is "acceptEdits" | "auto" | "everythin
 const modeWords: Record<string, string> = { acceptEdits: "Accept edits", auto: "Auto", everything: "Run everything" };
 
 /** `never`: refused on a phone. `ask`: the computer is asked (with the words for the card). Otherwise the command is allowed. */
-function remoteGate(name: string, args: string): { gate: "never" } | { gate: "ask"; label: string } | null {
+function remoteGate(name: string, args: string): { gate: "never" } | { gate: "ask"; label: string; mode?: string } | null {
   const a = args.trim().toLowerCase();
   if (name === "restart") return { gate: "never" }; // it stops and starts the server on this computer
   if (name === "setup") return a === "on" ? { gate: "never" } : null;
   if (name === "chrome") return a === "on" ? { gate: "never" } : null; // it drives the browser on this computer
   if (name === "memory") return a === "auto" ? { gate: "ask", label: "save notes about you without asking" } : null; // saving notes without asking loosens a card
-  if (name === "permissions" && Object.hasOwn(permissionNames, a) && askableMode(permissionNames[a])) return { gate: "ask", label: `turn on ${modeWords[permissionNames[a]]}` };
+  if (name === "permissions" && Object.hasOwn(permissionNames, a) && askableMode(permissionNames[a])) return { gate: "ask", label: `turn on ${modeWords[permissionNames[a]]}`, mode: permissionNames[a] };
   return null;
 }
 
@@ -910,9 +910,16 @@ const phoneName = (ws: WebSocket): string => {
 };
 
 /** Asks the computer, and tells the phone what happened (or why it could not be asked). */
-function askComputer(ws: WebSocket, label: string, apply: () => void | Promise<void>): void {
+function askComputer(ws: WebSocket, label: string, apply: () => void | Promise<void>, mode?: string): void {
   const tell = (text: string) => ws.readyState === ws.OPEN && ws.send(JSON.stringify({ type: "notice", text }));
-  const asked = remoteAsks.ask(ws, phoneName(ws), label, apply, tell);
+  const id = socketDevice.get(ws);
+  const rememberable = Boolean(id && mode && (REMEMBERABLE as readonly string[]).includes(mode));
+  if (id && mode && phone.devices.allows(id, mode)) {
+    void Promise.resolve(apply()); // the person said "always" for this phone on the computer
+    tell(`Done: this phone may ${label} without asking (you allowed it on the computer; /phone revoke removes that).`);
+    return;
+  }
+  const asked = remoteAsks.ask(ws, phoneName(ws), label, apply, tell, rememberable && id && mode ? () => phone.devices.grant(id, mode) : undefined);
   if (!asked.ok) tell(asked.reason);
   else tell(`Asked on the computer: ${label}. It happens only if someone there says yes (it asks for two minutes).`);
 }
@@ -1928,7 +1935,7 @@ wss.on("connection", (ws) => {
             const gate = remote ? remoteGate(command.name, command.args) : null;
             if (!known) say(`Unknown command /${command.name}. Try /help.`);
             else if (gate?.gate === "never") say(remoteRefusal);
-            else if (gate?.gate === "ask") askComputer(ws, gate.label, () => known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote: false }));
+            else if (gate?.gate === "ask") askComputer(ws, gate.label, () => known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote: false }), gate.mode);
             else if (known.claudeOnly && settings.provider !== "claude") {
               say(`/${command.name} needs Claude Code; the current brain is ${provider.name}, which does not support it.`);
             } else await known.run({ args: command.args, text: msg.text, say, reply: (out) => ws.send(JSON.stringify(out)), remote });
@@ -1967,7 +1974,7 @@ wss.on("connection", (ws) => {
       // "Allow, and from now on ...": the approval card can switch the permission mode in the same click.
       if (decision !== "deny" && permissionModes.includes(msg.mode) && request.tool !== "ExitPlanMode") {
         const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
-        if (remote && askableMode(msg.mode)) askComputer(ws, `turn on ${modeWords[msg.mode]}`, () => changePermissionMode(msg.mode, say));
+        if (remote && askableMode(msg.mode)) askComputer(ws, `turn on ${modeWords[msg.mode]}`, () => changePermissionMode(msg.mode, say), msg.mode);
         else changePermissionMode(msg.mode, say);
       }
       if (request.tool === "ExitPlanMode" && decision !== "deny") {
@@ -2006,7 +2013,7 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "permission-mode" && permissionModes.includes(msg.value)) {
       const say: Say = (text) => ws.send(JSON.stringify({ type: "notice", text }));
       if (remote && askableMode(msg.value)) {
-        askComputer(ws, `turn on ${modeWords[msg.value]}`, () => changePermissionMode(msg.value, say));
+        askComputer(ws, `turn on ${modeWords[msg.value]}`, () => changePermissionMode(msg.value, say), msg.value);
         return void ws.send(JSON.stringify(modeInfo())); // the selector on the phone stays where it is until the computer says yes
       }
       changePermissionMode(msg.value, say);
@@ -2115,10 +2122,10 @@ wss.on("connection", (ws) => {
       const failed = await setLan(true);
       if (failed) return say(failed);
       phoneCard((m) => ws.send(JSON.stringify(m)));
-    } else if (msg.type === "remote-ask-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
+    } else if (msg.type === "remote-ask-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "always" || msg.choice === "deny")) {
       // A phone asked for something and this computer answers: never a phone, whatever it sends.
       if (remote) return;
-      const answered = await remoteAsks.answer(msg.id, msg.choice === "allow");
+      const answered = await remoteAsks.answer(msg.id, msg.choice === "always" ? "always" : msg.choice === "allow");
       if (!answered) ws.send(JSON.stringify({ type: "notice", text: "That question has run out: the phone has to ask again." }));
     } else if (msg.type === "phone-pair-answer" && typeof msg.id === "string" && (msg.choice === "allow" || msg.choice === "deny")) {
       // A phone asked to connect and this computer answers: never a phone, whatever it sends.

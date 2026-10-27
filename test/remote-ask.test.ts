@@ -65,3 +65,22 @@ test("a question runs out, and goes with the phone that asked", async () => {
   assert.equal(other.asks.waiting().length, 0);
   assert.ok(other.sent.some((m) => m.type === "remote-ask-done"));
 });
+
+test("Always runs the remember step only when the question offered it, and only on that answer", async () => {
+  const { asks, sent, phone, told, tell } = setup();
+  let done = 0;
+  let remembered = 0;
+  asks.ask(phone, "Phone", "turn on Accept edits", () => void done++, tell, () => void remembered++);
+  assert.equal(sent[0].always, true, "the card offers Always");
+  await asks.answer(sent[0].id, true);
+  assert.equal(remembered, 0, "a plain Allow remembers nothing");
+  asks.ask({}, "Phone", "turn on Auto", () => void done++, tell, () => void remembered++);
+  await asks.answer(sent[2].id, "always");
+  assert.equal(done, 2);
+  assert.equal(remembered, 1);
+  assert.match(told.at(-1) ?? "", /will not be asked about it again/);
+  asks.ask({}, "Phone", "turn on Run everything", () => {}, tell);
+  assert.equal(sent.at(-1).always, false, "no Always without a remember step");
+  await asks.answer(sent.at(-1).id, "always");
+  assert.match(told.at(-1) ?? "", /^Allowed on the computer: turn on Run everything\.$/);
+});

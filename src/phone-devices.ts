@@ -20,7 +20,12 @@ export interface PhoneDevice {
   created: number;
   lastSeen: number;
   expires: number;
+  /** Modes this phone may switch on without a card each time (`REMEMBERABLE`), because the person said "always" on the computer. */
+  allow?: string[];
 }
+
+/** The two modes a yes can be remembered for. Run everything and `/memory auto` always ask. */
+export const REMEMBERABLE = ["acceptEdits", "auto"] as const;
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
@@ -45,6 +50,9 @@ export class PhoneDevices {
       this.devices = list.filter((d): d is PhoneDevice => {
         const x = d as Partial<PhoneDevice>;
         return typeof x?.id === "string" && typeof x.name === "string" && /^[0-9a-f]{64}$/.test(String(x.hash)) && Number.isFinite(x.created) && Number.isFinite(x.lastSeen) && Number.isFinite(x.expires);
+      }).map((d) => {
+        const allow = Array.isArray(d.allow) ? d.allow.filter((m) => (REMEMBERABLE as readonly string[]).includes(m)) : [];
+        return allow.length ? { ...d, allow } : { ...d, allow: undefined };
       });
     } catch {
       this.devices = [];
@@ -73,6 +81,19 @@ export class PhoneDevices {
     found.expires = now + DEVICE_DAYS * DAY;
     if (now - this.lastSaved > SAVE_EVERY) void this.save().catch(() => {});
     return found;
+  }
+
+  /** Whether this phone was told "always" for the mode. */
+  allows(id: string | undefined, mode: string): boolean {
+    return this.list().some((d) => d.id === id && d.allow?.includes(mode));
+  }
+
+  /** Remembers a yes for the mode on this phone (revoking the phone forgets it). */
+  async grant(id: string, mode: string): Promise<void> {
+    const d = this.list().find((x) => x.id === id);
+    if (!d || !(REMEMBERABLE as readonly string[]).includes(mode) || d.allow?.includes(mode)) return;
+    d.allow = [...(d.allow ?? []), mode];
+    await this.save();
   }
 
   /** Lets a new phone in: a fresh credential (returned once, never kept) and its record. */
@@ -119,7 +140,8 @@ export class PhoneDevices {
 export function describeDevice(d: PhoneDevice, index: number, now = Date.now()): string {
   const days = (ms: number) => Math.max(0, Math.round(ms / DAY));
   const seen = now - d.lastSeen < 120_000 ? "now" : `${days(now - d.lastSeen)} days ago`;
-  return `${index}. ${d.name}: last used ${seen}, good for ${days(d.expires - now)} more days`;
+  const allowed = d.allow?.length ? `; may switch on ${d.allow.map((m) => (m === "acceptEdits" ? "Accept edits" : "Auto")).join(" and ")} without asking` : "";
+  return `${index}. ${d.name}: last used ${seen}, good for ${days(d.expires - now)} more days${allowed}`;
 }
 
 /** The phone's name for the list, from the browser's description ("Chrome on Android"). */

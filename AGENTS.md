@@ -143,7 +143,7 @@ The server can run an agent that edits files and runs commands. These are not op
   `/pair`, `/pair.js`, `/pair/start` and `/pair/status` are open before that, and they hand out nothing without the code and the yes. Such a socket (`remoteSockets`) may not run `!command`, `/restart`,
   turn on `/setup`, `/skills` or `/chrome`, or open the system folder dialog (`pick-folder` runs on this computer). It may **ask** for Accept edits, Auto,
   Run everything and `/memory auto` (`remoteGate` in `src/server.ts`, `src/remote-ask.ts`): a card on a page on **this computer** (`remote-ask`, answered by
-  `remote-ask-answer`, ignored from a phone) says Allow or Deny, an Allow does the one thing as if it had been typed there, and nothing is remembered; a
+  `remote-ask-answer`, ignored from a phone) says Allow, Deny or (for Accept edits and Auto only, `REMEMBERABLE` in `src/phone-devices.ts`) Always for this phone: an Allow does the one thing as if it had been typed there, an Always also keeps `allow` on that phone's record so it is not asked again for that mode (the mode itself is still memory only, and revoking the phone ends the grant); Run everything and `/memory auto` ask every time; a
   question ends on Deny, after two minutes, or with the phone's socket, at most three wait, and with no page open on the computer the phone is told so. It
   may set the work folder by a typed path (`/work <path>` or the folder field);
   `checkProjectDir` still refuses the home folder and `/`. Any new message type that does one of the

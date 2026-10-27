@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEVICE_DAYS, PhoneDevices, deviceName } from "../src/phone-devices.ts";
+import { DEVICE_DAYS, PhoneDevices, deviceName, describeDevice } from "../src/phone-devices.ts";
 import { CODE_SECONDS, Pairing } from "../src/phone-pairing.ts";
 
 const DAY = 86_400_000;
@@ -122,4 +122,25 @@ test("wrong codes from one address are turned away after five, and only three re
   now += 61_000;
   for (let i = 0; i < 2; i++) assert.ok(pairing.start(pairing.newCode().code, `10.0.1.${i}`, "Z").ok);
   assert.equal(pairing.start(pairing.newCode().code, "10.0.2.1", "Q").ok, false, "three are waiting: the fourth is turned away");
+});
+
+test("an Always is kept on the device for Accept edits and Auto only, survives a restart, and goes with the device", async () => {
+  await inFolder(async (path) => {
+    const devices = new PhoneDevices(path);
+    const { device } = await devices.add("Chrome on Android");
+    assert.equal(devices.allows(device.id, "acceptEdits"), false);
+    await devices.grant(device.id, "acceptEdits");
+    await devices.grant(device.id, "everything"); // never remembered
+    assert.equal(devices.allows(device.id, "acceptEdits"), true);
+    assert.equal(devices.allows(device.id, "everything"), false);
+    await devices.flush();
+    const again = new PhoneDevices(path);
+    await again.load();
+    assert.equal(again.allows(device.id, "acceptEdits"), true);
+    assert.equal(again.allows(device.id, "auto"), false);
+    assert.match(describeDevice(again.list()[0], 1), /may switch on Accept edits without asking/);
+    await again.revoke("all");
+    assert.equal(again.allows(device.id, "acceptEdits"), false);
+    await again.flush();
+  });
 });

@@ -211,7 +211,7 @@ function askRemote(msg) {
   box.setAttribute("role", "alertdialog");
   box.setAttribute("aria-label", "A phone asks for something");
   const text = document.createElement("p");
-  text.textContent = `${msg.device} asks to ${msg.label}. Allow it only if you asked for that on the phone. It does it once, now; it asks again next time.`;
+  text.textContent = `${msg.device} asks to ${msg.label}. Allow it only if you asked for that on the phone.${msg.always ? " Allow does it once; Always lets this phone do it without asking again (/phone revoke takes that back)." : " It does it once, now; it asks again next time."}`;
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: "Allow" });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Deny" });
   const answer = (choice) => {
@@ -223,7 +223,13 @@ function askRemote(msg) {
   yes.onclick = () => answer("allow");
   no.onclick = () => answer("deny");
   const buttons = Object.assign(document.createElement("div"), { className: "pack-confirm-buttons" });
-  buttons.append(yes, no);
+  buttons.append(yes);
+  if (msg.always) {
+    const always = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Always for this phone" });
+    always.onclick = () => answer("always");
+    buttons.append(always);
+  }
+  buttons.append(no);
   box.append(text, buttons);
   log.append(box);
   log.scrollTop = log.scrollHeight;
