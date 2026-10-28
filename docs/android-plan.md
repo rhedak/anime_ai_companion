@@ -70,7 +70,7 @@ Needs the owner's go to install software on this Mac.
 ### Phase 1: the computer entry (small to medium)
 
 - [x] Connect screen (native assets, not the computer's page): a field for the address, "Scan the QR code" and "Use a saved computer". (2026-10-28, `android/www/`.)
-- [~] Scan the QR code `/phone` shows (`@capacitor-mlkit/barcode-scanning` 8.2.1, the Google code-scanner module, no camera permission of ours). The host check runs before loading. On 2026-10-28 the scanner opened on the A54 (Google's "Scanned by Google on behalf of Anime AI Companion" screen); reading a code from the Mac screen is not done yet.
+- [x] Scan the QR code `/phone` shows (`@capacitor-mlkit/barcode-scanning` 8.2.1, the Google code-scanner module, no camera permission of ours). The host check runs before loading. Checked 2026-10-28: the A54 read the QR on the Mac screen, showed 7291, the card matched, and the chat opened.
 - [x] Load the link in the WebView; the four digits show on the phone; the computer's card answers. After Allow the WebView holds the phone's own cookie (the 1a credential), with `HttpOnly` kept. (2026-10-28: pairing 2597 on the A54 against a scratch server on 3800.)
 - [x] Save the computer's address (not the code, not the cookie) in `EncryptedSharedPreferences`; the next start offers "Connect to <address>" and reloads the page with the cookie already there. (Checked after an app relaunch.)
 - [x] Back button: in the chat goes back in the page's own history if any, otherwise shows the connect screen. Needed the AndroidX back dispatcher: overriding `onBackPressed` was never called. (Checked on the A54.)
