@@ -69,14 +69,14 @@ Needs the owner's go to install software on this Mac.
 
 ### Phase 1: the computer entry (small to medium)
 
-- [ ] Connect screen (native assets, not the computer's page): a field for the address, "Scan the QR code" and "Use a saved computer".
-- [ ] Scan the QR code `/phone` shows (ZXing or ML Kit's barcode scanner, camera permission only when the button is pressed). The scan gives the `…/pair?e=<code>` link; check that the host is private (D4) before loading anything.
-- [ ] Load the link in the WebView; the four digits show on the phone; the computer's card answers. After Allow the WebView holds the phone's own cookie (the 1a credential), with `HttpOnly` kept.
-- [ ] Save the computer's address (not the code, not the cookie) in `EncryptedSharedPreferences`; the next start offers "Connect to <address>" and reloads the page with the cookie already there.
-- [ ] Back button: in the chat goes back in the page's own history if any, otherwise shows the connect screen; never exits into the page's blank state.
-- [ ] Navigation lock: `shouldOverrideUrlLoading` keeps the WebView on the computer's host; any other link opens in the phone's browser; `allowFileAccess`, `allowContentAccess`, `setAllowUniversalAccessFromFileURLs` and `javaScriptCanOpenWindowsAutomatically` are off; mixed content is never allowed; WebView debugging off in release builds.
-- [ ] `android:allowBackup="false"` so the cookie store is not copied to a cloud backup.
-- [ ] "Forget this computer" clears the saved address and the cookies for it. Revoking the phone from the computer stays `/phone revoke`.
+- [x] Connect screen (native assets, not the computer's page): a field for the address, "Scan the QR code" and "Use a saved computer". (2026-10-28, `android/www/`.)
+- [~] Scan the QR code `/phone` shows (`@capacitor-mlkit/barcode-scanning` 8.2.1, the Google code-scanner module, no camera permission of ours). The host check runs before loading. Code is written; not yet tried with a real scan.
+- [x] Load the link in the WebView; the four digits show on the phone; the computer's card answers. After Allow the WebView holds the phone's own cookie (the 1a credential), with `HttpOnly` kept. (2026-10-28: pairing 2597 on the A54 against a scratch server on 3800.)
+- [x] Save the computer's address (not the code, not the cookie) in `EncryptedSharedPreferences`; the next start offers "Connect to <address>" and reloads the page with the cookie already there. (Checked after an app relaunch.)
+- [x] Back button: in the chat goes back in the page's own history if any, otherwise shows the connect screen. Needed the AndroidX back dispatcher: overriding `onBackPressed` was never called. (Checked on the A54.)
+- [~] Navigation lock: `AnaicoWebViewClient` keeps the WebView on the computer's host; other links go to the phone's browser (Capacitor's default). WebView file, content and popup settings are off. Not yet tested: a link to another site on the computer's page, and debugging off in release.
+- [x] `android:allowBackup="false"` so the cookie store is not copied to a cloud backup. `android:usesCleartextTraffic="true"` is set in the manifest (Capacitor 8 writes no cleartext setting; the network security config cannot name address ranges, so the address check in code is the limit; S1 decided this).
+- [x] "Forget this computer" clears the saved address and the cookies for it. Revoking the phone from the computer stays `/phone revoke`. (Checked on the A54.)
 - [ ] Server: nothing new for phase 1, except a test that a pairing made from the WebView's user agent is listed by `/phone devices` with a readable name.
 - [ ] Test on the A54: chat, an approval card, a work-mode edit from the app; then close the app, reopen it, and continue.
 

@@ -1,5 +1,8 @@
 {
   "appId": "io.github.rhedak.anaico",
   "appName": "Anime AI Companion",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "cleartext": true
+  }
 }
