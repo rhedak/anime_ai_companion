@@ -26,7 +26,7 @@ const studio = createStudio({
   host: () => document.querySelector(".stage"),
   say: (text) => addMsg("sys", text),
 });
-document.addEventListener("studio-state", () => renderLooksMenu()); // the menu has "Make a pack…" only while the studio is on
+document.addEventListener("studio-state", () => renderLooksMenu());
 /** This page is open on another device. The folder dialog runs on the computer, so a phone types the path instead. */
 let onPhone = false;
 
@@ -2103,7 +2103,7 @@ function renderLooksMenu() {
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
     ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
-    ...(studio.enabled() ? [new Option("Make a pack…", "studio")] : []),
+    new Option("Studio…", "studio"), // always there: when the studio is off, opening it says how to turn it on
   );
   select.value = ""; // a hidden, disabled first option is not selected by the browser on its own: it would pick "Presets…", which then fires no change
   select.disabled = select.options.length === 1;
