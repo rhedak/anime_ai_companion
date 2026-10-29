@@ -42,8 +42,28 @@ export function createStudio(io) {
     zoom = null;
   }
 
+  /** The studio is off and the user asked for it: ask whether to turn it on. The yes is the opt-in; the server then opens the panel (studio-open). */
+  function askToOpen() {
+    document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
+    const box = el("div", { className: "pack-confirm", role: "alertdialog", ariaLabel: "Turn on the pack studio?" });
+    box.dataset.kind = "studio-ask";
+    const yes = el("button", { type: "button", textContent: "Turn on the pack studio" });
+    const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
+    no.onclick = () => box.remove();
+    yes.onclick = () => {
+      box.remove();
+      io.send({ type: "studio-on" });
+    };
+    box.append(
+      el("p", { textContent: "The pack studio makes picture packs of her on this computer with an image model you run, and it is off until you turn it on. Turn it on and open it now?" }),
+      el("div", { className: "pack-confirm-buttons" }, yes, no),
+    );
+    io.host()?.append(box);
+    yes.focus();
+  }
+
   function open() {
-    if (!on) return io.say("The pack studio is off. Type /studio on.");
+    if (!on) return askToOpen();
     if (panel) return close(); // the same menu entry again closes it
     const source = el("select", { id: "studio-source", ariaLabel: "Draw from this pack" });
     const name = el("input", { type: "text", id: "studio-name", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
