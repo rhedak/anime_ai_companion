@@ -45,8 +45,8 @@ export interface Usage {
  * How work mode treats tool calls: "manual" asks for everything not pre-approved, "plan" lets her
  * read and propose a plan only, "acceptEdits" also lets her edit files without asking, and
  * "auto" lets Claude Code's own safety classifier approve routine actions. "everything" is
- * Cursor's Run Everything (every tool runs unless a deny rule blocks it) and is refused for
- * the other brains.
+ * Cursor's Run Everything (every tool runs unless a deny rule blocks it), also offered for opencode and
+ * a local Ollama model (every tool runs without a card); Claude Code has no such mode.
  */
 export type PermissionMode = "manual" | "plan" | "acceptEdits" | "auto" | "everything";
 export const permissionModes: readonly PermissionMode[] = ["manual", "plan", "acceptEdits", "auto", "everything"];

@@ -843,13 +843,11 @@ async function rename(input: string, say: Say): Promise<void> {
 
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
-  else if (value === "everything" && settings.provider !== "cursor" && settings.provider !== "opencode") {
-    say(settings.provider === "ollama" ? "A local model here has Ask and Plan only: every command, file write and edit asks first." : "Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
+  else if (value === "everything" && !everythingBrains.includes(settings.provider)) {
+    say("Run everything is a Cursor, opencode or local model mode. Claude stays on Ask, Plan, Accept edits or Auto.");
   } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
     say(
-      settings.provider === "ollama"
-        ? "A local model here has Ask and Plan. Auto, Accept edits and Run everything are not available for it: every command, file write and edit asks first."
-        : `${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
+      `${settings.provider === "cursor" ? "Cursor" : settings.provider === "opencode" ? "opencode" : "A local model"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
     );
   } else {
     permissionMode = value;
@@ -860,12 +858,17 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
       say(
         settings.provider === "cursor"
           ? "Run everything: she runs tools without a card, unless Cursor still asks. A deny rule still blocks. This resets to Ask the next time the server starts."
-          : "Run everything: opencode runs every tool without a card. This resets to Ask the next time the server starts.",
+          : settings.provider === "ollama"
+            ? "Run everything: the local model runs every command, file write and edit without a card, and the app does not check what they do. Only the folder limits apply. This resets to Ask the next time the server starts."
+            : "Run everything: opencode runs every tool without a card. This resets to Ask the next time the server starts.",
       );
     }
   }
   broadcast(modeInfo());
 }
+
+/** The brains that have Run everything. Claude Code does not: its loose modes are its own. */
+const everythingBrains: string[] = ["cursor", "opencode", "ollama"];
 
 const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto", everything: "everything" };
 /** The name the user types and the documentation uses ("ask"), not the internal one ("manual"). */
@@ -1299,7 +1302,7 @@ const slashCommands: Record<
   chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
   work: { help: "switch to work mode, optionally for a folder: /work ~/project", run: ({ args, say }) => switchMode("work", args, say) },
   permissions: {
-    help: "ask, plan, accept (edits), auto (Claude), or everything (Cursor, opencode): how work mode handles approvals",
+    help: "ask, plan, accept (edits), auto (Claude), or everything (Cursor, opencode, a local model): how work mode handles approvals",
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
@@ -2045,7 +2048,7 @@ wss.on("connection", (ws) => {
       if (msg.provider === "cursor" && typeof msg.model === "string" && msg.model) settings.cursorModel = msg.model;
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
       if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
-      if (msg.provider !== "cursor" && msg.provider !== "opencode" && permissionMode === "everything") permissionMode = "manual";
+      if (!everythingBrains.includes(msg.provider) && permissionMode === "everything") permissionMode = "manual";
       const switching = settings.provider !== msg.provider || basicMode;
       basicMode = false;
       settings.provider = msg.provider;

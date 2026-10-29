@@ -789,7 +789,7 @@ function renderBrain() {
   $("effort").value = state.effort ?? "default";
   for (const option of $("permission-mode").options) {
     const claudeOnly = option.value === "acceptEdits" || option.value === "auto";
-    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !(cursor || opencode) : false;
+    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !(cursor || opencode || ollama) : false;
   }
   if (ollama) {
     const models = state.ollamaModels ?? [];
@@ -935,7 +935,8 @@ function renderMode() {
     return;
   }
   if (state.provider === "ollama") {
-    info.textContent = `${state.model} · experimental: a local model's tool use is your responsibility. Every command and file write still asks first.`;
+    const everything = state.permissionMode === "everything" ? " Run everything is on: commands and file writes run without asking." : " Every command and file write still asks first.";
+    info.textContent = `${state.model} · experimental: a local model's tool use is your responsibility.${everything}`;
     return;
   }
   const cursor = state.provider === "cursor";
@@ -999,7 +1000,7 @@ function addPermission(req) {
       more.append(button("Allow, and accept all edits", "ghost", "allow", "acceptEdits"));
     }
     if (state.provider === "claude" && state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
-    if ((state.provider === "cursor" || state.provider === "opencode") && state.permissionMode !== "everything") {
+    if ((state.provider === "cursor" || state.provider === "opencode" || state.provider === "ollama") && state.permissionMode !== "everything") {
       more.append(button("Allow, and run everything", "ghost", "allow", "everything"));
     }
     if (more.children.length) actions.append(more);

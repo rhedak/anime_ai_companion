@@ -13,7 +13,7 @@ persona and the same tags drive her face whichever brain you choose.
 | Where the model runs | Anthropic | Cursor | whatever your opencode uses | your own machine |
 | Chat | yes | yes (read-only) | yes (no tools) | yes |
 | [Work mode](work-mode.html) | yes | yes | yes | experimental, only for models that report tool support |
-| Approval modes | Ask, Plan, Accept edits, Auto | Ask, Plan, Run everything | Ask, Plan, Run everything | Ask, Plan |
+| Approval modes | Ask, Plan, Accept edits, Auto | Ask, Plan, Run everything | Ask, Plan, Run everything | Ask, Plan, Run everything |
 | Sign in once with | `claude` | `cursor-agent login` | `opencode auth login` | nothing |
 
 ## With no brain installed
@@ -92,9 +92,11 @@ model supports tool calls (a recent Qwen or Llama, for example; `ollama show <mo
 works with it. She can then read files, search, run a command, create a file and edit one in your project folder. How well a local model
 uses tools depends entirely on the model and its size: small or older ones call tools badly (wrong arguments, loops, or text
 that only looks like a tool call), and any model can propose a wrong or harmful command or edit with full confidence. Every
-command, file write and edit waits for your approval and shows exactly what it will do, so reading the card is your job;
-there is no mode that skips it for Ollama (only **Ask** and **Plan**, and Plan offers reading and searching only). Reading and
-searching inside the project are pre-approved, like for the other brains. Nothing outside the project folder can be read or
+command, file write and edit waits for your approval and shows exactly what it will do, so reading the card is your job.
+The menu also has **Run everything**, for people who accept that risk: every command, write and edit then runs without a card and the
+app checks none of them. It is off at every start, is not saved, can only be chosen at the computer (a phone has to be
+allowed to ask), and **Plan** offers reading and searching only. Reading and searching inside the project are pre-approved, like for
+the other brains. Nothing outside the project folder can be read or
 written through her tools, but an approved `bash` command can do anything your user can. The app does not test, rate or vouch
 for any local model: work done through one is at your own risk, so keep the project under git and check the result. She stops
 after 12 tool steps in a row. Ollama's default context window is small, so tool work asks for 16384 tokens (change it with

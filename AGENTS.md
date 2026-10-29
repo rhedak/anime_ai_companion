@@ -279,9 +279,10 @@ tool calls. Ollama only runs the model, so the tools and the call loop are ours:
   (an Ollama too old to report capabilities), or the user vouches with `COMPANION_OLLAMA_TOOLS`.
   Check it again when the model changes (`checkTools()`); never assume it.
 - Every `bash` command, `write_file` and `edit_file` goes through the approval card (`permission` events); only
-  Read and Grep are pre-approved, from the same allow-list as the other brains. The menu is Ask and Plan
-  (plan offers the read-only tools only). There is no looser mode for Ollama: do not add one, and do not
-  add a skip-approval path. "Allow for this session" covers every later `write_file` or `edit_file` in the same project folder (those tools cannot leave it), but a `bash` command only as written; changing the folder or resetting the conversation ends the grant.
+  Read and Grep are pre-approved, from the same allow-list as the other brains. The menu is Ask, Plan and Run everything
+  (plan offers the read-only tools only). Run everything is the opt-in `everything` mode the owner asked for: it skips the card in
+  `runCall` (`src/providers/ollama.ts`), is off at every start, is not saved, is refused from a phone until the computer says yes (`remoteGate`), and
+  the folder checks in the tools still apply. Do not make it the default, and do not add any other skip-approval path. "Allow for this session" covers every later `write_file` or `edit_file` in the same project folder (those tools cannot leave it), but a `bash` command only as written; changing the folder or resetting the conversation ends the grant.
 - Keep the turn cap (`MAX_TOOL_ROUNDS`), the result and file size caps, and the experimental warning in
   the README, the site and the work-mode notice: how well a local model uses tools is the user's own
   responsibility, and the app does not vouch for any model.

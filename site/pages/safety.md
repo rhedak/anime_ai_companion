@@ -45,7 +45,7 @@ microphone button is lit, and this app's own server never receives audio.
   in work mode, and by default it is saved only when you keep it (a file or page she reads there could talk her into writing something that outlives the conversation), and the
   notes reach her as information, never as instructions.
 - **Local models with tools are on you.** With Ollama, work mode (experimental) asks before every command, file write and
-  edit, and has no looser mode. How well a local model behaves is up to the model and to you: the app does not vouch for any.
+  edit. The permission menu's **Run everything** removes those cards for the rest of the server's run (off at every start, only at the computer); the folder limits still apply, but nothing checks what an approved or run-everything command does. How well a local model behaves is up to the model and to you: the app does not vouch for any.
 - **Loose modes are off at every start.** The permission mode, `/setup`, `/skills`, `/chrome` and phone access all come back to the safe
   setting each time the server starts.
 
