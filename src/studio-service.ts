@@ -15,6 +15,9 @@ import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/jo
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
+import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
+import type { Flags } from "./studio/checks.ts";
+import { encodeWebp, type Raster } from "./studio/raster.ts";
 
 /** The pictures of a source pack the studio reads: its rest picture, and its blink and mouth pictures to learn where her face is. */
 export interface SourceFrames {
@@ -48,6 +51,8 @@ export interface StudioDeps {
   pushNote(text: string): void;
   /** Chat or work: the brain's proposals are for chat only (in work mode a file she reads could talk her into one). */
   mode(): Mode;
+  /** The folder of an installed pack (its pictures and its text files), or null. It is only read: a new pack is made from a copy. */
+  packFolder(name: string): Promise<string | null>;
   /** The brain in use ("claude", "cursor", …): the browser makers need Claude in Chrome, which only Claude Code has. */
   brain?(): string;
   /** Claude in Chrome is on (`/chrome on`, work mode): the browser makers can drive the user's Chrome. */
@@ -229,6 +234,10 @@ export function createStudioService(deps: StudioDeps) {
       review: waiting?.kind === "review" ? waiting.review : null,
       previews: running && running.phase !== "base" ? [...previews].map(([name, v]) => ({ name, ...v })) : [],
       resumable: on && !job && !pending ? await findJobs() : [],
+      /** The pictures of each pack, for "Draw one picture again" (only while the studio is on). */
+      frames: on ? Object.fromEntries(await Promise.all(knownSources.map(async (s) => [s, await framesOf(s)]))) : {},
+      frameBusy,
+      frameReview: reviewMessage(),
       proposal,
     };
   }
@@ -531,6 +540,105 @@ export function createStudioService(deps: StudioDeps) {
     startWorker(job, dir, "build", info, { only });
   }
 
+  // --- one picture of an installed pack, drawn again from words (src/studio/frame-edit.ts) ---
+  /** A picture is being drawn: no other job starts until it is done. */
+  let frameBusy = false;
+  /** The picture drawn, waiting for the user's yes or no. Nothing is written until the yes. */
+  let frameReview: { id: string; source: string; frame: string; name: string; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
+  const reviewMessage = () => (frameReview ? { id: frameReview.id, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
+
+  /** The pictures a pack has, by name without `.webp`, sorted: only the names a picture can have. */
+  async function framesOf(source: string): Promise<string[]> {
+    const folder = await deps.packFolder(source);
+    if (!folder) return [];
+    const names = await readdir(folder).catch(() => [] as string[]);
+    return names.filter((n) => n.endsWith(".webp")).map((n) => n.slice(0, -5)).filter((n) => FRAME_NAME.test(n)).sort();
+  }
+
+  /** Draws one picture of a pack again. Needs a model on this computer that can change a picture (a paid or browser maker is not wired for one picture yet). */
+  async function frameStart(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    if (running || waiting || pending || frameBusy) return err("Finish or stop the job that is open first.");
+    if (frameReview) return err("Keep or drop the picture that is drawn first.");
+    const source = typeof msg.source === "string" ? msg.source : "";
+    const frame = typeof msg.frame === "string" ? msg.frame : "";
+    const change = cleanText(msg.prompt, 400);
+    const name = typeof msg.name === "string" && msg.name.trim() ? msg.name.trim() : `${source}-edit`;
+    if (!(await deps.sources()).includes(source)) return err("Pick one of your packs.");
+    if (!FRAME_NAME.test(frame)) return err("Pick a picture of that pack.");
+    if (change.length < 3) return err("Say what to change in that picture, in a few words.");
+    if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
+    if (await stat(join(deps.framesDir, name)).then(() => true, () => false)) return err(`There is already a pack called ${name}. Pick another name.`);
+    if (!isLocal(deps.settings.studioBackend)) return err("Drawing one picture again works with a model on this computer for now. Choose it in the Image maker list.");
+    const folder = await deps.packFolder(source);
+    const bytes = folder ? await readFile(join(folder, `${frame}.webp`)).catch(() => null) : null;
+    if (!bytes) return err(`The ${source} pack has no picture called ${frame}.`);
+    const checked = await check();
+    if (!checked.ok) return err(checked.reason);
+    frameBusy = true;
+    deps.broadcast({ type: "studio-frame-progress", text: `Drawing ${frame} from ${source} again…` });
+    try {
+      const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
+      const drawn = await drawFrame(bytes, frameEditPrompt(change), seed, backendFor(deps.settings.studioBackend));
+      frameReview = {
+        id: `frame-${randomBytes(4).toString("hex")}`,
+        source,
+        frame,
+        name,
+        change,
+        picture: drawn.picture,
+        flags: drawn.flags,
+        model: checked.info.model ?? checked.info.name,
+        old: await thumbnail(await decode(bytes)),
+        new: await thumbnail(drawn.picture),
+      };
+      deps.broadcast({ type: "studio-frame-review", ...reviewMessage() });
+    } catch (error) {
+      err(error instanceof Error ? error.message : String(error));
+    } finally {
+      frameBusy = false;
+    }
+  }
+
+  /** The yes: a new pack is made from a copy of the source pack, with this one picture replaced, the source's text files kept, and EDIT.md added. */
+  async function frameAccept(id: string, send: Send): Promise<void> {
+    const review = frameReview;
+    if (!review || review.id !== id) return send({ type: "studio-error", message: "There is no picture to keep." });
+    const folder = await deps.packFolder(review.source);
+    if (!folder) return send({ type: "studio-error", message: `The ${review.source} pack is not there any more.` });
+    const target = join(deps.framesDir, review.name);
+    if (await stat(target).then(() => true, () => false)) return send({ type: "studio-error", message: `There is already a pack called ${review.name}. Name the new one differently and draw it again.` });
+    const work = join(deps.dataDir, "studio", `${id}-frame`);
+    const out = join(work, "pack");
+    try {
+      await rm(work, { recursive: true, force: true });
+      await mkdir(out, { recursive: true });
+      for (const entry of await readdir(folder, { withFileTypes: true })) {
+        // Hidden files stay behind, and so does .pack-install.json: the new pack is not an install of the source.
+        if (entry.isFile() && !entry.name.startsWith(".")) await copyFile(join(folder, entry.name), join(out, entry.name));
+      }
+      await writeFile(join(out, `${review.frame}.webp`), await encodeWebp(review.picture, { lossless: true }));
+      await writeFile(join(out, "EDIT.md"), editText({ pack: review.source, frame: review.frame, change: review.change, model: review.model, flags: review.flags }));
+      await mkdir(deps.framesDir, { recursive: true });
+      await copyDir(out, join(work, "install"), target);
+      frameReview = null;
+      await deps.refreshPacks();
+      deps.pushNote(`the user drew one picture of a pack again on their computer: ${review.name} (${review.frame}); it is a draft.`);
+      deps.broadcast({ type: "studio-frame-installed", id, name: review.name });
+      void announce();
+    } catch (error) {
+      send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** The no: the picture is dropped, and nothing was written. */
+  function frameReject(id: string): void {
+    if (!frameReview || frameReview.id !== id) return;
+    frameReview = null;
+    deps.broadcast({ type: "studio-frame-cancelled", id });
+    void announce();
+  }
+
   async function accept(id: string, send: Send): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is no finished pack to use." });
     await install(waiting);
@@ -719,6 +827,9 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-discard" && typeof msg.id === "string") await discard(msg.id, send);
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
+        else if (msg.type === "studio-frame-edit") await frameStart(msg, send);
+        else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
+        else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
         else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());
       } catch (error) {

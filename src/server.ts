@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { welcomeText } from "./welcome.ts";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -794,6 +794,13 @@ const studio = createStudioService({
   pushNote: (text) => notes.push(text),
   brain: () => settings.provider,
   chromeOn: () => claudeChrome,
+  packFolder: async (name) => {
+    for (const dir of packDirs) {
+      const folder = join(dir, name);
+      if (await stat(folder).then((st) => st.isDirectory(), () => false)) return folder;
+    }
+    return null;
+  },
 });
 
 // --- character cards: see card-service.ts ---

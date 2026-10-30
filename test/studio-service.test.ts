@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
@@ -20,6 +20,13 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
+  // An installed pack to draw one picture of again: its pictures and its text files, as on disk.
+  const packFolder = join(dataDir, "source-pack");
+  await mkdir(packFolder, { recursive: true });
+  await writeFile(join(packFolder, "neutral.webp"), await neutral());
+  await writeFile(join(packFolder, "NOTICE.md"), "the terms of the source pack\n");
+  await writeFile(join(packFolder, "credit.txt"), "risa-dress: a test pack\n");
+  await writeFile(join(packFolder, ".pack-install.json"), "{\"sha256\":\"x\"}\n");
   const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs, xai: options.xai ? {} : undefined, noWeights: options.noWeights }));
   const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl, studioBudgetUsd: options.budget };
   const sent: Record<string, any>[] = [];
@@ -45,9 +52,11 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     brain: () => options.brain ?? "claude",
     chromeOn: () => options.chromeOn ?? true,
     env: options.env ?? {},
+    packFolder: async (name) => (name === "risa-dress" ? packFolder : null),
   });
   const waitFor = async (type: string, count = 1) => {
-    for (let i = 0; i < 3600; i++) {
+    // Up to three minutes: a whole pack is drawn in the test, and a full run is slow.
+    for (let i = 0; i < 7200; i++) {
       if (sent.filter((m) => m.type === type).length >= count) return;
       await new Promise((r) => setTimeout(r, 25));
     }
@@ -713,6 +722,66 @@ test("while she is drawn the form starts from her own character's pack, and a pa
     assert.equal((await t.service.stateMessage()).active, "risa-dress");
     t.active.value = "franzi-dress";
     assert.equal((await t.service.stateMessage()).active, "franzi-dress");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("one picture of an installed pack is drawn again: the yes writes a new pack with the rest kept, the no writes nothing", async () => {
+  const t = await setup();
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const calls = t.fake.requests.length;
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "risa-red" }, send, false);
+    await t.waitFor("studio-frame-review");
+    assert.equal(t.fake.requests.length, calls + 1, "the picture was drawn once");
+    const review = t.sent.find((m) => m.type === "studio-frame-review")!;
+    assert.equal(review.frame, "neutral");
+    assert.match(review.old, /^data:image\/webp;base64,/);
+    assert.match(review.new, /^data:image\/webp;base64,/);
+    assert.equal((await t.service.stateMessage()).frameReview?.id, review.id, "a reload shows the same picture");
+
+    await t.service.message({ type: "studio-frame-accept", id: review.id }, send, false);
+    await t.waitFor("studio-frame-installed");
+    const folder = join(t.framesDir, "risa-red");
+    const files = (await readdir(folder)).sort();
+    assert.deepEqual(files, ["EDIT.md", "NOTICE.md", "credit.txt", "neutral.webp"], "the text files are kept, and the install marker is not copied");
+    assert.equal((await readFile(join(folder, "NOTICE.md"), "utf8")), "the terms of the source pack\n");
+    assert.ok((await readFile(join(folder, "neutral.webp"))).subarray(0, 4).toString() === "RIFF", "the picture is WebP");
+    assert.match(await readFile(join(folder, "EDIT.md"), "utf8"), /a red scarf around her neck/);
+    assert.equal((await t.service.stateMessage()).frameReview, null, "the review is closed");
+    assert.equal(await readFile(join(t.dataDir, "source-pack", "NOTICE.md"), "utf8"), "the terms of the source pack\n", "the source pack is not touched");
+
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a blue hat", name: "risa-blue" }, send, false);
+    await t.waitFor("studio-frame-review", 2);
+    const second = t.sent.filter((m) => m.type === "studio-frame-review")[1];
+    await t.service.message({ type: "studio-frame-reject", id: second.id }, send, false);
+    assert.equal((await t.service.stateMessage()).frameReview, null);
+    assert.equal(await stat(join(t.framesDir, "risa-blue")).then(() => true, () => false), false, "a dropped picture writes nothing");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("drawing one picture again refuses what it cannot do, and says why", async () => {
+  const t = await setup();
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "nope", prompt: "a hat", name: "x-1" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /has no picture called nope/);
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a", name: "x-2" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /Say what to change/);
+    await t.service.message({ type: "studio-frame-edit", source: "not-a-pack", frame: "neutral", prompt: "a hat", name: "x-3" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /Pick one of your packs/);
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a hat", name: "../escape" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /can have letters/);
+    await t.service.message({ type: "studio-backend", value: "xai" }, send, false);
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a hat", name: "x-4" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /model on this computer/);
   } finally {
     await t.cleanup();
   }

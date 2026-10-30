@@ -21,6 +21,9 @@ export function createStudio(io) {
   /** @type {HTMLElement | null} */
   let panel = null;
   let jobId = "";
+  /** The packs' pictures, by pack: "Draw one picture again" offers these. */
+  /** @type {Record<string, string[]>} */
+  let frames = {};
 
   const el = (/** @type {string} */ tag, /** @type {Record<string, any>} */ props = {}, /** @type {(Node | string)[]} */ ...kids) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -81,6 +84,16 @@ export function createStudio(io) {
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
+    const frameSource = el("select", { id: "studio-frame-source", ariaLabel: "Draw one picture again from this pack" });
+    const frameName = el("select", { id: "studio-frame-name", ariaLabel: "Which picture of it" });
+    const framePrompt = el("textarea", { id: "studio-frame-prompt", rows: 2, maxLength: 400, placeholder: "what to change in that picture, in your own words (a red scarf around her neck)", ariaLabel: "What to change in the picture" });
+    const framePack = el("input", { type: "text", id: "studio-frame-pack", maxLength: 40, placeholder: "name of the new pack (empty: the source pack's name with -edit)", ariaLabel: "Name of the new pack for the picture" });
+    const frameStart = el("button", { type: "button", className: "ghost", textContent: "Draw this picture again" });
+    frameStart.onclick = () => {
+      q(".studio-frame")?.replaceChildren();
+      io.send({ type: "studio-frame-edit", source: frameSource.value, frame: frameName.value, prompt: framePrompt.value, name: framePack.value });
+    };
+    frameSource.onchange = () => fillFrames();
     const handover = el("button", { type: "button", className: "ghost", textContent: "Hand over to an AI agent…", title: "A prompt to copy into any AI agent that makes pictures, if no image maker here suits you" });
     handover.onclick = () => io.send({ type: "studio-handover", source: source.value, name: name.value, outfit: outfit.value });
     closeButton.onclick = () => {
@@ -123,6 +136,13 @@ export function createStudio(io) {
       count,
       el("div", { className: "studio-proposal" }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, full, handover),
+      el("label", { textContent: "Draw one picture of a pack again (needs a model on this computer; the new pack is a copy, the source is not changed)" }),
+      frameSource,
+      frameName,
+      framePrompt,
+      framePack,
+      el("div", { className: "pack-confirm-buttons" }, frameStart),
+      el("div", { className: "studio-frame" }),
       el("div", { className: "studio-handover" }),
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
@@ -367,6 +387,40 @@ export function createStudio(io) {
     else select.prepend(new Option("Choose an image maker…", "", true, true)); // nothing chosen yet: say so, rather than an empty box
   }
 
+  function fillFrames() {
+    const source = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
+    const name = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-name"));
+    if (!source || !name) return;
+    const keepSource = source.value;
+    source.replaceChildren(...sources.map((s) => new Option(s, s)));
+    if (sources.includes(keepSource)) source.value = keepSource;
+    else if (sources.includes(active)) source.value = active;
+    const keep = name.value;
+    const pictures = frames[source.value] ?? [];
+    name.replaceChildren(...pictures.map((p) => new Option(p, p)));
+    if (pictures.includes(keep)) name.value = keep;
+  }
+
+  /** The drawn picture beside the one it replaces: keep it (a new pack is made) or drop it (nothing is written). */
+  function showFrameReview(/** @type {Record<string, any>} */ r) {
+    const box = q(".studio-frame");
+    if (!box) return;
+    const keep = el("button", { type: "button", textContent: "Keep as a new pack" });
+    const drop = el("button", { type: "button", className: "ghost", textContent: "Drop it" });
+    keep.onclick = () => io.send({ type: "studio-frame-accept", id: r.id });
+    drop.onclick = () => io.send({ type: "studio-frame-reject", id: r.id });
+    const flags = Array.isArray(r.flags) ? r.flags.map((/** @type {string} */ f) => el("li", { textContent: f })) : [];
+    box.replaceChildren(
+      el("p", { textContent: `${r.frame} from ${r.source}, drawn with ${r.model} (new pack: ${r.name}).` }),
+      el("div", { className: "studio-frame-pair" },
+        el("figure", {}, el("img", { src: String(r.old), alt: "before" }), el("figcaption", { textContent: "before" })),
+        el("figure", {}, el("img", { src: String(r.new), alt: "after" }), el("figcaption", { textContent: "after" })),
+      ),
+      flags.length ? el("ul", { className: "studio-flags" }, ...flags) : el("p", { textContent: "The checks passed. Look at it by eye." }),
+      el("div", { className: "pack-confirm-buttons" }, keep, drop),
+    );
+  }
+
   function fillSources() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
@@ -406,6 +460,10 @@ export function createStudio(io) {
             // A job is running or waits for the pick (this page was reloaded, or the panel was closed): show where it is.
             if (msg.job && !panel) open();
             fillSources();
+            frames = msg.frames && typeof msg.frames === "object" ? msg.frames : {};
+            fillFrames();
+            if (msg.frameReview) showFrameReview(msg.frameReview);
+            else q(".studio-frame")?.replaceChildren();
             if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-confirm")?.childElementCount) showResumable(msg.resumable);
             if (msg.job && panel) {
               const grid = q(".studio-candidates");
@@ -426,6 +484,20 @@ export function createStudio(io) {
           return true;
         case "studio-spend":
           spendLine(Number(msg.usd), Number(msg.limit));
+          return true;
+        case "studio-frame-progress":
+          status(String(msg.text));
+          return true;
+        case "studio-frame-review":
+          showFrameReview(msg);
+          status("Look at the picture drawn: keep it as a new pack, or drop it.");
+          return true;
+        case "studio-frame-installed":
+          q(".studio-frame")?.replaceChildren();
+          status(`Made ${msg.name}: the same pack with that picture drawn again.`);
+          return true;
+        case "studio-frame-cancelled":
+          q(".studio-frame")?.replaceChildren();
           return true;
         case "studio-ask":
           ask(msg);

@@ -1465,6 +1465,10 @@ function handle(msg) {
     case "studio-ask":
     case "studio-handover":
     case "studio-spend":
+    case "studio-frame-progress":
+    case "studio-frame-review":
+    case "studio-frame-installed":
+    case "studio-frame-cancelled":
     case "studio-review":
       studio.handle(msg);
       break;
