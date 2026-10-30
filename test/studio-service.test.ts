@@ -876,3 +876,103 @@ test("/studio python and /studio server save whole paths and the not-answering r
     await t.cleanup();
   }
 });
+
+async function freePort(): Promise<number> {
+  const { createServer } = await import("node:net");
+  return new Promise((resolve) => {
+    const s = createServer().listen(0, "127.0.0.1", () => {
+      const { port } = s.address() as { port: number };
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+test("the user's own image server is started from the panel only after a card, shows what it prints, and is stopped", async () => {
+  const port = await freePort();
+  const t = await setup({ backendUrl: `http://127.0.0.1:${port}`, env: { XAI_API_KEY: "sk-secret-value", HF_HUB_CACHE: "/nowhere" } });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    // A stand-in server: node is the "python", the script answers /health on --port and prints its arguments and whether it was given a key.
+    const script = join(t.dataDir, "fake server.js");
+    await writeFile(
+      script,
+      `const a = process.argv.slice(2); const port = Number(a[a.indexOf("--port") + 1]);
+       console.log("args " + a.join(" ")); console.log("key " + (process.env.XAI_API_KEY ? "leaked" : "none"));
+       require("node:http").createServer((q, r) => { r.setHeader("content-type", "application/json"); r.end(JSON.stringify({ ok: true, name: "stand-in", model: "x", edit: true, generate: true })); }).listen(port, "127.0.0.1");`,
+    );
+    await t.service.message({ type: "studio-local-start" }, send, false);
+    assert.match(me.at(-1)!.message, /Python and the server script/, "nothing starts without both paths");
+    await t.service.message({ type: "studio-local-config", python: process.execPath, server: script }, send, false);
+    assert.equal(t.settings.studioServer, script);
+    await t.service.message({ type: "studio-local-start", python: process.execPath, server: join(t.dataDir, "nope.js"), device: "cpu" }, send, false);
+    assert.match(me.at(-1)!.message, /not a file/, "paths that come with the start are checked first");
+    await t.service.message({ type: "studio-local-start", python: process.execPath, server: script, device: "tpu" }, send, false);
+    assert.match(me.at(-1)!.message, /mps, cuda or cpu/);
+    await t.service.message({ type: "studio-local-start", device: "cpu" }, send, false);
+    let state = (await t.service.stateMessage()).local as any;
+    assert.equal(state.status, "stopped", "the card comes first: nothing runs yet");
+    assert.equal(state.ask.port, port);
+    assert.match(state.ask.command, new RegExp(`--port ${port} --device cpu`));
+    await t.service.message({ type: "studio-local-confirm", id: "not-the-id" }, send, false);
+    assert.equal(((await t.service.stateMessage()).local as any).status, "stopped", "a wrong id starts nothing");
+
+    await t.service.message({ type: "studio-local-confirm", id: state.ask.id }, send, false);
+    state = (await t.service.stateMessage()).local as any;
+    assert.equal(state.status, "running");
+    assert.equal(state.ask, null);
+    assert.ok(state.log.includes(`args --port ${port} --device cpu`), "what it printed is shown");
+    assert.ok(state.log.includes("key none"), "a key in the app's environment is not passed on");
+    const maker = ((await t.service.stateMessage()).backends[0] as any);
+    assert.equal(maker.available, true, "the maker is ready once the server answers");
+
+    await t.service.message({ type: "studio-local-start", device: "cpu" }, send, false);
+    assert.match(me.at(-1)!.message, /already running/);
+    await t.service.message({ type: "studio-local-stop" }, send, false);
+    assert.equal(((await t.service.stateMessage()).local as any).status, "stopped");
+    const gone = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(500) }).then(() => false, () => true);
+    assert.equal(gone, true, "stopping ends the process");
+
+    const before = me.length;
+    await t.service.message({ type: "studio-local-start", device: "cpu" }, send, true);
+    assert.equal(me.at(-1)!.type, "notice", "a phone is refused");
+    assert.equal(me.length, before + 1);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("a server that exits at once is reported as failed with what it printed, and one that already answers is not started over", async () => {
+  const port = await freePort();
+  const t = await setup({ backendUrl: `http://127.0.0.1:${port}`, env: {} });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const script = join(t.dataDir, "broken.js");
+    await writeFile(script, `console.error("ModuleNotFoundError: No module named 'diffusers'"); process.exit(1);`);
+    await t.service.message({ type: "studio-local-config", python: process.execPath, server: script }, send, false);
+    await t.service.message({ type: "studio-local-start", device: "cpu" }, send, false);
+    const ask = ((await t.service.stateMessage()).local as any).ask;
+    await t.service.message({ type: "studio-local-confirm", id: ask.id }, send, false);
+    assert.match(me.at(-1)!.message, /exited with code 1/);
+    const state = (await t.service.stateMessage()).local as any;
+    assert.equal(state.status, "failed");
+    assert.ok(state.log.some((l: string) => /No module named 'diffusers'/.test(l)), "the reason is in the log");
+
+    // Something already answers there (the test's own fake backend): nothing is started.
+    const other = await setup({ env: {} });
+    try {
+      await other.service.command("on", other.say, false, () => {});
+      await other.service.message({ type: "studio-local-config", python: process.execPath, server: script }, send, false);
+      await other.service.message({ type: "studio-local-start", device: "cpu" }, send, false);
+      assert.match(me.at(-1)!.message, /already answers/);
+      assert.equal(((await other.service.stateMessage()).local as any).ask, null);
+    } finally {
+      await other.cleanup();
+    }
+  } finally {
+    await t.cleanup();
+  }
+});

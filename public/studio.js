@@ -83,6 +83,28 @@ export function createStudio(io) {
     const count = el("select", { id: "studio-count", title: "How many different first pictures are drawn for you to pick the best from. A paid maker charges for each one.", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
     const makerSelect = el("select", { id: "studio-maker", title: "The program or service that draws the pictures. Makers that cannot be used now are greyed with the reason.", ariaLabel: "Which image maker draws it" });
     makerSelect.onchange = () => io.send({ type: "studio-backend", value: makerSelect.value });
+    const localBox = el("details", { className: "studio-local" },
+      el("summary", { textContent: "Start my own image server (a local model you set up yourself)" }),
+      el("label", { textContent: "Python (whole path)", htmlFor: "studio-local-python" }),
+      el("input", { type: "text", id: "studio-local-python", autocomplete: "off", placeholder: "/path/to/your/venv/bin/python", title: "The Python of the environment that has your image model's packages. Only a file you name; the app never searches for one." }),
+      el("label", { textContent: "Server script (whole path)", htmlFor: "studio-local-server" }),
+      el("input", { type: "text", id: "studio-local-server", autocomplete: "off", placeholder: "whole path of your server script (the one in this app's python/pack_studio folder, or your own)", title: "A script that speaks the studio's protocol on 127.0.0.1 and takes --port and --device (docs: A model on your computer)." }),
+      el("label", { textContent: "Device", htmlFor: "studio-local-device" }),
+      el("select", { id: "studio-local-device", title: "mps is a Mac's graphics, cuda an NVIDIA card. cpu works but is very slow." }, ...["mps", "cuda", "cpu"].map((d) => el("option", { value: d, textContent: d }))),
+      el("div", { className: "pack-confirm-buttons" },
+        el("button", { type: "button", className: "ghost", id: "studio-local-save", textContent: "Save paths" }),
+        el("button", { type: "button", id: "studio-local-start", textContent: "Start the server" }),
+        el("button", { type: "button", className: "ghost", id: "studio-local-stop", textContent: "Stop it", hidden: true })),
+      el("div", { className: "studio-local-card" }),
+      el("p", { className: "studio-local-status", role: "status" }),
+      el("pre", { className: "studio-local-log", hidden: true }),
+    );
+    const localValue = (/** @type {string} */ id) => /** @type {HTMLInputElement} */ (localBox.querySelector(id)).value;
+    /** @type {HTMLElement} */ (localBox.querySelector("#studio-local-save")).onclick = () => io.send({ type: "studio-local-config", python: localValue("#studio-local-python"), server: localValue("#studio-local-server") });
+    /** @type {HTMLElement} */ (localBox.querySelector("#studio-local-start")).onclick = () => {
+      io.send({ type: "studio-local-start", python: localValue("#studio-local-python"), server: localValue("#studio-local-server"), device: localValue("#studio-local-device") });
+    };
+    /** @type {HTMLElement} */ (localBox.querySelector("#studio-local-stop")).onclick = () => io.send({ type: "studio-local-stop" });
     const models = el("ul", { className: "studio-models", ariaLabel: "Image makers and what each needs" });
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
@@ -140,6 +162,7 @@ export function createStudio(io) {
       el("label", { textContent: "Image maker (web services cost money or allowance; the next question says what)", htmlFor: "studio-maker" }),
       makerSelect,
       models,
+      localBox,
       el("label", { textContent: "Draw from", htmlFor: "studio-source" }),
       source,
       el("label", { textContent: "New pack", htmlFor: "studio-name" }),
@@ -406,6 +429,42 @@ export function createStudio(io) {
     }
   }
 
+  /** The user's own image server: the paths, the card that asks before it starts, its status and what it printed. */
+  function fillLocal(/** @type {any} */ local) {
+    const box = q(".studio-local");
+    if (!box || !local || typeof local !== "object") return;
+    const python = /** @type {HTMLInputElement} */ (box.querySelector("#studio-local-python"));
+    const server = /** @type {HTMLInputElement} */ (box.querySelector("#studio-local-server"));
+    if (document.activeElement !== python && typeof local.python === "string") python.value = local.python;
+    if (document.activeElement !== server && typeof local.server === "string") server.value = local.server;
+    const status = String(local.status);
+    const busy = status === "starting" || status === "running";
+    /** @type {HTMLElement} */ (box.querySelector("#studio-local-start")).hidden = busy;
+    /** @type {HTMLElement} */ (box.querySelector("#studio-local-stop")).hidden = !busy;
+    const text = { stopped: "Not started by the app.", starting: "Starting… (the model itself loads on the first picture)", running: `Running at ${local.address}. It stops when you press Stop or turn the studio off.`, failed: `Did not start. ${local.problem ?? ""}` }[status] ?? "";
+    const line = /** @type {HTMLElement} */ (box.querySelector(".studio-local-status"));
+    line.textContent = `${text}${status === "stopped" && local.problem ? ` ${local.problem}` : ""}`;
+    const log = /** @type {HTMLElement} */ (box.querySelector(".studio-local-log"));
+    const lines = Array.isArray(local.log) ? local.log.map(String) : [];
+    log.hidden = lines.length === 0;
+    log.textContent = lines.join("\n");
+    const card = /** @type {HTMLElement} */ (box.querySelector(".studio-local-card"));
+    const ask = local.ask;
+    if (!ask || typeof ask !== "object") return void card.replaceChildren();
+    if (card.dataset.id === ask.id) return;
+    card.dataset.id = ask.id;
+    const yes = el("button", { type: "button", textContent: "Start it" });
+    const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
+    yes.onclick = () => io.send({ type: "studio-local-confirm", id: ask.id });
+    no.onclick = () => io.send({ type: "studio-local-cancel" });
+    card.replaceChildren(
+      el("p", { textContent: `This starts a program on this computer: ${ask.command}` }),
+      el("p", { textContent: `It runs your own script with your own Python, as you, in the script's folder. It listens on 127.0.0.1:${ask.port} only (this app only talks to that), and reads image models from ${ask.hub}. The app passes it no key, token or password from its environment. What the script does is yours to check; it stops when you press Stop or turn the studio off. Whatever it draws is your responsibility.` }),
+      el("div", { className: "pack-confirm-buttons" }, yes, no),
+    );
+    yes.focus();
+  }
+
   function fillMakers() {
     const list = q(".studio-models");
     if (list) {
@@ -488,6 +547,7 @@ export function createStudio(io) {
         case "studio-state":
           on = msg.on === true;
           if (on) document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
+          fillLocal(msg.local);
           makers = Array.isArray(msg.backends) ? msg.backends.filter((/** @type {any} */ b) => b && typeof b.value === "string" && typeof b.label === "string") : [];
           packSize = Number(msg.packSize) || 0;
           maker = typeof msg.backend === "string" ? msg.backend : "";

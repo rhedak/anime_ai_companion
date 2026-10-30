@@ -15,6 +15,7 @@ import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/jo
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
+import { commandText, isDevice, LocalServer, type Device } from "./studio/local-server.ts";
 import { exportPack, importPack } from "./studio/transfer.ts";
 import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
 import { checkPath } from "./settings.ts";
@@ -258,9 +259,79 @@ export function createStudioService(deps: StudioDeps) {
       frameBusy,
       frameReview: reviewMessage(),
       proposal,
+      /** The user's own local image server: the paths they gave, what it prints, and the card that asks before it starts. */
+      local: { ...local.state, python: deps.settings.studioPython ?? null, server: deps.settings.studioServer ?? null, address: localAddress(), ask: localAsk },
     };
   }
   const announce = async () => deps.broadcast(await stateMessage());
+  /** The user's own server, started from the panel after a card. Memory only: the app never starts it by itself. */
+  const local = new LocalServer(() => {
+    localHealth.clear();
+    void announce();
+  }, () => deps.env ?? process.env);
+  let localAsk: { id: string; python: string; server: string; command: string; port: number; device: Device; hub: string } | null = null;
+
+  /** The loopback port of the user's server address, or null when it is not one the app may start a server for. */
+  function localPort(): number | null {
+    try {
+      const url = new URL(localAddress());
+      return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ? Number(url.port || 80) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The two paths from the page's boxes: the same checks as /studio python and /studio server. An empty box clears it. */
+  async function localConfig(msg: Record<string, unknown>, send: Send): Promise<boolean> {
+    for (const [field, key, what] of [["python", "studioPython", "Python"], ["server", "studioServer", "The server script"]] as const) {
+      const text = typeof msg[field] === "string" ? (msg[field] as string).trim() : "";
+      if (!text) deps.settings[key] = null;
+      else {
+        const path = checkPath(text);
+        const refuse = (message: string) => {
+          send({ type: "studio-error", message });
+          return false;
+        };
+        if (!path) return refuse(`${what}: give the whole path, on one line, without quotes.`);
+        if (!(await stat(path).then((s) => s.isFile(), () => false))) return refuse(`${what}: ${path} is not a file on this computer.`);
+        deps.settings[key] = path;
+      }
+    }
+    await deps.saveSettings();
+    void announce();
+    return true;
+  }
+
+  async function localStart(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    // The page's paths come with the start (two messages sent together would be handled at the same time): they are saved first, with the same checks.
+    if (typeof msg.python === "string" || typeof msg.server === "string") {
+      if (!(await localConfig(msg, send))) return;
+    }
+    const { studioPython: python, studioServer: server } = deps.settings;
+    if (!python || !server) return err("Give the Python and the server script first (the two boxes, or /studio python and /studio server).");
+    for (const [what, path] of [["Python", python], ["The server script", server]] as const) if (!(await stat(path).then((s) => s.isFile(), () => false))) return err(`${what} is not a file any more: ${path}`);
+    const port = localPort();
+    if (!port) return err("The local image address has to be on this computer (127.0.0.1 or localhost) for the app to start a server for it.");
+    const device = msg.device === undefined ? "mps" : msg.device;
+    if (!isDevice(device)) return err("The device is mps, cuda or cpu.");
+    if (local.state.status === "starting" || local.state.status === "running") return err("The local image server is already running. Stop it first.");
+    if (await fetch(new URL("/health", localAddress()), { signal: AbortSignal.timeout(800) }).then((r) => r.ok, () => false)) return err(`Something already answers at ${localAddress()}: nothing was started.`);
+    localAsk = { id: randomBytes(8).toString("hex"), python, server, command: commandText(python, server, port, device), port, device, hub: deps.hubDir ?? hubCacheDir(deps.env ?? process.env) };
+    void announce();
+  }
+
+  async function localConfirm(id: string, send: Send): Promise<void> {
+    const ask = localAsk;
+    if (!ask || ask.id !== id) return;
+    localAsk = null;
+    try {
+      await local.start(ask.python, ask.server, ask.port, ask.device, (signal) => fetch(new URL("/health", `http://127.0.0.1:${ask.port}`), { signal }).then((r) => r.ok, () => false));
+    } catch (error) {
+      send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
+    }
+    void announce();
+  }
 
   /** What a job found, in words for her: the checks that still failed after the retries. */
   function reportNote(job: Job, review: Review | null): string {
@@ -798,7 +869,10 @@ export function createStudioService(deps: StudioDeps) {
         for (; seen < tags.length; seen++) void propose(tags[seen]).catch(() => {});
       };
     },
-    close: () => stopRunning(),
+    close: () => {
+      stopRunning();
+      void local.stop();
+    },
 
     /** `/studio`: on, off, backend, or open the panel. */
     async command(args: string, say: Say, remote: boolean, reply: (msg: unknown) => void): Promise<void> {
@@ -853,6 +927,7 @@ export function createStudioService(deps: StudioDeps) {
       }
       if (word === "off") {
         stopRunning();
+        await local.stop();
         proposal = null;
         on = false;
         await announce();
@@ -883,7 +958,16 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
         else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
-        else if (msg.type === "studio-cancel") cancel();
+        else if (msg.type === "studio-local-config") await localConfig(msg, send);
+        else if (msg.type === "studio-local-start") await localStart(msg, send);
+        else if (msg.type === "studio-local-confirm" && typeof msg.id === "string") await localConfirm(msg.id, send);
+        else if (msg.type === "studio-local-cancel") {
+          localAsk = null;
+          void announce();
+        } else if (msg.type === "studio-local-stop") {
+          localAsk = null;
+          await local.stop();
+        } else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());
       } catch (error) {
         send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });

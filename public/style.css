@@ -366,3 +366,7 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .gallery-filter .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft, rgba(255,150,120,.18)); }
 .preset.studio-redrawn { position: relative; }
 .preset .studio-was { position: absolute; top: 4px; right: 4px; width: 32%; height: auto; border-radius: var(--radius-md); background: var(--fill-2); outline: 1px solid var(--muted); opacity: 0.9; }
+.studio-local { margin-top: 8px; }
+.studio-local summary { cursor: pointer; }
+.studio-local-log { max-height: 10em; overflow: auto; margin: 6px 0 0; padding: 6px 8px; font-size: var(--font-size-small); background: var(--fill-2); border-radius: var(--radius-md); white-space: pre-wrap; word-break: break-all; }
+.studio-local-card { margin-top: 6px; }

@@ -62,6 +62,12 @@ You can tell the app which Python and which script are yours, so it shows you th
 
 Both are saved as whole paths in `data/settings.json`. The app starts nothing from them: it only prints the command for you to run, in your own terminal.
 
+## Start it from the app
+
+Instead of a terminal you can start the server from the studio. Open **Start my own image server** in the panel, enter the two whole paths (your Python and the server script), pick the device (`mps` for a Mac, `cuda` for an NVIDIA card, `cpu` is very slow) and press **Start the server**. A card shows the exact command, the port and the folder it reads models from, and nothing starts until you press **Start it**. The panel then shows what the server prints, so a missing package is visible there. **Stop it** ends it, and so does turning the studio off.
+
+The server runs as you, with your own Python and your own script, so only point it at files you trust. The app gives it its environment without keys, tokens, secrets or passwords. It is never started by itself: not at launch, not by the chat, not from a phone. The address is the one the studio uses for **A model on this computer** (`http://127.0.0.1:7861` unless you changed it with `/studio backend`), and only an address on this computer works for this.
+
 ## Which models have a server
 
 Only one: **FLUX.2 klein 4B**, the model the reference server `python/pack_studio/server.py` loads, and the one the pack studio was measured with ([the numbers](https://github.com/rhedak/anime_ai_companion/blob/main/docs/pack-image-models.md)). The studio's model list also notices some other image models in your Hugging Face cache (Qwen-Image, Z-Image-Turbo, Pony Diffusion), so you know what is on your computer, but **there is no server for them in this app**. To use one, you or your agent has to write a server that speaks the same small protocol (below). We have not tested those models for packs, so we do not say they work.
