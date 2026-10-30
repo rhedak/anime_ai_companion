@@ -326,6 +326,7 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio label { display: block; margin: 8px 6px 2px; font-size: 12px; color: var(--muted); }
 .studio select, .studio input, .studio textarea { width: 100%; box-sizing: border-box; font: inherit; }
 .studio .pack-confirm-buttons { margin: 10px 0 4px; }
+.studio-keep { display: block; margin: 8px 6px 0; font-size: var(--font-size-small); color: var(--muted); }
 .studio-models { list-style: none; margin: 4px 6px 0; padding: 0; font-size: var(--font-size-small); }
 .studio-models li { margin-bottom: 3px; }
 .studio-models .studio-not-ready { color: var(--muted); }

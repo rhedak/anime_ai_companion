@@ -212,6 +212,16 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     assert.ok(redone.every((r) => /expression to a warm happy smile|only her eyes|only her mouth/.test(String(r.body.prompt))), "nothing else was");
     assert.ok(redone.every((r) => !/sad|angry|raise/.test(String(r.body.prompt))), "not the sad or angry pictures, not the poses");
 
+    // The same seed: the picture drawn again is asked with the seed it had, so its composition stays.
+    const recordedSeed = JSON.parse(await readFile(join(t.dataDir, "studio", card.id, "frames.json"), "utf8")).happy.seed;
+    const askedBefore = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-regen", id: card.id, names: ["happy"], sameSeed: true }, send, false);
+    await t.waitFor("studio-review", 3);
+    const same = t.fake.requests.filter((r) => r.path === "/edit").slice(askedBefore);
+    const sameHappy = same.find((r) => /warm happy smile/.test(String(r.body.prompt)));
+    assert.ok(sameHappy, "happy was asked for again");
+    assert.equal(sameHappy?.body.seed, recordedSeed, "with the seed it had");
+
     await t.service.message({ type: "studio-accept", id: card.id }, send, false);
     await t.waitFor("studio-installed");
     assert.equal(t.sent.find((m) => m.type === "studio-installed")?.name, "risa-winter");

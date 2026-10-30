@@ -32,7 +32,7 @@ try {
     });
   } else if (workerData.phase === "build") {
     const geometry = JSON.parse(await readFile(join(workerData.dir, "geometry.json"), "utf8")) as Geometry;
-    await runBuild(parsed.job, geometry, { dir: workerData.dir, backend, emit: send }, Array.isArray(workerData.only) ? workerData.only.map(String) : undefined);
+    await runBuild(parsed.job, geometry, { dir: workerData.dir, backend, emit: send }, Array.isArray(workerData.only) ? workerData.only.map(String) : undefined, Array.isArray(workerData.sameSeed) ? workerData.sameSeed.map(String) : undefined);
   } else if (workerData.phase === "assemble") {
     const geometry = JSON.parse(await readFile(join(workerData.dir, "geometry.json"), "utf8")) as Geometry;
     await runAssemble(parsed.job, geometry, { dir: workerData.dir, emit: send });

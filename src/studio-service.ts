@@ -544,12 +544,12 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   /** Makes some pictures again (and what was drawn from them), with new seeds. */
-  async function regenerate(id: string, names: unknown, send: Send): Promise<void> {
+  async function regenerate(id: string, names: unknown, send: Send, sameSeed = false): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
     const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 12) : [];
     if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
     const { job, dir, info } = waiting;
-    startWorker(job, dir, "build", info, { only });
+    startWorker(job, dir, "build", info, { only, sameSeed: sameSeed ? only : [] });
   }
 
   // --- one picture of an installed pack, drawn again from words (src/studio/frame-edit.ts) ---
@@ -832,7 +832,7 @@ export function createStudioService(deps: StudioDeps) {
         if (msg.type === "studio-start") await start(msg, send);
         else if (msg.type === "studio-confirm" && typeof msg.id === "string") await confirm(msg.id, send);
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
-        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send);
+        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send, msg.sameSeed === true);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
         else if (msg.type === "studio-backend") await chooseBackend(msg.value, send);
         else if (msg.type === "studio-handover") send({ type: "studio-handover", prompt: handoverPrompt({ source: typeof msg.source === "string" ? msg.source : null, name: typeof msg.name === "string" ? msg.name : undefined, outfit: typeof msg.outfit === "string" ? msg.outfit : undefined }), guide: HANDOVER_GUIDE });

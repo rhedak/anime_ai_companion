@@ -284,12 +284,14 @@ export function createStudio(io) {
     /** @type {Set<string>} */
     const selected = new Set();
     const again = el("button", { type: "button", className: "ghost studio-action", textContent: "Draw the selected again", disabled: true });
+    // Same seed keeps the picture as it is and only tries the checks again (the blur, mostly); a new seed draws it another way.
+    const keepSeed = el("input", { type: "checkbox", id: "studio-keep-seed" });
     const use = el("button", { type: "button", className: "studio-action", textContent: "Use this pack" });
     for (const tile of review.tiles ?? []) setTile(id, tile, selected, () => (again.disabled = selected.size === 0));
     const notes = el("ul", { className: "studio-flags" });
     /** Drawing again: the tiles stay (the ones that are made again are replaced as they are drawn), the buttons wait. */
     const redraw = (/** @type {string[]} */ names, /** @type {string} */ text) => {
-      io.send({ type: "studio-regen", id, names });
+      io.send({ type: "studio-regen", id, names, sameSeed: keepSeed.checked });
       parts.extra.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = true));
       parts.grid.querySelectorAll("button").forEach((b) => b.removeAttribute("aria-pressed"));
       status(text);
@@ -306,7 +308,7 @@ export function createStudio(io) {
       use.disabled = true;
       status("Writing the pack…");
     };
-    parts.extra.replaceChildren(notes, el("div", { className: "pack-confirm-buttons" }, use, again));
+    parts.extra.replaceChildren(notes, el("label", { className: "studio-keep", htmlFor: "studio-keep-seed" }, keepSeed, " Same seed: keeps each picture, and only the checks are tried again (fixes blur, not a wrong pose or outfit)"), el("div", { className: "pack-confirm-buttons" }, use, again));
     // The panel scrolls and the buttons are below the pictures: bring them into view.
     parts.extra.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
