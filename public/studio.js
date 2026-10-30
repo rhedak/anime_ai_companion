@@ -273,6 +273,12 @@ export function createStudio(io) {
       };
     }
     const old = Array.from(parts.grid.children).find((c) => /** @type {HTMLElement} */ (c).dataset.name === tile.name);
+    // A picture made again keeps the one it replaced, small beside it, until the pack is used or left.
+    const was = old ? old.querySelector("img")?.getAttribute("src") : null;
+    if (was && was !== tile.thumb) {
+      t.append(el("img", { src: was, alt: `${tile.name}, before`, className: "studio-was", title: "the picture before it was drawn again" }));
+      t.classList.add("studio-redrawn");
+    }
     if (old) old.replaceWith(t);
     else parts.grid.append(t);
   }
