@@ -2,7 +2,8 @@
  * The pack studio's panel (docs/pack-studio.md): a form, the question before anything is drawn, the pictures to pick from, and the result.
  * It only sends and shows; every rule (off at every start, nothing from a phone, one job at a time) is the server's.
  *
- * @param {{ attention?: (text: string) => boolean, send: (msg: object) => void, host: () => Element | null, say: (text: string) => void }} io
+ * @param {{ attention?: (text: string) => boolean, send: (msg: object) => void, host: () => Element | null, say: (text: string) => void, closeWindow?: () => void }} io
+ *   `closeWindow` is the full studio's own page (studio-full.js): its Close button closes that tab.
  */
 export function createStudio(io) {
   let on = false;
@@ -14,7 +15,7 @@ export function createStudio(io) {
   let active = "";
   let sourceTouched = false;
   /** The image makers the server offers, and the one that is chosen. */
-  /** @type {{ value: string, label: string, kind: string }[]} */
+  /** @type {{ value: string, label: string, kind: string, available?: boolean, reason?: string | null }[]} */
   let makers = [];
   let maker = "";
   /** @type {HTMLElement | null} */
@@ -33,6 +34,11 @@ export function createStudio(io) {
     if (!line) return;
     line.textContent = text;
     line.classList.toggle("studio-bad", bad);
+  }
+
+  /** The page is on this computer (the studio is refused from a phone, and so is its own page). */
+  function onThisComputer() {
+    return /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
   }
 
   function close() {
@@ -77,7 +83,13 @@ export function createStudio(io) {
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
     const handover = el("button", { type: "button", className: "ghost", textContent: "Hand over to an AI agent…", title: "A prompt to copy into any AI agent that makes pictures, if no image maker here suits you" });
     handover.onclick = () => io.send({ type: "studio-handover", source: source.value, name: name.value, outfit: outfit.value });
-    closeButton.onclick = close;
+    closeButton.onclick = () => {
+      close();
+      io.closeWindow?.();
+    };
+    // The same studio on its own page, in a new tab (or the desktop shell's browser). Only from this computer: a phone has no such page.
+    const full = el("button", { type: "button", className: "ghost", textContent: "Open full studio", title: "The whole studio on its own page, in a new tab", hidden: !onThisComputer() || Boolean(io.closeWindow) }); // the full studio is this page: nothing to open
+    full.onclick = () => window.open("/studio-full.html", "_blank", "noopener");
     stop.onclick = () => io.send({ type: "studio-cancel" });
     source.addEventListener("input", () => (sourceTouched = true)); // only the user's own choice counts (a script's change does not fire this)
     source.onchange = () => {
@@ -110,7 +122,7 @@ export function createStudio(io) {
       el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }),
       count,
       el("div", { className: "studio-proposal" }),
-      el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, handover),
+      el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, full, handover),
       el("div", { className: "studio-handover" }),
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
@@ -348,9 +360,11 @@ export function createStudio(io) {
   function fillMakers() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
     if (!select) return;
-    select.replaceChildren(...makers.map((m) => new Option(m.label, m.value)));
+    // A maker that cannot be used now is listed with why, and cannot be picked (the server says the same when asked to draw).
+    select.replaceChildren(...makers.map((m) => new Option(m.available === false && m.reason ? `${m.label} (${m.reason})` : m.label, m.value)));
+    for (const option of select.options) option.disabled = makers.some((m) => m.value === option.value && m.available === false);
     if (makers.some((m) => m.value === maker)) select.value = maker;
-    else select.selectedIndex = -1;
+    else select.prepend(new Option("Choose an image maker…", "", true, true)); // nothing chosen yet: say so, rather than an empty box
   }
 
   function fillSources() {
@@ -374,6 +388,8 @@ export function createStudio(io) {
 
   return {
     open,
+    /** Whether the panel is showing (the full studio's page opens it once, when the page is loaded). */
+    isOpen: () => panel !== null,
     /** Handles the studio messages; false for anything else. */
     handle(/** @type {Record<string, any>} */ msg) {
       switch (msg.type) {

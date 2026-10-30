@@ -35,6 +35,9 @@ export interface HttpDeps {
   packThumb?(name: string): Promise<{ body: Buffer; mime: string } | null>;
 }
 
+/** The full pack studio's own page and script (docs/pack-studio.md): this computer only. */
+const STUDIO_PAGES = new Set(["/studio-full.html", "/studio-full.js"]);
+
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -133,6 +136,11 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
     if (await pairing(req, res, new URL(req.url ?? "/", "http://localhost").pathname)) return;
     if (!letThrough(req, res)) return;
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    // The full pack studio is for this computer only: a phone that got past the gate above is still told there is no such page.
+    if (STUDIO_PAGES.has(path) && !isLoopbackAddress(req.socket.remoteAddress)) {
+      res.writeHead(404, headers).end("Not found");
+      return;
+    }
     const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
     if (shown) {
       // A picture she showed in the chat. The id is unguessable and the file is re-checked on every request.

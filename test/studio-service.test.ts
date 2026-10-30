@@ -16,7 +16,7 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean } = {}) {
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
@@ -42,6 +42,9 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: [], character: "risa" } : null),
     refreshPacks: async () => {},
     pushNote: (t) => notes.push(t),
+    brain: () => options.brain ?? "claude",
+    chromeOn: () => options.chromeOn ?? true,
+    env: options.env ?? {},
   });
   const waitFor = async (type: string, count = 1) => {
     for (let i = 0; i < 3600; i++) {
@@ -402,6 +405,35 @@ process.stdin.on("end", () => {
     else process.env.COMPANION_BROWSER_DOWNLOADS = saved.downloads;
     await t.cleanup();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the image makers say whether each can be used now, and why not", async () => {
+  const t = await setup({ brain: "ollama", chromeOn: false, env: { OPENAI_API_KEY: "sk-test-value" } });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const state = await t.service.stateMessage();
+    const by = (value: string) => state.backends.find((b: any) => b.value === value) as any;
+    assert.equal(by(t.fake.url).available, true, "a model that answers its /health is usable");
+    assert.equal(by("openai").available, true, "a key in the environment is enough");
+    assert.equal(by("xai").available, false);
+    assert.match(by("xai").reason, /XAI_API_KEY/);
+    assert.doesNotMatch(JSON.stringify(state), /sk-test-value/, "the key's value is never sent to the page");
+    assert.equal(by("grok-web").available, false, "a browser maker needs Claude as the brain");
+    assert.match(by("grok-web").reason, /Claude as the brain/);
+    assert.equal(state.handover, true, "handover needs nothing from this computer");
+    const other = await setup({ brain: "claude", chromeOn: false, backendUrl: "http://127.0.0.1:9", env: {} });
+    try {
+      await other.service.command("on", other.say, false, () => {});
+      const again = await other.service.stateMessage();
+      assert.match((again.backends.find((b: any) => b.value === "grok-web") as any).reason, /\/chrome/);
+      assert.equal((again.backends[0] as any).available, false, "a model that does not answer is not usable");
+      assert.match((again.backends[0] as any).reason, /no model answers/);
+    } finally {
+      await other.cleanup();
+    }
+  } finally {
+    await t.cleanup();
   }
 });
 

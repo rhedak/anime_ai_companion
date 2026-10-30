@@ -7,7 +7,7 @@ import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
-import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames } from "./studio/build.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
@@ -47,6 +47,12 @@ export interface StudioDeps {
   pushNote(text: string): void;
   /** Chat or work: the brain's proposals are for chat only (in work mode a file she reads could talk her into one). */
   mode(): Mode;
+  /** The brain in use ("claude", "cursor", …): the browser makers need Claude in Chrome, which only Claude Code has. */
+  brain?(): string;
+  /** Claude in Chrome is on (`/chrome on`, work mode): the browser makers can drive the user's Chrome. */
+  chromeOn?(): boolean;
+  /** Tests give a stand-in for the environment; the app reads its own. */
+  env?: NodeJS.ProcessEnv;
   /** Tests give a stand-in; the app builds the HTTP client. */
   makeBackend?: (url: string) => ImageBackend;
   workerUrl?: URL;
@@ -171,14 +177,45 @@ export function createStudioService(deps: StudioDeps) {
     `The app stops at ${dollars(budget())} for this pack (/studio budget changes it). Keeping the key safe, and what it costs you, is your responsibility: the app never saves it, shows it or sends it anywhere but that host.`
   const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0 }));
 
+  /** A local model's answer to its /health, kept for a few seconds so the page can ask often without a request each time. */
+  const localHealth = new Map<string, { at: number; ok: boolean }>();
+  /**
+   * Whether a maker can be used on this computer right now, and why not if it cannot. Checked when the page asks, never drawn with:
+   * a local model is asked for its /health (a short wait on loopback), a paid service needs its key in the environment (the value is never read out),
+   * a browser maker needs Claude as the brain and Claude in Chrome on. Handover needs nothing: it is always there.
+   */
+  async function makerAvailability(choice: { value: string; kind: "local" | "paid" | "browser" }): Promise<{ available: boolean; reason: string | null }> {
+    if (choice.kind === "paid") {
+      return hasKey(choice.value, deps.env ?? process.env) ? { available: true, reason: null } : { available: false, reason: `set ${keyName(choice.value)} in this app's environment` };
+    }
+    if (choice.kind === "browser") {
+      if ((deps.brain?.() ?? "claude") !== "claude") return { available: false, reason: "needs Claude as the brain" };
+      if (!deps.chromeOn?.()) return { available: false, reason: "turn on /chrome (Claude in Chrome)" };
+      return { available: true, reason: null };
+    }
+    const at = localHealth.get(choice.value);
+    if (at && Date.now() - at.at < 5000) return at.ok ? { available: true, reason: null } : { available: false, reason: "no model answers at that address" };
+    const ok = await Promise.resolve()
+      .then(() => fetch(new URL("/health", choice.value), { signal: AbortSignal.timeout(800) }))
+      .then((r) => r.ok)
+      .catch(() => false); // a saved address that is not a URL at all is simply not answering
+    localHealth.set(choice.value, { at: Date.now(), ok });
+    return ok ? { available: true, reason: null } : { available: false, reason: "no model answers at that address" };
+  }
+
   async function stateMessage() {
     const job = running?.job ?? waiting?.job ?? null;
+    const backends = await Promise.all(
+      backendChoices().map(async (choice) => ({ ...choice, ...(await makerAvailability(choice)) })),
+    );
     return {
       type: "studio-state",
       on,
       backend: deps.settings.studioBackend,
-      /** What the page may offer in its "Image maker" list: the local server (its saved address, if any) and each web service, with what it costs the user. */
-      backends: backendChoices(),
+      /** What the page may offer in its "Image maker" list: the local server (its saved address, if any) and each web service, with what it costs the user, and whether it can be used now (`available`, and why not in `reason`). */
+      backends,
+      /** Handover needs nothing from this computer: a prompt to copy into any AI agent. */
+      handover: true,
       sources: on ? (knownSources = await deps.sources()) : [],
       /** The pack the form starts from. */
       active: deps.activeSource() ?? deps.drawnSource?.() ?? null,

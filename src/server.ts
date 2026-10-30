@@ -792,6 +792,8 @@ const studio = createStudioService({
   },
   refreshPacks: async () => broadcast(await packsMessage()),
   pushNote: (text) => notes.push(text),
+  brain: () => settings.provider,
+  chromeOn: () => claudeChrome,
 });
 
 // --- character cards: see card-service.ts ---
