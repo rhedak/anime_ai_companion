@@ -7,6 +7,7 @@ import { join } from "node:path";
  * `~/.cache/huggingface/hub`). Finding them does not start anything: the studio's local entry says what is there and how to start a backend for it.
  */
 export const LOCAL_IMAGE_MODELS: readonly { repo: string; label: string }[] = [
+  { repo: "black-forest-labs/FLUX.2-klein-4B", label: "FLUX.2 klein 4B" }, // the one `python/pack_studio/server.py` serves
   { repo: "Qwen/Qwen-Image-2.1-Turbo", label: "Qwen-Image-2.1-Turbo" },
   { repo: "Qwen/Qwen-Image-Edit", label: "Qwen-Image-Edit" },
   { repo: "Tongyi-MAI/Z-Image-Turbo", label: "Z-Image-Turbo" },

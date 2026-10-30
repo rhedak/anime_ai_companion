@@ -28,7 +28,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
   await writeFile(join(packFolder, "credit.txt"), "risa-dress: a test pack\n");
   await writeFile(join(packFolder, ".pack-install.json"), "{\"sha256\":\"x\"}\n");
   const fake = options.again?.fake ?? (await startFakeBackend({ delayMs: options.delayMs, xai: options.xai ? {} : undefined, noWeights: options.noWeights }));
-  const settings = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl, studioBudgetUsd: options.budget };
+  const settings: { studioBackend: string | null; studioBudgetUsd?: number; studioPython?: string | null; studioServer?: string | null } = { studioBackend: options.backendUrl === undefined ? fake.url : options.backendUrl, studioBudgetUsd: options.budget };
   const sent: Record<string, any>[] = [];
   const said: string[] = [];
   const notes: string[] = [];
@@ -845,6 +845,33 @@ test("a pack is exported to a folder and a folder imported as a pack, from this 
     await t.service.message({ type: "studio-export", source: "risa-dress", folder: out }, send, true);
     assert.equal(me.at(-1)!.type, "notice", "a phone is refused");
     assert.equal(me.length, before + 1);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("/studio python and /studio server save whole paths and the not-answering reason shows the start command", async () => {
+  const t = await setup({ backendUrl: "http://127.0.0.1:9", env: {} });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const python = join(t.dataDir, "venv-python");
+    const server = join(t.dataDir, "my server.py");
+    await writeFile(python, "");
+    await writeFile(server, "");
+    t.said.length = 0;
+    await t.service.command("python relative/python", t.say, false, () => {});
+    assert.match(t.said.at(-1)!, /whole path/);
+    await t.service.command(`python ${join(t.dataDir, "missing")}`, t.say, false, () => {});
+    assert.match(t.said.at(-1)!, /not a file/);
+    await t.service.command(`python ${python}`, t.say, false, () => {});
+    assert.equal(t.settings.studioPython, python);
+    await t.service.command(`server ${server}`, t.say, false, () => {});
+    assert.match(t.said.at(-1)!, new RegExp(`"${server.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" --port 9`), "a path with a space is quoted, and the port is the address's");
+    const reason = ((await t.service.stateMessage()).backends[0] as any).reason as string;
+    assert.match(reason, /start it with: .*--port 9/);
+    await t.service.command("python none", t.say, false, () => {});
+    assert.equal(t.settings.studioPython, null);
+    assert.doesNotMatch(((await t.service.stateMessage()).backends[0] as any).reason, /start it with/);
   } finally {
     await t.cleanup();
   }

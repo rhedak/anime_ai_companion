@@ -17,6 +17,7 @@ import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
 import { exportPack, importPack } from "./studio/transfer.ts";
 import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
+import { checkPath } from "./settings.ts";
 import { detectLocalImageModels, hubCacheDir } from "./studio/local-models.ts";
 import type { Flags } from "./studio/checks.ts";
 import { encodeWebp, type Raster } from "./studio/raster.ts";
@@ -36,7 +37,7 @@ export interface StudioDeps {
   dataDir: string;
   /** data/frames: where a finished pack is installed. */
   framesDir: string;
-  settings: { studioBackend: string | null; studioBudgetUsd?: number; studioLocalBackend?: string | null };
+  settings: { studioBackend: string | null; studioBudgetUsd?: number; studioLocalBackend?: string | null; studioPython?: string | null; studioServer?: string | null };
   saveSettings(): Promise<void>;
   broadcast: Broadcast;
   remoteRefusal(): string;
@@ -194,11 +195,16 @@ export function createStudioService(deps: StudioDeps) {
    * a local model is asked for its /health (a short wait on loopback), a paid service needs its key in the environment (the value is never read out),
    * a browser maker needs Claude as the brain and Claude in Chrome on. Handover needs nothing: it is always there.
    */
+  /** The address of the user's own model server: the chosen one when it is local, else the last one used, else the default. */
+  const localAddress = (): string => (isLocal(deps.settings.studioBackend) ? deps.settings.studioBackend : null) ?? deps.settings.studioLocalBackend ?? DEFAULT_LOCAL_BACKEND;
   /** Why a model on this computer does not answer: and, when its weights are on this computer, which ones, so the user knows what to start. */
   async function notAnswering(): Promise<string> {
     const found = await detectLocalImageModels(deps.hubDir ?? hubCacheDir(deps.env ?? process.env));
-    if (found.length === 0) return "no model answers at that address";
-    return `no model answers at that address; on this computer: ${found.map((m) => m.label).join(", ")} (start its backend, see the guide)`;
+    // With the user's own Python and server script set (/studio python, /studio server), say the exact command to start it (nothing is run from here).
+    const { studioPython: python, studioServer: server } = deps.settings;
+    const start = python && server ? `; start it with: ${startCommand(python, server, localAddress())}` : "";
+    if (found.length === 0) return `no model answers at that address${start}`;
+    return `no model answers at that address; on this computer: ${found.map((m) => m.label).join(", ")} (start its backend, see the guide)${start}`;
   }
 
   async function makerAvailability(choice: { value: string; kind: "local" | "paid" | "browser" }): Promise<{ available: boolean; reason: string | null }> {
@@ -314,7 +320,7 @@ export function createStudioService(deps: StudioDeps) {
   const localHelp = (url: string, problem: string): string =>
     `${problem}\n\nTo draw on this computer you need an image model running, which the app does not bundle. ` +
     `1. Download a model once (the reference one, FLUX.2 klein 4B, is about 8 GB and needs about 22 GB of memory to run). ` +
-    `2. Start its server (python/pack_studio/server.py in this app's folder; it listens on 127.0.0.1 only). ` +
+    `2. Start its server (python/pack_studio/server.py in this app's folder; it listens on 127.0.0.1 only${deps.settings.studioPython && deps.settings.studioServer ? `; with your Python: ${startCommand(deps.settings.studioPython, deps.settings.studioServer, url)}` : "; /studio python and /studio server tell the app which Python and script are yours, and it then shows the command"}). ` +
     `3. Press the button again${url === DEFAULT_LOCAL_BACKEND ? "" : `, or give its address with /studio backend <address> (now ${url})`}. ` +
     `The step-by-step guide: ${LOCAL_MODEL_GUIDE} . Or use another image maker instead: /studio backend xai (or gemini, openai, grok-web, gemini-web, chatgpt-web). With none of these, /studio handover gives you a prompt to copy into any AI agent that makes pictures.`;
 
@@ -808,6 +814,21 @@ export function createStudioService(deps: StudioDeps) {
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
+      if (word === "python" || word === "server") {
+        const key = word === "python" ? "studioPython" : "studioServer";
+        if (rest.length === 0) return say(`${word === "python" ? "Python for the local image model" : "Server script"}: ${deps.settings[key] ?? "(not set)"}. /studio ${word} <whole path> sets it, /studio ${word} none clears it. Nothing is started from it: the app only shows the command (docs: A model on your computer).`);
+        const text = rest.join(" ");
+        if (text === "none") deps.settings[key] = null;
+        else {
+          const path = checkPath(text);
+          if (!path) return say("Give the whole path, on one line, without quotes.");
+          if (!(await stat(path).then((s) => s.isFile(), () => false))) return say(`${path} is not a file on this computer.`);
+          deps.settings[key] = path;
+        }
+        await deps.saveSettings();
+        const { studioPython: python, studioServer: server } = deps.settings;
+        return say(python && server ? `The command to start it: ${startCommand(python, server, localAddress())}` : `${word === "python" ? "Python" : "Server script"} ${deps.settings[key] ? "saved" : "cleared"}.`);
+      }
       if (word === "handover") {
         const active = deps.activeSource() ?? deps.drawnSource?.() ?? null;
         const prompt = handoverPrompt({ source: active, outfit: rest.join(" ") });
@@ -872,6 +893,13 @@ export function createStudioService(deps: StudioDeps) {
 }
 
 /** A folder copied whole into a staging folder beside the job's, then renamed into place, so a half-written pack never shows up in data/frames. */
+/** The command that starts the user's own backend, as text to copy (the port is the address's). Whole paths have no quotes (`checkPath`), so only spaces need care. */
+export function startCommand(python: string, server: string, address: string): string {
+  const port = /:(\d+)/.exec(address)?.[1] ?? "7861";
+  const part = (path: string) => (/\s/.test(path) ? `"${path}"` : path);
+  return `${part(python)} ${part(server)} --port ${port}`;
+}
+
 async function copyDir(from: string, staging: string, to: string): Promise<void> {
   await rm(staging, { recursive: true, force: true });
   await cp(from, staging, { recursive: true });

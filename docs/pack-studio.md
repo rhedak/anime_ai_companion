@@ -182,6 +182,10 @@ The panel has an **Image maker** list (top of the form; it is disabled while a j
 
 The panel's **Open full studio** button (on this computer only) opens the same studio on its own page, `/studio-full.html`, in a new tab. In the desktop app that tab is the user's own browser, because the shell hands any other address out. It uses the same socket and the same rules as the panel (`public/studio-full.js` is a thin page around `public/studio.js`), so a job started in one is shown in the other. The page is refused to every other device, even with phone access on.
 
+## Your own Python for a local model
+
+The app bundles no Python, so a model on this computer is started by the user. `/studio python <whole path>` and `/studio server <whole path>` (`studioPython`, `studioServer` in `data/settings.json`; `none` clears one) say which Python and which server script are theirs. The app **starts nothing from them**: when the local model does not answer, the reason in the Image maker list and the setup help show the exact command (`<python> <server> --port <port>`) to run in their own terminal. Both are whole paths of an existing file, on one line, without quotes or `$` (`checkPath` in `src/settings.ts`). The setup guide is `site/pages/local-model.md` (it names which model has a server: only FLUX.2 klein 4B, and gives a prompt for an AI agent to do the setup). Starting the process from the app is a later step, with its own card.
+
 ## Import and export
 
 The panel's last section copies a pack out to a folder, or a folder in as a pack (`src/studio/transfer.ts`). Both take the whole path typed in the box (no system dialog, so it works the same in the browser and the desktop app), both are refused from a phone like the rest of the studio, and neither ever writes over anything:

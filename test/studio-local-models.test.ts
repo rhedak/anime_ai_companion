@@ -22,3 +22,10 @@ test("the cache folder is HF_HUB_CACHE when it is set, and the Hugging Face defa
   assert.equal(hubCacheDir({ HF_HUB_CACHE: "/data/hub" }), "/data/hub");
   assert.match(hubCacheDir({}), /\.cache\/huggingface\/hub$/);
 });
+
+test("checkPath keeps only a whole path on one line without quotes or shell characters", async () => {
+  const { checkPath } = await import("../src/settings.ts");
+  const root = process.platform === "win32" ? "C:\\tools" : "/opt/tools";
+  assert.equal(checkPath(`${root}${process.platform === "win32" ? "\\" : "/"}python`), `${root}${process.platform === "win32" ? "\\" : "/"}python`);
+  for (const bad of ["python", "relative/python", `${root}/py"thon`, `${root}/$HOME`, `${root}/a\nb`, "", 5, null]) assert.equal(checkPath(bad), null, String(bad));
+});
