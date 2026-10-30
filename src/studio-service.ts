@@ -232,6 +232,8 @@ export function createStudioService(deps: StudioDeps) {
       backends,
       /** Handover needs nothing from this computer: a prompt to copy into any AI agent. */
       handover: true,
+      /** How many pictures a full pack has, the neutral one (the base, not in knownFrameNames) included (the form says what they are). */
+      packSize: knownFrameNames().size + 1,
       sources: on ? (knownSources = await deps.sources()) : [],
       /** The pack the form starts from. */
       active: deps.activeSource() ?? deps.drawnSource?.() ?? null,

@@ -326,6 +326,12 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio label { display: block; margin: 8px 6px 2px; font-size: 12px; color: var(--muted); }
 .studio select, .studio input, .studio textarea { width: 100%; box-sizing: border-box; font: inherit; }
 .studio .pack-confirm-buttons { margin: 10px 0 4px; }
+.studio-models { list-style: none; margin: 4px 6px 0; padding: 0; font-size: var(--font-size-small); }
+.studio-models li { margin-bottom: 3px; }
+.studio-models .studio-not-ready { color: var(--muted); }
+.studio-models .studio-ready span:first-child { color: var(--accent); font-weight: 600; }
+.studio-why { color: var(--muted); }
+.studio-contents { margin: 10px 6px 0; font-size: var(--font-size-small); color: var(--muted); }
 .studio-status { margin: 8px 6px 0; font-size: var(--font-size-small); min-height: 1.2em; }
 .studio-bad { color: var(--danger, #c0392b); }
 .studio-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }

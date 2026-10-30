@@ -15,8 +15,10 @@ export function createStudio(io) {
   let active = "";
   let sourceTouched = false;
   /** The image makers the server offers, and the one that is chosen. */
-  /** @type {{ value: string, label: string, kind: string, available?: boolean, reason?: string | null }[]} */
+  /** @type {{ value: string, label: string, kind: string, cost?: string, keyNames?: string[], available?: boolean, reason?: string | null }[]} */
   let makers = [];
+  /** How many pictures a full pack has, from the server. */
+  let packSize = 0;
   let maker = "";
   /** @type {HTMLElement | null} */
   let panel = null;
@@ -81,6 +83,7 @@ export function createStudio(io) {
     const count = el("select", { id: "studio-count", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
     const makerSelect = el("select", { id: "studio-maker", ariaLabel: "Which image maker draws it" });
     makerSelect.onchange = () => io.send({ type: "studio-backend", value: makerSelect.value });
+    const models = el("ul", { className: "studio-models", ariaLabel: "Image makers and what each needs" });
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
@@ -124,6 +127,7 @@ export function createStudio(io) {
       el("div", { className: "gallery-title", textContent: "Pack studio: a draft of her in a new outfit, drawn on this computer" }),
       el("label", { textContent: "Image maker (web services cost money or allowance; the next question says what)", htmlFor: "studio-maker" }),
       makerSelect,
+      models,
       el("label", { textContent: "Draw from", htmlFor: "studio-source" }),
       source,
       el("label", { textContent: "New pack", htmlFor: "studio-name" }),
@@ -135,6 +139,7 @@ export function createStudio(io) {
       el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }),
       count,
       el("div", { className: "studio-proposal" }),
+      el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, full, handover),
       el("label", { textContent: "Draw one picture of a pack again (needs a model on this computer; the new pack is a copy, the source is not changed)" }),
       frameSource,
@@ -378,6 +383,15 @@ export function createStudio(io) {
   }
 
   function fillMakers() {
+    const list = q(".studio-models");
+    if (list) {
+      // Every maker with what it costs and whether it is ready now: the choice itself is the list above.
+      list.replaceChildren(...makers.map((m) => el("li", { className: m.available === false ? "studio-not-ready" : "studio-ready" },
+        el("span", { textContent: m.available === false ? "not ready" : "ready" }), " · ",
+        el("span", { textContent: m.label }),
+        m.available === false && m.reason ? el("span", { className: "studio-why", textContent: ` (${m.reason})` }) : "",
+      )));
+    }
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
     if (!select) return;
     // A maker that cannot be used now is listed with why, and cannot be picked (the server says the same when asked to draw).
@@ -451,6 +465,7 @@ export function createStudio(io) {
           on = msg.on === true;
           if (on) document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
           makers = Array.isArray(msg.backends) ? msg.backends.filter((/** @type {any} */ b) => b && typeof b.value === "string" && typeof b.label === "string") : [];
+          packSize = Number(msg.packSize) || 0;
           maker = typeof msg.backend === "string" ? msg.backend : "";
           fillMakers();
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
