@@ -242,6 +242,9 @@ const ADAPTERS: Record<string, PaidAdapter> = { [XAI]: xaiAdapter, [GEMINI]: gem
 /** The name of the environment variable the key of a paid service is read from, for what the user is told. */
 export const keyName = (service: string): string => ADAPTERS[service]?.keyEnv[0] ?? "";
 
+/** Every environment name a paid service reads its key from, in order of preference (names only, never values). */
+export const keyNamesFor = (service: string): string[] => [...(ADAPTERS[service]?.keyEnv ?? [])];
+
 /** Whether this app's environment has a key for a paid service (any of its names). The value is never read out or shown. */
 export const hasKey = (service: string, env: NodeJS.ProcessEnv = process.env): boolean =>
   (ADAPTERS[service]?.keyEnv ?? []).some((name) => Boolean(env[name]?.trim()));

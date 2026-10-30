@@ -7,7 +7,7 @@ import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
-import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, keyNamesFor, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames, readRecords } from "./studio/build.ts";
 import { processText } from "./studio/process.ts";
 import { pickKey } from "./studio/cutout.ts";
@@ -142,17 +142,17 @@ export function createStudioService(deps: StudioDeps) {
     deps.settings.studioBackend = url;
   };
   /** The choices of the page's "Image maker" list. The local entry is always there: the saved address, or the reference server's. Choosing it without a model running only shows how to set one up (`localHelp`). */
-  const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser" }[] => {
+  const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser"; cost: "free" | "per-picture" | "allowance"; keyNames: string[] }[] => {
     const saved = deps.settings.studioBackend;
     const local = (saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) ? saved : deps.settings.studioLocalBackend) ?? DEFAULT_LOCAL_BACKEND;
     return [
-      { value: local, label: `A model on this computer (${local})`, kind: "local" as const },
-      { value: "xai", label: "xAI Grok Imagine API (paid per picture, XAI_API_KEY)", kind: "paid" },
-      { value: "gemini", label: "Google Gemini API (paid per picture, GEMINI_API_KEY)", kind: "paid" },
-      { value: "openai", label: "OpenAI API (paid per picture, OPENAI_API_KEY)", kind: "paid" },
-      { value: "grok-web", label: "Grok Imagine website through your Chrome (uses Claude and your Grok allowance)", kind: "browser" },
-      { value: "gemini-web", label: "Google Gemini website through your Chrome (uses Claude and your Gemini allowance)", kind: "browser" },
-      { value: "chatgpt-web", label: "ChatGPT website through your Chrome (uses Claude and your ChatGPT allowance)", kind: "browser" },
+      { value: local, label: `A model on this computer (${local})`, kind: "local" as const, cost: "free" as const, keyNames: [] },
+      { value: "xai", label: "xAI Grok Imagine API (paid per picture, XAI_API_KEY)", kind: "paid" as const, cost: "per-picture" as const, keyNames: keyNamesFor("xai") },
+      { value: "gemini", label: "Google Gemini API (paid per picture, GEMINI_API_KEY)", kind: "paid" as const, cost: "per-picture" as const, keyNames: keyNamesFor("gemini") },
+      { value: "openai", label: "OpenAI API (paid per picture, OPENAI_API_KEY)", kind: "paid" as const, cost: "per-picture" as const, keyNames: keyNamesFor("openai") },
+      { value: "grok-web", label: "Grok Imagine website through your Chrome (uses Claude and your Grok allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
+      { value: "gemini-web", label: "Google Gemini website through your Chrome (uses Claude and your Gemini allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
+      { value: "chatgpt-web", label: "ChatGPT website through your Chrome (uses Claude and your ChatGPT allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
     ];
   };
   /** What the open job has cost so far (a paid backend only), also kept in the job's folder so a carried-on job keeps counting. */

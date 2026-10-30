@@ -429,6 +429,11 @@ test("the image makers say whether each can be used now, and why not", async () 
     assert.equal(by("xai").available, false);
     assert.match(by("xai").reason, /XAI_API_KEY/);
     assert.doesNotMatch(JSON.stringify(state), /sk-test-value/, "the key's value is never sent to the page");
+    assert.deepEqual(by("xai").keyNames, ["XAI_API_KEY"], "each paid maker names the variable its key comes from");
+    assert.deepEqual(by("gemini").keyNames, ["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
+    assert.equal(by("xai").cost, "per-picture");
+    assert.equal(by("grok-web").cost, "allowance");
+    assert.equal(by(t.fake.url).cost, "free");
     assert.equal(by("grok-web").available, false, "a browser maker needs Claude as the brain");
     assert.match(by("grok-web").reason, /Claude as the brain/);
     assert.equal(state.handover, true, "handover needs nothing from this computer");
