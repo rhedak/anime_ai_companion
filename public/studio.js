@@ -76,21 +76,21 @@ export function createStudio(io) {
   function open() {
     if (!on) return askToOpen();
     if (panel) return close(); // the same menu entry again closes it
-    const source = el("select", { id: "studio-source", ariaLabel: "Draw from this pack" });
-    const name = el("input", { type: "text", id: "studio-name", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
-    const outfit = el("textarea", { id: "studio-outfit", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
-    const look = el("textarea", { id: "studio-look", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
-    const count = el("select", { id: "studio-count", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
-    const makerSelect = el("select", { id: "studio-maker", ariaLabel: "Which image maker draws it" });
+    const source = el("select", { id: "studio-source", title: "The pack whose character, pose and framing the new outfit starts from. It is only read; nothing in it changes.", ariaLabel: "Draw from this pack" });
+    const name = el("input", { type: "text", id: "studio-name", title: "The folder name of the new pack in data/frames. A name that is taken is refused; nothing is replaced.", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
+    const outfit = el("textarea", { id: "studio-outfit", title: "What she wears in the new pack. The image maker is told this, with the rest of the picture kept the same.", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
+    const look = el("textarea", { id: "studio-look", title: "The line she uses to say what she wears (look.txt). Left empty it is made from the outfit.", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
+    const count = el("select", { id: "studio-count", title: "How many different first pictures are drawn for you to pick the best from. A paid maker charges for each one.", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
+    const makerSelect = el("select", { id: "studio-maker", title: "The program or service that draws the pictures. Makers that cannot be used now are greyed with the reason.", ariaLabel: "Which image maker draws it" });
     makerSelect.onchange = () => io.send({ type: "studio-backend", value: makerSelect.value });
     const models = el("ul", { className: "studio-models", ariaLabel: "Image makers and what each needs" });
     const start = el("button", { type: "button", textContent: "Draw outfits" });
     const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
     const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
-    const frameSource = el("select", { id: "studio-frame-source", ariaLabel: "Draw one picture again from this pack" });
-    const frameName = el("select", { id: "studio-frame-name", ariaLabel: "Which picture of it" });
-    const framePrompt = el("textarea", { id: "studio-frame-prompt", rows: 2, maxLength: 400, placeholder: "what to change in that picture, in your own words (a red scarf around her neck)", ariaLabel: "What to change in the picture" });
-    const framePack = el("input", { type: "text", id: "studio-frame-pack", maxLength: 40, placeholder: "name of the new pack (empty: the source pack's name with -edit)", ariaLabel: "Name of the new pack for the picture" });
+    const frameSource = el("select", { id: "studio-frame-source", title: "The installed pack to take one picture from. The new pack is a copy; this one is not changed.", ariaLabel: "Draw one picture again from this pack" });
+    const frameName = el("select", { id: "studio-frame-name", title: "The picture to draw again, by its name in the pack (happy, happy-blink, wave-1 and so on).", ariaLabel: "Which picture of it" });
+    const framePrompt = el("textarea", { id: "studio-frame-prompt", title: "Only this is changed in the picture; the character, pose and framing are asked to stay the same.", rows: 2, maxLength: 400, placeholder: "what to change in that picture, in your own words (a red scarf around her neck)", ariaLabel: "What to change in the picture" });
+    const framePack = el("input", { type: "text", id: "studio-frame-pack", title: "The folder name of the copy of the pack that has the new picture.", maxLength: 40, placeholder: "name of the new pack (empty: the source pack's name with -edit)", ariaLabel: "Name of the new pack for the picture" });
     const frameStart = el("button", { type: "button", className: "ghost", textContent: "Draw this picture again" });
     frameStart.onclick = () => {
       q(".studio-frame")?.replaceChildren();
