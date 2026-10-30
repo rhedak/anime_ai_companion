@@ -15,6 +15,7 @@ import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/jo
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
+import { exportPack, importPack } from "./studio/transfer.ts";
 import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
 import { detectLocalImageModels, hubCacheDir } from "./studio/local-models.ts";
 import type { Flags } from "./studio/checks.ts";
@@ -544,6 +545,23 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   /** Makes some pictures again (and what was drawn from them), with new seeds. */
+  /** A pack out to a folder of the user's, or a folder of theirs in as a pack. Never over anything that exists. */
+  async function transfer(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const folder = typeof msg.folder === "string" ? msg.folder.trim() : "";
+    if (msg.type === "studio-export") {
+      const source = typeof msg.source === "string" ? msg.source : "";
+      const from = (await deps.sources()).includes(source) ? await deps.packFolder(source) : null;
+      if (!from) return send({ type: "studio-error", message: "Pick one of the packs on this computer to export." });
+      const to = await exportPack(from, folder, source);
+      return send({ type: "studio-transferred", message: `${source} was copied to ${to}.` });
+    }
+    const name = typeof msg.name === "string" ? msg.name.trim() : "";
+    if (!usableName(name)) return send({ type: "studio-error", message: "The pack's name can have letters, digits, spaces and . _ - only." });
+    const count = await importPack(folder, deps.framesDir, name);
+    await deps.refreshPacks();
+    send({ type: "studio-transferred", message: `${name} was imported (${count} pictures). Use it from Looks → Packs.` });
+  }
+
   async function regenerate(id: string, names: unknown, send: Send, sameSeed = false): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
     const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 12) : [];
@@ -842,6 +860,7 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-frame-edit") await frameStart(msg, send);
         else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
+        else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
         else if (msg.type === "studio-cancel") cancel();
         else if (msg.type === "studio-state") send(await stateMessage());
       } catch (error) {

@@ -1469,6 +1469,7 @@ function handle(msg) {
     case "studio-frame-review":
     case "studio-frame-installed":
     case "studio-frame-cancelled":
+    case "studio-transferred":
     case "studio-review":
       studio.handle(msg);
       break;

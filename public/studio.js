@@ -121,6 +121,18 @@ export function createStudio(io) {
       io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value) });
       status("Checking…");
     };
+    const transferFolder = el("input", { id: "studio-transfer-folder", type: "text", placeholder: "Whole path of a folder, e.g. /Users/me/packs", autocomplete: "off" });
+    const transferName = el("input", { id: "studio-transfer-name", type: "text", placeholder: "Name for an imported pack", autocomplete: "off", title: "Used by Import. Export uses the pack picked under 'Draw one picture of a pack again'." });
+    const exportButton = el("button", { type: "button", className: "ghost", textContent: "Export the pack above", title: "Copies the pack picked above into a new folder of that name inside the folder given" });
+    const importButton = el("button", { type: "button", className: "ghost", textContent: "Import a folder as a pack", title: "Copies the pictures of the folder given into a new pack of the name given" });
+    exportButton.onclick = () => {
+      io.send({ type: "studio-export", source: frameSource.value, folder: transferFolder.value });
+      status("Exporting…");
+    };
+    importButton.onclick = () => {
+      io.send({ type: "studio-import", folder: transferFolder.value, name: transferName.value });
+      status("Importing…");
+    };
     panel = el(
       "div",
       { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
@@ -149,6 +161,10 @@ export function createStudio(io) {
       el("div", { className: "pack-confirm-buttons" }, frameStart),
       el("div", { className: "studio-frame" }),
       el("div", { className: "studio-handover" }),
+      el("label", { textContent: "Import and export (a pack as a folder of pictures; nothing is ever written over a folder that exists)", htmlFor: "studio-transfer-folder" }),
+      transferFolder,
+      transferName,
+      el("div", { className: "pack-confirm-buttons" }, exportButton, importButton),
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
       el("div", { className: "studio-confirm" }),
@@ -518,6 +534,9 @@ export function createStudio(io) {
         case "studio-frame-installed":
           q(".studio-frame")?.replaceChildren();
           status(`Made ${msg.name}: the same pack with that picture drawn again.`);
+          return true;
+        case "studio-transferred":
+          status(String(msg.message));
           return true;
         case "studio-frame-cancelled":
           q(".studio-frame")?.replaceChildren();

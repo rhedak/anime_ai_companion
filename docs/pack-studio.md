@@ -182,6 +182,15 @@ The panel has an **Image maker** list (top of the form; it is disabled while a j
 
 The panel's **Open full studio** button (on this computer only) opens the same studio on its own page, `/studio-full.html`, in a new tab. In the desktop app that tab is the user's own browser, because the shell hands any other address out. It uses the same socket and the same rules as the panel (`public/studio-full.js` is a thin page around `public/studio.js`), so a job started in one is shown in the other. The page is refused to every other device, even with phone access on.
 
+## Import and export
+
+The panel's last section copies a pack out to a folder, or a folder in as a pack (`src/studio/transfer.ts`). Both take the whole path typed in the box (no system dialog, so it works the same in the browser and the desktop app), both are refused from a phone like the rest of the studio, and neither ever writes over anything:
+
+- **Export** copies the pack picked in the "draw one picture again" list into a new folder of its name inside the folder given. Only `.webp` pictures and `.txt` / `.md` files are copied (links are skipped); a pack must have `neutral.webp`. A `NOTICE.md` is added only when the pack has none, and no text file of the pack is ever replaced.
+- **Import** copies a folder of the same kind into `data/frames/<name>`, adds a `NOTICE.md` that says it was imported, and refreshes the pack list. A name that is taken is refused.
+
+A folder is capped at 600 files and 40 MB a file.
+
 ## The handover prompt
 
 For a user with no image maker the studio can use: `/studio handover [outfit words]` (works with the studio off, only from this computer) and the panel's *Hand over to an AI agent…* button give a prompt (`src/studio/handover.ts`) to copy into any AI agent that makes pictures. It says what a picture pack is, the file names and rules in short, and links to the guide for agents on the site (`site/pages/agent-guide.md`, the long version: files, consistency rules, checks, what to hand back). Nothing is sent from the app; the user copies it, attaches the neutral picture, and installs the folder by hand (`/frames <name>`). The unreachable-local-model help names it as the way out.
