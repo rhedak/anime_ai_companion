@@ -16,7 +16,7 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; env?: NodeJS.ProcessEnv } = {}) {
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
@@ -53,6 +53,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     chromeOn: () => options.chromeOn ?? true,
     env: options.env ?? {},
     packFolder: async (name) => (name === "risa-dress" ? packFolder : null),
+    hubDir: options.hubDir ?? join(dataDir, "no-hub"),
   });
   const waitFor = async (type: string, count = 1) => {
     // Up to three minutes: a whole pack is drawn in the test, and a full run is slow.
@@ -784,5 +785,20 @@ test("drawing one picture again refuses what it cannot do, and says why", async 
     assert.match(me.at(-1)?.message ?? "", /model on this computer/);
   } finally {
     await t.cleanup();
+  }
+});
+
+test("a local model that does not answer says what is on this computer", async () => {
+  const hub = await mkdtemp(join(tmpdir(), "hub-reason-"));
+  const t = await setup({ backendUrl: "http://127.0.0.1:9", hubDir: hub });
+  try {
+    await mkdir(join(hub, "models--Qwen--Qwen-Image-2.1-Turbo", "snapshots", "abc123"), { recursive: true });
+    await t.service.command("on", t.say, false, () => {});
+    const local = (await t.service.stateMessage()).backends[0] as any;
+    assert.equal(local.available, false);
+    assert.match(local.reason, /on this computer: Qwen-Image-2\.1-Turbo/);
+  } finally {
+    await t.cleanup();
+    await rm(hub, { recursive: true, force: true });
   }
 });

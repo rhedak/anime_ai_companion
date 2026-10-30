@@ -16,6 +16,7 @@ import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
 import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
+import { detectLocalImageModels, hubCacheDir } from "./studio/local-models.ts";
 import type { Flags } from "./studio/checks.ts";
 import { encodeWebp, type Raster } from "./studio/raster.ts";
 
@@ -59,6 +60,8 @@ export interface StudioDeps {
   chromeOn?(): boolean;
   /** Tests give a stand-in for the environment; the app reads its own. */
   env?: NodeJS.ProcessEnv;
+  /** The Hugging Face cache to look for image models in (tests give a folder of their own). */
+  hubDir?: string;
   /** Tests give a stand-in; the app builds the HTTP client. */
   makeBackend?: (url: string) => ImageBackend;
   workerUrl?: URL;
@@ -190,6 +193,13 @@ export function createStudioService(deps: StudioDeps) {
    * a local model is asked for its /health (a short wait on loopback), a paid service needs its key in the environment (the value is never read out),
    * a browser maker needs Claude as the brain and Claude in Chrome on. Handover needs nothing: it is always there.
    */
+  /** Why a model on this computer does not answer: and, when its weights are on this computer, which ones, so the user knows what to start. */
+  async function notAnswering(): Promise<string> {
+    const found = await detectLocalImageModels(deps.hubDir ?? hubCacheDir(deps.env ?? process.env));
+    if (found.length === 0) return "no model answers at that address";
+    return `no model answers at that address; on this computer: ${found.map((m) => m.label).join(", ")} (start its backend, see the guide)`;
+  }
+
   async function makerAvailability(choice: { value: string; kind: "local" | "paid" | "browser" }): Promise<{ available: boolean; reason: string | null }> {
     if (choice.kind === "paid") {
       return hasKey(choice.value, deps.env ?? process.env) ? { available: true, reason: null } : { available: false, reason: `set ${keyName(choice.value)} in this app's environment` };
@@ -200,13 +210,13 @@ export function createStudioService(deps: StudioDeps) {
       return { available: true, reason: null };
     }
     const at = localHealth.get(choice.value);
-    if (at && Date.now() - at.at < 5000) return at.ok ? { available: true, reason: null } : { available: false, reason: "no model answers at that address" };
+    if (at && Date.now() - at.at < 5000) return at.ok ? { available: true, reason: null } : { available: false, reason: await notAnswering() };
     const ok = await Promise.resolve()
       .then(() => fetch(new URL("/health", choice.value), { signal: AbortSignal.timeout(800) }))
       .then((r) => r.ok)
       .catch(() => false); // a saved address that is not a URL at all is simply not answering
     localHealth.set(choice.value, { at: Date.now(), ok });
-    return ok ? { available: true, reason: null } : { available: false, reason: "no model answers at that address" };
+    return ok ? { available: true, reason: null } : { available: false, reason: await notAnswering() };
   }
 
   async function stateMessage() {
