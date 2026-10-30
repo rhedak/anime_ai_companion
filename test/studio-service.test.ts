@@ -817,3 +817,35 @@ test("a local model that does not answer says what is on this computer", async (
     await rm(hub, { recursive: true, force: true });
   }
 });
+
+test("a pack is exported to a folder and a folder imported as a pack, from this computer only", async () => {
+  const t = await setup();
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const out = join(t.dataDir, "out");
+    await mkdir(out);
+    await t.service.message({ type: "studio-export", source: "risa-dress", folder: out }, send, false);
+    assert.match(me.at(-1)!.message, /was copied to/);
+    assert.deepEqual((await readdir(join(out, "risa-dress"))).sort(), ["NOTICE.md", "credit.txt", "neutral.webp"], "the install marker is not exported");
+    assert.equal(await readFile(join(out, "risa-dress", "NOTICE.md"), "utf8"), "the terms of the source pack\n");
+    await t.service.message({ type: "studio-export", source: "risa-dress", folder: out }, send, false);
+    assert.equal(me.at(-1)!.type, "studio-error", "an exported folder is not replaced");
+    await t.service.message({ type: "studio-export", source: "nope", folder: out }, send, false);
+    assert.equal(me.at(-1)!.type, "studio-error");
+
+    await t.service.message({ type: "studio-import", folder: join(out, "risa-dress"), name: "risa-back" }, send, false);
+    assert.match(me.at(-1)!.message, /was imported/);
+    assert.ok((await readdir(join(t.framesDir, "risa-back"))).includes("neutral.webp"));
+    await t.service.message({ type: "studio-import", folder: join(out, "risa-dress"), name: "risa-back" }, send, false);
+    assert.equal(me.at(-1)!.type, "studio-error", "an installed pack is not replaced");
+
+    const before = me.length;
+    await t.service.message({ type: "studio-export", source: "risa-dress", folder: out }, send, true);
+    assert.equal(me.at(-1)!.type, "notice", "a phone is refused");
+    assert.equal(me.length, before + 1);
+  } finally {
+    await t.cleanup();
+  }
+});

@@ -559,6 +559,7 @@ export function createStudioService(deps: StudioDeps) {
     if (!usableName(name)) return send({ type: "studio-error", message: "The pack's name can have letters, digits, spaces and . _ - only." });
     const count = await importPack(folder, deps.framesDir, name);
     await deps.refreshPacks();
+    void announce(); // the lists in the panel know the new pack
     send({ type: "studio-transferred", message: `${name} was imported (${count} pictures). Use it from Looks → Packs.` });
   }
 
