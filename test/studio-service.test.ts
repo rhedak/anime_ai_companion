@@ -207,8 +207,8 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     assert.equal(t.sent.find((m) => m.type === "studio-installed")?.name, "risa-winter");
     const folder = join(t.framesDir, "risa-winter");
     const files = (await readdir(folder)).sort();
-    assert.equal(files.length, 39 + 3);
-    assert.ok(["NOTICE.md", "credit.txt", "look.txt", "neutral.webp", "thinking-talk3.webp", "wave-2.webp", "cheer-1.webp"].every((f) => files.includes(f)));
+    assert.equal(files.length, 39 + 4);
+    assert.ok(["NOTICE.md", "PROCESS.md", "credit.txt", "look.txt", "neutral.webp", "thinking-talk3.webp", "wave-2.webp", "cheer-1.webp"].every((f) => files.includes(f)));
     const look = await readFile(join(folder, "look.txt"), "utf8");
     assert.match(look, /^character: risa\n/);
     assert.match(await readFile(join(folder, "NOTICE.md"), "utf8"), /fake-1.*MIT.*responsible/s);
@@ -303,7 +303,7 @@ test("a job that was left (waiting for a pick, or for the review) can be carried
         assert.ok(shown >= 11 && shown <= 19);
         await third.service.message({ type: "studio-accept", id: card?.id }, send, false);
         await third.waitFor("studio-installed");
-        assert.equal((await readdir(join(first.framesDir, "risa-snow"))).length, 42);
+        assert.equal((await readdir(join(first.framesDir, "risa-snow"))).length, 43);
         assert.deepEqual((await third.service.stateMessage()).resumable, [], "an installed job is not offered again");
       } finally {
         await third.cleanup();

@@ -2,6 +2,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
 import { checkBackground, checkFaceEdit, checkLowerBody, type Flags } from "./checks.ts";
+import { veryBlurryChance } from "./blur.ts";
 import { cutout, keyBackground, toRaster, type Cutout } from "./cutout.ts";
 import type { Job } from "./job.ts";
 import { padBox, pasteBack, type Box } from "./paste.ts";
@@ -82,7 +83,7 @@ async function load(dir: string, name: string, w: number, h: number): Promise<Ra
 async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: Float32Array | null, deps: BuildDeps, firstAttempt: number): Promise<{ picture: Raster; record: FrameRecord }> {
   const input = await encodePng(source);
   const seed0 = job.seeds[0] + hash(plan.name);
-  let best: { picture: Raster; flags: Flags; seed: number } | null = null;
+  let best: { picture: Raster; flags: Flags; seed: number; blurry: number } | null = null;
   let attempt = firstAttempt;
   for (let tries = 0; tries < ATTEMPTS; tries++, attempt++) {
     if (deps.signal?.aborted) throw new Error("stopped");
@@ -98,7 +99,10 @@ async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: F
       const cut = cutout(edited, { key: job.key });
       flags = [...checkBackground(cut.background, job.width, job.height), ...(baseAlpha ? checkLowerBody(baseAlpha, cut.alpha, job.width, job.height) : [])];
     }
-    if (!best || flags.length < best.flags.length) best = { picture, flags, seed };
+    // The blur check (src/studio/blur.ts): a soft try is flagged, so a retry is drawn; of equal tries the sharper one is kept.
+    const blurry = veryBlurryChance(picture);
+    if (blurry >= 0.5) flags = [...flags, "very blurry"];
+    if (!best || flags.length < best.flags.length || (flags.length === best.flags.length && blurry < best.blurry)) best = { picture, flags, seed, blurry };
     if (flags.length === 0) break;
   }
   const chosen = best as NonNullable<typeof best>;

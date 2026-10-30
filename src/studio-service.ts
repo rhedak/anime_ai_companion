@@ -8,7 +8,8 @@ import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
 import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
-import { knownFrameNames } from "./studio/build.ts";
+import { knownFrameNames, readRecords } from "./studio/build.ts";
+import { processText } from "./studio/process.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
 import { decode } from "./studio/raster.ts";
@@ -416,6 +417,7 @@ export function createStudioService(deps: StudioDeps) {
           `**These pictures were made with AI**: ${describe(info)}${info.revision ? `, revision ${info.revision}` : ""}. The terms of that model apply to them, and ${RESPONSIBILITY[0].toLowerCase()}${RESPONSIBILITY.slice(1)}\n\n` +
           `A pack made like this is a draft and belongs to whoever made it. It is not part of the shared packs and is not published by the app.\n`,
       );
+      await writeFile(join(out, "PROCESS.md"), processText(job, info.model ?? info.name, await readRecords(dir)));
       const target = join(deps.framesDir, job.name);
       if (await stat(target).then(() => true, () => false)) throw new Error(`There is already a pack called ${job.name}. Nothing was replaced; start again with another name.`);
       await mkdir(deps.framesDir, { recursive: true });
