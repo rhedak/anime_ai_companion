@@ -274,3 +274,7 @@ The panel is a stepper, not one long form: what to do (a new outfit, or one pict
 The redraw step's picture picker groups a pack's pictures (angry, angry-blink and angry-talk1 are one tile with the main picture as its thumbnail; a click shows the variations, which matters for the dozens of pictures of an activity). Each small picture comes from `/pack-frame/<pack>/<name>` (`src/http-routes.ts`: only a file the scan of that pack found, resized to 160 px; `/full` after it is the picture as it is, shown large under the pointer, here and in the character and outfit picker).
 
 Not done yet: picking several pictures to redraw at once.
+
+### Drawing one picture again: in the pack itself (2026-10-31)
+
+With no name in "Save as a new pack instead", the picture that was drawn takes the place of the old one in the pack itself, after the yes on the review. A pack that comes with the app is copied into your own pictures folder first, and the copy is used instead of it. The first picture of each changed name is kept in the pack (`.original/`) with a note of what was asked (`.local-edits.json`), both dotfiles the app ignores when it reads a pack: the picker marks changed pictures, and "Put the original back" restores one. When the pack list has a newer version of an installed pack you changed, the update question names the pictures it would replace; Update keeps yours as a pack called `<pack>-mine`, Not now leaves the pack as it is. A name in the field still makes a new pack, a copy of this one with the picture changed.

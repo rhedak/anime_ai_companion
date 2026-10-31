@@ -53,7 +53,8 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     brain: () => options.brain ?? "claude",
     chromeOn: () => options.chromeOn ?? true,
     env: options.env ?? {},
-    packFolder: async (name) => (name === "risa-dress" ? packFolder : null),
+    // As the app finds a pack: the user's own copy in data/frames first, else the one that comes with the app (the folder above, outside data/frames).
+    packFolder: async (name) => (name !== "risa-dress" ? null : (await stat(join(framesDir, name)).then(() => true, () => false)) ? join(framesDir, name) : packFolder),
     hubDir: options.hubDir ?? join(dataDir, "no-hub"),
   });
   const waitFor = async (type: string, count = 1) => {
@@ -779,6 +780,48 @@ test("one picture of an installed pack is drawn again: the yes writes a new pack
     await t.service.message({ type: "studio-frame-reject", id: second.id }, send, false);
     assert.equal((await t.service.stateMessage()).frameReview, null);
     assert.equal(await stat(join(t.framesDir, "risa-blue")).then(() => true, () => false), false, "a dropped picture writes nothing");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("one picture drawn again with no new name changes the pack itself: the original is kept, can be put back, and a pack that ships is copied first", async () => {
+  const t = await setup();
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const shipped = await readFile(join(t.dataDir, "source-pack", "neutral.webp"));
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "" }, send, false);
+    assert.equal(me.find((m) => m.type === "studio-error")?.message, undefined, "nothing refused it");
+    await t.waitFor("studio-frame-review");
+    const review = t.sent.find((m) => m.type === "studio-frame-review")!;
+    assert.equal(review.name, "", "no new name: the review says it changes the pack itself");
+    assert.equal(review.shipped, true, "and that this pack comes with the app");
+    await t.service.message({ type: "studio-frame-accept", id: review.id }, send, false);
+    await t.waitFor("studio-frame-installed");
+    const own = join(t.framesDir, "risa-dress");
+    assert.deepEqual((await readdir(own)).sort(), [".local-edits.json", ".original", ".pack-install.json", "NOTICE.md", "credit.txt", "neutral.webp"], "a copy of the whole pack is in the user's folder");
+    assert.notDeepEqual(await readFile(join(own, "neutral.webp")), shipped, "with the new picture");
+    assert.deepEqual(await readFile(join(own, ".original", "neutral.webp")), shipped, "and the old one kept");
+    assert.deepEqual(await readFile(join(t.dataDir, "source-pack", "neutral.webp")), shipped, "the pack that ships is not touched");
+    assert.deepEqual((await t.service.stateMessage()).edited, { "risa-dress": ["neutral"] }, "the page is told which pictures were changed");
+
+    // Again: the user's own copy is changed in place, and the first original stays the original.
+    const once = await readFile(join(own, "neutral.webp"));
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a blue hat", name: "" }, send, false);
+    await t.waitFor("studio-frame-review", 2);
+    const second = t.sent.filter((m) => m.type === "studio-frame-review")[1];
+    assert.equal(second.shipped, false, "now it is the user's own folder");
+    await t.service.message({ type: "studio-frame-accept", id: second.id }, send, false);
+    await t.waitFor("studio-frame-installed", 2);
+    assert.deepEqual(await readFile(join(own, ".original", "neutral.webp")), shipped);
+    assert.ok(!(await readFile(join(own, "neutral.webp"))).equals(once), "the second picture replaced the first");
+
+    await t.service.message({ type: "studio-frame-restore", source: "risa-dress", frame: "neutral" }, send, false);
+    assert.deepEqual(await readFile(join(own, "neutral.webp")), shipped, "the original is back");
+    assert.equal(await stat(join(own, ".local-edits.json")).then(() => true, () => false), false, "with nothing left to remember");
+    assert.deepEqual((await t.service.stateMessage()).edited, {});
   } finally {
     await t.cleanup();
   }

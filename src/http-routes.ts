@@ -194,7 +194,7 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
         res.writeHead(404).end("Not found");
         return;
       }
-      res.writeHead(200, { "content-type": "image/webp", "cache-control": "private, max-age=600", ...headers });
+      res.writeHead(200, { "content-type": "image/webp", "cache-control": "no-cache", ...headers });
       res.end(small);
       return;
     }

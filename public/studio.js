@@ -19,6 +19,9 @@ export function createStudio(io) {
   let makers = [];
   /** How many pictures a full pack has, from the server. */
   let packSize = 0;
+  /** The pictures of each pack that were drawn again in the pack itself: `{ pack: [picture names] }`. */
+  /** @type {Record<string, string[]>} */
+  let edited = {};
   let maker = "";
   /** @type {HTMLElement | null} */
   let panel = null;
@@ -163,7 +166,8 @@ export function createStudio(io) {
     for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = /** @type {HTMLElement} */ (n).dataset.for !== mode;
     const review = q(".studio-review-lines");
     if (review) {
-      const rows = [["Drawn from", words.source], [mode === "redraw" ? "Picture" : "Change", words.words], ["Maker", chosen?.label ?? ""]];
+      const frameSaved = /** @type {HTMLInputElement | null} */ (q("#studio-frame-pack"))?.value.trim();
+      const rows = [["Drawn from", words.source], [mode === "redraw" ? "Picture" : "Change", words.words], ...(mode === "redraw" ? [["Result", frameSaved ? `a new pack called ${frameSaved}` : "the picture is changed in the pack itself (the original is kept)"]] : []), ["Maker", chosen?.label ?? ""]];
       review.replaceChildren(...rows.filter(([, v]) => v).flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
     }
   }
@@ -284,6 +288,19 @@ export function createStudio(io) {
       renderFrames();
       refreshSteps();
     };
+    const changed = new Set(edited[pack] ?? []);
+    const restore = q(".studio-restore");
+    if (restore) {
+      restore.replaceChildren();
+      if (changed.has(name.value)) {
+        const back = el("button", { type: "button", className: "ghost", textContent: `Put the original ${name.value} back`, title: "Replaces the picture you drew again with the one the pack had before" });
+        back.onclick = () => {
+          back.disabled = true;
+          io.send({ type: "studio-frame-restore", source: pack, frame: name.value });
+        };
+        restore.append(el("p", { className: "studio-help", textContent: `${name.value} was drawn again in this pack.` }), back);
+      }
+    }
     const members = openFrameGroup ? groups.get(openFrameGroup) : null;
     const crumbs = el("div", { className: "studio-crumbs" });
     const grid = el("div", { className: "studio-thumbs studio-thumbs-small" });
@@ -296,7 +313,7 @@ export function createStudio(io) {
       crumbs.append(back, ` › ${openFrameGroup} › choose the one to change`);
       // The main picture first, then the variations by their number.
       const sorted = [...members].sort((a, b) => Number(a !== openFrameGroup) - Number(b !== openFrameGroup) || a.localeCompare(b, undefined, { numeric: true }));
-      grid.append(...sorted.map((f) => tile(thumb(f), f === openFrameGroup ? "main" : f.slice(openFrameGroup.length + 1) || f, "", f === name.value, () => pickFrame(f), whole(f))));
+      grid.append(...sorted.map((f) => tile(thumb(f), f === openFrameGroup ? "main" : f.slice(openFrameGroup.length + 1) || f, changed.has(f) ? "changed" : "", f === name.value, () => pickFrame(f), whole(f))));
     } else {
       openFrameGroup = "";
       crumbs.textContent = pictures.length ? "Choose a picture. A group with variations (blinks, mouth shapes, loops) opens on a click." : "This pack has no pictures to draw again.";
@@ -307,7 +324,8 @@ export function createStudio(io) {
           // The thumbnail is the main picture: the one named like the group, else the first by number.
           const main = list.includes(k) ? k : [...list].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))[0];
           const selected = list.includes(name.value);
-          return tile(thumb(main), k, list.length > 1 ? `${list.length} pictures` : "", selected, () => (list.length > 1 ? ((openFrameGroup = k), renderFrames()) : pickFrame(k)), whole(main));
+          const some = list.filter((f) => changed.has(f)).length;
+          return tile(thumb(main), k, [list.length > 1 ? `${list.length} pictures` : "", some ? (list.length > 1 ? `${some} changed` : "changed") : ""].filter(Boolean).join(" · "), selected, () => (list.length > 1 ? ((openFrameGroup = k), renderFrames()) : pickFrame(k)), whole(main));
         }),
       );
     }
@@ -398,7 +416,8 @@ export function createStudio(io) {
     const frameSource = el("select", { id: "studio-frame-source", hidden: true, ariaLabel: "Draw one picture again from this pack" });
     const frameName = el("select", { id: "studio-frame-name", hidden: true, ariaLabel: "Which picture of it" });
     const framePrompt = el("textarea", { id: "studio-frame-prompt", title: "Only this is changed in the picture; the character, pose and framing are asked to stay the same.", rows: 2, maxLength: 400, placeholder: "what to change in that picture, in your own words (a red scarf around her neck)", ariaLabel: "What to change in the picture" });
-    const framePack = el("input", { type: "text", id: "studio-frame-pack", title: "The folder name of the copy of the pack that has the new picture.", maxLength: 40, placeholder: "name of the new pack (empty: the source pack's name with -edit)", ariaLabel: "Name of the new pack for the picture" });
+    const framePack = el("input", { type: "text", id: "studio-frame-pack", title: "Leave it empty to change the picture in the pack itself (the original is kept in it and can be put back). A name makes a new pack, a copy of this one with the picture changed.", maxLength: 40, placeholder: "empty: change it in the pack itself", ariaLabel: "Name of a new pack for the picture, or empty to change the pack itself" });
+    framePack.addEventListener("input", refreshSteps);
     const frameStart = el("button", { type: "button", className: "studio-frame-start", textContent: "Draw this picture again" });
     frameStart.onclick = () => {
       q(".studio-frame")?.replaceChildren();
@@ -507,7 +526,7 @@ export function createStudio(io) {
             el("details", {}, el("summary", { textContent: "Her words for it (optional)" }), look)),
           forMode("redraw", el("label", { textContent: "Which picture" }), el("div", { className: "studio-frame-chips" }),
             el("label", { textContent: "What to change in it", htmlFor: "studio-frame-prompt" }), framePrompt,
-            el("label", { textContent: "Name of the new pack", htmlFor: "studio-frame-pack" }), framePack),
+            el("label", { textContent: "Save as a new pack instead (optional)", htmlFor: "studio-frame-pack" }), framePack, el("div", { className: "studio-restore" })),
           next(() => (makerReady() ? 4 : 3))),
         step("maker", "Who draws it?", "Web services cost money or allowance; the next question says what.", chip, models, makerSelect, pickMaker),
         step("start", "Review and start", "",
@@ -929,13 +948,14 @@ export function createStudio(io) {
   function showFrameReview(/** @type {Record<string, any>} */ r) {
     const box = q(".studio-frame");
     if (!box) return;
-    const keep = el("button", { type: "button", textContent: "Keep as a new pack" });
+    const here = !r.name;
+    const keep = el("button", { type: "button", textContent: here ? `Change it in ${r.source}` : "Keep as a new pack" });
     const drop = el("button", { type: "button", className: "ghost", textContent: "Drop it" });
     keep.onclick = () => io.send({ type: "studio-frame-accept", id: r.id });
     drop.onclick = () => io.send({ type: "studio-frame-reject", id: r.id });
     const flags = Array.isArray(r.flags) ? r.flags.map((/** @type {string} */ f) => el("li", { textContent: f })) : [];
     box.replaceChildren(
-      el("p", { textContent: `${r.frame} from ${r.source}, drawn with ${r.model} (new pack: ${r.name}).` }),
+      el("p", { textContent: `${r.frame} from ${r.source}, drawn with ${r.model}. ${here ? `Keeping it changes the picture in the pack itself; the original stays in the pack and can be put back.${r.shipped ? " This pack comes with the app, so your changed copy of it is saved in your own pictures folder and used instead." : ""}` : `Keeping it makes a new pack called ${r.name}.`}` }),
       el("div", { className: "studio-frame-pair" },
         el("figure", {}, el("img", { src: String(r.old), alt: "before" }), el("figcaption", { textContent: "before" })),
         el("figure", {}, el("img", { src: String(r.new), alt: "after" }), el("figcaption", { textContent: "after" })),
@@ -1117,6 +1137,7 @@ export function createStudio(io) {
           maker = typeof msg.backend === "string" ? msg.backend : "";
           fillMakers();
           characters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
+          edited = msg.edited && typeof msg.edited === "object" ? msg.edited : {};
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
           active = typeof msg.active === "string" ? msg.active : "";
           if (!on) close();
@@ -1174,7 +1195,10 @@ export function createStudio(io) {
         case "studio-frame-installed":
           setBusy(false);
           q(".studio-frame")?.replaceChildren();
-          status(`Made ${msg.name}: the same pack with that picture drawn again.`);
+          status(msg.here ? `Changed ${msg.frame} in ${msg.name}. The original is kept: pick the picture again to put it back.` : `Made ${msg.name}: the same pack with that picture drawn again.`);
+          return true;
+        case "studio-frame-restored":
+          status(`Put the original ${msg.frame} back in ${msg.source}.`);
           return true;
         case "studio-transferred":
           setBusy(false);

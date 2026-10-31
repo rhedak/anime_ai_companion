@@ -1469,6 +1469,7 @@ function handle(msg) {
     case "studio-frame-progress":
     case "studio-frame-review":
     case "studio-frame-installed":
+    case "studio-frame-restored":
     case "studio-frame-cancelled":
     case "studio-transferred":
     case "studio-assist":
@@ -1480,7 +1481,7 @@ function handle(msg) {
       askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, saved: msg.saved });
       break;
     case "pack-update-offer":
-      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, update: { from: String(msg.from), to: String(msg.to) } });
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, update: { from: String(msg.from), to: String(msg.to), edited: Array.isArray(msg.edited) ? msg.edited.map(String) : [] } });
       break;
     case "pack-progress":
       showPackProgress(msg);
@@ -2138,7 +2139,7 @@ function closeGallery() {
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
 /** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
-function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string, update?: { from: string, to: string } }} */ offer) {
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string, update?: { from: string, to: string, edited?: string[] } }} */ offer) {
   document.querySelector(".pack-confirm")?.remove();
   const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
   const box = document.createElement("div");
@@ -2148,7 +2149,7 @@ function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, 
   box.setAttribute("aria-label", offer.update ? `Update ${offer.name}?` : `Download ${offer.name}?`);
   const text = document.createElement("p");
   text.textContent = offer.update
-    ? `A newer version of ${offer.name} is available (${offer.update.from} to ${offer.update.to}). Update it? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. The copy on this computer is replaced only after the new one has been checked.`
+    ? `A newer version of ${offer.name} is available (${offer.update.from} to ${offer.update.to}). Update it? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. The copy on this computer is replaced only after the new one has been checked.${offer.update.edited?.length ? ` You drew ${offer.update.edited.length === 1 ? "this picture" : "these pictures"} again in it (${offer.update.edited.join(", ")}): Update replaces ${offer.update.edited.length === 1 ? "it" : "them"} with the new version and keeps your own in a pack called ${offer.id}-mine. Not now keeps your pack as it is.` : ""}`
     : `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. ${typeof offer.saved === "string" ? offer.saved : "It is saved on this computer and checked before it is used."}`;
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: offer.update ? `Update ${size}` : `Download ${size}` });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });

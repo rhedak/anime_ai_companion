@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
+import { applyEdit, readEdits, restoreOriginal } from "./pack-edits.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
 import { ASSISTED, BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, keyNamesFor, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
@@ -55,6 +56,8 @@ export interface StudioDeps {
   drawnSource?(): string | null;
   /** Tell the page about the packs again (a new one is there). */
   refreshPacks(): Promise<void>;
+  /** A picture of the pack she wears was changed on disk: show the pack again (the page keeps the pictures it has loaded). Optional. */
+  reloadPack?(name: string): Promise<void>;
   /** Something to tell her with her next message. */
   pushNote(text: string): void;
   /** Chat or work: the brain's proposals are for chat only (in work mode a file she reads could talk her into one). */
@@ -316,6 +319,8 @@ export function createStudioService(deps: StudioDeps) {
       resumable: on && !job && !pending ? await findJobs() : [],
       /** The pictures of each pack, for "Draw one picture again" (only while the studio is on). */
       frames: on ? Object.fromEntries(await Promise.all(knownSources.map(async (s) => [s, await framesOf(s)]))) : {},
+      /** Which pictures of each pack on this computer were drawn again in the pack itself (the page marks them, and offers the original back). */
+      edited: on ? Object.fromEntries((await Promise.all(knownSources.map(async (s) => [s, Object.keys(await readEdits((await deps.packFolder(s)) ?? ""))] as const))).filter(([, names]) => names.length)) : {},
       frameBusy,
       /** The by-hand maker waits for a picture from the user (null otherwise). */
       assist: assist ? { ...assistMessage(), type: undefined } : null,
@@ -732,8 +737,8 @@ export function createStudioService(deps: StudioDeps) {
   /** Ends the one picture being drawn (the by-hand maker waits for a person, so it must be stoppable). */
   let frameAbort: AbortController | null = null;
   /** The picture drawn, waiting for the user's yes or no. Nothing is written until the yes. */
-  let frameReview: { id: string; source: string; frame: string; name: string; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
-  const reviewMessage = () => (frameReview ? { id: frameReview.id, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
+  let frameReview: { id: string; source: string; frame: string; name: string; shipped: boolean; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
+  const reviewMessage = () => (frameReview ? { id: frameReview.id, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, shipped: frameReview.shipped, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
 
   /** The pictures a pack has, by name without `.webp`, sorted: only the names a picture can have. */
   async function framesOf(source: string): Promise<string[]> {
@@ -751,12 +756,13 @@ export function createStudioService(deps: StudioDeps) {
     const source = typeof msg.source === "string" ? msg.source : "";
     const frame = typeof msg.frame === "string" ? msg.frame : "";
     const change = cleanText(msg.prompt, 400);
-    const name = typeof msg.name === "string" && msg.name.trim() ? msg.name.trim() : `${source}-edit`;
+    // No name: the picture is changed in the pack itself (the original is kept in it). A name: the pack is copied to a new one with that picture changed.
+    const name = typeof msg.name === "string" ? msg.name.trim() : "";
     if (!(await deps.sources()).includes(source)) return err("Pick one of your packs.");
     if (!FRAME_NAME.test(frame)) return err("Pick a picture of that pack.");
     if (change.length < 3) return err("Say what to change in that picture, in a few words.");
-    if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
-    if (await stat(join(deps.framesDir, name)).then(() => true, () => false)) return err(`There is already a pack called ${name}. Pick another name.`);
+    if (name && (!isPackName(name) || name.startsWith("."))) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
+    if (name && (await stat(join(deps.framesDir, name)).then(() => true, () => false))) return err(`There is already a pack called ${name}. Pick another name.`);
     const url = checkBackendUrl(deps.settings.studioBackend);
     if (!url) return err("Choose an image maker first (the Image maker list).");
     const folder = await deps.packFolder(source);
@@ -764,14 +770,17 @@ export function createStudioService(deps: StudioDeps) {
     if (!bytes) return err(`The ${source} pack has no picture called ${frame}.`);
     const checked = await check();
     if (!checked.ok) return err(checked.reason);
-    const request = { id: `frame-${randomBytes(4).toString("hex")}`, source, frame, name, change, bytes, info: checked.info, url };
+    const request = { id: `frame-${randomBytes(4).toString("hex")}`, source, frame, name, shipped: !isOwnFolder(folder!), change, bytes, info: checked.info, url };
     // A model on this computer costs nothing: it is drawn at once. A paid service or a browser maker is asked about first, with the same warning a pack gets.
     if (isLocal(url) || url === ASSISTED) return void (await frameDraw(request, send));
     frameAsk = request;
     deps.broadcast(frameAskMessage());
   }
 
-  type FrameRequest = { id: string; source: string; frame: string; name: string; change: string; bytes: Buffer; info: BackendInfo; url: string };
+  /** Whether a pack's folder is the user's own (data/frames), not a pack that comes with the app (packs/, part of the program). */
+  const isOwnFolder = (folder: string) => resolve(folder).startsWith(resolve(deps.framesDir) + sep);
+
+  type FrameRequest = { id: string; source: string; frame: string; name: string; shipped: boolean; change: string; bytes: Buffer; info: BackendInfo; url: string };
   let frameAsk: FrameRequest | null = null;
   const frameAskMessage = () =>
     frameAsk
@@ -800,7 +809,7 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   async function frameDraw(request: FrameRequest, send: Send): Promise<void> {
-    const { source, frame, name, change, bytes, info, url } = request;
+    const { source, frame, name, shipped, change, bytes, info, url } = request;
     const err = (message: string) => send({ type: "studio-error", message });
     frameBusy = true;
     const abort = (frameAbort = new AbortController());
@@ -815,6 +824,7 @@ export function createStudioService(deps: StudioDeps) {
         source,
         frame,
         name,
+        shipped,
         change,
         picture: drawn.picture,
         flags: drawn.flags,
@@ -839,6 +849,7 @@ export function createStudioService(deps: StudioDeps) {
     if (!review || review.id !== id) return send({ type: "studio-error", message: "There is no picture to keep." });
     const folder = await deps.packFolder(review.source);
     if (!folder) return send({ type: "studio-error", message: `The ${review.source} pack is not there any more.` });
+    if (!review.name) return void (await frameAcceptHere(review, folder, send));
     const target = join(deps.framesDir, review.name);
     if (await stat(target).then(() => true, () => false)) return send({ type: "studio-error", message: `There is already a pack called ${review.name}. Name the new one differently and draw it again.` });
     const work = join(deps.dataDir, "studio", `${id}-frame`);
@@ -862,6 +873,44 @@ export function createStudioService(deps: StudioDeps) {
     } catch (error) {
       send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * The yes with no new name: the picture takes the place of the old one in the pack itself, in the user's own folder (a pack that comes with the app is copied
+   * there first, and the copy is used instead of it). The picture it had is kept in the pack (`.original`), with a note of the edit (`.local-edits.json`),
+   * so it can be put back, and so a newer version of the pack from the list can ask the user before it replaces the change.
+   */
+  async function frameAcceptHere(review: NonNullable<typeof frameReview>, folder: string, send: Send): Promise<void> {
+    try {
+      let own = folder;
+      if (!isOwnFolder(folder)) {
+        own = join(deps.framesDir, review.source);
+        if (await stat(own).then(() => true, () => false)) return send({ type: "studio-error", message: `There is already a folder called ${review.source} in your pictures. Name the new pack differently and draw it again.` });
+        await mkdir(deps.framesDir, { recursive: true });
+        await copyDir(folder, join(deps.dataDir, "studio", `${review.id}-copy`), own);
+      }
+      await applyEdit(own, review.frame, await encodeWebp(review.picture, { lossless: true }), { at: new Date().toISOString(), change: review.change, model: review.model });
+      frameReview = null;
+      await deps.refreshPacks();
+      await deps.reloadPack?.(review.source);
+      deps.pushNote(`the user drew one picture of their ${review.source} pack again on their computer (${review.frame}): it is changed in the pack; the original is kept.`);
+      deps.broadcast({ type: "studio-frame-installed", id: review.id, name: review.source, here: true, frame: review.frame, shipped: review.shipped });
+      void announce();
+    } catch (error) {
+      send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** The original picture of one that was drawn again in its pack, put back. */
+  async function frameRestore(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const source = typeof msg.source === "string" ? msg.source : "";
+    const frame = typeof msg.frame === "string" ? msg.frame : "";
+    const folder = (await deps.sources()).includes(source) && FRAME_NAME.test(frame) ? await deps.packFolder(source) : null;
+    if (!folder || !isOwnFolder(folder) || !(await restoreOriginal(folder, frame))) return send({ type: "studio-error", message: `There is no original of ${frame || "that picture"} to put back.` });
+    await deps.refreshPacks();
+    await deps.reloadPack?.(source);
+    deps.broadcast({ type: "studio-frame-restored", source, frame });
+    void announce();
   }
 
   /** The no: the picture is dropped, and nothing was written. */
@@ -1090,6 +1139,7 @@ export function createStudioService(deps: StudioDeps) {
           send({ type: "studio-frame-cancelled" });
         } else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
+        else if (msg.type === "studio-frame-restore") await frameRestore(msg, send);
         else if (msg.type === "studio-assist-result") await assistResult(msg);
         else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
         else if (msg.type === "studio-local-config") await localConfig(msg, send);

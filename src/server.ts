@@ -152,6 +152,8 @@ const packUpdateOffer = (update: PackUpdate) => ({
   bytes: update.entry.sizes.archiveBytes,
   host: new URL(update.entry.url).hostname,
   credit: update.entry.credit,
+  /** Pictures of it the user drew again here: the update would replace them (and keeps them as a pack of their own). */
+  edited: update.edited,
 });
 /**
  * Asks about a newer version of an installed pack, if the pack list (as loaded; the page's own actions load it) has one. With the user's yes to daily update
@@ -249,7 +251,7 @@ async function packActivityNames(names: string[], characters: Record<string, { i
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
-  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
+  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname, edited: u.edited }));
   const characters = await packCharacters(packDirs, names);
   return { type: "packs", names, characters, active: settings.framePack, remote: remotePacks(names), updates, activities: await packActivityNames(names, characters) };
 };
@@ -792,6 +794,9 @@ const studio = createStudioService({
     return { neutral: rest, blink: await read(neutral.blink), talk: await Promise.all([0, 1, 2].map((k) => read(neutral.talk[k]))), character: pack.characterId ?? null };
   },
   refreshPacks: async () => broadcast(await packsMessage()),
+  reloadPack: async (name) => {
+    if (settings.framePack === name) await choosePack(name, () => {}); // the page keeps the pictures it loaded: show the pack again
+  },
   pushNote: (text) => notes.push(text),
   brain: () => settings.provider,
   chromeOn: () => claudeChrome,
@@ -2182,7 +2187,7 @@ wss.on("connection", (ws) => {
           if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
         };
         const now = before && installed.status === "installed" ? await packInstaller.installed(id) : null;
-        if (now) say(`Updated ${id} to version ${now.version}.`);
+        if (now) say(`Updated ${id} to version ${now.version}.${installed.keptAs ? ` The pictures you had drawn again are kept as the pack ${installed.keptAs}.` : ""}`);
         if (now && !wasShown) {
           // An update of a pack that is not the one on screen: the files are replaced, and what she is showing stays as it is.
           broadcast(await packsMessage());

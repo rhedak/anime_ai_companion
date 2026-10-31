@@ -10,6 +10,7 @@
  * into place. A second install of the same archive does nothing. A folder that is already there and
  * was not installed by this module is left untouched.
  */
+import { readEdits } from "./pack-edits.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { open, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -51,7 +52,7 @@ export interface PackProgress {
 }
 
 export type InstallResult =
-  | { ok: true; status: "installed" | "already" | "present"; id: string; dir: string }
+  | { ok: true; status: "installed" | "already" | "present"; id: string; dir: string; /** The folder the user's own edited pictures were kept in when the update replaced them. */ keptAs?: string }
   | { ok: false; reason: string };
 
 /** The slice of `fetch` the installer uses. Tests pass their own; the app uses `globalThis.fetch`. */
@@ -79,6 +80,8 @@ export interface PackUpdate {
   installed: string;
   available: string;
   entry: PackIndexEntry;
+  /** The pictures of it that the user drew again on this computer (the studio's own notes in the pack folder): the update would replace them. */
+  edited: string[];
 }
 
 /** True when `a` is a higher dotted version (1, 1.2, 1.2.3) than `b`. Anything that is not numbers compares as equal. */
@@ -352,6 +355,7 @@ export function createPackInstaller(options: PackInstallerOptions): PackInstalle
     const staging = join(destDir, `.staging-${id}-${nonce}`);
     let placed = false;
     let backup: string | null = null;
+    let keptAs: string | null = null;
     try {
       onProgress?.({ phase: "restore", id });
       const restored = await restorePackArchive(body, staging);
@@ -363,14 +367,22 @@ export function createPackInstaller(options: PackInstallerOptions): PackInstalle
       }
       const note: Marker = { id, version: entry.version, sha256: entry.hashes.sha256 };
       await writeFile(join(staging, MARKER), `${JSON.stringify(note)}\n`);
+      const edited = info && marker ? Object.keys(await readEdits(dest)) : [];
       if (info && marker) {
         backup = join(destDir, `.old-${id}-${nonce}`);
         await rename(dest, backup);
       }
       await rename(staging, dest);
       placed = true;
+      // Pictures the user drew again are not thrown away by an update: the old folder stays as a pack of its own ("<id>-mine"), without the marker that would make it an install.
+      if (backup && edited.length) {
+        let name = `${id}-mine`;
+        for (let n = 2; await stat(join(destDir, name)).then(() => true, () => false); n++) name = `${id}-mine-${n}`;
+        await rm(join(backup, MARKER), { force: true });
+        await rename(backup, join(destDir, name)).then(() => ((keptAs = name), (backup = null)), () => {});
+      }
       onProgress?.({ phase: "done", id });
-      return { ok: true, status: "installed", id, dir: dest };
+      return { ok: true, status: "installed", id, dir: dest, ...(keptAs ? { keptAs } : {}) };
     } catch (err) {
       if (backup) await rename(backup, dest).catch(() => {});
       const detail = err instanceof Error ? err.message : "unknown error";
@@ -396,7 +408,7 @@ export function createPackInstaller(options: PackInstallerOptions): PackInstalle
       const marker = await readMarker(join(destDir, id));
       if (!marker || marker.id !== id || marker.sha256 === entry.hashes.sha256) return null;
       if (versionHigher(marker.version, entry.version)) return null; // what is here is newer than the list: never offer a step back
-      return { id, installed: marker.version, available: entry.version, entry };
+      return { id, installed: marker.version, available: entry.version, entry, edited: Object.keys(await readEdits(join(destDir, id))) };
     },
     async updates() {
       const names = await readdir(destDir).catch(() => [] as string[]);
