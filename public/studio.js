@@ -64,6 +64,7 @@ export function createStudio(io) {
   }
 
   function close() {
+    hideAssist();
     setBusy(false);
     panel?.remove();
     panel = null;
@@ -180,6 +181,7 @@ export function createStudio(io) {
       "div",
       { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
       el("div", { className: "gallery-title", textContent: "Pack studio: a draft of her in a new outfit, drawn on this computer" }),
+      el("div", { className: "studio-assist", hidden: true }),
       el("label", { textContent: "Image maker (web services cost money or allowance; the next question says what)", htmlFor: "studio-maker" }),
       makerSelect,
       models,
@@ -554,6 +556,123 @@ export function createStudio(io) {
     );
   }
 
+  // --- the by-hand maker: the page shows the picture and the words, the user draws it elsewhere and gives the result back ---
+
+  /** What the box shows now (job, picture number and error), so a state message that repeats it does not redraw the box and lose the user's place. */
+  let assistKey = "";
+  /** @type {((e: ClipboardEvent) => void) | null} */
+  let assistPaste = null;
+
+  function hideAssist() {
+    assistKey = "";
+    if (assistPaste) document.removeEventListener("paste", assistPaste);
+    assistPaste = null;
+    const box = q(".studio-assist");
+    if (box) {
+      box.hidden = true;
+      box.replaceChildren();
+    }
+  }
+
+  function readFile(/** @type {Blob} */ file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function showAssist(/** @type {Record<string, any>} */ a) {
+    const box = q(".studio-assist");
+    if (!box) return;
+    const key = `${a.id}/${a.n}/${a.error || ""}`;
+    if (key === assistKey && !box.hidden) return;
+    assistKey = key;
+    setBusy(false); // it waits for a person: a spinning ring would say it is working
+    const words = el("textarea", { className: "studio-handover-text", rows: 4, readOnly: true, ariaLabel: "The words to give the image maker" });
+    words.value = String(a.prompt || "");
+    const copyWords = el("button", { type: "button", textContent: "Copy the words" });
+    copyWords.onclick = () => navigator.clipboard?.writeText(words.value).then(() => (copyWords.textContent = "Copied"), () => (copyWords.textContent = "Select the words and copy them"));
+    const picture = el("img", { src: typeof a.input === "string" ? a.input : "", alt: "The picture to change", className: "studio-assist-picture" });
+    const copyPicture = el("button", { type: "button", className: "ghost", textContent: "Copy the picture", title: "Puts the picture on the clipboard, to paste into a site's prompt box" });
+    copyPicture.onclick = async () => {
+      try {
+        const blob = await (await fetch(String(a.input))).blob();
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        copyPicture.textContent = "Copied";
+      } catch {
+        copyPicture.textContent = "Not copied: use Save the picture";
+      }
+    };
+    const save = el("a", { className: "studio-assist-save", href: typeof a.input === "string" ? a.input : "#", download: `picture-${a.n}.png`, textContent: "Save the picture" });
+    const sites = el("p", { className: "studio-assist-sites" }, "Any website or program that changes a picture from words works. A few: ",
+      ...[["Grok Imagine", "https://grok.com/imagine"], ["Gemini", "https://gemini.google.com/app"], ["ChatGPT", "https://chatgpt.com/"]].flatMap(([label, href], i) => [i ? ", " : "", el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: label })]),
+      ". What you give a site is between you and it.");
+    const drop = el("div", { className: "studio-assist-drop", tabIndex: 0, role: "button", ariaLabel: "Give the finished picture back" }, "Drop the finished picture here, or paste it (Ctrl or Cmd + V), or ");
+    const choose = el("button", { type: "button", textContent: "choose a file…" });
+    const input = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true });
+    drop.append(choose, input);
+    const message = el("p", { className: "studio-assist-error", role: "status" });
+    if (a.error) {
+      message.textContent = String(a.error);
+      message.classList.add("studio-bad");
+    }
+    /** @param {Blob | null | undefined} file */
+    const give = async (file) => {
+      if (!file || !file.type.startsWith("image/")) {
+        message.textContent = "That is not a picture. Drop a PNG, JPEG or WebP.";
+        message.classList.add("studio-bad");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        message.textContent = "That picture is larger than 5 MB. Save it smaller and give it again.";
+        message.classList.add("studio-bad");
+        return;
+      }
+      message.classList.remove("studio-bad");
+      message.textContent = "Checking the picture…";
+      io.send({ type: "studio-assist-result", id: a.id, n: a.n, image: await readFile(file) });
+    };
+    choose.onclick = () => input.click();
+    input.onchange = () => void give(input.files?.[0]);
+    drop.ondragover = (e) => {
+      e.preventDefault();
+      drop.classList.add("studio-assist-over");
+    };
+    drop.ondragleave = () => drop.classList.remove("studio-assist-over");
+    drop.ondrop = (e) => {
+      e.preventDefault();
+      drop.classList.remove("studio-assist-over");
+      void give(e.dataTransfer?.files?.[0]);
+    };
+    if (assistPaste) document.removeEventListener("paste", assistPaste);
+    assistPaste = (e) => {
+      const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+      if (!file) return;
+      e.preventDefault();
+      void give(file);
+    };
+    document.addEventListener("paste", assistPaste);
+    const stop = el("button", { type: "button", className: "ghost", textContent: "Stop here" });
+    stop.onclick = () => io.send({ type: "studio-cancel" });
+    box.hidden = false;
+    box.replaceChildren(
+      el("p", { className: "studio-assist-title", textContent: "Your turn: draw this picture" }),
+      a.text ? el("p", { className: "studio-assist-where", textContent: String(a.text) }) : "",
+      el("ol", { className: "studio-assist-steps" },
+        el("li", {}, "Take the words and the picture below to the website or program you like.", words, el("div", { className: "pack-confirm-buttons" }, copyWords, copyPicture, save)),
+        el("li", {}, "Ask it to change the picture as the words say, and keep the plain background colour the same."),
+        el("li", {}, "Give the result back here."),
+      ),
+      picture,
+      sites,
+      drop,
+      message,
+      el("div", { className: "pack-confirm-buttons" }, stop),
+    );
+  }
+
   function fillSources() {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
@@ -587,7 +706,7 @@ export function createStudio(io) {
           fillLocal(msg.local);
           // What the server says is going on (a job, a redraw, the local server starting) shows the ring too, after a reload as well.
           {
-            const working = Boolean(msg.running) || Boolean(msg.frameBusy) || msg.local?.status === "starting";
+            const working = (Boolean(msg.running) || Boolean(msg.frameBusy) || msg.local?.status === "starting") && !msg.assist;
             if (working && !busyOn) {
               fromState = true;
               setBusy(true, msg.local?.status === "starting" ? "Starting the image server…" : msg.running ? `Drawing ${msg.running.name}…` : "Drawing the picture again…");
@@ -596,6 +715,10 @@ export function createStudio(io) {
               setBusy(false);
             }
           }
+          if (msg.assist && typeof msg.assist === "object") {
+            if (!panel) open();
+            showAssist(msg.assist);
+          } else hideAssist();
           makers = Array.isArray(msg.backends) ? msg.backends.filter((/** @type {any} */ b) => b && typeof b.value === "string" && typeof b.label === "string") : [];
           packSize = Number(msg.packSize) || 0;
           maker = typeof msg.backend === "string" ? msg.backend : "";
@@ -633,6 +756,14 @@ export function createStudio(io) {
         case "studio-spend":
           spendLine(Number(msg.usd), Number(msg.limit));
           return true;
+        case "studio-assist":
+          if (!panel) open();
+          showAssist(msg);
+          io.attention?.("Your turn: a picture waits for you");
+          return true;
+        case "studio-assist-done":
+          hideAssist();
+          return true;
         case "studio-frame-progress":
           status(String(msg.text));
           return true;
@@ -655,6 +786,7 @@ export function createStudio(io) {
           status(String(msg.message));
           return true;
         case "studio-frame-cancelled":
+          hideAssist();
           setBusy(false);
           status(""); // the "look at the picture" line no longer applies
           q(".studio-frame")?.replaceChildren();
@@ -716,7 +848,7 @@ export function createStudio(io) {
           if (!box) return true;
           const paid = msg.paid && typeof msg.paid === "object";
           const browser = msg.browser && typeof msg.browser === "object";
-          const yes = el("button", { type: "button", textContent: `Draw ${msg.pictures} ${msg.pictures === 1 ? "picture" : "pictures"}${paid ? " (paid)" : browser ? " (drives your Chrome)" : ""}` });
+          const yes = el("button", { type: "button", textContent: msg.assisted ? "Start (you draw each picture)" : `Draw ${msg.pictures} ${msg.pictures === 1 ? "picture" : "pictures"}${paid ? " (paid)" : browser ? " (drives your Chrome)" : ""}` });
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();
@@ -767,6 +899,7 @@ export function createStudio(io) {
           return true;
         }
         case "studio-error": {
+          hideAssist();
           running(false);
           io.attention?.("The studio stopped");
           status(String(msg.message), true);
@@ -784,6 +917,7 @@ export function createStudio(io) {
           return true;
         }
         case "studio-cancelled":
+          hideAssist();
           running(false);
           q(".studio-confirm")?.replaceChildren();
           q(".studio-candidates")?.replaceChildren();

@@ -7,12 +7,14 @@ import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
-import { BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, keyNamesFor, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
+import { ASSISTED, BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, keyNamesFor, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
 import { knownFrameNames, readRecords } from "./studio/build.ts";
 import { processText } from "./studio/process.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
-import { decode } from "./studio/raster.ts";
+import { decode, encodePng } from "./studio/raster.ts";
+import { assistFolder, type AssistRequest } from "./studio/assisted.ts";
+import { MAX_IMAGE_BYTES, sniffImageType } from "./images.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
 import { commandText, isDevice, LocalServer, type Device, type LocalStatus } from "./studio/local-server.ts";
@@ -137,7 +139,7 @@ export function createStudioService(deps: StudioDeps) {
   let knownSources: string[] = [];
   const disabled = process.env.COMPANION_NO_STUDIO === "1";
   const budget = () => deps.settings.studioBudgetUsd ?? 5;
-  const isLocal = (url: string | null): url is string => Boolean(url) && !PAID_SERVICES.includes(url as string) && !BROWSER_BACKENDS.includes(url as string);
+  const isLocal = (url: string | null): url is string => Boolean(url) && !PAID_SERVICES.includes(url as string) && !BROWSER_BACKENDS.includes(url as string) && url !== ASSISTED;
   /** Chooses the backend, and keeps the last address of a model on this computer so the list can go back to it. */
   const setBackend = (url: string): void => {
     if (isLocal(deps.settings.studioBackend)) deps.settings.studioLocalBackend = deps.settings.studioBackend;
@@ -145,9 +147,9 @@ export function createStudioService(deps: StudioDeps) {
     deps.settings.studioBackend = url;
   };
   /** The choices of the page's "Image maker" list. The local entry is always there: the saved address, or the reference server's. Choosing it without a model running only shows how to set one up (`localHelp`). */
-  const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser"; cost: "free" | "per-picture" | "allowance"; keyNames: string[] }[] => {
+  const backendChoices = (): { value: string; label: string; kind: "local" | "paid" | "browser" | "assisted"; cost: "free" | "per-picture" | "allowance"; keyNames: string[] }[] => {
     const saved = deps.settings.studioBackend;
-    const local = (saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) ? saved : deps.settings.studioLocalBackend) ?? DEFAULT_LOCAL_BACKEND;
+    const local = (saved && !PAID_SERVICES.includes(saved) && !BROWSER_BACKENDS.includes(saved) && saved !== ASSISTED ? saved : deps.settings.studioLocalBackend) ?? DEFAULT_LOCAL_BACKEND;
     return [
       { value: local, label: `A model on this computer (${local})`, kind: "local" as const, cost: "free" as const, keyNames: [] },
       { value: "xai", label: "xAI Grok Imagine API (paid per picture, XAI_API_KEY)", kind: "paid" as const, cost: "per-picture" as const, keyNames: keyNamesFor("xai") },
@@ -156,6 +158,7 @@ export function createStudioService(deps: StudioDeps) {
       { value: "grok-web", label: "Grok Imagine website through your Chrome (uses Claude and your Grok allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
       { value: "gemini-web", label: "Google Gemini website through your Chrome (uses Claude and your Gemini allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
       { value: "chatgpt-web", label: "ChatGPT website through your Chrome (uses Claude and your ChatGPT allowance)", kind: "browser" as const, cost: "allowance" as const, keyNames: [] },
+      { value: ASSISTED, label: "By hand: you draw each picture on any website or tool you like (free, slow, any brain)", kind: "assisted" as const, cost: "free" as const, keyNames: [] },
     ];
   };
   /** What the open job has cost so far (a paid backend only), also kept in the job's folder so a carried-on job keeps counting. */
@@ -182,13 +185,62 @@ export function createStudioService(deps: StudioDeps) {
     `Stay at the computer while it runs: you can stop it at any moment, and when the site asks for a login, a captcha, a payment or anything else the job stops and says so. Your source pictures and your words go to that site. ` +
     `Automating a website may be against its terms and could put your account at risk: that, and what is drawn, is your responsibility. ` +
     `You approve once for the whole pack instead of for every click: until it is done, that Claude process may use your Chrome through the extension (and has no other tool).`;
+  /** What the by-hand maker asks of the user: nothing is sent by the app, but each picture waits for them. */
+  const assistedNote = (pictures: number | null): string =>
+    `BY HAND. For every picture the app shows you the picture and the words; you draw it with any website or tool you like (Grok, Gemini, ChatGPT, a program of your own) and give the result back by dropping or pasting it into the panel. ` +
+    `This app sends nothing anywhere and uses no allowance; what you give a site, and its terms, are between you and that site. ` +
+    (pictures === null ? `` : `A whole pack is about ${knownFrameNames().size + pictures} pictures one after the other, each at your pace, and a picture that fails a check is not drawn again by itself: it is flagged in the review for you to redo. For a few pictures, or one to try a look, it is the cheapest way; for a whole pack, a model on this computer or an API is easier. `) +
+    `Stop the job at any moment: it waits for you, with no time limit.`;
   /** The warning before anything is paid for. */
   const paidNote = (info: BackendInfo, pictures: number): string =>
     `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (${info.paid?.keyName}). ` +
     `Making ${pictures} pictures is the first step; the rest of the pack (about ${knownFrameNames().size} more, up to three tries each) comes after you pick one, and you are shown what the first step cost before that. ` +
     `The app stops at ${dollars(budget())} for this pack (/studio budget changes it). Keeping the key safe, and what it costs you, is your responsibility: the app never saves it, shows it or sends it anywhere but that host.`
   /** `dir` is where a browser maker keeps the picture it uploads (a job's folder); the others have no use for it. */
-  const backendFor = (url: string, dir?: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0, dir }));
+  const backendFor = (url: string, dir?: string, assistId?: string): ImageBackend =>
+    url === ASSISTED
+      ? makeBackend(url, { limitUsd: 0, spentUsd: 0, dir, onAssist: (request) => void offerAssist(assistId ?? "assist", dir ?? ".", request) })
+      : deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0, dir });
+
+  /**
+   * The by-hand maker is waiting for the user to give picture `n` back. What the page needs to show it again after a reload is kept here; the answer goes
+   * into the picture's `assist/` folder (`assistResult`), which is what the maker polls. One at a time: the job draws one picture at a time.
+   */
+  let assist: { id: string; dir: string; n: number; prompt: string; input: string | null; error: string | null } | null = null;
+  const assistMessage = () =>
+    assist
+      ? { type: "studio-assist", id: assist.id, n: assist.n, prompt: assist.prompt, input: assist.input, error: assist.error, folder: assistFolder(assist.dir), text: lastText }
+      : { type: "studio-assist-done" };
+  async function offerAssist(id: string, dir: string, request: AssistRequest): Promise<void> {
+    const png = await readFile(join(assistFolder(dir), `${request.n}-in.png`)).catch(() => null);
+    assist = { id, dir, n: request.n, prompt: request.prompt, input: png ? `data:image/png;base64,${png.toString("base64")}` : null, error: request.error ?? null };
+    deps.broadcast(assistMessage());
+  }
+  function clearAssist(): void {
+    if (!assist) return;
+    assist = null;
+    deps.broadcast({ type: "studio-assist-done" });
+  }
+  /** The picture the user gives back: checked to be a picture, written as the answer the maker is polling for. A bad one is said at once and asked for again. */
+  async function assistResult(msg: Record<string, unknown>): Promise<void> {
+    const open = assist;
+    if (!open || msg.id !== open.id || msg.n !== open.n) return void deps.broadcast({ type: "studio-assist-done" });
+    const again = (error: string) => {
+      open.error = error;
+      deps.broadcast(assistMessage());
+    };
+    const raw = typeof msg.image === "string" ? msg.image.replace(/^data:[^,]*,/, "") : "";
+    const bytes = Buffer.from(raw, "base64");
+    if (bytes.length === 0) return again("That was empty. Drop or paste the picture.");
+    if (bytes.length > MAX_IMAGE_BYTES) return again(`That picture is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB. Save it smaller (PNG, JPEG or WebP) and give it again.`);
+    if (!sniffImageType(bytes)) return again("That is not a PNG, JPEG, WebP or GIF picture.");
+    try {
+      await writeFile(join(assistFolder(open.dir), `${open.n}-out.png`), await encodePng(await decode(bytes)));
+    } catch {
+      return again("The app could not read that picture. Save it as PNG, JPEG or WebP and give it again.");
+    }
+    clearAssist();
+  }
 
   /** A local model's answer to its /health, kept for a few seconds so the page can ask often without a request each time. */
   const localHealth = new Map<string, { at: number; ok: boolean }>();
@@ -209,7 +261,8 @@ export function createStudioService(deps: StudioDeps) {
     return `no model answers at that address; on this computer: ${found.map((m) => m.label).join(", ")} (start its backend, see the guide)${start}`;
   }
 
-  async function makerAvailability(choice: { value: string; kind: "local" | "paid" | "browser" }): Promise<{ available: boolean; reason: string | null }> {
+  async function makerAvailability(choice: { value: string; kind: "local" | "paid" | "browser" | "assisted" }): Promise<{ available: boolean; reason: string | null }> {
+    if (choice.kind === "assisted") return { available: true, reason: null };
     if (choice.kind === "paid") {
       return hasKey(choice.value, deps.env ?? process.env) ? { available: true, reason: null } : { available: false, reason: `set ${keyName(choice.value)} in this app's environment` };
     }
@@ -260,6 +313,8 @@ export function createStudioService(deps: StudioDeps) {
       /** The pictures of each pack, for "Draw one picture again" (only while the studio is on). */
       frames: on ? Object.fromEntries(await Promise.all(knownSources.map(async (s) => [s, await framesOf(s)]))) : {},
       frameBusy,
+      /** The by-hand maker waits for a picture from the user (null otherwise). */
+      assist: assist ? { ...assistMessage(), type: undefined } : null,
       frameReview: reviewMessage(),
       frameAsk: frameAskMessage(),
       proposal,
@@ -426,6 +481,7 @@ export function createStudioService(deps: StudioDeps) {
   const describe = (info: BackendInfo) => `${info.name}${info.model ? `, model ${info.model}` : ""}${info.licence ? ` (${info.licence})` : ""}`;
 
   function forget(): void {
+    clearAssist();
     pending = null;
     waiting = null;
     shown.clear();
@@ -483,6 +539,8 @@ export function createStudioService(deps: StudioDeps) {
         const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
         previews.set(event.name, { thumb, flagged: event.flagged, flags: event.flags });
         deps.broadcast({ type: "studio-preview", id: job.id, name: event.name, thumb, flagged: event.flagged, flags: event.flags });
+      } else if (event.type === "assist") {
+        await offerAssist(job.id, dir, event);
       } else if (event.type === "spend") {
         spent = event.usd;
         await writeFile(join(dir, "spend.json"), JSON.stringify({ usd: spent })).catch(() => {});
@@ -594,14 +652,16 @@ export function createStudioService(deps: StudioDeps) {
       pictures: parsed.job.seeds.length,
       paid: checked.info.paid ? { host: checked.info.paid.host, limit: budget() } : null,
       browser: checked.info.browser ?? null,
+      assisted: checked.info.assisted ?? null,
       note:
         (checked.info.paid ? `${paidNote(checked.info, parsed.job.seeds.length)} ` : "") +
         (checked.info.browser ? `${browserNote(checked.info)} ` : "") +
+        (checked.info.assisted ? `${assistedNote(parsed.job.seeds.length)} ` : "") +
         (() => {
           const n = parsed.job.seeds.length;
           const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
           const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to data/frames/${name}. `;
-          return checked.info.paid || checked.info.browser
+          return checked.info.paid || checked.info.browser || checked.info.assisted
             ? `This draws ${what}. ${rest}`
             : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference FLUX.2 klein 4B server needs about 22 GB of memory; another model needs what it needs). ${rest}`;
         })() +
@@ -665,6 +725,8 @@ export function createStudioService(deps: StudioDeps) {
   // --- one picture of an installed pack, drawn again from words (src/studio/frame-edit.ts) ---
   /** A picture is being drawn: no other job starts until it is done. */
   let frameBusy = false;
+  /** Ends the one picture being drawn (the by-hand maker waits for a person, so it must be stoppable). */
+  let frameAbort: AbortController | null = null;
   /** The picture drawn, waiting for the user's yes or no. Nothing is written until the yes. */
   let frameReview: { id: string; source: string; frame: string; name: string; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
   const reviewMessage = () => (frameReview ? { id: frameReview.id, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
@@ -700,7 +762,7 @@ export function createStudioService(deps: StudioDeps) {
     if (!checked.ok) return err(checked.reason);
     const request = { id: `frame-${randomBytes(4).toString("hex")}`, source, frame, name, change, bytes, info: checked.info, url };
     // A model on this computer costs nothing: it is drawn at once. A paid service or a browser maker is asked about first, with the same warning a pack gets.
-    if (isLocal(url)) return void (await frameDraw(request, send));
+    if (isLocal(url) || url === ASSISTED) return void (await frameDraw(request, send));
     frameAsk = request;
     deps.broadcast(frameAskMessage());
   }
@@ -737,12 +799,13 @@ export function createStudioService(deps: StudioDeps) {
     const { source, frame, name, change, bytes, info, url } = request;
     const err = (message: string) => send({ type: "studio-error", message });
     frameBusy = true;
-    deps.broadcast({ type: "studio-frame-progress", text: `Drawing ${frame} from ${source} again…` });
+    const abort = (frameAbort = new AbortController());
+    deps.broadcast({ type: "studio-frame-progress", text: url === ASSISTED ? `Waiting for you to draw ${frame} of ${source}…` : `Drawing ${frame} from ${source} again…` });
     const work = join(deps.dataDir, "studio", `${request.id}-draw`);
     try {
       await mkdir(work, { recursive: true });
       const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
-      const drawn = await drawFrame(bytes, change, seed, backendFor(url, work));
+      const drawn = await drawFrame(bytes, change, seed, backendFor(url, work, request.id), abort.signal);
       frameReview = {
         id: request.id,
         source,
@@ -757,9 +820,12 @@ export function createStudioService(deps: StudioDeps) {
       };
       deps.broadcast({ type: "studio-frame-review", ...reviewMessage() });
     } catch (error) {
-      err(error instanceof Error ? error.message : String(error));
+      if (abort.signal.aborted) deps.broadcast({ type: "studio-frame-cancelled" });
+      else err(error instanceof Error ? error.message : String(error));
     } finally {
       frameBusy = false;
+      if (frameAbort === abort) frameAbort = null;
+      clearAssist();
       await rm(work, { recursive: true, force: true });
     }
   }
@@ -889,6 +955,7 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   function cancel(): void {
+    frameAbort?.abort();
     stopRunning();
     deps.broadcast({ type: "studio-cancelled" });
     void announce();
@@ -937,10 +1004,11 @@ export function createStudioService(deps: StudioDeps) {
       if (word === "backend") {
         if (rest.length === 0) return say(`Image backend: ${deps.settings.studioBackend ?? "(none)"}`);
         const url = checkBackendUrl(rest[0]);
-        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: xai, gemini or openai (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), or grok-web / gemini-web / chatgpt-web (a website through Claude in Chrome: needs Claude Code and its Chrome extension).");
+        if (!url) return say("The image backend has to be plain http on this computer, like http://127.0.0.1:7861, or the name of a paid service: xai, gemini or openai (each needs its API key, XAI_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY, in this app's environment), grok-web / gemini-web / chatgpt-web (a website through Claude in Chrome: needs Claude Code and its Chrome extension), or assisted (you draw each picture by hand with any website or tool).");
         setBackend(url);
         await deps.saveSettings();
         void announce(); // an open panel shows the new choice
+        if (url === ASSISTED) return say("Image maker set to by hand: for each picture the panel shows the picture and the words, you draw it with any website or tool you like and give the result back. /studio on checks it.");
         if (BROWSER_BACKENDS.includes(url)) return say(`Image backend set to the ${url === GEMINI_WEB ? "Google Gemini" : url === CHATGPT_WEB ? "ChatGPT" : "Grok Imagine"} website, driven through Claude in Chrome (it uses Claude Code and your Chrome). /studio on checks it and says what it costs you.`);
         return say(PAID_SERVICES.includes(url) ? `Image backend set to ${url} (a paid web service). /studio on checks the key and says what it costs.` : `Image backend set to ${url}. /studio on checks it.`);
       }
@@ -1018,6 +1086,7 @@ export function createStudioService(deps: StudioDeps) {
           send({ type: "studio-frame-cancelled" });
         } else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
+        else if (msg.type === "studio-assist-result") await assistResult(msg);
         else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
         else if (msg.type === "studio-local-config") await localConfig(msg, send);
         else if (msg.type === "studio-local-start") await localStart(msg, send);

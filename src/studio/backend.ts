@@ -1,4 +1,5 @@
 import { isLoopbackHttp } from "../pack-index.ts";
+import { assistedBackend, type AssistRequest } from "./assisted.ts";
 import { chromeBackend } from "./chrome-backend.ts";
 
 /**
@@ -23,6 +24,8 @@ export interface BackendInfo {
   paid?: { host: string; keyName: string };
   /** Set for a website drawn through the user's own browser (Claude in Chrome): not paid per picture, but it uses Claude and the site's allowance. */
   browser?: { site: string };
+  /** Set for the maker that is the user: each picture is drawn by hand with any website or tool (src/studio/assisted.ts). */
+  assisted?: true;
   name: string;
   model: string | null;
   revision: string | null;
@@ -41,6 +44,8 @@ export interface EditRequest {
 }
 
 export interface ImageBackend {
+  /** How many times one picture may be drawn again after a failed check (the default is the studio's own: three). A maker where each try costs the user's time says 1. */
+  maxTries?: number;
   info(): Promise<BackendInfo>;
   edit(req: EditRequest, signal?: AbortSignal): Promise<Buffer>;
   generate(req: Omit<EditRequest, "image">, signal?: AbortSignal): Promise<Buffer>;
@@ -58,6 +63,8 @@ export const GROK_WEB = "grok-web";
 export const GEMINI_WEB = "gemini-web";
 export const CHATGPT_WEB = "chatgpt-web";
 export const BROWSER_BACKENDS: readonly string[] = [GROK_WEB, GEMINI_WEB, CHATGPT_WEB];
+/** The maker that is the user: the app shows each picture and the words, and waits for the result (src/studio/assisted.ts). */
+export const ASSISTED = "assisted";
 export const PAID_SERVICES: readonly string[] = [XAI, GEMINI, OPENAI];
 export const XAI_BASE = "https://api.x.ai/v1";
 export const XAI_MODEL = "grok-imagine-image-2.0";
@@ -69,7 +76,7 @@ const USD_TICKS = 10_000_000_000; // xAI reports `usage.cost_in_usd_ticks`: 10 0
 
 /** The address the user may give: plain http on this computer, or the name of a paid web service (`xai`, `gemini`). */
 export function checkBackendUrl(value: unknown): string | null {
-  if (typeof value === "string" && (PAID_SERVICES.includes(value) || BROWSER_BACKENDS.includes(value))) return value;
+  if (typeof value === "string" && (PAID_SERVICES.includes(value) || BROWSER_BACKENDS.includes(value) || value === ASSISTED)) return value;
   if (!isLoopbackHttp(value)) return null;
   return String(value).replace(/\/+$/, "");
 }
@@ -326,14 +333,15 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
 export const xaiBackend = (options: PaidOptions): ImageBackend => paidBackend(xaiAdapter, options);
 
 /** The client for a backend address: a paid web service by name, or the loopback server. A paid one carries the limit and a counter of what is spent. */
-export function makeBackend(url: string, paid?: Omit<PaidOptions, "fetch" | "baseUrl" | "sleep"> & { dir?: string }): ImageBackend {
+export function makeBackend(url: string, paid?: Omit<PaidOptions, "fetch" | "baseUrl" | "sleep"> & { dir?: string; onAssist?: (request: AssistRequest) => void }): ImageBackend {
+  if (url === ASSISTED) return assistedBackend({ dir: paid?.dir ?? ".", onAssist: paid?.onAssist ?? (() => {}) });
   if (BROWSER_BACKENDS.includes(url)) return chromeBackend({ dir: paid?.dir ?? ".", site: url === GEMINI_WEB ? "gemini" : url === CHATGPT_WEB ? "chatgpt" : "grok" });
   const adapter = ADAPTERS[url];
   return adapter ? paidBackend(adapter, paid ?? { limitUsd: 0, spentUsd: 0 }) : httpBackend(url);
 }
 
 export function httpBackend(baseUrl: string, options: { timeoutMs?: number; fetch?: typeof fetch } = {}): ImageBackend {
-  const url = PAID_SERVICES.includes(baseUrl) || BROWSER_BACKENDS.includes(baseUrl) ? null : checkBackendUrl(baseUrl);
+  const url = PAID_SERVICES.includes(baseUrl) || BROWSER_BACKENDS.includes(baseUrl) || baseUrl === ASSISTED ? null : checkBackendUrl(baseUrl);
   if (!url) throw new BackendError("The image backend address has to be http on this computer (127.0.0.1 or localhost).");
   const doFetch = options.fetch ?? fetch;
   // A picture takes seconds on a fast machine and minutes on a slow one; the first one may also load the model.

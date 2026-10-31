@@ -57,7 +57,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
   });
   const waitFor = async (type: string, count = 1) => {
     // Up to three minutes: a whole pack is drawn in the test, and a full run is slow.
-    for (let i = 0; i < 7200; i++) {
+    for (let i = 0; i < Number(process.env.STUDIO_TEST_WAIT_LOOPS ?? 7200); i++) {
       if (sent.filter((m) => m.type === type).length >= count) return;
       await new Promise((r) => setTimeout(r, 25));
     }
@@ -467,7 +467,7 @@ test("the page's image maker list: the choices say what they cost, a choice is s
   try {
     await t.service.command("on", t.say, false, () => {});
     const state = await t.service.stateMessage();
-    assert.deepEqual(state.backends.map((b: any) => b.kind), ["local", "paid", "paid", "paid", "browser", "browser", "browser"]);
+    assert.deepEqual(state.backends.map((b: any) => b.kind), ["local", "paid", "paid", "paid", "browser", "browser", "browser", "assisted"]);
     assert.equal(state.backends[0].value, t.fake.url, "the saved local address is the first choice");
     assert.equal(state.backend, t.fake.url);
     const me: Record<string, any>[] = [];
@@ -1021,6 +1021,92 @@ test("choosing the image maker with /studio backend tells an open panel", async 
     await t.service.command("backend gemini-web", t.say, false, () => {});
     await t.waitFor("studio-state", before + 1);
     assert.equal(t.sent.filter((m) => m.type === "studio-state").at(-1)!.backend, "gemini-web");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("by hand: one picture waits for the user, a bad file is asked for again, a good one is checked like any other, and stopping ends the wait", async () => {
+  const t = await setup({ backendUrl: "assisted" });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    assert.equal((await t.service.stateMessage()).backends.find((b: any) => b.value === "assisted")?.available, true, "always listed as ready");
+    // The message is answered when the picture is done, and the picture waits for the user: the page's other messages go on meanwhile.
+    const first = t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "risa-by-hand" }, send, false);
+    first.catch(() => {});
+    assert.equal(t.sent.find((m) => m.type === "studio-frame-ask"), undefined, "nothing is sent or paid for, so there is no card");
+    await t.waitFor("studio-assist");
+    const ask = t.sent.find((m) => m.type === "studio-assist")!;
+    assert.match(ask.prompt, /red scarf around her neck/);
+    assert.match(ask.prompt, /magenta|green|cyan/, "the prompt names the background colour");
+    assert.match(ask.input, /^data:image\/png;base64,/);
+    assert.equal((await t.service.stateMessage()).assist?.n, ask.n, "a reload shows the same request");
+
+    // Something that is not a picture: said at once, still waiting.
+    await t.service.message({ type: "studio-assist-result", id: ask.id, n: ask.n, image: `data:text/plain;base64,${Buffer.from("hello").toString("base64")}` }, send, false);
+    const again = t.sent.filter((m) => m.type === "studio-assist").at(-1)!;
+    assert.match(again.error, /not a PNG, JPEG, WebP/);
+    // A request for another picture is ignored.
+    await t.service.message({ type: "studio-assist-result", id: "someone-else", n: ask.n, image: "x" }, send, false);
+    assert.equal(t.sent.filter((m) => m.type === "studio-frame-review").length, 0);
+
+    // A picture, as a drop gives it (a JPEG of another size): cut out, checked and shown for keeping.
+    const given = await (await import("sharp")).default({ create: { width: 300, height: 340, channels: 3, background: { r: 255, g: 0, b: 255 } } }).composite([{ input: await (await import("sharp")).default({ create: { width: 80, height: 200, channels: 3, background: { r: 200, g: 40, b: 50 } } }).png().toBuffer(), left: 100, top: 60 }]).jpeg().toBuffer();
+    await t.service.message({ type: "studio-assist-result", id: ask.id, n: ask.n, image: `data:image/jpeg;base64,${given.toString("base64")}` }, send, false);
+    await t.waitFor("studio-assist-done");
+    await first;
+    await t.waitFor("studio-frame-review");
+    assert.equal((await t.service.stateMessage()).assist, null);
+    assert.ok((await readdir(join(t.dataDir, "studio"))).every((n) => !n.endsWith("-draw")), "the working folder is gone");
+    await t.service.message({ type: "studio-frame-reject", id: t.sent.find((m) => m.type === "studio-frame-review")!.id }, send, false);
+
+    // Stopping while it waits ends it.
+    const asks = t.sent.filter((m) => m.type === "studio-assist").length; // the bad file above was announced again: count from here
+    const second = t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a blue hat", name: "risa-by-hand-2" }, send, false);
+    await t.waitFor("studio-assist", asks + 1);
+    await t.service.message({ type: "studio-cancel" }, send, false);
+    await second;
+    await t.waitFor("studio-frame-cancelled");
+    assert.equal((await t.service.stateMessage()).assist, null);
+    assert.equal((await t.service.stateMessage()).frameBusy, false);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("by hand: a pack's card says what it asks of the user, and the first picture waits for them through the worker", async () => {
+  const t = await setup({ backendUrl: "assisted" });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-hand-pack", outfit: "a green coat", pictures: 1 }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.ok(card, `a card (got ${me.map((m) => m.message ?? m.type).join("; ")})`);
+    assert.equal(card.assisted?.assisted ?? card.assisted, true);
+    assert.match(card.note, /BY HAND/);
+    assert.match(card.note, /sends nothing anywhere/);
+    assert.doesNotMatch(card.note, /THIS IS PAID|DRIVES YOUR CHROME/);
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-assist");
+    const ask = t.sent.find((m) => m.type === "studio-assist")!;
+    assert.equal(ask.id, card.id, "the request belongs to the job");
+    assert.match(ask.prompt, /green coat/);
+    // Give it a picture: the first (and only) candidate appears, and the page is told it was received.
+    const png = await encodePng(makeRaster(896, 1024, [255, 0, 255, 255]));
+    await t.service.message({ type: "studio-assist-result", id: ask.id, n: ask.n, image: `data:image/png;base64,${png.toString("base64")}` }, send, false);
+    await t.waitFor("studio-assist-done");
+    await t.waitFor("studio-candidate");
+    await t.waitFor("studio-candidates-done");
+    // The next stage asks for the next picture; stopping the job clears the request.
+    const asks = t.sent.filter((m) => m.type === "studio-assist").length;
+    await t.service.message({ type: "studio-pick", id: card.id, seed: 1 }, send, false);
+    await t.waitFor("studio-assist", asks + 1);
+    await t.service.message({ type: "studio-cancel" }, send, false);
+    await t.waitFor("studio-cancelled");
+    assert.equal((await t.service.stateMessage()).assist, null);
   } finally {
     await t.cleanup();
   }

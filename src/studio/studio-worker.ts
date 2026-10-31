@@ -20,6 +20,7 @@ try {
     limitUsd: Number(workerData.limitUsd) || 0,
     spentUsd: Number(workerData.spentUsd) || 0,
     onSpend: (usd) => send({ type: "spend", usd }),
+    onAssist: (request) => send({ type: "assist", ...request }),
   });
   if (workerData.phase === "base") {
     const frames = workerData.sourceFrames as { blink?: Uint8Array; talk: (Uint8Array | undefined)[] } | undefined;

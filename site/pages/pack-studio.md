@@ -43,11 +43,16 @@ A job stays on disk (`data/studio/<job>/`), so it can be carried on after a rest
 | --- | --- | --- |
 | **A model on this computer** | A server you start on your machine; the app talks to it on `127.0.0.1` only. The reference one (`python/pack_studio/server.py`, FLUX.2 klein 4B) needs about 22 GB of memory: [how to set it up](local-model.html). The list always shows this entry; with no model running the studio shows the steps instead. | Time. |
 | **xAI, Google Gemini, OpenAI** (APIs) | Their servers, with **your key** from the environment (`XAI_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`). The key is never saved, shown or sent anywhere else. | **Paid per picture**, and the card says so. The price is counted from the answers, and a limit per pack (default $5, `/studio budget`) stops it. In tests one picture cost between 5 and 7 cents. |
+| **By hand** (any website or program) | You. For each picture the panel shows the picture and the words; you take them to Grok, Gemini, ChatGPT or any tool you like, and drop or paste the result back. The app talks to no site and needs no brain, so it works with Cursor, opencode and Ollama too. | **Nothing in this app**; the site's own allowance if you use one. It is slow, one picture at a time at your pace: good for a few pictures or to try a look, tiring for a whole pack of about 40. |
 | **Grok Imagine, Google Gemini, ChatGPT** (websites) | The site, in **your own Chrome**, signed in as you, driven by Claude Code through the Claude in Chrome extension. | **No per-picture bill**, but it uses your Claude allowance and the site's: it is slow (a minute or two a picture, an hour or more for a pack) and a free account runs out (a free ChatGPT account made about five pictures in a day). Stay at the computer while it runs. |
 
 **None of these suit you?** `/studio handover` (it works with the studio off) or the panel's **Hand over to an AI agent…** gives you a prompt to copy into any AI agent that makes pictures, a chat website or anything else you use. It describes what a pack needs and links to a [guide for agents](agent-guide.html). You attach the neutral picture, take the files it makes, and put the folder in `data/frames/`.
 
-Choose one in the panel's **Image maker** list, or type `/studio backend xai` (`gemini`, `openai`, `grok-web`, `gemini-web`, `chatgpt-web`, or the address of a local server).
+Choose one in the panel's **Image maker** list, or type `/studio backend xai` (`gemini`, `openai`, `grok-web`, `gemini-web`, `chatgpt-web`, `assisted`, or the address of a local server).
+
+### Drawing by hand
+
+Choose **By hand** and the studio asks you for each picture in turn. A box at the top of the panel shows the picture and the words: copy the words (and copy or save the picture), ask any website or program that changes a picture to make it, then drop the result into the box, paste it (Ctrl or Cmd + V) or choose the file. The app checks that it is a picture and goes on. Ask the tool to keep the plain background colour as it is: the studio cuts her out of that colour. A picture that fails a check is not asked for again by itself; it is flagged in the review, where you can redo it. **Stop here** ends the wait at any time, and nothing has a time limit. Nothing is sent from this app to any site: what you upload, and the site's terms, are between you and the site. It also works for *one picture drawn again* (the panel's second form), which is where it is most useful.
 
 ### Using a website
 

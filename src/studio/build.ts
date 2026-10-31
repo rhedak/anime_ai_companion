@@ -85,7 +85,7 @@ async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: F
   const seed0 = job.seeds[0] + hash(plan.name);
   let best: { picture: Raster; flags: Flags; seed: number; blurry: number } | null = null;
   let attempt = firstAttempt;
-  for (let tries = 0; tries < ATTEMPTS; tries++, attempt++) {
+  for (let tries = 0; tries < (deps.backend.maxTries ?? ATTEMPTS); tries++, attempt++) {
     if (deps.signal?.aborted) throw new Error("stopped");
     const seed = fixedSeed ?? seed0 + attempt * SEED_STEP;
     const edited = await resize(await decode(await deps.backend.edit({ image: input, prompt: plan.prompt, seed, width: job.width, height: job.height }, deps.signal)), job.width, job.height);
