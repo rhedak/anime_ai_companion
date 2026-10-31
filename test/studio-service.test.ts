@@ -753,6 +753,7 @@ test("one picture of an installed pack is drawn again: the yes writes a new pack
     await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "risa-red" }, send, false);
     await t.waitFor("studio-frame-review");
     assert.equal(t.fake.requests.length, calls + 1, "the picture was drawn once");
+    assert.match(String(t.fake.requests.at(-1)!.body.prompt), /pure (magenta|bright green|cyan) \(#[0-9a-f]{6}\) background/, "the prompt names the colour the picture was put on");
     const review = t.sent.find((m) => m.type === "studio-frame-review")!;
     assert.equal(review.frame, "neutral");
     assert.match(review.old, /^data:image\/webp;base64,/);

@@ -34,7 +34,24 @@ export function createStudio(io) {
   };
   const q = (/** @type {string} */ sel) => /** @type {HTMLElement | null} */ (panel?.querySelector(sel) ?? null);
 
+  /** The corner ring that says the studio is working (like local_models' own): shown while a job, a redraw, an export or a server start runs. */
+  let busyOn = false;
+  /** The ring was started by what the server reported (so the server's next report may end it), not by a click on this page. */
+  let fromState = false;
+  function setBusy(/** @type {boolean} */ on, /** @type {string} */ text = "") {
+    busyOn = on;
+    if (!on) fromState = false;
+    let ring = document.querySelector(".studio-busy");
+    if (!on) return void ring?.remove();
+    if (!ring) {
+      ring = el("div", { className: "studio-busy", role: "status", ariaLive: "polite" }, el("span", { className: "studio-ring" }), el("span", { className: "studio-busy-text" }));
+      document.body.append(ring);
+    }
+    if (text) /** @type {HTMLElement} */ (ring.querySelector(".studio-busy-text")).textContent = text;
+  }
+
   function status(/** @type {string} */ text, /** @type {boolean} */ bad = false) {
+    if (busyOn && !bad) setBusy(true, text);
     const line = q(".studio-status");
     if (!line) return;
     line.textContent = text;
@@ -47,6 +64,7 @@ export function createStudio(io) {
   }
 
   function close() {
+    setBusy(false);
     panel?.remove();
     panel = null;
     zoom?.remove();
@@ -116,6 +134,7 @@ export function createStudio(io) {
     const frameStart = el("button", { type: "button", className: "ghost", textContent: "Draw this picture again" });
     frameStart.onclick = () => {
       q(".studio-frame")?.replaceChildren();
+      setBusy(true, "Drawing the picture again…");
       io.send({ type: "studio-frame-edit", source: frameSource.value, frame: frameName.value, prompt: framePrompt.value, name: framePack.value });
     };
     frameSource.onchange = () => fillFrames();
@@ -149,10 +168,12 @@ export function createStudio(io) {
     const importButton = el("button", { type: "button", className: "ghost", textContent: "Import a folder as a pack", title: "Copies the pictures of the folder given into a new pack of the name given" });
     exportButton.onclick = () => {
       io.send({ type: "studio-export", source: frameSource.value, folder: transferFolder.value });
+      setBusy(true, "Exporting…");
       status("Exporting…");
     };
     importButton.onclick = () => {
       io.send({ type: "studio-import", folder: transferFolder.value, name: transferName.value });
+      setBusy(true, "Importing…");
       status("Importing…");
     };
     panel = el(
@@ -529,6 +550,7 @@ export function createStudio(io) {
   }
 
   function running(/** @type {boolean} */ busy) {
+    setBusy(busy, busy ? q(".studio-status")?.textContent || "Working…" : "");
     const picker = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
     if (picker) picker.disabled = busy;
     const start = /** @type {HTMLButtonElement | null} */ (panel?.querySelector(".pack-confirm-buttons button"));
@@ -548,6 +570,17 @@ export function createStudio(io) {
           on = msg.on === true;
           if (on) document.querySelector('.pack-confirm[data-kind="studio-ask"]')?.remove();
           fillLocal(msg.local);
+          // What the server says is going on (a job, a redraw, the local server starting) shows the ring too, after a reload as well.
+          {
+            const working = Boolean(msg.running) || Boolean(msg.frameBusy) || msg.local?.status === "starting";
+            if (working && !busyOn) {
+              fromState = true;
+              setBusy(true, msg.local?.status === "starting" ? "Starting the image server…" : msg.running ? `Drawing ${msg.running.name}…` : "Drawing the picture again…");
+            } else if (!working && busyOn && fromState) {
+              fromState = false;
+              setBusy(false);
+            }
+          }
           makers = Array.isArray(msg.backends) ? msg.backends.filter((/** @type {any} */ b) => b && typeof b.value === "string" && typeof b.label === "string") : [];
           packSize = Number(msg.packSize) || 0;
           maker = typeof msg.backend === "string" ? msg.backend : "";
@@ -588,17 +621,21 @@ export function createStudio(io) {
           status(String(msg.text));
           return true;
         case "studio-frame-review":
+          setBusy(false);
           showFrameReview(msg);
           status("Look at the picture drawn: keep it as a new pack, or drop it.");
           return true;
         case "studio-frame-installed":
+          setBusy(false);
           q(".studio-frame")?.replaceChildren();
           status(`Made ${msg.name}: the same pack with that picture drawn again.`);
           return true;
         case "studio-transferred":
+          setBusy(false);
           status(String(msg.message));
           return true;
         case "studio-frame-cancelled":
+          setBusy(false);
           q(".studio-frame")?.replaceChildren();
           return true;
         case "studio-ask":
@@ -658,7 +695,7 @@ export function createStudio(io) {
           if (!box) return true;
           const paid = msg.paid && typeof msg.paid === "object";
           const browser = msg.browser && typeof msg.browser === "object";
-          const yes = el("button", { type: "button", textContent: paid ? `Draw ${msg.pictures} pictures (paid)` : browser ? `Draw ${msg.pictures} pictures (drives your Chrome)` : `Draw ${msg.pictures} pictures` });
+          const yes = el("button", { type: "button", textContent: `Draw ${msg.pictures} ${msg.pictures === 1 ? "picture" : "pictures"}${paid ? " (paid)" : browser ? " (drives your Chrome)" : ""}` });
           const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
           no.onclick = () => {
             box.replaceChildren();

@@ -15,9 +15,9 @@ import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/jo
 import { decode } from "./studio/raster.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
-import { commandText, isDevice, LocalServer, type Device } from "./studio/local-server.ts";
+import { commandText, isDevice, LocalServer, type Device, type LocalStatus } from "./studio/local-server.ts";
 import { exportPack, importPack } from "./studio/transfer.ts";
-import { drawFrame, editText, FRAME_NAME, frameEditPrompt, thumbnail } from "./studio/frame-edit.ts";
+import { drawFrame, editText, FRAME_NAME, thumbnail } from "./studio/frame-edit.ts";
 import { checkPath } from "./settings.ts";
 import { detectLocalImageModels, hubCacheDir } from "./studio/local-models.ts";
 import type { Flags } from "./studio/checks.ts";
@@ -217,6 +217,8 @@ export function createStudioService(deps: StudioDeps) {
       if (!deps.chromeOn?.()) return { available: false, reason: "turn on /chrome (Claude in Chrome)" };
       return { available: true, reason: null };
     }
+    // The model is busy with this app's own picture: a server that draws one at a time may be slow to answer, which is not "not answering".
+    if (running || frameBusy) return { available: true, reason: null };
     const at = localHealth.get(choice.value);
     if (at && Date.now() - at.at < 5000) return at.ok ? { available: true, reason: null } : { available: false, reason: await notAnswering() };
     const ok = await Promise.resolve()
@@ -265,9 +267,19 @@ export function createStudioService(deps: StudioDeps) {
   }
   const announce = async () => deps.broadcast(await stateMessage());
   /** The user's own server, started from the panel after a card. Memory only: the app never starts it by itself. */
+  let localStatus = "stopped" as LocalStatus;
+  let localTimer: ReturnType<typeof setTimeout> | null = null;
+  // A line it prints must not make the app ask its /health again (that prints a line, and so on): the health answer is forgotten only when its status
+  // changes, and the page hears about new lines at most four times a second.
   const local = new LocalServer(() => {
-    localHealth.clear();
-    void announce();
+    if (local.state.status !== localStatus) {
+      localStatus = local.state.status;
+      localHealth.clear();
+    }
+    localTimer ??= setTimeout(() => {
+      localTimer = null;
+      void announce();
+    }, 250);
   }, () => deps.env ?? process.env);
   let localAsk: { id: string; python: string; server: string; command: string; port: number; device: Device; hub: string } | null = null;
 
@@ -589,7 +601,7 @@ export function createStudioService(deps: StudioDeps) {
           const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to data/frames/${name}. `;
           return checked.info.paid || checked.info.browser
             ? `This draws ${what}. ${rest}`
-            : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference backend needs about 22 GB of memory). ${rest}`;
+            : `This draws ${what} on this computer. Each takes seconds to a few minutes, and the first may load the model (the reference FLUX.2 klein 4B server needs about 22 GB of memory; another model needs what it needs). ${rest}`;
         })() +
         `${RESPONSIBILITY}`,
     });
@@ -687,7 +699,7 @@ export function createStudioService(deps: StudioDeps) {
     deps.broadcast({ type: "studio-frame-progress", text: `Drawing ${frame} from ${source} again…` });
     try {
       const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
-      const drawn = await drawFrame(bytes, frameEditPrompt(change), seed, backendFor(deps.settings.studioBackend));
+      const drawn = await drawFrame(bytes, change, seed, backendFor(deps.settings.studioBackend));
       frameReview = {
         id: `frame-${randomBytes(4).toString("hex")}`,
         source,

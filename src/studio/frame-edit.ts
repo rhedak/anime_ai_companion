@@ -3,6 +3,7 @@ import type { ImageBackend } from "./backend.ts";
 import { checkBackground, checkLowerBody, type Flags } from "./checks.ts";
 import { cleanText } from "./job.ts";
 import { cutout, KEYS, pickKey, toRaster, type KeyName } from "./cutout.ts";
+import { keyWords } from "./prompts.ts";
 import { decode, encodePng, encodeWebp, flatten, resize, type Raster } from "./raster.ts";
 
 /**
@@ -20,8 +21,8 @@ export const FRAME_PACK_H = 1070;
 export const FRAME_NAME = /^[a-z0-9-]{1,40}$/;
 
 /** What the model is asked: the change, and what must stay the same. The user's words are cleaned like the outfit's. */
-export function frameEditPrompt(change: string): string {
-  return `Change only this in the picture: ${cleanText(change, 400)}. Keep everything else the same: the same character, pose, framing and expression, and the plain flat background of the key colour.`;
+export function frameEditPrompt(change: string, key: KeyName): string {
+  return `Change only this in the picture: ${cleanText(change, 400)}. Keep everything else the same: the same character, pose, framing and expression, and the plain flat ${keyWords[key]} background exactly the same.`;
 }
 
 export interface DrawnFrame {
@@ -34,15 +35,15 @@ export interface DrawnFrame {
   blurry: number;
 }
 
-/** Draws one picture again: the frame's own bytes in, the new picture and its checks out. Throws what the backend throws. */
-export async function drawFrame(bytes: Buffer, prompt: string, seed: number, backend: ImageBackend, signal?: AbortSignal): Promise<DrawnFrame> {
+/** Draws one picture again (`change` is the user's words; the prompt names the key colour the picture was put on): the frame's own bytes in, the new picture and its checks out. Throws what the backend throws. */
+export async function drawFrame(bytes: Buffer, change: string, seed: number, backend: ImageBackend, signal?: AbortSignal): Promise<DrawnFrame> {
   const source = await decode(bytes);
   const { key } = pickKey(source);
   const height = FRAME_WORKING_HEIGHT;
   const width = Math.min(1536, Math.max(256, Math.round(((source.w / source.h) * height) / 16) * 16));
   const onKey = await resize(flatten(source, KEYS[key]), width, height);
   const image = await encodePng(onKey);
-  const edited = await resize(await decode(await backend.edit({ image, prompt, seed, width, height }, signal)), width, height);
+  const edited = await resize(await decode(await backend.edit({ image, prompt: frameEditPrompt(change, key), seed, width, height }, signal)), width, height);
   const cut = cutout(edited, { key });
   const base = cutout(onKey, { key });
   const flags: Flags = [...checkBackground(cut.background, width, height), ...checkLowerBody(base.alpha, cut.alpha, width, height)];

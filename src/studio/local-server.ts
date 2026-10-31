@@ -46,6 +46,10 @@ export class LocalServer {
   private snapshot: LocalSnapshot = { status: "stopped", command: null, log: [], problem: null };
   private pending = "";
   private generation = 0;
+  /** When the app itself exits (a signal, a restart, a crash), the server it started goes with it. Nothing can be done about a SIGKILL. */
+  private readonly leave = () => {
+    this.child?.kill("SIGTERM");
+  };
 
   private readonly changed: () => void;
   private readonly env: () => NodeJS.ProcessEnv;
@@ -88,6 +92,7 @@ export class LocalServer {
     // No shell: the paths are arguments, so a name with a space or a symbol means what it says. It runs in the script's own folder.
     const child = spawn(python, [script, "--port", String(port), "--device", device], { cwd: dirname(script), env: serverEnv(this.env()), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     this.child = child;
+    process.once("exit", this.leave);
     child.stdout?.on("data", (chunk: Buffer) => this.take(chunk));
     child.stderr?.on("data", (chunk: Buffer) => this.take(chunk));
     const gone = new Promise<string>((resolve) => {
@@ -99,6 +104,7 @@ export class LocalServer {
       if (this.pending.trim()) this.line(this.pending);
       this.pending = "";
       this.child = null;
+      process.removeListener("exit", this.leave);
       if (this.snapshot.status === "running") this.set({ status: "stopped", problem: "It stopped." });
     });
     child.once("error", () => {
@@ -128,6 +134,7 @@ export class LocalServer {
     if (!child) return;
     this.generation++;
     this.child = null;
+    process.removeListener("exit", this.leave);
     await new Promise<void>((resolve) => {
       const force = setTimeout(() => child.kill("SIGKILL"), 3000);
       child.once("exit", () => {

@@ -15,7 +15,7 @@ What it does, and what it does not:
   * The model (about 8 GB of weights, 22 GB of GPU memory in use) is loaded on the first request, from the Hugging Face cache, at a pinned
     revision, with local_files_only=True: it never downloads anything. Download it first with
         uv run --with huggingface_hub python -c "from huggingface_hub import snapshot_download as d; d('black-forest-labs/FLUX.2-klein-4B', revision='e7b7dc27f91deacad38e78976d1f2b499d76a294', allow_patterns=['*.json','*.safetensors','*.txt','*.model','*.jinja'])"
-  * Settings are the ones measured in docs/pack-image-models.md: 4 steps, guidance 1.0, bfloat16. One request at a time.
+  * Settings are the ones measured in docs/pack-image-models.md: 4 steps, guidance 1.0, bfloat16. One picture at a time (a lock), but /health answers while a picture is being drawn.
   * The model's own terms apply (Apache-2.0 for the 4B model; the 9B sibling is not). What gets drawn is the user's responsibility.
 """
 import argparse
@@ -23,7 +23,7 @@ import base64
 import io
 import json
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 REPO = "black-forest-labs/FLUX.2-klein-4B"
 REVISION = "e7b7dc27f91deacad38e78976d1f2b499d76a294"
@@ -134,7 +134,7 @@ def main():
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
     state["device"] = args.device
-    server = HTTPServer(("127.0.0.1", args.port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"[studio-backend] listening on http://127.0.0.1:{args.port} (the model loads on the first request)", flush=True)
     server.serve_forever()
 
