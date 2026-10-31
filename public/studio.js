@@ -197,11 +197,12 @@ export function createStudio(io) {
     return pack.toLowerCase().startsWith(`${id}-`) ? pack.slice(id.length + 1) : pack;
   }
 
-  function tile(/** @type {string} */ src, /** @type {string} */ label, /** @type {string} */ sub, /** @type {boolean} */ selected, /** @type {() => void} */ onclick) {
+  function tile(/** @type {string} */ src, /** @type {string} */ label, /** @type {string} */ sub, /** @type {boolean} */ selected, /** @type {() => void} */ onclick, /** @type {string} */ full = "") {
     const t = el("button", { type: "button", className: `preset${selected ? " studio-selected" : ""}`, title: sub ? `${label}: ${sub}` : label });
     t.append(el("img", { src, alt: "", loading: "lazy" }), el("span", { className: "preset-name", textContent: label }));
     if (sub) t.append(el("span", { className: "studio-tile-sub", textContent: sub }));
     t.onclick = onclick;
+    if (full) attachZoomUrl(t, full, src);
     return t;
   }
 
@@ -273,6 +274,7 @@ export function createStudio(io) {
       groups.set(key, [...(groups.get(key) ?? []), p]);
     }
     const thumb = (/** @type {string} */ f) => `pack-frame/${encodeURIComponent(pack)}/${encodeURIComponent(f)}`;
+    const whole = (/** @type {string} */ f) => `${thumb(f)}/full`;
     const pickFrame = (/** @type {string} */ f) => {
       name.value = f;
       renderFrames();
@@ -290,7 +292,7 @@ export function createStudio(io) {
       crumbs.append(back, ` › ${openFrameGroup} › choose the one to change`);
       // The main picture first, then the variations by their number.
       const sorted = [...members].sort((a, b) => Number(a !== openFrameGroup) - Number(b !== openFrameGroup) || a.localeCompare(b, undefined, { numeric: true }));
-      grid.append(...sorted.map((f) => tile(thumb(f), f === openFrameGroup ? "main" : f.slice(openFrameGroup.length + 1) || f, "", f === name.value, () => pickFrame(f))));
+      grid.append(...sorted.map((f) => tile(thumb(f), f === openFrameGroup ? "main" : f.slice(openFrameGroup.length + 1) || f, "", f === name.value, () => pickFrame(f), whole(f))));
     } else {
       openFrameGroup = "";
       crumbs.textContent = pictures.length ? "Choose a picture. A group with variations (blinks, mouth shapes, loops) opens on a click." : "This pack has no pictures to draw again.";
@@ -301,10 +303,11 @@ export function createStudio(io) {
           // The thumbnail is the main picture: the one named like the group, else the first by number.
           const main = list.includes(k) ? k : [...list].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))[0];
           const selected = list.includes(name.value);
-          return tile(thumb(main), k, list.length > 1 ? `${list.length} pictures` : "", selected, () => (list.length > 1 ? ((openFrameGroup = k), renderFrames()) : pickFrame(k)));
+          return tile(thumb(main), k, list.length > 1 ? `${list.length} pictures` : "", selected, () => (list.length > 1 ? ((openFrameGroup = k), renderFrames()) : pickFrame(k)), whole(main));
         }),
       );
     }
+    hideZoom(); // the tile under the pointer is gone
     box.replaceChildren(crumbs, grid);
   }
 
@@ -581,6 +584,27 @@ export function createStudio(io) {
   function attachZoom(/** @type {HTMLElement} */ node, /** @type {string} */ id, /** @type {string} */ name, /** @type {string} */ thumb) {
     node.addEventListener("mouseenter", () => showZoom(id, name, thumb));
     node.addEventListener("focus", () => showZoom(id, name, thumb));
+    node.addEventListener("mouseleave", hideZoom);
+    node.addEventListener("blur", hideZoom);
+  }
+
+  /** A picture that is a plain address (a pack's picture), shown large under the pointer the same way: the small one at once, the whole one when it has loaded. */
+  function attachZoomUrl(/** @type {HTMLElement} */ node, /** @type {string} */ url, /** @type {string} */ thumb) {
+    const show = () => {
+      if (!zoom) return;
+      zoomKey = url;
+      const img = /** @type {HTMLImageElement} */ (zoom.firstElementChild);
+      img.src = thumb;
+      const big = new Image();
+      big.onload = () => {
+        if (zoomKey === url) img.src = url;
+      };
+      big.src = url;
+      zoom.classList.toggle("beside", (zoom.parentElement?.clientWidth ?? 0) - 576 >= 320);
+      zoom.hidden = false;
+    };
+    node.addEventListener("mouseenter", show);
+    node.addEventListener("focus", show);
     node.addEventListener("mouseleave", hideZoom);
     node.addEventListener("blur", hideZoom);
   }

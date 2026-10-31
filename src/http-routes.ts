@@ -179,7 +179,7 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       res.end(body);
       return;
     }
-    const packFrame = /^\/pack-frame\/([^/]+)\/([^/]+)$/.exec(path);
+    const packFrame = /^\/pack-frame\/([^/]+)\/([^/]+?)(\/full)?$/.exec(path);
     if (packFrame) {
       // One small picture of any pack on this computer, for the studio's picture picker. Only a file the scan of that pack found is read.
       let name = "", frameName = "";
@@ -188,7 +188,8 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       } catch {}
       const found = isPackName(name) ? await readPack(deps.packDirs, name, deps.emotionNames()) : null;
       const known = found?.ok ? found.pack.files.get(`${frameName}.webp`) : undefined;
-      const small = known && (await sharp(await readFile(known.path)).resize({ width: 160 }).webp({ quality: 80 }).toBuffer().catch(() => null));
+      // ".../full" is the picture as it is (the picker shows it large under the pointer); without it a small one.
+      const small = known && (packFrame[3] ? await readFile(known.path).catch(() => null) : await sharp(await readFile(known.path)).resize({ width: 160 }).webp({ quality: 80 }).toBuffer().catch(() => null));
       if (!small) {
         res.writeHead(404).end("Not found");
         return;
