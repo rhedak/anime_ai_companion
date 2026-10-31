@@ -16,6 +16,8 @@ export interface FrameEdit {
   at: string;
   change: string;
   model: string;
+  /** A picture the pack did not have (an activity made in the studio): putting the original back means taking it away. */
+  added?: boolean;
 }
 
 /** The edits of a pack folder by picture name (none: the pack is as it was made or installed). A note that cannot be read counts as none. */
@@ -25,7 +27,7 @@ export async function readEdits(folder: string): Promise<Record<string, FrameEdi
     const out: Record<string, FrameEdit> = {};
     for (const [name, value] of Object.entries(raw.frames ?? {})) {
       const v = value as Partial<FrameEdit> | null;
-      if (/^[a-z0-9-]{1,40}$/.test(name) && v && typeof v === "object") out[name] = { at: String(v.at ?? ""), change: String(v.change ?? ""), model: String(v.model ?? "") };
+      if (/^[a-z0-9-]{1,40}$/.test(name) && v && typeof v === "object") out[name] = { at: String(v.at ?? ""), change: String(v.change ?? ""), model: String(v.model ?? ""), ...(v.added === true ? { added: true } : {}) };
     }
     return out;
   } catch {
@@ -55,9 +57,24 @@ export async function applyEdit(folder: string, frame: string, webp: Buffer, edi
   await writeEdits(folder, { ...(await readEdits(folder)), [frame]: edit });
 }
 
+/** Puts a picture the pack did not have into it (never over one it has) and notes it, so an update of the pack from the list can say it would replace it. */
+export async function addPicture(folder: string, frame: string, webp: Buffer, edit: Omit<FrameEdit, "added">): Promise<void> {
+  const file = join(folder, `${frame}.webp`);
+  if (await stat(file).then(() => true, () => false)) throw new Error(`The pack already has a picture called ${frame}.`);
+  await writeFile(`${file}.tmp`, webp);
+  await rename(`${file}.tmp`, file);
+  await writeEdits(folder, { ...(await readEdits(folder)), [frame]: { ...edit, added: true } });
+}
+
 /** Puts the original picture of an edited name back and forgets the edit. False when there is nothing to restore. */
 export async function restoreOriginal(folder: string, frame: string): Promise<boolean> {
   const edits = await readEdits(folder);
+  if (edits[frame]?.added) {
+    await rm(join(folder, `${frame}.webp`), { force: true });
+    delete edits[frame];
+    await writeEdits(folder, edits);
+    return true;
+  }
   const original = join(folder, ORIGINAL_DIR, `${frame}.webp`);
   if (!edits[frame] || !(await stat(original).then(() => true, () => false))) return false;
   await rename(original, join(folder, `${frame}.webp`));

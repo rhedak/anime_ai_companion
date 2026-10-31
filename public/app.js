@@ -1470,6 +1470,12 @@ function handle(msg) {
     case "studio-frame-review":
     case "studio-frame-installed":
     case "studio-frame-restored":
+    case "studio-activity":
+    case "studio-activity-added":
+    case "studio-activity-gone":
+    case "studio-activity-progress":
+    case "studio-activity-saved":
+    case "studio-activity-full":
     case "studio-frame-cancelled":
     case "studio-transferred":
     case "studio-assist":

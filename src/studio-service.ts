@@ -5,7 +5,8 @@ import { join, resolve, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { Mode } from "./providers/types.ts";
 import { isPackName } from "./frame-pack.ts";
-import { applyEdit, readEdits, restoreOriginal } from "./pack-edits.ts";
+import { addPicture, applyEdit, readEdits, restoreOriginal } from "./pack-edits.ts";
+import { ACTIVITY_NAME, addFrame, clearTalk, createDraft, deleteDraft, frameName, framePath, isDraftId, isFileId, listDrafts, readDraft, removeFrame, setTalk, talkByModel, talkByScript, writeDraft, type ActivityDraft } from "./studio/activity.ts";
 import type { Broadcast, Say } from "./server-types.ts";
 import { HANDOVER_GUIDE, handoverPrompt } from "./studio/handover.ts";
 import { ASSISTED, BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, checkBackendUrl, hasKey, keyName, keyNamesFor, makeBackend, BROWSER_BACKENDS, CHATGPT_WEB, GEMINI_WEB, PAID_SERVICES, type BackendInfo, type ImageBackend } from "./studio/backend.ts";
@@ -320,8 +321,10 @@ export function createStudioService(deps: StudioDeps) {
       /** The pictures of each pack, for "Draw one picture again" (only while the studio is on). */
       frames: on ? Object.fromEntries(await Promise.all(knownSources.map(async (s) => [s, await framesOf(s)]))) : {},
       /** Which pictures of each pack on this computer were drawn again in the pack itself (the page marks them, and offers the original back). */
-      edited: on ? Object.fromEntries((await Promise.all(knownSources.map(async (s) => [s, Object.keys(await readEdits((await deps.packFolder(s)) ?? ""))] as const))).filter(([, names]) => names.length)) : {},
+      edited: on ? Object.fromEntries((await Promise.all(knownSources.map(async (s) => [s, Object.entries(await readEdits((await deps.packFolder(s)) ?? "")).filter(([, edit]) => !edit.added).map(([name]) => name)] as const))).filter(([, names]) => names.length)) : {},
       frameBusy,
+      /** Activities begun and not yet saved into their pack (src/studio/activity.ts): the panel offers to carry them on. */
+      activities: on ? (await listDrafts(join(deps.dataDir, "studio"))).map((d) => ({ id: d.id, source: d.source, name: d.name, frames: d.frames.length, talk: d.talk.length, updated: d.updated })) : [],
       /** The by-hand maker waits for a picture from the user (null otherwise). */
       assist: assist ? { ...assistMessage(), type: undefined } : null,
       frameReview: reviewMessage(),
@@ -737,8 +740,8 @@ export function createStudioService(deps: StudioDeps) {
   /** Ends the one picture being drawn (the by-hand maker waits for a person, so it must be stoppable). */
   let frameAbort: AbortController | null = null;
   /** The picture drawn, waiting for the user's yes or no. Nothing is written until the yes. */
-  let frameReview: { id: string; source: string; frame: string; name: string; shipped: boolean; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
-  const reviewMessage = () => (frameReview ? { id: frameReview.id, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, shipped: frameReview.shipped, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
+  let frameReview: { id: string; activity?: { id: string; from: string }; source: string; frame: string; name: string; shipped: boolean; change: string; picture: Raster; flags: Flags; model: string; old: string; new: string } | null = null;
+  const reviewMessage = () => (frameReview ? { id: frameReview.id, activity: frameReview.activity?.id ?? null, from: frameReview.activity?.from ?? null, source: frameReview.source, frame: frameReview.frame, name: frameReview.name, shipped: frameReview.shipped, change: frameReview.change, model: frameReview.model, flags: frameReview.flags, old: frameReview.old, new: frameReview.new } : null);
 
   /** The pictures a pack has, by name without `.webp`, sorted: only the names a picture can have. */
   async function framesOf(source: string): Promise<string[]> {
@@ -780,7 +783,7 @@ export function createStudioService(deps: StudioDeps) {
   /** Whether a pack's folder is the user's own (data/frames), not a pack that comes with the app (packs/, part of the program). */
   const isOwnFolder = (folder: string) => resolve(folder).startsWith(resolve(deps.framesDir) + sep);
 
-  type FrameRequest = { id: string; source: string; frame: string; name: string; shipped: boolean; change: string; bytes: Buffer; info: BackendInfo; url: string };
+  type FrameRequest = { id: string; activity?: { id: string; from: string }; source: string; frame: string; name: string; shipped: boolean; change: string; bytes: Buffer; info: BackendInfo; url: string };
   let frameAsk: FrameRequest | null = null;
   const frameAskMessage = () =>
     frameAsk
@@ -809,11 +812,11 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   async function frameDraw(request: FrameRequest, send: Send): Promise<void> {
-    const { source, frame, name, shipped, change, bytes, info, url } = request;
+    const { source, frame, name, shipped, change, bytes, info, url, activity } = request;
     const err = (message: string) => send({ type: "studio-error", message });
     frameBusy = true;
     const abort = (frameAbort = new AbortController());
-    deps.broadcast({ type: "studio-frame-progress", text: url === ASSISTED ? `Waiting for you to draw ${frame} of ${source}…` : `Drawing ${frame} from ${source} again…` });
+    deps.broadcast({ type: "studio-frame-progress", text: activity ? (url === ASSISTED ? `Waiting for you to draw ${frame}…` : `Drawing ${frame}…`) : url === ASSISTED ? `Waiting for you to draw ${frame} of ${source}…` : `Drawing ${frame} from ${source} again…` });
     const work = join(deps.dataDir, "studio", `${request.id}-draw`);
     try {
       await mkdir(work, { recursive: true });
@@ -821,6 +824,7 @@ export function createStudioService(deps: StudioDeps) {
       const drawn = await drawFrame(bytes, change, seed, backendFor(url, work, request.id), abort.signal);
       frameReview = {
         id: request.id,
+        activity,
         source,
         frame,
         name,
@@ -847,6 +851,7 @@ export function createStudioService(deps: StudioDeps) {
   async function frameAccept(id: string, send: Send): Promise<void> {
     const review = frameReview;
     if (!review || review.id !== id) return send({ type: "studio-error", message: "There is no picture to keep." });
+    if (review.activity) return void (await activityAccept(review, send));
     const folder = await deps.packFolder(review.source);
     if (!folder) return send({ type: "studio-error", message: `The ${review.source} pack is not there any more.` });
     if (!review.name) return void (await frameAcceptHere(review, folder, send));
@@ -882,13 +887,7 @@ export function createStudioService(deps: StudioDeps) {
    */
   async function frameAcceptHere(review: NonNullable<typeof frameReview>, folder: string, send: Send): Promise<void> {
     try {
-      let own = folder;
-      if (!isOwnFolder(folder)) {
-        own = join(deps.framesDir, review.source);
-        if (await stat(own).then(() => true, () => false)) return send({ type: "studio-error", message: `There is already a folder called ${review.source} in your pictures. Name the new pack differently and draw it again.` });
-        await mkdir(deps.framesDir, { recursive: true });
-        await copyDir(folder, join(deps.dataDir, "studio", `${review.id}-copy`), own);
-      }
+      const own = await ownCopy(folder, review.source, review.id);
       await applyEdit(own, review.frame, await encodeWebp(review.picture, { lossless: true }), { at: new Date().toISOString(), change: review.change, model: review.model });
       frameReview = null;
       await deps.refreshPacks();
@@ -899,6 +898,16 @@ export function createStudioService(deps: StudioDeps) {
     } catch (error) {
       send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /** The user's own folder of a pack: the pack's folder if it is theirs already, else a copy of the pack that comes with the app (which then wins over it). */
+  async function ownCopy(folder: string, source: string, workId: string): Promise<string> {
+    if (isOwnFolder(folder)) return folder;
+    const own = join(deps.framesDir, source);
+    if (await stat(own).then(() => true, () => false)) throw new Error(`There is already a folder called ${source} in your pictures. Name the new pack differently and draw it again.`);
+    await mkdir(deps.framesDir, { recursive: true });
+    await copyDir(folder, join(deps.dataDir, "studio", `${workId}-copy`), own);
+    return own;
   }
 
   /** The original picture of one that was drawn again in its pack, put back. */
@@ -918,6 +927,214 @@ export function createStudioService(deps: StudioDeps) {
     if (!frameReview || frameReview.id !== id) return;
     frameReview = null;
     deps.broadcast({ type: "studio-frame-cancelled", id });
+    void announce();
+  }
+
+  // --- an activity, made one picture at a time (src/studio/activity.ts; docs/pack-studio.md, "Making an activity") ---
+  const studioDir = () => join(deps.dataDir, "studio");
+  const activityThumbs = new Map<string, string>();
+  const fail = (send: Send, error: unknown) => send({ type: "studio-error", message: error instanceof Error ? error.message : String(error) });
+
+  /** What the page shows of a draft: its pictures in order with a small preview each (the full size comes on request, `studio-activity-full`). */
+  async function activityShow(draft: ActivityDraft): Promise<void> {
+    const preview = async (file: string, talk: boolean) => {
+      const key = `${draft.id}/${talk ? "t" : "f"}${file}`;
+      let thumb = activityThumbs.get(key);
+      if (!thumb) {
+        const bytes = await readFile(framePath(studioDir(), draft, file, talk)).catch(() => null);
+        thumb = bytes ? await thumbnail(await decode(bytes)) : "";
+        if (thumb) activityThumbs.set(key, thumb);
+      }
+      return thumb;
+    };
+    const frames = [];
+    for (const [i, f] of draft.frames.entries()) frames.push({ n: i + 1, file: f.file, change: f.change, from: f.from, thumb: await preview(f.file, false), talk: draft.talk.includes(f.file) ? await preview(f.file, true) : null });
+    deps.broadcast({ type: "studio-activity", id: draft.id, source: draft.source, name: draft.name, frames, taken: await activityTaken(draft.source, draft.name) });
+  }
+
+  /** Whether the pack already has an activity of that name (a new one never goes over it). */
+  async function activityTaken(source: string, name: string): Promise<boolean> {
+    const own = new RegExp(`^activity-${name}(-talk)?-\\d{1,2}$`);
+    return (await framesOf(source)).some((n) => own.test(n));
+  }
+
+  const activityName = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase().replace(/[\s-]+/g, "_") : "");
+  const NAME_HELP = "An activity's name is one word of lower-case letters, digits and _ (cooking, tea_time).";
+
+  async function activityNew(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const source = typeof msg.source === "string" ? msg.source : "";
+    const name = activityName(msg.name);
+    if (!(await deps.sources()).includes(source)) return fail(send, "Pick one of your packs.");
+    if (!ACTIVITY_NAME.test(name)) return fail(send, NAME_HELP);
+    if (await activityTaken(source, name)) return fail(send, `The ${source} pack has an activity called ${name} already. Pick another name.`);
+    const draft = await createDraft(studioDir(), source, name);
+    await activityShow(draft);
+    void announce();
+  }
+
+  async function activityOpen(id: unknown, send: Send): Promise<void> {
+    const draft = isDraftId(id) ? await readDraft(studioDir(), id) : null;
+    if (!draft) return fail(send, "That activity is not there any more.");
+    await activityShow(draft);
+  }
+
+  async function activityRename(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
+    if (!draft) return fail(send, "That activity is not there any more.");
+    const name = activityName(msg.name);
+    if (!ACTIVITY_NAME.test(name)) return fail(send, NAME_HELP);
+    if (name !== draft.name && (await activityTaken(draft.source, name))) return fail(send, `The ${draft.source} pack has an activity called ${name} already. Pick another name.`);
+    if (frameReview?.activity?.id === draft.id) return fail(send, "Keep or drop the picture that is drawn first.");
+    draft.name = name;
+    await writeDraft(studioDir(), draft);
+    await activityShow(draft);
+    void announce();
+  }
+
+  async function activityDelete(id: unknown, send: Send): Promise<void> {
+    if (!isDraftId(id)) return;
+    if (frameBusy || frameReview?.activity?.id === id) return fail(send, "Stop or finish the picture that is being drawn first.");
+    await deleteDraft(studioDir(), id);
+    for (const key of [...activityThumbs.keys()]) if (key.startsWith(`${id}/`)) activityThumbs.delete(key);
+    deps.broadcast({ type: "studio-activity-gone", id });
+    void announce();
+  }
+
+  async function activityRemove(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
+    if (!draft || !isFileId(msg.file)) return fail(send, "That picture is not there any more.");
+    if (frameBusy || frameReview?.activity?.id === draft.id) return fail(send, "Stop or finish the picture that is being drawn first.");
+    await removeFrame(studioDir(), draft, msg.file);
+    await activityShow(draft);
+    void announce();
+  }
+
+  /** The next picture of an activity: from the neutral (or any) picture of the pack, or from one already in the loop, and a few words on what changes. */
+  async function activityDraw(msg: Record<string, unknown>, send: Send): Promise<void> {
+    if (running || waiting || pending || frameBusy || frameAsk) return fail(send, "Finish or stop the job that is open first.");
+    if (frameReview) return fail(send, "Keep or drop the picture that is drawn first.");
+    const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
+    if (!draft) return fail(send, "That activity is not there any more.");
+    const change = cleanText(msg.prompt, 400);
+    if (change.length < 3) return fail(send, "Say what should change from that picture, in a few words.");
+    if (draft.frames.length >= 99) return fail(send, "An activity can have 99 pictures at most.");
+    const from = typeof msg.from === "string" ? msg.from : "";
+    let bytes: Buffer | null = null;
+    let label = "";
+    if (from.startsWith("pack:") && FRAME_NAME.test(from.slice(5))) {
+      const folder = await deps.packFolder(draft.source);
+      label = from.slice(5);
+      bytes = folder ? await readFile(join(folder, `${label}.webp`)).catch(() => null) : null;
+    } else if (from.startsWith("draft:") && isFileId(from.slice(6))) {
+      const index = draft.frames.findIndex((f) => f.file === from.slice(6));
+      label = `#${index + 1}`;
+      bytes = index >= 0 ? await readFile(framePath(studioDir(), draft, from.slice(6))).catch(() => null) : null;
+    }
+    if (!bytes) return fail(send, "Pick the picture to draw from.");
+    const url = checkBackendUrl(deps.settings.studioBackend);
+    if (!url) return fail(send, "Choose an image maker first (the Image maker list).");
+    const checked = await check();
+    if (!checked.ok) return fail(send, checked.reason);
+    const request: FrameRequest = { id: `frame-${randomBytes(4).toString("hex")}`, activity: { id: draft.id, from: label }, source: draft.source, frame: frameName(draft.name, draft.frames.length + 1), name: "", shipped: false, change, bytes, info: checked.info, url };
+    if (isLocal(url) || url === ASSISTED) return void (await frameDraw(request, send));
+    frameAsk = request;
+    deps.broadcast(frameAskMessage());
+  }
+
+  /** The yes on a picture of an activity: it joins the end of the loop, in the working folder. Nothing of the pack is touched. */
+  async function activityAccept(review: NonNullable<typeof frameReview>, send: Send): Promise<void> {
+    try {
+      const draft = review.activity ? await readDraft(studioDir(), review.activity.id) : null;
+      if (!draft) return fail(send, "That activity is not there any more.");
+      await addFrame(studioDir(), draft, await encodeWebp(review.picture, { lossless: true }), { change: review.change, from: review.activity?.from ?? "", model: review.model });
+      frameReview = null;
+      deps.broadcast({ type: "studio-activity-added", id: draft.id });
+      await activityShow(draft);
+      void announce();
+    } catch (error) {
+      fail(send, error);
+    }
+  }
+
+  /** The loop picture at its full size for the pointer to enlarge. */
+  async function activityFull(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
+    if (!draft || !isFileId(msg.file)) return;
+    const talk = msg.talk === true;
+    const bytes = await readFile(framePath(studioDir(), draft, msg.file, talk)).catch(() => null);
+    if (bytes) send({ type: "studio-activity-full", id: draft.id, file: msg.file, talk, image: `data:image/webp;base64,${bytes.toString("base64")}` });
+  }
+
+  /** Talking versions of the loop's pictures (her mouth open), by the pack's own mouth (`script`) or by the model (`how: "model"`, an image model on this computer only). */
+  async function activityTalk(msg: Record<string, unknown>, send: Send): Promise<void> {
+    if (running || waiting || pending || frameBusy || frameAsk) return fail(send, "Finish or stop the job that is open first.");
+    if (frameReview) return fail(send, "Keep or drop the picture that is drawn first.");
+    const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
+    if (!draft || draft.frames.length === 0) return fail(send, "Draw the loop's pictures first.");
+    const how = msg.how === "model" ? "model" : "script";
+    const url = checkBackendUrl(deps.settings.studioBackend);
+    if (how === "model" && !(url && isLocal(url))) return fail(send, "Talking pictures by a model need an image model on this computer (the Image maker list). The script way works with any maker.");
+    if (how === "model" && !(await check()).ok) return fail(send, "The image model on this computer is not answering. Start it, or use the script way.");
+    const mouth = await deps.readSource(draft.source);
+    if (!mouth) return fail(send, `The ${draft.source} pack is not there any more.`);
+    if (msg.redo === true) await clearTalk(studioDir(), draft);
+    const todo = draft.frames.filter((f) => !draft.talk.includes(f.file));
+    if (todo.length === 0) return fail(send, "Every picture has a talking version already.");
+    frameBusy = true;
+    const abort = (frameAbort = new AbortController());
+    try {
+      for (const [i, f] of todo.entries()) {
+        if (abort.signal.aborted) break;
+        deps.broadcast({ type: "studio-activity-progress", id: draft.id, text: `Talking version ${i + 1} of ${todo.length}…` });
+        const bytes = await readFile(framePath(studioDir(), draft, f.file));
+        const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
+        const done = how === "script" ? await talkByScript(bytes, mouth) : await talkByModel(bytes, mouth, seed, backendFor(url as string), abort.signal);
+        if (!done) return fail(send, `The ${draft.source} pack has no mouth pictures to learn her mouth from. Draw the talking pictures one by one instead.`);
+        await setTalk(studioDir(), draft, f.file, done);
+        await activityShow(draft);
+      }
+    } catch (error) {
+      if (!abort.signal.aborted) fail(send, error);
+    } finally {
+      frameBusy = false;
+      if (frameAbort === abort) frameAbort = null;
+      deps.broadcast({ type: "studio-activity-progress", id: draft.id, text: "" });
+      await activityShow((await readDraft(studioDir(), draft.id)) ?? draft);
+      void announce();
+    }
+  }
+
+  /** The yes on the whole activity: its pictures go into the pack as `activity-<name>-N` (and `-talk-N`), never over a picture the pack has. */
+  async function activitySave(id: unknown, send: Send): Promise<void> {
+    const draft = isDraftId(id) ? await readDraft(studioDir(), id) : null;
+    if (!draft) return fail(send, "That activity is not there any more.");
+    if (frameBusy || frameReview?.activity?.id === draft.id) return fail(send, "Stop or finish the picture that is being drawn first.");
+    if (draft.frames.length < 2) return fail(send, "A loop needs at least two pictures.");
+    if (draft.talk.length && draft.talk.length !== draft.frames.length) return fail(send, "Some pictures have a talking version and some do not. Make them for all, or start the talking pictures over.");
+    const folder = await deps.packFolder(draft.source);
+    if (!folder) return fail(send, `The ${draft.source} pack is not there any more.`);
+    if (await activityTaken(draft.source, draft.name)) return fail(send, `The ${draft.source} pack has an activity called ${draft.name} already. Rename this one.`);
+    const written: string[] = [];
+    let own = folder;
+    try {
+      own = await ownCopy(folder, draft.source, draft.id);
+      const at = new Date().toISOString();
+      for (const [i, f] of draft.frames.entries()) {
+        for (const talk of draft.talk.length ? [false, true] : [false]) {
+          const name = frameName(draft.name, i + 1, talk);
+          await addPicture(own, name, await readFile(framePath(studioDir(), draft, f.file, talk)), { at, change: f.change, model: f.model });
+          written.push(name);
+        }
+      }
+    } catch (error) {
+      for (const name of written) await restoreOriginal(own, name).catch(() => false);
+      return fail(send, error);
+    }
+    await deleteDraft(studioDir(), draft.id);
+    await deps.refreshPacks();
+    await deps.reloadPack?.(draft.source);
+    deps.pushNote(`the user made an activity "${draft.name}" (${draft.frames.length} pictures${draft.talk.length ? ", with talking versions" : ""}) for their ${draft.source} pack on their computer.`);
+    deps.broadcast({ type: "studio-activity-saved", id: draft.id, source: draft.source, name: draft.name, count: draft.frames.length, talk: draft.talk.length > 0, shipped: !isOwnFolder(folder) });
     void announce();
   }
 
@@ -1140,6 +1357,15 @@ export function createStudioService(deps: StudioDeps) {
         } else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
         else if (msg.type === "studio-frame-restore") await frameRestore(msg, send);
+        else if (msg.type === "studio-activity-new") await activityNew(msg, send);
+        else if (msg.type === "studio-activity-open") await activityOpen(msg.id, send);
+        else if (msg.type === "studio-activity-rename") await activityRename(msg, send);
+        else if (msg.type === "studio-activity-delete") await activityDelete(msg.id, send);
+        else if (msg.type === "studio-activity-remove") await activityRemove(msg, send);
+        else if (msg.type === "studio-activity-draw") await activityDraw(msg, send);
+        else if (msg.type === "studio-activity-full") await activityFull(msg, send);
+        else if (msg.type === "studio-activity-talk") await activityTalk(msg, send);
+        else if (msg.type === "studio-activity-save") await activitySave(msg.id, send);
         else if (msg.type === "studio-assist-result") await assistResult(msg);
         else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
         else if (msg.type === "studio-local-config") await localConfig(msg, send);

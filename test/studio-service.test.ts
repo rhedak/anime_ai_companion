@@ -16,7 +16,14 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string } = {}) {
+/** The neutral with her mouth open: a pale patch where the typical mouth is (the pack has no blink to learn from, so the studio uses typical proportions). */
+async function mouthOpen(): Promise<Buffer> {
+  const r = await decode(await neutral());
+  for (let y = 50; y < 56; y++) for (let x = 85; x < 100; x++) r.data.set([250, 250, 250, 255], (y * r.w + x) * 4);
+  return encodePng(r);
+}
+
+async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; mouth?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
@@ -47,7 +54,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     remoteRefusal: () => "only on the computer",
     sources: async () => ["risa-dress"],
     characters: async (names) => Object.fromEntries(names.filter((n) => n.startsWith("risa-")).map((n) => [n, { id: "risa", name: "Risa" }])),
-    readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: [], character: "risa" } : null),
+    readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: options.mouth ? [await mouthOpen()] : [], character: "risa" } : null),
     refreshPacks: async () => {},
     pushNote: (t) => notes.push(t),
     brain: () => options.brain ?? "claude",
@@ -1152,6 +1159,101 @@ test("by hand: a pack's card says what it asks of the user, and the first pictur
     await t.service.message({ type: "studio-cancel" }, send, false);
     await t.waitFor("studio-cancelled");
     assert.equal((await t.service.stateMessage()).assist, null);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("an activity is made one picture at a time in a working folder, from any picture, and goes into the pack only on the user's yes", async () => {
+  const t = await setup({ mouth: true });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  const last = (type: string) => [...t.sent].reverse().find((m) => m.type === type)!;
+  const add = async (from: string, prompt: string) => {
+    const count = t.sent.filter((m) => m.type === "studio-frame-review").length;
+    await t.service.message({ type: "studio-activity-draw", id: draft, from, prompt }, send, false);
+    await t.waitFor("studio-frame-review", count + 1);
+    const review = last("studio-frame-review");
+    assert.equal(review.activity, draft, "the review says the picture is for the activity");
+    await t.service.message({ type: "studio-frame-accept", id: review.id }, send, false);
+    await t.waitFor("studio-activity-added", count + 1);
+  };
+  let draft = "";
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "Tea-Time!" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /one word/, "a name that is not a word is refused");
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "tea time" }, send, false);
+    draft = last("studio-activity").id;
+    assert.equal(last("studio-activity").name, "tea_time", "spaces become _");
+    assert.equal((await t.service.stateMessage()).activities.length, 1, "the unfinished activity is offered on the next visit");
+
+    await add("pack:neutral", "holding a cup in both hands");
+    await add(`draft:${last("studio-activity").frames[0].file}`, "lifts the cup a little higher");
+    await add(`draft:${last("studio-activity").frames[0].file}`, "back to the first");
+    assert.deepEqual(last("studio-activity").frames.map((f: any) => [f.n, f.from]), [[1, "neutral"], [2, "#1"], [3, "#1"]], "each picture knows what it was drawn from");
+    assert.equal(await stat(join(t.framesDir, "risa-dress")).then(() => true, () => false), false, "nothing is written to the pack yet");
+
+    // Take the middle one out: the ones after it move up.
+    await t.service.message({ type: "studio-activity-remove", id: draft, file: last("studio-activity").frames[1].file }, send, false);
+    assert.equal(last("studio-activity").frames.length, 2);
+    await add(`draft:${last("studio-activity").frames[1].file}`, "a sip");
+    const frames = last("studio-activity").frames;
+    assert.equal(frames.length, 3);
+
+    // A new service on the same folder still has it: stopping in the middle loses nothing.
+    await t.service.message({ type: "studio-activity-rename", id: draft, name: "tea" }, send, false);
+    assert.equal(last("studio-activity").name, "tea");
+    await t.service.message({ type: "studio-activity-open", id: draft }, send, false);
+    assert.equal(last("studio-activity").frames.length, 3);
+
+    // Talking versions by script, from the pack's own mouth; a save with some of them missing is refused.
+    await t.service.message({ type: "studio-activity-talk", id: draft, how: "script" }, send, false);
+    assert.ok(last("studio-activity").frames.every((f: any) => f.talk), "every picture has a talking version");
+    await t.service.message({ type: "studio-activity-talk", id: draft, how: "model" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /have one already|already/, "nothing left to make");
+
+    await t.service.message({ type: "studio-activity-save", id: draft }, send, false);
+    await t.waitFor("studio-activity-saved");
+    const own = join(t.framesDir, "risa-dress");
+    const files = (await readdir(own)).filter((n) => n.startsWith("activity-")).sort();
+    assert.deepEqual(files, ["activity-tea-1.webp", "activity-tea-2.webp", "activity-tea-3.webp", "activity-tea-talk-1.webp", "activity-tea-talk-2.webp", "activity-tea-talk-3.webp"]);
+    assert.ok((await readdir(own)).includes("neutral.webp"), "the pack was copied whole first (it comes with the app)");
+    assert.deepEqual((await t.service.stateMessage()).activities, [], "the draft is gone");
+    assert.deepEqual((await t.service.stateMessage()).edited, {}, "pictures that were added are not offered back as originals");
+    assert.equal(t.notes.length, 1);
+
+    // Another activity of the same name is refused; the picture strip of a pack that has it is not touched.
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "tea" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /has an activity called tea/);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("an activity refuses what it cannot do: a loop of one, a made-up source, talking by model without a local model, a phone", async () => {
+  const t = await setup();
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "walk" }, send, false);
+    const draft = [...t.sent].reverse().find((m) => m.type === "studio-activity")!.id;
+    await t.service.message({ type: "studio-activity-draw", id: draft, from: "pack:../x", prompt: "a step" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /Pick the picture/);
+    await t.service.message({ type: "studio-activity-draw", id: draft, from: "pack:neutral", prompt: "a" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /Say what should change/);
+    await t.service.message({ type: "studio-activity-save", id: draft }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /at least two/);
+    await t.service.message({ type: "studio-activity-talk", id: draft, how: "script" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /first/, "no pictures, no talking versions");
+    await t.service.message({ type: "studio-activity-delete", id: "../../x" }, send, false);
+    const before = me.length;
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "run" }, send, true);
+    assert.equal(me.at(-1)!.type, "notice", "a phone is refused");
+    assert.equal(me.length, before + 1);
+    await t.service.message({ type: "studio-activity-delete", id: draft }, send, false);
+    assert.deepEqual((await t.service.stateMessage()).activities, []);
   } finally {
     await t.cleanup();
   }

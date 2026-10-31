@@ -1,3 +1,5 @@
+import { createActivityBox } from "./studio-activity.js";
+
 /**
  * The pack studio's panel (docs/pack-studio.md): a form, the question before anything is drawn, the pictures to pick from, and the result.
  * It only sends and shows; every rule (off at every start, nothing from a phone, one job at a time) is the server's.
@@ -99,8 +101,11 @@ export function createStudio(io) {
 
   const STEPS = ["goal", "source", "words", "maker", "start"];
   /** What the user is making: a whole new outfit, or one picture of a pack drawn again. */
-  /** @type {"new" | "redraw" | ""} */
+  /** @type {"new" | "redraw" | "activity" | ""} */
   let mode = "";
+  /** The activity workspace (public/studio-activity.js), made with the panel. */
+  /** @type {ReturnType<typeof createActivityBox> | null} */
+  let activity = null;
   let stage = 0;
   let initialised = false;
   /** Which character's outfits the picker is showing ("" is the characters). */
@@ -144,7 +149,7 @@ export function createStudio(io) {
     const chosen = makerChoice();
     /** @type {Record<string, string>} */
     const words = {
-      goal: mode === "new" ? "Design a new outfit" : mode === "redraw" ? "Redraw a picture" : "",
+      goal: mode === "new" ? "Design a new outfit" : mode === "redraw" ? "Redraw a picture" : mode === "activity" ? "Make an activity" : "",
       source: mode && pick?.value ? (char ? `${char.name} › ${outfitLabel(pick.value, char.id)}` : pick.value) : "",
       words: !mode ? "" : mode === "redraw" ? frameName?.value || "" : (outfit?.value || "").slice(0, 70),
       maker: chosen ? `${chosen.available === false ? "not ready" : "ready"} · ${chosen.label}` : "",
@@ -162,6 +167,12 @@ export function createStudio(io) {
       /** @type {HTMLElement} */ (box.querySelector(".studio-step-change")).hidden = active || !words[key];
       /** @type {HTMLElement} */ (box.querySelector(".studio-step-body")).hidden = !active;
     });
+    // An activity has its own workspace in place of the words and the review; the pack and the maker are chosen as for the others.
+    for (const k of ["words", "start"]) if (stepBoxes[k]) stepBoxes[k].hidden = mode === "activity";
+    if (activity) {
+      if (mode === "activity" && stage >= 2 && pick?.value) activity.show();
+      else activity.hide();
+    }
     // The two kinds of work share the third and the last step; only the fields differ.
     for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = /** @type {HTMLElement} */ (n).dataset.for !== mode;
     const review = q(".studio-review-lines");
@@ -172,7 +183,7 @@ export function createStudio(io) {
     }
   }
 
-  function chooseMode(/** @type {"new" | "redraw"} */ next) {
+  function chooseMode(/** @type {"new" | "redraw" | "activity"} */ next) {
     mode = next;
     remember({ mode });
     renderSources();
@@ -345,7 +356,7 @@ export function createStudio(io) {
     initialised = true;
     const last = remembered();
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
-    if ((last.mode === "new" || last.mode === "redraw") && sources.includes(last.source) && select) {
+    if ((last.mode === "new" || last.mode === "redraw" || last.mode === "activity") && sources.includes(last.source) && select) {
       mode = last.mode;
       choosePackQuiet(last.source);
       setStage(2);
@@ -489,14 +500,33 @@ export function createStudio(io) {
       b.onclick = () => setStage(to());
       return el("div", { className: "pack-confirm-buttons" }, b);
     };
-    const goalButton = (/** @type {"new" | "redraw"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
+    const goalButton = (/** @type {"new" | "redraw" | "activity"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
       const b = el("button", { type: "button", className: "ghost studio-goal" }, el("strong", { textContent: title }), el("span", { textContent: sub }));
       b.onclick = () => chooseMode(m);
       return b;
     };
+    const activityBox = createActivityBox({
+      el,
+      send: (msg) => io.send(msg),
+      pack: () => /** @type {HTMLSelectElement | null} */ (q("#studio-source"))?.value ?? "",
+      packFrames: () => frames[/** @type {HTMLSelectElement | null} */ (q("#studio-source"))?.value ?? ""] ?? [],
+      packThumb: (frame) => `pack-frame/${encodeURIComponent(/** @type {HTMLSelectElement | null} */ (q("#studio-source"))?.value ?? "")}/${encodeURIComponent(frame)}`,
+      zoom: attachZoomLazy,
+      zoomUrl: attachZoomUrl,
+      hideZoom,
+      status: (text, bad) => status(text, bad),
+      busy: (on, text) => setBusy(on, text),
+      continueDraft: (d) => {
+        mode = "activity";
+        remember({ mode, source: d.source });
+        choosePackQuiet(d.source);
+        setStage(2);
+        io.send({ type: "studio-activity-open", id: d.id });
+      },
+    });
     const pickMaker = el("div", { className: "pack-confirm-buttons" });
     const makerNext = el("button", { type: "button", className: "studio-maker-next", textContent: "Next" });
-    makerNext.onclick = () => setStage(4);
+    makerNext.onclick = () => setStage(mode === "activity" ? 2 : 4);
     pickMaker.append(makerNext);
     const moreBox = el("details", { className: "studio-more" },
       el("summary", { textContent: "More…" }),
@@ -510,6 +540,7 @@ export function createStudio(io) {
       el("div", { className: "studio-handover" }),
     );
     stepBoxes = {};
+    activity = activityBox;
     panel = el(
       "div",
       { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
@@ -518,7 +549,7 @@ export function createStudio(io) {
       el("div", { className: "studio-proposal" }),
       el("div", { className: "studio-resume" }),
       el("div", { className: "studio-steps" },
-        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"))),
+        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"), goalButton("activity", "Make an activity", "A loop of pictures, drawn one after another")), activityBox.list),
         step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs" }), el("div", { className: "studio-thumbs" }), source, frameSource, frameName),
         step("words", "What should change?", "",
           forMode("new", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
@@ -535,6 +566,7 @@ export function createStudio(io) {
             el("details", {}, el("summary", { textContent: "What is in a pack?" }), el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }))),
           el("div", { className: "pack-confirm-buttons" }, forMode("new", start), forMode("redraw", frameStart), stop)),
       ),
+      activityBox.node,
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
       el("div", { className: "studio-confirm" }),
@@ -625,6 +657,23 @@ export function createStudio(io) {
       big.src = url;
       zoom.classList.toggle("beside", (zoom.parentElement?.clientWidth ?? 0) - 576 >= 320);
       zoom.hidden = false;
+    };
+    node.addEventListener("mouseenter", show);
+    node.addEventListener("focus", show);
+    node.addEventListener("mouseleave", hideZoom);
+    node.addEventListener("blur", hideZoom);
+  }
+
+  /** A picture the server sends on request (a loop picture of an activity): the small one at once, the full one when it arrives. */
+  function attachZoomLazy(/** @type {HTMLElement} */ node, /** @type {string} */ key, /** @type {string} */ thumb, /** @type {() => void} */ request) {
+    const show = () => {
+      if (!zoom) return;
+      zoomKey = key;
+      const img = /** @type {HTMLImageElement} */ (zoom.firstElementChild);
+      img.src = fullSize.get(key) ?? thumb;
+      zoom.classList.toggle("beside", (zoom.parentElement?.clientWidth ?? 0) - 576 >= 320);
+      zoom.hidden = false;
+      if (!fullSize.has(key)) request();
     };
     node.addEventListener("mouseenter", show);
     node.addEventListener("focus", show);
@@ -949,13 +998,13 @@ export function createStudio(io) {
     const box = q(".studio-frame");
     if (!box) return;
     const here = !r.name;
-    const keep = el("button", { type: "button", textContent: here ? `Change it in ${r.source}` : "Keep as a new pack" });
+    const keep = el("button", { type: "button", textContent: r.activity ? `Add it to the loop as ${r.frame}` : here ? `Change it in ${r.source}` : "Keep as a new pack" });
     const drop = el("button", { type: "button", className: "ghost", textContent: "Drop it" });
     keep.onclick = () => io.send({ type: "studio-frame-accept", id: r.id });
     drop.onclick = () => io.send({ type: "studio-frame-reject", id: r.id });
     const flags = Array.isArray(r.flags) ? r.flags.map((/** @type {string} */ f) => el("li", { textContent: f })) : [];
     box.replaceChildren(
-      el("p", { textContent: `${r.frame} from ${r.source}, drawn with ${r.model}. ${here ? `Keeping it changes the picture in the pack itself; the original stays in the pack and can be put back.${r.shipped ? " This pack comes with the app, so your changed copy of it is saved in your own pictures folder and used instead." : ""}` : `Keeping it makes a new pack called ${r.name}.`}` }),
+      el("p", { textContent: r.activity ? `${r.frame}, drawn from ${r.from} with ${r.model}. Keeping it adds it to the end of the loop; nothing is written to the pack until you save the activity.` : `${r.frame} from ${r.source}, drawn with ${r.model}. ${here ? `Keeping it changes the picture in the pack itself; the original stays in the pack and can be put back.${r.shipped ? " This pack comes with the app, so your changed copy of it is saved in your own pictures folder and used instead." : ""}` : `Keeping it makes a new pack called ${r.name}.`}` }),
       el("div", { className: "studio-frame-pair" },
         el("figure", {}, el("img", { src: String(r.old), alt: "before" }), el("figcaption", { textContent: "before" })),
         el("figure", {}, el("img", { src: String(r.new), alt: "after" }), el("figcaption", { textContent: "after" })),
@@ -1147,6 +1196,7 @@ export function createStudio(io) {
             fillSources();
             frames = msg.frames && typeof msg.frames === "object" ? msg.frames : {};
             fillFrames();
+            activity?.setDrafts(Array.isArray(msg.activities) ? msg.activities : []);
             if (msg.frameReview) showFrameReview(msg.frameReview);
             else if (msg.frameAsk) showFrameAsk(msg.frameAsk);
             else q(".studio-frame")?.replaceChildren();
@@ -1222,6 +1272,18 @@ export function createStudio(io) {
             if (zoomKey === `${msg.id}/${msg.name}` && zoom) /** @type {HTMLImageElement} */ (zoom.firstElementChild).src = msg.image;
           }
           return true;
+        case "studio-activity-full":
+          if (isThumb(msg.image)) {
+            fullSize.set(`${msg.id}/${msg.file}`, msg.image);
+            if (zoomKey === `${msg.id}/${msg.file}` && zoom) /** @type {HTMLImageElement} */ (zoom.firstElementChild).src = msg.image;
+          }
+          return true;
+        case "studio-activity":
+        case "studio-activity-added":
+        case "studio-activity-gone":
+        case "studio-activity-progress":
+        case "studio-activity-saved":
+          return activity?.handle(msg) ?? false;
         case "studio-proposal":
           applyProposal(msg);
           return true;
