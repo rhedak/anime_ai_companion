@@ -8,6 +8,7 @@ import { readEdits } from "../src/pack-edits.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
 import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
+import { removeDir } from "./helpers/platform.ts";
 import { writeStandIn } from "./helpers/standin.ts";
 
 /** A figure on a clear picture, like a pack's neutral. */
@@ -77,7 +78,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     service.close();
     if (options.again) return; // the first server owns the backend and the folder
     await fake.stop();
-    await rm(dataDir, { recursive: true, force: true });
+    removeDir(dataDir);
   };
   return { dataDir, framesDir, fake, settings, sent, said, notes, service, waitFor, cleanup, mode, active, drawn, say: (t: string) => said.push(t) };
 }
@@ -837,6 +838,8 @@ test("one picture drawn again with no new name changes the pack itself: the orig
 
 test("drawing one picture again refuses what it cannot do, and says why", async () => {
   const t = await setup();
+  const savedKey = process.env.XAI_API_KEY;
+  process.env.XAI_API_KEY = "xai-test-key-1234567890"; // a paid maker needs a key to be offered; the CI has none
   const me: Record<string, any>[] = [];
   const send = (m: unknown) => me.push(m as Record<string, any>);
   try {
@@ -856,6 +859,8 @@ test("drawing one picture again refuses what it cannot do, and says why", async 
     await t.service.message({ type: "studio-frame-ask-cancel" }, send, false);
     assert.equal((await t.service.stateMessage()).frameAsk, null, "Not now closes the question");
   } finally {
+    if (savedKey === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = savedKey;
     await t.cleanup();
   }
 });
@@ -871,7 +876,7 @@ test("a local model that does not answer says what is on this computer", async (
     assert.match(local.reason, /on this computer: Qwen-Image-2\.1-Turbo/);
   } finally {
     await t.cleanup();
-    await rm(hub, { recursive: true, force: true });
+    removeDir(hub);
   }
 });
 
@@ -1039,8 +1044,10 @@ test("one picture with a paid service is asked about first, drawn only on the ye
   const me: Record<string, any>[] = [];
   const send = (m: unknown) => me.push(m as Record<string, any>);
   const previous = process.env.COMPANION_XAI_BASE;
+  const savedKey = process.env.XAI_API_KEY;
   try {
     process.env.COMPANION_XAI_BASE = t.fake.url;
+    process.env.XAI_API_KEY = "xai-test-key-1234567890"; // the CI has no key
     await t.service.command("on", t.say, false, () => {});
     const calls = t.fake.requests.length;
     await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "risa-paid-red" }, send, false);
@@ -1062,6 +1069,8 @@ test("one picture with a paid service is asked about first, drawn only on the ye
   } finally {
     if (previous === undefined) delete process.env.COMPANION_XAI_BASE;
     else process.env.COMPANION_XAI_BASE = previous;
+    if (savedKey === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = savedKey;
     await t.cleanup();
   }
 });

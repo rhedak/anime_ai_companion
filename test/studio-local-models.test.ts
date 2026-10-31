@@ -20,7 +20,7 @@ test("the image models on this computer are found in the Hugging Face cache, a m
 
 test("the cache folder is HF_HUB_CACHE when it is set, and the Hugging Face default otherwise", () => {
   assert.equal(hubCacheDir({ HF_HUB_CACHE: "/data/hub" }), "/data/hub");
-  assert.match(hubCacheDir({}), /\.cache\/huggingface\/hub$/);
+  assert.match(hubCacheDir({}), /\.cache[\\/]huggingface[\\/]hub$/);
 });
 
 test("checkPath keeps only a whole path on one line without quotes or shell characters", async () => {
