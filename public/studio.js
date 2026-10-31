@@ -656,6 +656,7 @@ export function createStudio(io) {
           return true;
         case "studio-frame-cancelled":
           setBusy(false);
+          status(""); // the "look at the picture" line no longer applies
           q(".studio-frame")?.replaceChildren();
           return true;
         case "studio-ask":

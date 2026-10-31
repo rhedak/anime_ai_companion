@@ -1012,3 +1012,16 @@ test("one picture with a paid service is asked about first, drawn only on the ye
     await t.cleanup();
   }
 });
+
+test("choosing the image maker with /studio backend tells an open panel", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const before = t.sent.filter((m) => m.type === "studio-state").length;
+    await t.service.command("backend gemini-web", t.say, false, () => {});
+    await t.waitFor("studio-state", before + 1);
+    assert.equal(t.sent.filter((m) => m.type === "studio-state").at(-1)!.backend, "gemini-web");
+  } finally {
+    await t.cleanup();
+  }
+});
