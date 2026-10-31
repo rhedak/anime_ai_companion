@@ -207,6 +207,8 @@ export function createStudio(io) {
   }
 
   const packThumb = (/** @type {string} */ pack) => `pack-thumb/${encodeURIComponent(pack)}`;
+  /** A pack's neutral picture as it is, for the large view under the pointer. */
+  const packWhole = (/** @type {string} */ pack) => `pack-frame/${encodeURIComponent(pack)}/neutral/full`;
 
   /** The characters as tiles, then the outfits of the one that was opened: a thumbnail for each, so nobody has to guess from a folder name. */
   function renderSources() {
@@ -230,18 +232,20 @@ export function createStudio(io) {
         renderSources();
       };
       crumbs.replaceChildren(back, ` › ${open.label} › choose an outfit`);
-      box.replaceChildren(...open.packs.map((p) => tile(packThumb(p), outfitLabel(p, open.id), "", p === select.value, () => choosePack(p))));
+      hideZoom();
+      box.replaceChildren(...open.packs.map((p) => tile(packThumb(p), outfitLabel(p, open.id), "", p === select.value, () => choosePack(p), packWhole(p))));
       return;
     }
     openCharacter = "";
     crumbs.textContent = sources.length ? "Choose a character" : "There are no packs on this computer to draw from.";
+    hideZoom(); // the tile under the pointer is gone
     box.replaceChildren(
       ...[...groups.values()].map((g) =>
         tile(packThumb(g.packs.includes(select.value) ? select.value : g.packs[0]), g.label, g.packs.length > 1 ? `${g.packs.length} outfits` : "", g.packs.includes(select.value), () => {
           if (g.packs.length === 1) return choosePack(g.packs[0]);
           openCharacter = g.id;
           renderSources();
-        }),
+        }, packWhole(g.packs.includes(select.value) ? select.value : g.packs[0])),
       ),
     );
   }
