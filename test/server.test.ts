@@ -1046,7 +1046,7 @@ describe("work mode", { skip }, () => {
     await enterWork(c);
     const from = c.mark;
     c.send({ type: "permission-mode", value: "everything" });
-    const notice = await c.next((e) => e.type === "notice" && /Run everything is a Cursor or opencode mode/.test(e.text), 5000, from);
+    const notice = await c.next((e) => e.type === "notice" && /Run everything is a Cursor, opencode or local model mode/.test(e.text), 5000, from);
     assert.ok(notice);
     const mode = [...c.events].reverse().find((e) => e.type === "mode")!;
     assert.equal(mode.permissionMode, "manual");
@@ -1128,7 +1128,7 @@ describe("a local model with tools (Ollama)", { skip }, () => {
     const warning = await c.next((e) => e.type === "notice" && /Work mode with a local model is experimental/.test(e.text), 8000, from);
     assert.match(warning.text, /you are responsible for the result/);
     c.send({ type: "permission-mode", value: "auto" });
-    await c.next((e) => e.type === "notice" && /A local model here has Ask and Plan/.test(e.text), 5000, from);
+    await c.next((e) => e.type === "notice" && /A local model here has Ask, Plan and Run everything/.test(e.text), 5000, from);
 
     // A read needs no card.
     from = c.mark;
@@ -1805,7 +1805,7 @@ describe("/phone turns phone access on after a question, and /phone off turns it
       assert.match((await waitHeard(from, (e) => e.type === "notice" && /Asked on the computer/.test(e.text))).text, /turn on Run everything/, "Run everything is asked for too");
       const everyCard = await c.next("remote-ask", 5000, everyAt);
       c.send({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" });
-      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Cursor or opencode/.test(e.text))).text, /Cursor or opencode/, "after the yes the command ran: this brain is Claude, which has no Run everything");
+      assert.match((await waitHeard(from, (e) => e.type === "notice" && /Cursor, opencode or local model/.test(e.text))).text, /Cursor, opencode or local model/, "after the yes the command ran: this brain is Claude, which has no Run everything");
       assert.match((await waitHeard(from, (e) => e.type === "notice" && /Allowed on the computer/.test(e.text))).text, /Run everything/);
       from = heard.length;
       ws.send(JSON.stringify({ type: "remote-ask-answer", id: everyCard.id, choice: "allow" }));

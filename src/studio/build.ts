@@ -2,6 +2,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
 import { checkBackground, checkFaceEdit, checkLowerBody, type Flags } from "./checks.ts";
+import { veryBlurryChance } from "./blur.ts";
 import { cutout, keyBackground, toRaster, type Cutout } from "./cutout.ts";
 import type { Job } from "./job.ts";
 import { padBox, pasteBack, type Box } from "./paste.ts";
@@ -79,14 +80,14 @@ async function load(dir: string, name: string, w: number, h: number): Promise<Ra
 }
 
 /** One picture: asks the model, keeps the part that was asked for, checks it, and tries again with another seed when a check fails. */
-async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: Float32Array | null, deps: BuildDeps, firstAttempt: number): Promise<{ picture: Raster; record: FrameRecord }> {
+async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: Float32Array | null, deps: BuildDeps, firstAttempt: number, fixedSeed?: number): Promise<{ picture: Raster; record: FrameRecord }> {
   const input = await encodePng(source);
   const seed0 = job.seeds[0] + hash(plan.name);
-  let best: { picture: Raster; flags: Flags; seed: number } | null = null;
+  let best: { picture: Raster; flags: Flags; seed: number; blurry: number } | null = null;
   let attempt = firstAttempt;
-  for (let tries = 0; tries < ATTEMPTS; tries++, attempt++) {
+  for (let tries = 0; tries < (deps.backend.maxTries ?? ATTEMPTS); tries++, attempt++) {
     if (deps.signal?.aborted) throw new Error("stopped");
-    const seed = seed0 + attempt * SEED_STEP;
+    const seed = fixedSeed ?? seed0 + attempt * SEED_STEP;
     const edited = await resize(await decode(await deps.backend.edit({ image: input, prompt: plan.prompt, seed, width: job.width, height: job.height }, deps.signal)), job.width, job.height);
     let picture: Raster;
     let flags: Flags;
@@ -98,7 +99,10 @@ async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: F
       const cut = cutout(edited, { key: job.key });
       flags = [...checkBackground(cut.background, job.width, job.height), ...(baseAlpha ? checkLowerBody(baseAlpha, cut.alpha, job.width, job.height) : [])];
     }
-    if (!best || flags.length < best.flags.length) best = { picture, flags, seed };
+    // The blur check (src/studio/blur.ts): a soft try is flagged, so a retry is drawn; of equal tries the sharper one is kept.
+    const blurry = veryBlurryChance(picture);
+    if (blurry >= 0.5) flags = [...flags, "very blurry"];
+    if (!best || flags.length < best.flags.length || (flags.length === best.flags.length && blurry < best.blurry)) best = { picture, flags, seed, blurry };
     if (flags.length === 0) break;
   }
   const chosen = best as NonNullable<typeof best>;
@@ -114,9 +118,10 @@ function hash(name: string): number {
 
 /**
  * Step 2: every other picture of the pack, from the picked base. Pictures already on disk are kept (a job that stopped carries on).
- * `only` makes just those frames again (with new seeds), and every frame that was an edit of one of them.
+ * `only` makes just those frames again (with new seeds), and every frame that was an edit of one of them. `sameSeed` names the ones of `only`
+ * that are drawn again with the seed they had: the composition stays, and only what the checks found is tried again (the blur, mostly).
  */
-export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, only?: string[]): Promise<void> {
+export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, only?: string[], sameSeed?: string[]): Promise<void> {
   const { dir, emit } = deps;
   await mkdir(join(dir, "frames"), { recursive: true });
   const plans = planFrames(job, geometry, job.width, job.height);
@@ -129,6 +134,7 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
   }
   const base = await load(dir, "base", job.width, job.height);
   const baseAlpha = cutout(base, { key: job.key }).alpha;
+  const keepSeed = new Set(sameSeed ?? []);
   // What is already drawn (a job that was stopped and carried on) is shown again, from the thumbnails already on disk when there are some.
   for (const name of REVIEW_FRAMES) {
     const drawn = name === "neutral" || records[name] !== undefined;
@@ -146,7 +152,8 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
     if (have) continue;
     emit({ type: "status", text: `Drawing ${plan.name.replace("-", " ")} (${done} of ${plans.length})…` });
     const source = await load(dir, plan.from, job.width, job.height);
-    const made = await makeFrame(job, plan, source, plan.mode === "whole" ? baseAlpha : null, deps, records[plan.name]?.attempts ?? 0);
+    const fixed = keepSeed.has(plan.name) && only?.includes(plan.name) ? records[plan.name]?.seed : undefined;
+    const made = await makeFrame(job, plan, source, plan.mode === "whole" ? baseAlpha : null, deps, records[plan.name]?.attempts ?? 0, fixed);
     await writeFile(file, await encodePng(made.picture));
     records[plan.name] = { ...made.record, attempts: (records[plan.name]?.attempts ?? 0) + made.record.attempts };
     await writeFile(framesFile(dir), JSON.stringify(records, null, 2));

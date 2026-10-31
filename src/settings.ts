@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, parse } from "node:path";
+import { dirname, isAbsolute, parse } from "node:path";
 import { isEffort, type Effort } from "./claude-settings.ts";
 import { isPackName } from "./frame-pack.ts";
 import { BROWSER_BACKENDS, checkBackendUrl, PAID_SERVICES } from "./studio/backend.ts";
@@ -36,6 +36,9 @@ export interface Settings {
   studioBudgetUsd: number;
   /** The last address of a model on this computer, so the list in the studio can go back to it after a web service was chosen. */
   studioLocalBackend: string | null;
+  /** The user's own Python (a venv's `python`) and the server script it runs, both whole paths: the app only prints the command, it starts nothing from them. */
+  studioPython: string | null;
+  studioServer: string | null;
   /** How hard Claude thinks: a level, or "default" to follow the user's own Claude Code settings. */
   effort: Effort | "default";
   /** How her notes about the user get saved (chat only). Asking is the default. */
@@ -60,10 +63,19 @@ const defaults = (): Settings => ({
   studioBackend: null,
   studioBudgetUsd: 5,
   studioLocalBackend: null,
+  studioPython: null,
+  studioServer: null,
   effort: "default",
   memorySaving: "ask",
   allowedTools: ["Read", "Grep", "Glob"],
 });
+
+/** A whole path typed by the user for a program or script: absolute, one line, no control characters or quotes (it is shown in a command, never run by the app). */
+export function checkPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const path = value.trim();
+  return path.length > 0 && path.length <= 400 && isAbsolute(path) && !/[\u0000-\u001f"'`$]/.test(path) ? path : null;
+}
 
 /** Saved settings, then environment overrides (COMPANION_MODEL, COMPANION_WORK_MODEL). */
 export async function loadSettings(path: string): Promise<Settings> {
@@ -81,6 +93,8 @@ export async function loadSettings(path: string): Promise<Settings> {
   settings.studioBackend = checkBackendUrl(process.env.COMPANION_IMAGE_BACKEND ?? settings.studioBackend);
   settings.studioLocalBackend = checkBackendUrl(settings.studioLocalBackend);
   if (settings.studioLocalBackend && (PAID_SERVICES.includes(settings.studioLocalBackend) || BROWSER_BACKENDS.includes(settings.studioLocalBackend))) settings.studioLocalBackend = null;
+  settings.studioPython = checkPath(settings.studioPython);
+  settings.studioServer = checkPath(settings.studioServer);
   settings.studioBudgetUsd = typeof settings.studioBudgetUsd === "number" && settings.studioBudgetUsd >= 0.5 && settings.studioBudgetUsd <= 200 ? settings.studioBudgetUsd : 5;
   if (settings.effort !== "default" && !isEffort(settings.effort)) settings.effort = "default";
   if (!isMemorySaving(settings.memorySaving)) settings.memorySaving = "ask";
@@ -111,9 +125,9 @@ export async function saveSettings(path: string, settings: Settings): Promise<vo
   } catch {
     // first save
   }
-  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, memorySaving } = settings;
+  const { provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, studioPython, studioServer, memorySaving } = settings;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, memorySaving }, null, 2));
+  await writeFile(path, JSON.stringify({ ...existing, provider, ollamaModel, cursorModel, opencodeModel, projectDir, effort, name, nameSet, framePack, studioBackend, studioBudgetUsd, studioLocalBackend, studioPython, studioServer, memorySaving }, null, 2));
 }
 
 /**

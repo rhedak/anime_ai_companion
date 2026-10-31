@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
+import sharp from "sharp";
 import { frameMime, isPackName, readPack, type FramePack } from "./frame-pack.ts";
 import { cookieName, cookieValue, gateRequest, hostHeaderAllowed, isLoopbackAddress, sessionCookie } from "./lan.ts";
 import { DEVICE_DAYS } from "./phone-devices.ts";
@@ -34,6 +35,9 @@ export interface HttpDeps {
    */
   packThumb?(name: string): Promise<{ body: Buffer; mime: string } | null>;
 }
+
+/** The full pack studio's own page and script (docs/pack-studio.md): this computer only. */
+const STUDIO_PAGES = new Set(["/studio-full.html", "/studio-full.js"]);
 
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -133,6 +137,11 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
     if (await pairing(req, res, new URL(req.url ?? "/", "http://localhost").pathname)) return;
     if (!letThrough(req, res)) return;
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    // The full pack studio is for this computer only: a phone that got past the gate above is still told there is no such page.
+    if (STUDIO_PAGES.has(path) && !isLoopbackAddress(req.socket.remoteAddress)) {
+      res.writeHead(404, headers).end("Not found");
+      return;
+    }
     const shown = /^\/shown\/([0-9a-f-]{36})$/.exec(path);
     if (shown) {
       // A picture she showed in the chat. The id is unguessable and the file is re-checked on every request.
@@ -168,6 +177,25 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       }
       res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...headers });
       res.end(body);
+      return;
+    }
+    const packFrame = /^\/pack-frame\/([^/]+)\/([^/]+?)(\/full)?$/.exec(path);
+    if (packFrame) {
+      // One small picture of any pack on this computer, for the studio's picture picker. Only a file the scan of that pack found is read.
+      let name = "", frameName = "";
+      try {
+        [name, frameName] = [decodeURIComponent(packFrame[1]), decodeURIComponent(packFrame[2])];
+      } catch {}
+      const found = isPackName(name) ? await readPack(deps.packDirs, name, deps.emotionNames()) : null;
+      const known = found?.ok ? found.pack.files.get(`${frameName}.webp`) : undefined;
+      // ".../full" is the picture as it is (the picker shows it large under the pointer); without it a small one.
+      const small = known && (packFrame[3] ? await readFile(known.path).catch(() => null) : await sharp(await readFile(known.path)).resize({ width: 160 }).webp({ quality: 80 }).toBuffer().catch(() => null));
+      if (!small) {
+        res.writeHead(404).end("Not found");
+        return;
+      }
+      res.writeHead(200, { "content-type": "image/webp", "cache-control": "no-cache", ...headers });
+      res.end(small);
       return;
     }
     const frame = /^\/frames\/([^/]+)\/([^/]+)$/.exec(path);

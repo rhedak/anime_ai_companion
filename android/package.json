@@ -1,0 +1,20 @@
+{
+  "name": "anaico-android",
+  "version": "0.20.0",
+  "private": true,
+  "description": "Android app for Anime AI Companion: opens the computer's page (phone mode) or runs the browser demo on the phone.",
+  "author": "Henrik Hanssen",
+  "license": "MIT",
+  "scripts": {
+    "sync": "npx cap sync android",
+    "open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "8.2.1",
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

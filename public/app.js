@@ -26,7 +26,7 @@ const studio = createStudio({
   host: () => document.querySelector(".stage"),
   say: (text) => addMsg("sys", text),
 });
-document.addEventListener("studio-state", () => renderLooksMenu()); // the menu has "Make a pack…" only while the studio is on
+document.addEventListener("studio-state", () => renderLooksMenu());
 /** This page is open on another device. The folder dialog runs on the computer, so a phone types the path instead. */
 let onPhone = false;
 
@@ -789,7 +789,7 @@ function renderBrain() {
   $("effort").value = state.effort ?? "default";
   for (const option of $("permission-mode").options) {
     const claudeOnly = option.value === "acceptEdits" || option.value === "auto";
-    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !(cursor || opencode) : false;
+    option.hidden = claudeOnly ? state.provider !== "claude" : option.value === "everything" ? !(cursor || opencode || ollama) : false;
   }
   if (ollama) {
     const models = state.ollamaModels ?? [];
@@ -935,7 +935,8 @@ function renderMode() {
     return;
   }
   if (state.provider === "ollama") {
-    info.textContent = `${state.model} · experimental: a local model's tool use is your responsibility. Every command and file write still asks first.`;
+    const everything = state.permissionMode === "everything" ? " Run everything is on: commands and file writes run without asking." : " Every command and file write still asks first.";
+    info.textContent = `${state.model} · experimental: a local model's tool use is your responsibility.${everything}`;
     return;
   }
   const cursor = state.provider === "cursor";
@@ -999,7 +1000,7 @@ function addPermission(req) {
       more.append(button("Allow, and accept all edits", "ghost", "allow", "acceptEdits"));
     }
     if (state.provider === "claude" && state.permissionMode !== "auto") more.append(button("Allow, and switch to Auto", "ghost", "allow", "auto"));
-    if ((state.provider === "cursor" || state.provider === "opencode") && state.permissionMode !== "everything") {
+    if ((state.provider === "cursor" || state.provider === "opencode" || state.provider === "ollama") && state.permissionMode !== "everything") {
       more.append(button("Allow, and run everything", "ghost", "allow", "everything"));
     }
     if (more.children.length) actions.append(more);
@@ -1464,6 +1465,21 @@ function handle(msg) {
     case "studio-ask":
     case "studio-handover":
     case "studio-spend":
+    case "studio-frame-ask":
+    case "studio-frame-progress":
+    case "studio-frame-review":
+    case "studio-frame-installed":
+    case "studio-frame-restored":
+    case "studio-activity":
+    case "studio-activity-added":
+    case "studio-activity-gone":
+    case "studio-activity-progress":
+    case "studio-activity-saved":
+    case "studio-activity-full":
+    case "studio-frame-cancelled":
+    case "studio-transferred":
+    case "studio-assist":
+    case "studio-assist-done":
     case "studio-review":
       studio.handle(msg);
       break;
@@ -1471,7 +1487,7 @@ function handle(msg) {
       askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, saved: msg.saved });
       break;
     case "pack-update-offer":
-      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, update: { from: String(msg.from), to: String(msg.to) } });
+      askPackDownload({ id: msg.id, name: msg.name, bytes: msg.bytes, host: msg.host, update: { from: String(msg.from), to: String(msg.to), edited: Array.isArray(msg.edited) ? msg.edited.map(String) : [] } });
       break;
     case "pack-progress":
       showPackProgress(msg);
@@ -2102,7 +2118,7 @@ function renderLooksMenu() {
     ...(lastLooks.names.length ? [group("My looks", lastLooks.names.map((n) => new Option(n, `look:${n}`)))] : []),
     ...(lastLooks.presets?.length ? [new Option("Presets…", "gallery")] : []),
     ...(packNames.length || remotePacks.length ? [new Option("Packs…", "packs")] : []),
-    ...(studio.enabled() ? [new Option("Make a pack…", "studio")] : []),
+    new Option("Studio…", "studio"), // always there: when the studio is off, opening it says how to turn it on
   );
   select.value = ""; // a hidden, disabled first option is not selected by the browser on its own: it would pick "Presets…", which then fires no change
   select.disabled = select.options.length === 1;
@@ -2129,7 +2145,7 @@ function closeGallery() {
 
 /** Download progress on a gallery tile, from a `pack-progress` message. */
 /** The question before a pack is downloaded: how big it is and which server is contacted. Nothing is fetched until "Download". */
-function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string, update?: { from: string, to: string } }} */ offer) {
+function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, host?: string, saved?: string, update?: { from: string, to: string, edited?: string[] } }} */ offer) {
   document.querySelector(".pack-confirm")?.remove();
   const size = typeof offer.bytes === "number" ? `${(offer.bytes / (1024 * 1024)).toFixed(offer.bytes < 10 * 1024 * 1024 ? 1 : 0)} MB` : "an unknown size";
   const box = document.createElement("div");
@@ -2139,7 +2155,7 @@ function askPackDownload(/** @type {{ id: string, name: string, bytes?: number, 
   box.setAttribute("aria-label", offer.update ? `Update ${offer.name}?` : `Download ${offer.name}?`);
   const text = document.createElement("p");
   text.textContent = offer.update
-    ? `A newer version of ${offer.name} is available (${offer.update.from} to ${offer.update.to}). Update it? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. The copy on this computer is replaced only after the new one has been checked.`
+    ? `A newer version of ${offer.name} is available (${offer.update.from} to ${offer.update.to}). Update it? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. The copy on this computer is replaced only after the new one has been checked.${offer.update.edited?.length ? ` You drew ${offer.update.edited.length === 1 ? "this picture" : "these pictures"} again in it (${offer.update.edited.join(", ")}): Update replaces ${offer.update.edited.length === 1 ? "it" : "them"} with the new version and keeps your own in a pack called ${offer.id}-mine. Not now keeps your pack as it is.` : ""}`
     : `Download ${offer.name}? It is ${size}, fetched from ${offer.host || "the pack list's server"}, which sees your IP address. ${typeof offer.saved === "string" ? offer.saved : "It is saved on this computer and checked before it is used."}`;
   const yes = Object.assign(document.createElement("button"), { type: "button", textContent: offer.update ? `Update ${size}` : `Download ${size}` });
   const no = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: "Not now" });

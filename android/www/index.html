@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Anime AI Companion</title>
+  <link rel="stylesheet" href="connect.css">
+</head>
+<body>
+  <main>
+    <h1>Anime AI Companion</h1>
+    <p class="lead">Connect to the companion on your computer. The computer does the work, and this phone shows her and the chat.</p>
+
+    <section id="saved" hidden>
+      <p>Last computer</p>
+      <button id="resume" class="primary" type="button"></button>
+      <button id="forget" class="quiet" type="button">Forget this computer</button>
+    </section>
+
+    <section>
+      <button id="scan" class="primary" type="button">Scan the QR code on the computer</button>
+      <p class="hint">On the computer type <code>/phone</code>, then scan the code it shows.</p>
+    </section>
+
+    <section>
+      <form id="typed">
+        <label for="address">Or type the computer's address</label>
+        <input id="address" name="address" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="192.168.1.9:3737">
+        <button type="submit" class="secondary">Connect</button>
+      </form>
+      <p class="hint">The address is on the computer's <code>/phone</code> page. It must be on your own network: Wi-Fi, Tailscale, or a name ending in .local.</p>
+    </section>
+
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script src="connect.js"></script>
+</body>
+</html>

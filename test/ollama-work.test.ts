@@ -178,6 +178,32 @@ test("'allow for this session' on a file edit covers every later write and edit 
   }
 });
 
+test("Run everything: a command and a file write run without a card, and the folder limits still hold", async () => {
+  const w = setup("work", "everything");
+  const marker = join(w.dir, "ran.txt");
+  const fake = await fakeOllama((n) => {
+    if (n === 1) return { calls: [{ name: "bash", arguments: { command: "echo done > ran.txt" } }] };
+    if (n === 2) return { calls: [{ name: "write_file", arguments: { path: "note.txt", content: "kept" } }] };
+    if (n === 3) return { calls: [{ name: "write_file", arguments: { path: "../outside.txt", content: "no" } }] };
+    return { text: "ok" };
+  });
+  try {
+    const p = w.make(fake.host);
+    await p.checkTools();
+    const events = await ask(p, "run it, write a note, then try outside");
+    assert.deepEqual(events.filter((e) => e.type === "permission"), [], "no card for any call");
+    assert.equal(readFileSync(marker, "utf8").trim(), "done");
+    assert.equal(readFileSync(join(w.dir, "note.txt"), "utf8"), "kept");
+    const refused = events.filter((e) => e.type === "tool").at(-1);
+    assert.equal(refused?.status, "error", "a path outside the folder is still refused");
+    assert.equal(existsSync(join(w.dir, "..", "outside.txt")), false);
+    assert.equal(events.at(-1)?.type, "done");
+  } finally {
+    fake.close();
+    w.done();
+  }
+});
+
 test("plan mode offers only reading and searching, and refuses a write the model tries anyway", async () => {
   const w = setup("work", "plan");
   const fake = await fakeOllama((n) => (n === 1 ? { calls: [{ name: "write_file", arguments: { path: "x.txt", content: "no" } }] } : { text: "here is a plan" }));

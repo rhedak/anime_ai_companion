@@ -37,7 +37,7 @@ in the release after this one.
 Chat, answer the approval cards, stop her, switch between chat and work, type a project folder (`/work ~/project` or
 the folder field), and change her look.
 
-**What it can ask for.** Accept edits, Auto (Claude Code), Run everything (Cursor, opencode) and saving notes about you
+**What it can ask for.** Accept edits, Auto (Claude Code), Run everything (Cursor, opencode, a local model) and saving notes about you
 without asking are looser than "ask before everything", so a phone cannot just turn them on. It asks: a card appears on
 the computer, "Chrome on Android asks to turn on Accept edits: Allow, Always for this phone or Deny". Allow does it once, right then, as if you had typed
 it there, and the next time asks again. For Accept edits and Auto the card also has **Always for this phone**: that phone then

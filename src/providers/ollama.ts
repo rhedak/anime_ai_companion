@@ -89,7 +89,8 @@ function trimHistory(history: ChatMessage[]): ChatMessage[] {
  * A local model through Ollama's HTTP API. In chat it is plain conversation: the persona (with the emotion and avatar tag
  * protocol) is the system prompt, so the same tags drive the avatar. In work mode, for a model that reports tool support, it
  * can also read, search, run commands and write files in the project folder: Ollama only runs the model, so the tools and
- * the loop are here, and every command and write waits for the user's approval on the same card the other brains use.
+ * the loop are here, and every command and write waits for the user's approval on the same card the other brains use, unless the
+ * user has chosen Run everything for this session (memory only, reset at every start).
  * How well a local model uses tools depends entirely on the model.
  */
 export class OllamaProvider implements Provider {
@@ -389,7 +390,8 @@ export class OllamaProvider implements Provider {
     // "Allow for this session" covers a file tool for the whole project (these cannot leave the project folder), but a shell command only as written.
     const key = spec.card === "Write" || spec.card === "Edit" ? `tool:${spec.card}` : `${name}:${JSON.stringify(args)}`;
     const preApproved = spec.readOnly && this.config.allowedTools.includes(spec.card);
-    if (!preApproved && !this.allowedCalls.has(key)) {
+    // Run everything (opt-in, memory only) lets every call through; the folder checks in the tools still apply.
+    if (!preApproved && !this.allowedCalls.has(key) && this.config.permissionMode !== "everything") {
       const decision = await this.ask(id, shown);
       if (decision === "deny") {
         status("error");

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -19,6 +19,7 @@ import {
   type PackProgress,
   versionHigher,
 } from "../src/pack-install.ts";
+import { applyEdit, readEdits } from "../src/pack-edits.ts";
 import { packUpdateChecksOn } from "../src/update-setting.ts";
 import { parsePackIndex } from "../src/pack-index.ts";
 import { decodeRgba, encodeRgba } from "../src/webp-rgba.ts";
@@ -481,6 +482,40 @@ test("an installed pack knows its version, and newer files in the pack list are 
     assert.equal(await installer.updateFor("mina"), null, "the list's version 2 is older than the installed 3");
     await writeFile(marker, JSON.stringify({ id: "mina", version: "2", sha256: "0".repeat(64) }));
     assert.equal((await installer.updateFor("mina"))?.available, "2", "republished under the same number: the files differ, so it is offered");
+  } finally {
+    await rm(destDir, { recursive: true, force: true });
+  }
+});
+
+test("an update of a pack with pictures the user drew again says which, and keeps them as a pack of their own", async () => {
+  const v1 = await tinyArchive([9, 8, 7, 255]);
+  const v2 = await tinyArchive([90, 80, 70, 255]);
+  const first = entryFor(v1.archive, "1", "https://packs.example.com/mina-1.tar");
+  const second = entryFor(v2.archive, "2", "https://packs.example.com/mina-2.tar");
+  let listed = first;
+  const fetchImpl: PackFetch = async (url) => {
+    if (url === "https://packs.example.com/index.json") return response(200, Buffer.from(JSON.stringify({ format: 1, packs: [listed] })), url);
+    if (url === first.url) return response(200, v1.archive, url);
+    if (url === second.url) return response(200, v2.archive, url);
+    return response(404, Buffer.from("no"), url);
+  };
+  const destDir = await mkdtemp(join(tmpdir(), "pack-dest-"));
+  try {
+    const installer = createPackInstaller({ destDir, indexUrl: "https://packs.example.com/index.json", fetch: fetchImpl });
+    assert.equal((await installer.install("mina")).ok, true);
+    const mine = Buffer.from("RIFF the user's own picture");
+    await applyEdit(join(destDir, "mina"), "neutral", mine, { at: "2026-10-31T00:00:00Z", change: "a red scarf", model: "test" });
+    listed = second;
+    assert.equal((await installer.loadIndex(true)).ok, true);
+    assert.deepEqual((await installer.updateFor("mina"))?.edited, ["neutral"], "the offer says which pictures the update would replace");
+
+    const result = await installer.install("mina");
+    assert.equal(result.ok && result.keptAs, "mina-mine");
+    assert.deepEqual(await readFile(join(destDir, "mina-mine", "neutral.webp")), mine, "the user's picture is kept");
+    assert.equal(await stat(join(destDir, "mina-mine", ".pack-install.json")).then(() => true, () => false), false, "and it is not an install of the list's pack");
+    assert.equal(await installer.updateFor("mina-mine"), null);
+    assert.deepEqual(await readFile(join(destDir, "mina", "neutral.webp")), v2.neutral, "the pack itself is the new version");
+    assert.deepEqual((await readEdits(join(destDir, "mina"))), {}, "with none of the edits");
   } finally {
     await rm(destDir, { recursive: true, force: true });
   }

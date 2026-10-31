@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { welcomeText } from "./welcome.ts";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -152,6 +152,8 @@ const packUpdateOffer = (update: PackUpdate) => ({
   bytes: update.entry.sizes.archiveBytes,
   host: new URL(update.entry.url).hostname,
   credit: update.entry.credit,
+  /** Pictures of it the user drew again here: the update would replace them (and keeps them as a pack of their own). */
+  edited: update.edited,
 });
 /**
  * Asks about a newer version of an installed pack, if the pack list (as loaded; the page's own actions load it) has one. With the user's yes to daily update
@@ -249,7 +251,7 @@ async function packActivityNames(names: string[], characters: Record<string, { i
 const packsMessage = async () => {
   await refreshOutfits();
   const names = await listPacks(...packDirs);
-  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname }));
+  const updates = (await packInstaller.updates()).map((u) => ({ id: u.id, name: u.entry.name, from: u.installed, to: u.available, bytes: u.entry.sizes.archiveBytes, host: new URL(u.entry.url).hostname, edited: u.edited }));
   const characters = await packCharacters(packDirs, names);
   return { type: "packs", names, characters, active: settings.framePack, remote: remotePacks(names), updates, activities: await packActivityNames(names, characters) };
 };
@@ -777,6 +779,7 @@ const studio = createStudioService({
   },
   remoteRefusal: () => remoteRefusal,
   sources: () => listPacks(...packDirs),
+  characters: (names) => packCharacters(packDirs, names),
   readSource: async (name) => {
     const found = await readPack(packDirs, name, Object.keys(emotions));
     if (!found.ok) return null;
@@ -791,7 +794,19 @@ const studio = createStudioService({
     return { neutral: rest, blink: await read(neutral.blink), talk: await Promise.all([0, 1, 2].map((k) => read(neutral.talk[k]))), character: pack.characterId ?? null };
   },
   refreshPacks: async () => broadcast(await packsMessage()),
+  reloadPack: async (name) => {
+    if (settings.framePack === name) await choosePack(name, () => {}); // the page keeps the pictures it loaded: show the pack again
+  },
   pushNote: (text) => notes.push(text),
+  brain: () => settings.provider,
+  chromeOn: () => claudeChrome,
+  packFolder: async (name) => {
+    for (const dir of packDirs) {
+      const folder = join(dir, name);
+      if (await stat(folder).then((st) => st.isDirectory(), () => false)) return folder;
+    }
+    return null;
+  },
 });
 
 // --- character cards: see card-service.ts ---
@@ -843,13 +858,11 @@ async function rename(input: string, say: Say): Promise<void> {
 
 function changePermissionMode(value: PermissionMode, say: Say): void {
   if (!provider.canUseTools) say("This model cannot use tools, so there are no permissions.");
-  else if (value === "everything" && settings.provider !== "cursor" && settings.provider !== "opencode") {
-    say(settings.provider === "ollama" ? "A local model here has Ask and Plan only: every command, file write and edit asks first." : "Run everything is a Cursor or opencode mode. Claude stays on Ask, Plan, Accept edits or Auto.");
+  else if (value === "everything" && !everythingBrains.includes(settings.provider)) {
+    say("Run everything is a Cursor, opencode or local model mode. Claude stays on Ask, Plan, Accept edits or Auto.");
   } else if (settings.provider !== "claude" && (value === "auto" || value === "acceptEdits")) {
     say(
-      settings.provider === "ollama"
-        ? "A local model here has Ask and Plan. Auto, Accept edits and Run everything are not available for it: every command, file write and edit asks first."
-        : `${settings.provider === "cursor" ? "Cursor" : "opencode"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
+      `${settings.provider === "cursor" ? "Cursor" : settings.provider === "opencode" ? "opencode" : "A local model"} here has Ask, Plan and Run everything. Auto and Accept edits are Claude Code modes.`,
     );
   } else {
     permissionMode = value;
@@ -860,12 +873,17 @@ function changePermissionMode(value: PermissionMode, say: Say): void {
       say(
         settings.provider === "cursor"
           ? "Run everything: she runs tools without a card, unless Cursor still asks. A deny rule still blocks. This resets to Ask the next time the server starts."
-          : "Run everything: opencode runs every tool without a card. This resets to Ask the next time the server starts.",
+          : settings.provider === "ollama"
+            ? "Run everything: the local model runs every command, file write and edit without a card, and the app does not check what they do. Only the folder limits apply. This resets to Ask the next time the server starts."
+            : "Run everything: opencode runs every tool without a card. This resets to Ask the next time the server starts.",
       );
     }
   }
   broadcast(modeInfo());
 }
+
+/** The brains that have Run everything. Claude Code does not: its loose modes are its own. */
+const everythingBrains: string[] = ["cursor", "opencode", "ollama"];
 
 const permissionNames: Record<string, PermissionMode> = { ask: "manual", plan: "plan", accept: "acceptEdits", auto: "auto", everything: "everything" };
 /** The name the user types and the documentation uses ("ask"), not the internal one ("manual"). */
@@ -1299,7 +1317,7 @@ const slashCommands: Record<
   chat: { help: "switch to chat mode (no tools)", run: ({ say }) => switchMode("chat", undefined, say) },
   work: { help: "switch to work mode, optionally for a folder: /work ~/project", run: ({ args, say }) => switchMode("work", args, say) },
   permissions: {
-    help: "ask, plan, accept (edits), auto (Claude), or everything (Cursor, opencode): how work mode handles approvals",
+    help: "ask, plan, accept (edits), auto (Claude), or everything (Cursor, opencode, a local model): how work mode handles approvals",
     run: ({ args, say }) => {
       const key = args.toLowerCase();
       const wanted = Object.hasOwn(permissionNames, key) ? permissionNames[key] : undefined;
@@ -1352,7 +1370,7 @@ const slashCommands: Record<
     run: ({ args, say, reply, remote }) => cards.command(args, say, reply, remote),
   },
   studio: {
-    help: "make a picture pack of your own on this computer with an image model you run: /studio on | off | handover [outfit] | backend <address, xai, gemini, openai, grok-web, gemini-web or chatgpt-web> | budget <dollars>",
+    help: "make a picture pack of your own on this computer with an image model you run: /studio on | off | handover [outfit] | backend <address, xai, gemini, openai, grok-web, gemini-web, chatgpt-web or assisted> | budget <dollars>",
     run: ({ args, say, remote, reply }) => studio.command(args, say, remote, reply),
   },
   skills: {
@@ -2045,7 +2063,7 @@ wss.on("connection", (ws) => {
       if (msg.provider === "cursor" && typeof msg.model === "string" && msg.model) settings.cursorModel = msg.model;
       if (msg.provider === "opencode" && typeof msg.model === "string" && msg.model) settings.opencodeModel = msg.model;
       if (msg.provider !== "claude" && (permissionMode === "auto" || permissionMode === "acceptEdits")) permissionMode = "manual";
-      if (msg.provider !== "cursor" && msg.provider !== "opencode" && permissionMode === "everything") permissionMode = "manual";
+      if (!everythingBrains.includes(msg.provider) && permissionMode === "everything") permissionMode = "manual";
       const switching = settings.provider !== msg.provider || basicMode;
       basicMode = false;
       settings.provider = msg.provider;
@@ -2169,7 +2187,7 @@ wss.on("connection", (ws) => {
           if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "notice", text }));
         };
         const now = before && installed.status === "installed" ? await packInstaller.installed(id) : null;
-        if (now) say(`Updated ${id} to version ${now.version}.`);
+        if (now) say(`Updated ${id} to version ${now.version}.${installed.keptAs ? ` The pictures you had drawn again are kept as the pack ${installed.keptAs}.` : ""}`);
         if (now && !wasShown) {
           // An update of a pack that is not the one on screen: the files are replaced, and what she is showing stays as it is.
           broadcast(await packsMessage());
