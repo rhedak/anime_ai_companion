@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { readPack } from "../src/frame-pack.ts";
+import { readEdits } from "../src/pack-edits.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
 import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
@@ -1202,8 +1203,8 @@ test("an activity is made one picture at a time in a working folder, from any pi
     assert.equal(frames.length, 3);
 
     // A new service on the same folder still has it: stopping in the middle loses nothing.
-    await t.service.message({ type: "studio-activity-rename", id: draft, name: "tea" }, send, false);
-    assert.equal(last("studio-activity").name, "tea");
+    await t.service.message({ type: "studio-activity-rename", id: draft, name: "tea_time" }, send, false);
+    assert.equal(last("studio-activity").name, "tea_time");
     await t.service.message({ type: "studio-activity-open", id: draft }, send, false);
     assert.equal(last("studio-activity").frames.length, 3);
 
@@ -1217,15 +1218,17 @@ test("an activity is made one picture at a time in a working folder, from any pi
     await t.waitFor("studio-activity-saved");
     const own = join(t.framesDir, "risa-dress");
     const files = (await readdir(own)).filter((n) => n.startsWith("activity-")).sort();
-    assert.deepEqual(files, ["activity-tea-1.webp", "activity-tea-2.webp", "activity-tea-3.webp", "activity-tea-talk-1.webp", "activity-tea-talk-2.webp", "activity-tea-talk-3.webp"]);
+    assert.deepEqual(files, ["activity-tea_time-1.webp", "activity-tea_time-2.webp", "activity-tea_time-3.webp", "activity-tea_time-talk-1.webp", "activity-tea_time-talk-2.webp", "activity-tea_time-talk-3.webp"]);
     assert.ok((await readdir(own)).includes("neutral.webp"), "the pack was copied whole first (it comes with the app)");
     assert.deepEqual((await t.service.stateMessage()).activities, [], "the draft is gone");
     assert.deepEqual((await t.service.stateMessage()).edited, {}, "pictures that were added are not offered back as originals");
     assert.equal(t.notes.length, 1);
+    assert.equal(Object.keys((await readEdits(own))).length, 6, "every added picture is noted, so an update of the pack can name them");
+    assert.ok((await t.service.stateMessage()).frames["risa-dress"].includes("activity-tea_time-talk-3"), "and the pack's pictures list has them");
 
     // Another activity of the same name is refused; the picture strip of a pack that has it is not touched.
-    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "tea" }, send, false);
-    assert.match(me.at(-1)?.message ?? "", /has an activity called tea/);
+    await t.service.message({ type: "studio-activity-new", source: "risa-dress", name: "tea_time" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /has an activity called tea_time/);
   } finally {
     await t.cleanup();
   }

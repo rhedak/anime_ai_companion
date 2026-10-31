@@ -27,7 +27,7 @@ export async function readEdits(folder: string): Promise<Record<string, FrameEdi
     const out: Record<string, FrameEdit> = {};
     for (const [name, value] of Object.entries(raw.frames ?? {})) {
       const v = value as Partial<FrameEdit> | null;
-      if (/^[a-z0-9-]{1,40}$/.test(name) && v && typeof v === "object") out[name] = { at: String(v.at ?? ""), change: String(v.change ?? ""), model: String(v.model ?? ""), ...(v.added === true ? { added: true } : {}) };
+      if (/^[a-z0-9_-]{1,48}$/.test(name) && v && typeof v === "object") out[name] = { at: String(v.at ?? ""), change: String(v.change ?? ""), model: String(v.model ?? ""), ...(v.added === true ? { added: true } : {}) };
     }
     return out;
   } catch {

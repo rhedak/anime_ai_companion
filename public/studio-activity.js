@@ -36,6 +36,7 @@ export function createActivityBox(ctx) {
   let drafts = [];
   /** The pack the workspace was drawn for (so a repeated "show" does not redraw it under the user's typing). */
   let shownPack = "";
+  let shownDrafts = "";
 
   const node = el("div", { className: "studio-activity", hidden: true });
   const list = el("div", { className: "studio-drafts" });
@@ -61,6 +62,7 @@ export function createActivityBox(ctx) {
     const pack = ctx.pack();
     node.hidden = false;
     if (!draft) {
+      const mine = drafts.filter((a) => a.source === pack);
       const name = el("input", { type: "text", maxLength: 24, placeholder: "a word, e.g. cooking or tea_time", value: newName, ariaLabel: "Name of the activity", autocomplete: "off" });
       name.oninput = () => (newName = name.value);
       const go = el("button", { type: "button", textContent: "Start the activity" });
@@ -70,6 +72,7 @@ export function createActivityBox(ctx) {
         el("label", { textContent: "Name of the activity" }),
         name,
         el("div", { className: "pack-confirm-buttons" }, go),
+        ...(mine.length ? [el("p", { className: "studio-help", textContent: `Or carry on with one you began for ${pack}:` }), ...mine.map(draftRow)] : []),
       );
       return;
     }
@@ -227,8 +230,8 @@ export function createActivityBox(ctx) {
     );
   }
 
-  function renderDrafts() {
-    const rows = drafts.map((a) => {
+  function draftRow(/** @type {Record<string, any>} */ a) {
+    {
       const go = el("button", { type: "button", className: "ghost", textContent: "Carry on" });
       go.onclick = () => ctx.continueDraft({ id: String(a.id), source: String(a.source) });
       const del = el("button", { type: "button", className: "ghost", textContent: "Discard" });
@@ -236,7 +239,15 @@ export function createActivityBox(ctx) {
         if (window.confirm(`Throw away the unfinished activity ${a.name}?`)) ctx.send({ type: "studio-activity-delete", id: a.id });
       };
       return el("div", { className: "studio-draft" }, el("span", { textContent: `activity-${a.name} · ${a.source} · ${a.frames} picture${a.frames === 1 ? "" : "s"}` }), go, del);
-    });
+    }
+  }
+
+  function renderDrafts() {
+    const rows = drafts.map(draftRow);
+    // The form lists the unfinished activities of its pack: draw it again only when that list changed (not under the user's typing).
+    const sig = JSON.stringify(drafts.filter((d) => d.source === ctx.pack()).map((d) => [d.id, d.frames]));
+    if (!draft && !node.hidden && sig !== shownDrafts) render();
+    shownDrafts = sig;
     list.replaceChildren(...(rows.length ? [el("p", { className: "studio-help", textContent: "Activities you began and have not saved:" }), ...rows] : []));
   }
 
@@ -293,7 +304,7 @@ export function createActivityBox(ctx) {
           return true;
         case "studio-activity-progress":
           talkText = String(msg.text || "");
-          if (talkText) ctx.status(talkText);
+          ctx.status(talkText || "Talking versions are made. Look at them in the player (with her mouth open), then save the activity.");
           const line = node.querySelector(".studio-talk-text");
           if (line) line.textContent = talkText;
           return true;

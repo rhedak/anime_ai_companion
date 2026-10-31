@@ -821,7 +821,7 @@ export function createStudioService(deps: StudioDeps) {
     try {
       await mkdir(work, { recursive: true });
       const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
-      const drawn = await drawFrame(bytes, change, seed, backendFor(url, work, request.id), abort.signal);
+      const drawn = await drawFrame(bytes, change, seed, backendFor(url, work, request.id), abort.signal, { pose: Boolean(activity) });
       frameReview = {
         id: request.id,
         activity,

@@ -1240,7 +1240,7 @@ export function createStudio(io) {
         case "studio-frame-review":
           setBusy(false);
           showFrameReview(msg);
-          status("Look at the picture drawn: keep it as a new pack, or drop it.");
+          status(msg.activity ? "Look at the picture drawn: add it to the loop, or drop it." : "Look at the picture drawn: keep it, or drop it.");
           return true;
         case "studio-frame-installed":
           setBusy(false);
