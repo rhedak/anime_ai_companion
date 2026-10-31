@@ -181,6 +181,7 @@ export function createStudio(io) {
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
     if (!select) return;
     sourceTouched = true; // only the user's own choice counts: it keeps the form from being moved back to the pack she wears
+    openFrameGroup = "";
     select.value = pack;
     select.onchange?.(new Event("change"));
     const frameSource = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
@@ -196,13 +197,15 @@ export function createStudio(io) {
     return pack.toLowerCase().startsWith(`${id}-`) ? pack.slice(id.length + 1) : pack;
   }
 
-  function tile(/** @type {string} */ pack, /** @type {string} */ label, /** @type {string} */ sub, /** @type {boolean} */ selected, /** @type {() => void} */ onclick) {
+  function tile(/** @type {string} */ src, /** @type {string} */ label, /** @type {string} */ sub, /** @type {boolean} */ selected, /** @type {() => void} */ onclick) {
     const t = el("button", { type: "button", className: `preset${selected ? " studio-selected" : ""}`, title: sub ? `${label}: ${sub}` : label });
-    t.append(el("img", { src: `pack-thumb/${encodeURIComponent(pack)}`, alt: "", loading: "lazy" }), el("span", { className: "preset-name", textContent: label }));
+    t.append(el("img", { src, alt: "", loading: "lazy" }), el("span", { className: "preset-name", textContent: label }));
     if (sub) t.append(el("span", { className: "studio-tile-sub", textContent: sub }));
     t.onclick = onclick;
     return t;
   }
+
+  const packThumb = (/** @type {string} */ pack) => `pack-thumb/${encodeURIComponent(pack)}`;
 
   /** The characters as tiles, then the outfits of the one that was opened: a thumbnail for each, so nobody has to guess from a folder name. */
   function renderSources() {
@@ -226,14 +229,14 @@ export function createStudio(io) {
         renderSources();
       };
       crumbs.replaceChildren(back, ` › ${open.label} › choose an outfit`);
-      box.replaceChildren(...open.packs.map((p) => tile(p, outfitLabel(p, open.id), "", p === select.value, () => choosePack(p))));
+      box.replaceChildren(...open.packs.map((p) => tile(packThumb(p), outfitLabel(p, open.id), "", p === select.value, () => choosePack(p))));
       return;
     }
     openCharacter = "";
     crumbs.textContent = sources.length ? "Choose a character" : "There are no packs on this computer to draw from.";
     box.replaceChildren(
       ...[...groups.values()].map((g) =>
-        tile(g.packs.includes(select.value) ? select.value : g.packs[0], g.label, g.packs.length > 1 ? `${g.packs.length} outfits` : "", g.packs.includes(select.value), () => {
+        tile(packThumb(g.packs.includes(select.value) ? select.value : g.packs[0]), g.label, g.packs.length > 1 ? `${g.packs.length} outfits` : "", g.packs.includes(select.value), () => {
           if (g.packs.length === 1) return choosePack(g.packs[0]);
           openCharacter = g.id;
           renderSources();
@@ -242,25 +245,67 @@ export function createStudio(io) {
     );
   }
 
-  /** The pictures of the chosen pack as small buttons (redraw mode): which one to draw again. */
+  /** The picture a name belongs to: angry-blink, angry-talk2 and angry are all "angry"; cheer-1 is "cheer"; activity-dancing-talk-3 is "activity-dancing". */
+  function frameGroup(/** @type {string} */ name) {
+    const act = /^(activity-.+?)(?:-talk)?-\d+$/.exec(name);
+    if (act) return act[1];
+    return name.replace(/-blink$/, "").replace(/-talk\d*$/, "").replace(/-\d+$/, "");
+  }
+
+  /** Which group of pictures the picker has opened ("" is the list of groups). */
+  let openFrameGroup = "";
+
+  /**
+   * The pictures of the chosen pack, grouped: one tile for each emotion, pose or activity (with its main picture as the thumbnail), and a click on a
+   * group with variations (blinks, mouth shapes, the numbered pictures of a loop) shows those in its place.
+   */
   function renderFrames() {
     const box = q(".studio-frame-chips");
     const source = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
     const name = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-name"));
     if (!box || !source || !name) return;
-    // The emotions and poses first, the loops of an activity (dozens of numbered pictures) after them.
-    const pictures = [...(frames[source.value] ?? [])].sort((a, b) => Number(a.startsWith("activity-")) - Number(b.startsWith("activity-")));
-    box.replaceChildren(
-      ...pictures.map((p) => {
-        const b = el("button", { type: "button", className: `ghost studio-chip${p === name.value ? " studio-selected" : ""}`, textContent: p });
-        b.onclick = () => {
-          name.value = p;
-          renderFrames();
-          refreshSteps();
-        };
-        return b;
-      }),
-    );
+    const pack = source.value;
+    const pictures = frames[pack] ?? [];
+    /** @type {Map<string, string[]>} */
+    const groups = new Map();
+    for (const p of pictures) {
+      const key = frameGroup(p);
+      groups.set(key, [...(groups.get(key) ?? []), p]);
+    }
+    const thumb = (/** @type {string} */ f) => `pack-frame/${encodeURIComponent(pack)}/${encodeURIComponent(f)}`;
+    const pickFrame = (/** @type {string} */ f) => {
+      name.value = f;
+      renderFrames();
+      refreshSteps();
+    };
+    const members = openFrameGroup ? groups.get(openFrameGroup) : null;
+    const crumbs = el("div", { className: "studio-crumbs" });
+    const grid = el("div", { className: "studio-thumbs studio-thumbs-small" });
+    if (members && members.length > 1) {
+      const back = el("button", { type: "button", className: "ghost studio-crumb", textContent: "All pictures" });
+      back.onclick = () => {
+        openFrameGroup = "";
+        renderFrames();
+      };
+      crumbs.append(back, ` › ${openFrameGroup} › choose the one to change`);
+      // The main picture first, then the variations by their number.
+      const sorted = [...members].sort((a, b) => Number(a !== openFrameGroup) - Number(b !== openFrameGroup) || a.localeCompare(b, undefined, { numeric: true }));
+      grid.append(...sorted.map((f) => tile(thumb(f), f === openFrameGroup ? "main" : f.slice(openFrameGroup.length + 1) || f, "", f === name.value, () => pickFrame(f))));
+    } else {
+      openFrameGroup = "";
+      crumbs.textContent = pictures.length ? "Choose a picture. A group with variations (blinks, mouth shapes, loops) opens on a click." : "This pack has no pictures to draw again.";
+      const keys = [...groups.keys()].sort((a, b) => Number(a.startsWith("activity-")) - Number(b.startsWith("activity-")) || a.localeCompare(b));
+      grid.append(
+        ...keys.map((k) => {
+          const list = groups.get(k) ?? [];
+          // The thumbnail is the main picture: the one named like the group, else the first by number.
+          const main = list.includes(k) ? k : [...list].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))[0];
+          const selected = list.includes(name.value);
+          return tile(thumb(main), k, list.length > 1 ? `${list.length} pictures` : "", selected, () => (list.length > 1 ? ((openFrameGroup = k), renderFrames()) : pickFrame(k)));
+        }),
+      );
+    }
+    box.replaceChildren(crumbs, grid);
   }
 
   /** The steps are hidden while a job is drawn, waits for the pick or the review: then the pictures are the page. */
@@ -833,7 +878,7 @@ export function createStudio(io) {
     const pictures = frames[source.value] ?? [];
     name.replaceChildren(...pictures.map((p) => new Option(p, p)));
     if (pictures.includes(keep)) name.value = keep;
-    else if (pictures.length) name.value = pictures[0];
+    else name.value = ""; // no picture is chosen until the user clicks one
     renderFrames();
   }
 

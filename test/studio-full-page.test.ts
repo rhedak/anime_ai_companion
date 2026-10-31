@@ -52,3 +52,14 @@ test("the full pack studio's page is for this computer only: a phone is told the
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("the picker's small picture of a pack's frame is only a file of a pack found on this computer", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "studio-frame-"));
+  try {
+    for (const path of ["/pack-frame/nope/neutral", "/pack-frame/..%2Fx/neutral", "/pack-frame/nope/..%2F..%2Fetc%2Fpasswd"]) {
+      assert.equal((await request("127.0.0.1", path, dir)).status, 404, path);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

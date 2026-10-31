@@ -415,8 +415,8 @@ main[data-view="behind"] .msg.user { background: color-mix(in srgb, var(--surfac
 .studio-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
 .studio-thumbs .preset img { width: 100%; display: block; aspect-ratio: 3 / 4; object-fit: cover; border-radius: var(--radius-md); background: var(--fill-2); }
 .studio-tile-sub { display: block; color: var(--muted); font-size: 11px; text-align: center; }
-.studio-frame-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 9em; overflow-y: auto; }
-.studio-chip { padding: 2px 10px; font-size: var(--font-size-small); }
+.studio-thumbs-small { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+.studio-frame-chips .preset-name { font-size: 12px; }
 .studio-chip-maker { display: flex; align-items: center; gap: 8px; text-align: left; border-radius: 999px; padding: 6px 14px; }
 .studio-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #3fae6a; display: inline-block; }
 .studio-dot-off { background: #c0392b; }

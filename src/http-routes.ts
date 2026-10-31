@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
+import sharp from "sharp";
 import { frameMime, isPackName, readPack, type FramePack } from "./frame-pack.ts";
 import { cookieName, cookieValue, gateRequest, hostHeaderAllowed, isLoopbackAddress, sessionCookie } from "./lan.ts";
 import { DEVICE_DAYS } from "./phone-devices.ts";
@@ -176,6 +177,24 @@ export function createRequestHandler(deps: HttpDeps): (req: IncomingMessage, res
       }
       res.writeHead(200, { "content-type": frameMime(file), "cache-control": "no-cache", ...headers });
       res.end(body);
+      return;
+    }
+    const packFrame = /^\/pack-frame\/([^/]+)\/([^/]+)$/.exec(path);
+    if (packFrame) {
+      // One small picture of any pack on this computer, for the studio's picture picker. Only a file the scan of that pack found is read.
+      let name = "", frameName = "";
+      try {
+        [name, frameName] = [decodeURIComponent(packFrame[1]), decodeURIComponent(packFrame[2])];
+      } catch {}
+      const found = isPackName(name) ? await readPack(deps.packDirs, name, deps.emotionNames()) : null;
+      const known = found?.ok ? found.pack.files.get(`${frameName}.webp`) : undefined;
+      const small = known && (await sharp(await readFile(known.path)).resize({ width: 160 }).webp({ quality: 80 }).toBuffer().catch(() => null));
+      if (!small) {
+        res.writeHead(404).end("Not found");
+        return;
+      }
+      res.writeHead(200, { "content-type": "image/webp", "cache-control": "private, max-age=600", ...headers });
+      res.end(small);
       return;
     }
     const frame = /^\/frames\/([^/]+)\/([^/]+)$/.exec(path);
