@@ -266,3 +266,9 @@ Rule for every milestone: it ships off by default, behind the opt-in, with the d
 7. **Naming and sharing.** A generated pack gets a `NOTICE.md` saying it was made on this computer; can the user share it? Proposed:
    their business under the model's terms, never through our repositories without the normal review.
 8. **UI home.** A "Make a pack" button inside Looks → Packs…, or a separate studio page (`/studio`), given the length of a job.
+
+## The stepper (2026-10-31)
+
+The panel is a stepper, not one long form: what to do (a new outfit, or one picture drawn again), the pack to draw from (a thumbnail for each character, then for each of its outfits), what should change, who draws it, and a review that starts the job. A finished step is one line with *Change*. The studio opens on the last choices made in this browser (`studio-last` in local storage: the kind of work and the pack), one step from the start. The maker step opens only when the saved maker is not ready, and lists the makers in groups (on this computer, paid, through Chrome, by hand) with a cost for each; a Chrome maker that cannot run now is left out. While a job is drawn, waits for the pick or the review, the steps are hidden and the pictures are the page; Import, Export, the own image server and the agent handover are under *More…*. The full page (`/studio-full.html`) is 1100 px wide. The server's part is unchanged except that `studio-state` carries `characters` (which character each pack is an outfit of).
+
+Not done yet: a thumbnail for each single picture of a pack in the redraw step (they are names today), and picking several pictures to redraw at once.

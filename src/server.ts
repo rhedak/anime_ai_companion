@@ -777,6 +777,7 @@ const studio = createStudioService({
   },
   remoteRefusal: () => remoteRefusal,
   sources: () => listPacks(...packDirs),
+  characters: (names) => packCharacters(packDirs, names),
   readSource: async (name) => {
     const found = await readPack(packDirs, name, Object.keys(emotions));
     if (!found.ok) return null;

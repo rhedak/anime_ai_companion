@@ -46,6 +46,7 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     broadcast: (m) => sent.push(m as Record<string, any>),
     remoteRefusal: () => "only on the computer",
     sources: async () => ["risa-dress"],
+    characters: async (names) => Object.fromEntries(names.filter((n) => n.startsWith("risa-")).map((n) => [n, { id: "risa", name: "Risa" }])),
     readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: [], character: "risa" } : null),
     refreshPacks: async () => {},
     pushNote: (t) => notes.push(t),
@@ -651,6 +652,7 @@ test("a model on this computer is always in the image maker list, and when it is
     assert.match(help, /rhedak\.github\.io\/anime_ai_companion\/local-model\.html/);
     assert.equal(t.service.enabled(), true);
     assert.ok(t.sent.some((m) => m.type === "studio-state" && m.on === true), "and the page is told it is open");
+    assert.deepEqual((await t.service.stateMessage()).characters, { "risa-dress": { id: "risa", name: "Risa" } }, "and which character each pack is an outfit of, for the picker");
   } finally {
     await t.cleanup();
   }

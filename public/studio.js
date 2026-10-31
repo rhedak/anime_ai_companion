@@ -92,16 +92,225 @@ export function createStudio(io) {
     yes.focus();
   }
 
+  // --- the panel is a stepper: goal, the pack to draw from, what should change, who draws it, review and start. A finished step is one line with "Change". ---
+
+  const STEPS = ["goal", "source", "words", "maker", "start"];
+  /** What the user is making: a whole new outfit, or one picture of a pack drawn again. */
+  /** @type {"new" | "redraw" | ""} */
+  let mode = "";
+  let stage = 0;
+  let initialised = false;
+  /** Which character's outfits the picker is showing ("" is the characters). */
+  let openCharacter = "";
+  /** Which character each pack belongs to ({ pack: { id, name } }), from the server. */
+  /** @type {Record<string, { id: string, name: string }>} */
+  let characters = {};
+  /** @type {Record<string, HTMLElement>} */
+  let stepBoxes = {};
+
+  /** The choices the user made last time (this browser only; nothing here matters to the server): the studio opens on them. */
+  function remembered() {
+    try {
+      return JSON.parse(localStorage.getItem("studio-last") || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+  function remember(/** @type {Record<string, string>} */ patch) {
+    try {
+      localStorage.setItem("studio-last", JSON.stringify({ ...remembered(), ...patch }));
+    } catch {}
+  }
+
+  const makerChoice = () => makers.find((m) => m.value === maker);
+  const makerReady = () => Boolean(makerChoice()) && makerChoice()?.available !== false;
+  const COST = /** @type {Record<string, string>} */ ({ free: "free", "per-picture": "paid per picture", allowance: "uses your allowance" });
+
+  function setStage(/** @type {number} */ n) {
+    stage = Math.max(0, Math.min(STEPS.length - 1, n));
+    refreshSteps();
+  }
+
+  /** The words next to each step (what was chosen), and which steps are open, done or waiting. */
+  function refreshSteps() {
+    if (!panel) return;
+    const pick = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    const char = pick?.value ? characters[pick.value] : null;
+    const outfit = /** @type {HTMLTextAreaElement | null} */ (q("#studio-outfit"));
+    const frameName = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-name"));
+    const chosen = makerChoice();
+    /** @type {Record<string, string>} */
+    const words = {
+      goal: mode === "new" ? "Design a new outfit" : mode === "redraw" ? "Redraw a picture" : "",
+      source: mode && pick?.value ? (char ? `${char.name} › ${outfitLabel(pick.value, char.id)}` : pick.value) : "",
+      words: !mode ? "" : mode === "redraw" ? frameName?.value || "" : (outfit?.value || "").slice(0, 70),
+      maker: chosen ? `${chosen.available === false ? "not ready" : "ready"} · ${chosen.label}` : "",
+      start: "",
+    };
+    STEPS.forEach((key, i) => {
+      const box = stepBoxes[key];
+      if (!box) return;
+      const active = i === stage;
+      box.classList.toggle("studio-step-active", active);
+      box.classList.toggle("studio-step-done", !active && Boolean(words[key]) && (i < stage || key === "maker"));
+      const done = box.classList.contains("studio-step-done");
+      /** @type {HTMLElement} */ (box.querySelector(".studio-step-num")).textContent = done ? "✓" : String(i + 1);
+      /** @type {HTMLElement} */ (box.querySelector(".studio-step-val")).textContent = active ? "" : words[key];
+      /** @type {HTMLElement} */ (box.querySelector(".studio-step-change")).hidden = active || !words[key];
+      /** @type {HTMLElement} */ (box.querySelector(".studio-step-body")).hidden = !active;
+    });
+    // The two kinds of work share the third and the last step; only the fields differ.
+    for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = /** @type {HTMLElement} */ (n).dataset.for !== mode;
+    const review = q(".studio-review-lines");
+    if (review) {
+      const rows = [["Drawn from", words.source], [mode === "redraw" ? "Picture" : "Change", words.words], ["Maker", chosen?.label ?? ""]];
+      review.replaceChildren(...rows.filter(([, v]) => v).flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
+    }
+  }
+
+  function chooseMode(/** @type {"new" | "redraw"} */ next) {
+    mode = next;
+    remember({ mode });
+    renderSources();
+    renderFrames();
+    setStage(1);
+  }
+
+  /** @param {string} pack */
+  function choosePack(pack) {
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    if (!select) return;
+    sourceTouched = true; // only the user's own choice counts: it keeps the form from being moved back to the pack she wears
+    select.value = pack;
+    select.onchange?.(new Event("change"));
+    const frameSource = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
+    if (frameSource) frameSource.value = pack;
+    fillFrames();
+    remember({ source: pack });
+    renderSources();
+    setStage(2);
+  }
+
+  /** A pack's outfit as a label: its folder name without the character's id in front ("risa-casual" is "casual"). */
+  function outfitLabel(/** @type {string} */ pack, /** @type {string} */ id) {
+    return pack.toLowerCase().startsWith(`${id}-`) ? pack.slice(id.length + 1) : pack;
+  }
+
+  function tile(/** @type {string} */ pack, /** @type {string} */ label, /** @type {string} */ sub, /** @type {boolean} */ selected, /** @type {() => void} */ onclick) {
+    const t = el("button", { type: "button", className: `preset${selected ? " studio-selected" : ""}`, title: sub ? `${label}: ${sub}` : label });
+    t.append(el("img", { src: `pack-thumb/${encodeURIComponent(pack)}`, alt: "", loading: "lazy" }), el("span", { className: "preset-name", textContent: label }));
+    if (sub) t.append(el("span", { className: "studio-tile-sub", textContent: sub }));
+    t.onclick = onclick;
+    return t;
+  }
+
+  /** The characters as tiles, then the outfits of the one that was opened: a thumbnail for each, so nobody has to guess from a folder name. */
+  function renderSources() {
+    const box = q(".studio-thumbs");
+    const crumbs = q(".studio-crumbs");
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    if (!box || !crumbs || !select) return;
+    /** @type {Map<string, { id: string, label: string, packs: string[] }>} */
+    const groups = new Map();
+    for (const s of sources) {
+      const c = characters[s];
+      const id = c?.id ?? `pack:${s}`;
+      if (!groups.has(id)) groups.set(id, { id, label: c?.name ?? s, packs: [] });
+      groups.get(id)?.packs.push(s);
+    }
+    const open = openCharacter ? groups.get(openCharacter) : null;
+    if (open && open.packs.length > 1) {
+      const back = el("button", { type: "button", className: "ghost studio-crumb", textContent: "Characters" });
+      back.onclick = () => {
+        openCharacter = "";
+        renderSources();
+      };
+      crumbs.replaceChildren(back, ` › ${open.label} › choose an outfit`);
+      box.replaceChildren(...open.packs.map((p) => tile(p, outfitLabel(p, open.id), "", p === select.value, () => choosePack(p))));
+      return;
+    }
+    openCharacter = "";
+    crumbs.textContent = sources.length ? "Choose a character" : "There are no packs on this computer to draw from.";
+    box.replaceChildren(
+      ...[...groups.values()].map((g) =>
+        tile(g.packs.includes(select.value) ? select.value : g.packs[0], g.label, g.packs.length > 1 ? `${g.packs.length} outfits` : "", g.packs.includes(select.value), () => {
+          if (g.packs.length === 1) return choosePack(g.packs[0]);
+          openCharacter = g.id;
+          renderSources();
+        }),
+      ),
+    );
+  }
+
+  /** The pictures of the chosen pack as small buttons (redraw mode): which one to draw again. */
+  function renderFrames() {
+    const box = q(".studio-frame-chips");
+    const source = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
+    const name = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-name"));
+    if (!box || !source || !name) return;
+    // The emotions and poses first, the loops of an activity (dozens of numbered pictures) after them.
+    const pictures = [...(frames[source.value] ?? [])].sort((a, b) => Number(a.startsWith("activity-")) - Number(b.startsWith("activity-")));
+    box.replaceChildren(
+      ...pictures.map((p) => {
+        const b = el("button", { type: "button", className: `ghost studio-chip${p === name.value ? " studio-selected" : ""}`, textContent: p });
+        b.onclick = () => {
+          name.value = p;
+          renderFrames();
+          refreshSteps();
+        };
+        return b;
+      }),
+    );
+  }
+
+  /** The steps are hidden while a job is drawn, waits for the pick or the review: then the pictures are the page. */
+  function stepsHidden(/** @type {boolean} */ hidden) {
+    const steps = q(".studio-steps");
+    if (steps) steps.hidden = hidden;
+  }
+
+  /** The studio opens on what the user did last time: the same kind of work, the same pack and the same maker, one step from the start. */
+  function initStage() {
+    if (initialised || !panel || !sources.length) return;
+    initialised = true;
+    const last = remembered();
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    if ((last.mode === "new" || last.mode === "redraw") && sources.includes(last.source) && select) {
+      mode = last.mode;
+      choosePackQuiet(last.source);
+      setStage(2);
+    } else setStage(0);
+  }
+
+  function choosePackQuiet(/** @type {string} */ pack) {
+    const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
+    const frameSource = /** @type {HTMLSelectElement | null} */ (q("#studio-frame-source"));
+    if (select) {
+      sourceTouched = true;
+      select.value = pack;
+      select.onchange?.(new Event("change"));
+    }
+    if (frameSource) frameSource.value = pack;
+    fillFrames();
+    renderSources();
+  }
+
   function open() {
     if (!on) return askToOpen();
     if (panel) return close(); // the same menu entry again closes it
-    const source = el("select", { id: "studio-source", title: "The pack whose character, pose and framing the new outfit starts from. It is only read; nothing in it changes.", ariaLabel: "Draw from this pack" });
+    const source = el("select", { id: "studio-source", hidden: true, ariaLabel: "Draw from this pack" });
     const name = el("input", { type: "text", id: "studio-name", title: "The folder name of the new pack in data/frames. A name that is taken is refused; nothing is replaced.", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
     const outfit = el("textarea", { id: "studio-outfit", title: "What she wears in the new pack. The image maker is told this, with the rest of the picture kept the same.", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
+    outfit.addEventListener("input", refreshSteps);
     const look = el("textarea", { id: "studio-look", title: "The line she uses to say what she wears (look.txt). Left empty it is made from the outfit.", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
     const count = el("select", { id: "studio-count", title: "How many different first pictures are drawn for you to pick the best from. A paid maker charges for each one.", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
-    const makerSelect = el("select", { id: "studio-maker", title: "The program or service that draws the pictures. Makers that cannot be used now are greyed with the reason.", ariaLabel: "Which image maker draws it" });
-    makerSelect.onchange = () => io.send({ type: "studio-backend", value: makerSelect.value });
+    const makerSelect = el("select", { id: "studio-maker", hidden: true, ariaLabel: "Which image maker draws it" });
+    makerSelect.onchange = () => {
+      maker = makerSelect.value;
+      remember({ maker });
+      io.send({ type: "studio-backend", value: makerSelect.value });
+      fillMakers();
+    };
     const localBox = el("details", { className: "studio-local" },
       el("summary", { textContent: "Start my own image server (a local model you set up yourself)" }),
       el("label", { textContent: "Python (whole path)", htmlFor: "studio-local-python" }),
@@ -124,21 +333,30 @@ export function createStudio(io) {
       io.send({ type: "studio-local-start", python: localValue("#studio-local-python"), server: localValue("#studio-local-server"), device: localValue("#studio-local-device") });
     };
     /** @type {HTMLElement} */ (localBox.querySelector("#studio-local-stop")).onclick = () => io.send({ type: "studio-local-stop" });
-    const models = el("ul", { className: "studio-models", ariaLabel: "Image makers and what each needs" });
-    const start = el("button", { type: "button", textContent: "Draw outfits" });
-    const stop = el("button", { type: "button", className: "ghost", textContent: "Stop", hidden: true });
-    const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close" });
-    const frameSource = el("select", { id: "studio-frame-source", title: "The installed pack to take one picture from. The new pack is a copy; this one is not changed.", ariaLabel: "Draw one picture again from this pack" });
-    const frameName = el("select", { id: "studio-frame-name", title: "The picture to draw again, by its name in the pack (happy, happy-blink, wave-1 and so on).", ariaLabel: "Which picture of it" });
+    const models = el("div", { className: "studio-models", ariaLabel: "Image makers and what each needs" });
+    const chip = el("button", { type: "button", className: "ghost studio-chip-maker", ariaExpanded: "false" });
+    chip.onclick = () => {
+      models.hidden = !models.hidden;
+      chip.setAttribute("aria-expanded", String(!models.hidden));
+    };
+    models.hidden = true;
+    const start = el("button", { type: "button", className: "studio-start", textContent: "Draw outfits" });
+    const stop = el("button", { type: "button", className: "ghost studio-stop", textContent: "Stop", hidden: true });
+    const closeButton = el("button", { type: "button", className: "ghost", textContent: "Close", ariaLabel: "Close the pack studio" });
+    const frameSource = el("select", { id: "studio-frame-source", hidden: true, ariaLabel: "Draw one picture again from this pack" });
+    const frameName = el("select", { id: "studio-frame-name", hidden: true, ariaLabel: "Which picture of it" });
     const framePrompt = el("textarea", { id: "studio-frame-prompt", title: "Only this is changed in the picture; the character, pose and framing are asked to stay the same.", rows: 2, maxLength: 400, placeholder: "what to change in that picture, in your own words (a red scarf around her neck)", ariaLabel: "What to change in the picture" });
     const framePack = el("input", { type: "text", id: "studio-frame-pack", title: "The folder name of the copy of the pack that has the new picture.", maxLength: 40, placeholder: "name of the new pack (empty: the source pack's name with -edit)", ariaLabel: "Name of the new pack for the picture" });
-    const frameStart = el("button", { type: "button", className: "ghost", textContent: "Draw this picture again" });
+    const frameStart = el("button", { type: "button", className: "studio-frame-start", textContent: "Draw this picture again" });
     frameStart.onclick = () => {
       q(".studio-frame")?.replaceChildren();
       setBusy(true, "Drawing the picture again…");
       io.send({ type: "studio-frame-edit", source: frameSource.value, frame: frameName.value, prompt: framePrompt.value, name: framePack.value });
     };
-    frameSource.onchange = () => fillFrames();
+    frameSource.onchange = () => {
+      fillFrames();
+      renderFrames();
+    };
     const handover = el("button", { type: "button", className: "ghost", textContent: "Hand over to an AI agent…", title: "A prompt to copy into any AI agent that makes pictures, if no image maker here suits you" });
     handover.onclick = () => io.send({ type: "studio-handover", source: source.value, name: name.value, outfit: outfit.value });
     closeButton.onclick = () => {
@@ -149,12 +367,12 @@ export function createStudio(io) {
     const full = el("button", { type: "button", className: "ghost", textContent: "Open full studio", title: "The whole studio on its own page, in a new tab", hidden: !onThisComputer() || Boolean(io.closeWindow) }); // the full studio is this page: nothing to open
     full.onclick = () => window.open("/studio-full.html", "_blank", "noopener");
     stop.onclick = () => io.send({ type: "studio-cancel" });
-    source.addEventListener("input", () => (sourceTouched = true)); // only the user's own choice counts (a script's change does not fire this)
     source.onchange = () => {
       if (!name.value || name.dataset.auto === "1") {
         name.value = `${source.value}-new`;
         name.dataset.auto = "1";
       }
+      refreshSteps();
     };
     name.oninput = () => delete name.dataset.auto;
     start.onclick = () => {
@@ -164,11 +382,11 @@ export function createStudio(io) {
       status("Checking…");
     };
     const transferFolder = el("input", { id: "studio-transfer-folder", type: "text", placeholder: "Whole path of a folder, e.g. /Users/me/packs", autocomplete: "off" });
-    const transferName = el("input", { id: "studio-transfer-name", type: "text", placeholder: "Name for an imported pack", autocomplete: "off", title: "Used by Import. Export uses the pack picked under 'Draw one picture of a pack again'." });
-    const exportButton = el("button", { type: "button", className: "ghost", textContent: "Export the pack above", title: "Copies the pack picked above into a new folder of that name inside the folder given" });
+    const transferName = el("input", { id: "studio-transfer-name", type: "text", placeholder: "Name for an imported pack", autocomplete: "off", title: "Used by Import. Export uses the pack chosen in the steps." });
+    const exportButton = el("button", { type: "button", className: "ghost", textContent: "Export the chosen pack", title: "Copies the pack chosen in the steps into a new folder of that name inside the folder given" });
     const importButton = el("button", { type: "button", className: "ghost", textContent: "Import a folder as a pack", title: "Copies the pictures of the folder given into a new pack of the name given" });
     exportButton.onclick = () => {
-      io.send({ type: "studio-export", source: frameSource.value, folder: transferFolder.value });
+      io.send({ type: "studio-export", source: source.value, folder: transferFolder.value });
       setBusy(true, "Exporting…");
       status("Exporting…");
     };
@@ -177,52 +395,92 @@ export function createStudio(io) {
       setBusy(true, "Importing…");
       status("Importing…");
     };
-    panel = el(
-      "div",
-      { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
-      el("div", { className: "gallery-title", textContent: "Pack studio: a draft of her in a new outfit, drawn on this computer" }),
-      el("div", { className: "studio-assist", hidden: true }),
-      el("label", { textContent: "Image maker (web services cost money or allowance; the next question says what)", htmlFor: "studio-maker" }),
-      makerSelect,
-      models,
+
+    /** One step: its number, title, what was chosen, "Change", and the body that only the open step shows. */
+    const step = (/** @type {string} */ key, /** @type {string} */ title, /** @type {string} */ help, /** @type {(Node | string)[]} */ ...body) => {
+      const change = el("button", { type: "button", className: "studio-step-change ghost", textContent: "Change", hidden: true });
+      change.onclick = () => setStage(STEPS.indexOf(key));
+      const box = el("section", { className: "studio-step" },
+        el("div", { className: "studio-step-head" }, el("span", { className: "studio-step-num" }), el("span", { className: "studio-step-title", textContent: title }), el("span", { className: "studio-step-val" }), change),
+        el("div", { className: "studio-step-body" }, help ? el("p", { className: "studio-help", textContent: help }) : "", ...body),
+      );
+      box.dataset.step = key;
+      stepBoxes[key] = box;
+      return box;
+    };
+    const forMode = (/** @type {"new" | "redraw"} */ m, /** @type {(Node | string)[]} */ ...kids) => {
+      const box = el("div", {}, ...kids);
+      box.dataset.for = m;
+      return box;
+    };
+    const next = (/** @type {() => number} */ to) => {
+      const b = el("button", { type: "button", textContent: "Next" });
+      b.onclick = () => setStage(to());
+      return el("div", { className: "pack-confirm-buttons" }, b);
+    };
+    const goalButton = (/** @type {"new" | "redraw"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
+      const b = el("button", { type: "button", className: "ghost studio-goal" }, el("strong", { textContent: title }), el("span", { textContent: sub }));
+      b.onclick = () => chooseMode(m);
+      return b;
+    };
+    const pickMaker = el("div", { className: "pack-confirm-buttons" });
+    const makerNext = el("button", { type: "button", className: "studio-maker-next", textContent: "Next" });
+    makerNext.onclick = () => setStage(4);
+    pickMaker.append(makerNext);
+    const moreBox = el("details", { className: "studio-more" },
+      el("summary", { textContent: "More…" }),
+      el("p", { className: "studio-help", textContent: "Rarely needed: a pack as a folder of pictures (nothing is ever written over a folder that exists), your own image server, and a prompt for any AI agent." }),
       localBox,
-      el("label", { textContent: "Draw from", htmlFor: "studio-source" }),
-      source,
-      el("label", { textContent: "New pack", htmlFor: "studio-name" }),
-      name,
-      el("label", { textContent: "Outfit", htmlFor: "studio-outfit" }),
-      outfit,
-      el("label", { textContent: "Her words for it", htmlFor: "studio-look" }),
-      look,
-      el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }),
-      count,
-      el("div", { className: "studio-proposal" }),
-      el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }),
-      el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, full, handover),
-      el("label", { textContent: "Draw one picture of a pack again (with the image maker chosen above; a paid or browser maker asks first; the new pack is a copy, the source is not changed)" }),
-      frameSource,
-      frameName,
-      framePrompt,
-      framePack,
-      el("div", { className: "pack-confirm-buttons" }, frameStart),
-      el("div", { className: "studio-frame" }),
-      el("div", { className: "studio-handover" }),
-      el("label", { textContent: "Import and export (a pack as a folder of pictures; nothing is ever written over a folder that exists)", htmlFor: "studio-transfer-folder" }),
+      el("label", { textContent: "Import and export", htmlFor: "studio-transfer-folder" }),
       transferFolder,
       transferName,
       el("div", { className: "pack-confirm-buttons" }, exportButton, importButton),
+      el("div", { className: "pack-confirm-buttons" }, handover),
+      el("div", { className: "studio-handover" }),
+    );
+    stepBoxes = {};
+    panel = el(
+      "div",
+      { className: "studio", role: "dialog", ariaLabel: "Pack studio" },
+      el("div", { className: "studio-top" }, el("div", { className: "gallery-title", textContent: "Pack studio" }), full, closeButton),
+      el("div", { className: "studio-assist", hidden: true }),
+      el("div", { className: "studio-proposal" }),
+      el("div", { className: "studio-resume" }),
+      el("div", { className: "studio-steps" },
+        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"))),
+        step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs" }), el("div", { className: "studio-thumbs" }), source, frameSource, frameName),
+        step("words", "What should change?", "",
+          forMode("new", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
+            el("label", { textContent: "Name of the new pack", htmlFor: "studio-name" }), name,
+            el("details", {}, el("summary", { textContent: "Her words for it (optional)" }), look)),
+          forMode("redraw", el("label", { textContent: "Which picture" }), el("div", { className: "studio-frame-chips" }),
+            el("label", { textContent: "What to change in it", htmlFor: "studio-frame-prompt" }), framePrompt,
+            el("label", { textContent: "Name of the new pack", htmlFor: "studio-frame-pack" }), framePack),
+          next(() => (makerReady() ? 4 : 3))),
+        step("maker", "Who draws it?", "Web services cost money or allowance; the next question says what.", chip, models, makerSelect, pickMaker),
+        step("start", "Review and start", "",
+          el("dl", { className: "studio-review-lines" }),
+          forMode("new", el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }), count,
+            el("details", {}, el("summary", { textContent: "What is in a pack?" }), el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }))),
+          el("div", { className: "pack-confirm-buttons" }, forMode("new", start), forMode("redraw", frameStart), stop)),
+      ),
       el("p", { className: "studio-status", role: "status" }),
       el("p", { className: "studio-spend", role: "status" }),
       el("div", { className: "studio-confirm" }),
+      el("div", { className: "studio-frame" }),
       el("div", { className: "studio-candidates" }),
+      moreBox,
     );
     io.host()?.append(panel);
     zoom = el("div", { className: "studio-zoom", hidden: true }, el("img", { alt: "" }));
     io.host()?.append(zoom);
+    initialised = false;
     fillSources();
     fillMakers();
+    fillFrames();
+    renderFrames();
     source.onchange?.(new Event("change"));
-    outfit.focus();
+    if (!initialised) setStage(0);
     io.send({ type: "studio-state" }); // a job that is already going (or waiting for the pick) is shown again
   }
 
@@ -390,7 +648,7 @@ export function createStudio(io) {
 
   /** Jobs from an earlier session, as buttons that carry them on. */
   function showResumable(/** @type {any[]} */ jobs) {
-    const box = q(".studio-confirm");
+    const box = q(".studio-resume");
     if (!box) return;
     box.replaceChildren(
       ...jobs.map((j) => {
@@ -448,7 +706,11 @@ export function createStudio(io) {
       };
       box.append(el("p", { textContent: "She suggests drawing these again:" }), go);
     } else if (p.outfit || p.name || p.look) {
-      box.append(el("p", { textContent: "She suggested these words. Change anything, then press Draw outfits." }));
+      mode = "new";
+      remember({ mode });
+      renderSources();
+      setStage(2);
+      box.append(el("p", { textContent: "She suggested these words. Change anything, then go on to the end." }));
     }
   }
 
@@ -488,23 +750,75 @@ export function createStudio(io) {
     yes.focus();
   }
 
+  const GROUPS = [
+    ["local", "On this computer"],
+    ["paid", "Paid websites (a cost for each picture)"],
+    ["browser", "Through your Chrome"],
+    ["assisted", "By hand"],
+  ];
+
   function fillMakers() {
     const list = q(".studio-models");
-    if (list) {
-      // Every maker with what it costs and whether it is ready now: the choice itself is the list above.
-      list.replaceChildren(...makers.map((m) => el("li", { className: m.available === false ? "studio-not-ready" : "studio-ready" },
-        el("span", { textContent: m.available === false ? "not ready" : "ready" }), " · ",
-        el("span", { textContent: m.label }),
-        m.available === false && m.reason ? el("span", { className: "studio-why", textContent: ` (${m.reason})` }) : "",
-      )));
-    }
+    const chip = q(".studio-chip-maker");
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
-    if (!select) return;
-    // A maker that cannot be used now is listed with why, and cannot be picked (the server says the same when asked to draw).
-    select.replaceChildren(...makers.map((m) => new Option(m.available === false && m.reason ? `${m.label} (${m.reason})` : m.label, m.value)));
-    for (const option of select.options) option.disabled = makers.some((m) => m.value === option.value && m.available === false);
-    if (makers.some((m) => m.value === maker)) select.value = maker;
-    else select.prepend(new Option("Choose an image maker…", "", true, true)); // nothing chosen yet: say so, rather than an empty box
+    if (list) {
+      /** @param {typeof makers[number]} m */
+      const option = (m) => {
+        const off = m.available === false;
+        const b = el("button", { type: "button", className: `ghost studio-opt${m.value === maker ? " studio-selected" : ""}${off ? " studio-not-ready" : ""}`, disabled: off });
+        b.append(
+          el("span", { className: off ? "studio-dot studio-dot-off" : "studio-dot" }),
+          el("span", { className: "studio-opt-label", textContent: m.label }),
+          el("small", { textContent: off ? m.reason || "not ready" : COST[m.cost ?? "free"] ?? "" }),
+        );
+        b.onclick = () => {
+          if (!select) return;
+          select.value = m.value;
+          select.dispatchEvent(new Event("change"));
+          /** @type {HTMLElement} */ (list).hidden = true;
+        };
+        return b;
+      };
+      list.replaceChildren(
+        ...GROUPS.flatMap(([kind, title]) => {
+          // A site maker that cannot run now (it needs Claude as the brain, say) is left out: a greyed row only adds to the wall.
+          const own = makers.filter((m) => m.kind === kind && !(kind === "browser" && m.available === false));
+          if (!own.length) return [];
+          const group = el("div", { className: "studio-group" }, el("h4", { textContent: title }), ...own.map(option));
+          if (kind === "local" && own.some((m) => m.available === false)) {
+            const more = el("button", { type: "button", className: "ghost", textContent: "Start my own image server…" });
+            more.onclick = () => {
+              const box = /** @type {HTMLDetailsElement | null} */ (q(".studio-more"));
+              if (box) box.open = true;
+              /** @type {HTMLDetailsElement | null} */ (q(".studio-local"))?.setAttribute("open", "");
+              q(".studio-more")?.scrollIntoView?.({ block: "nearest" });
+            };
+            group.append(more);
+          }
+          return [group];
+        }),
+      );
+    }
+    const chosen = makerChoice();
+    if (chip) {
+      chip.replaceChildren(
+        el("span", { className: chosen && chosen.available !== false ? "studio-dot" : "studio-dot studio-dot-off" }),
+        el("span", { textContent: chosen ? `${chosen.label}${chosen.available === false && chosen.reason ? ` (${chosen.reason})` : ""}` : "Choose how it is drawn" }),
+        el("span", { textContent: "▾" }),
+      );
+    }
+    const nextButton = /** @type {HTMLButtonElement | null} */ (q(".studio-maker-next"));
+    if (nextButton) nextButton.disabled = !makerReady();
+    if (select) {
+      // A maker that cannot be used now is listed with why, and cannot be picked (the server says the same when asked to draw).
+      select.replaceChildren(...makers.map((m) => new Option(m.available === false && m.reason ? `${m.label} (${m.reason})` : m.label, m.value)));
+      for (const o of select.options) o.disabled = makers.some((m) => m.value === o.value && m.available === false);
+      if (makers.some((m) => m.value === maker)) select.value = maker;
+      else select.prepend(new Option("Choose an image maker…", "", true, true));
+    }
+    // Nothing usable chosen: the list is open, so the next move is clear.
+    if (list && !makerReady()) list.hidden = false;
+    refreshSteps();
   }
 
   function fillFrames() {
@@ -519,6 +833,8 @@ export function createStudio(io) {
     const pictures = frames[source.value] ?? [];
     name.replaceChildren(...pictures.map((p) => new Option(p, p)));
     if (pictures.includes(keep)) name.value = keep;
+    else if (pictures.length) name.value = pictures[0];
+    renderFrames();
   }
 
   /** One picture with a paid service or a browser maker: the question first, with what it costs and what it does (nothing is drawn before the yes). */
@@ -681,16 +997,20 @@ export function createStudio(io) {
     if (!sourceTouched && sources.includes(active)) select.value = active;
     else if (sources.includes(keep)) select.value = keep;
     select.onchange?.(new Event("change")); // the name of the new pack follows the pack it is drawn from, until the user has typed one
+    if (!openCharacter && characters[select.value] && !initialised) openCharacter = "";
+    renderSources();
+    initStage();
+    refreshSteps();
   }
 
   function running(/** @type {boolean} */ busy) {
     setBusy(busy, busy ? q(".studio-status")?.textContent || "Working…" : "");
     const picker = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
     if (picker) picker.disabled = busy;
-    const start = /** @type {HTMLButtonElement | null} */ (panel?.querySelector(".pack-confirm-buttons button"));
-    if (start) start.disabled = busy;
-    const stop = q(".pack-confirm-buttons button:nth-child(2)");
+    for (const b of panel?.querySelectorAll(".studio-start, .studio-frame-start") ?? []) /** @type {HTMLButtonElement} */ (b).disabled = busy;
+    const stop = q(".studio-stop");
     if (stop) stop.hidden = !busy;
+    if (busy) stepsHidden(true);
   }
 
   return {
@@ -723,6 +1043,7 @@ export function createStudio(io) {
           packSize = Number(msg.packSize) || 0;
           maker = typeof msg.backend === "string" ? msg.backend : "";
           fillMakers();
+          characters = msg.characters && typeof msg.characters === "object" ? msg.characters : {};
           sources = Array.isArray(msg.sources) ? msg.sources.filter((/** @type {unknown} */ s) => typeof s === "string") : [];
           active = typeof msg.active === "string" ? msg.active : "";
           if (!on) close();
@@ -735,7 +1056,7 @@ export function createStudio(io) {
             if (msg.frameReview) showFrameReview(msg.frameReview);
             else if (msg.frameAsk) showFrameAsk(msg.frameAsk);
             else q(".studio-frame")?.replaceChildren();
-            if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-confirm")?.childElementCount) showResumable(msg.resumable);
+            if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-resume")?.childElementCount) showResumable(msg.resumable);
             if (msg.job && panel) {
               const grid = q(".studio-candidates");
               // A review that is waiting but whose buttons are missing (the pictures came first) is shown again whole.
@@ -751,6 +1072,7 @@ export function createStudio(io) {
           if (msg.proposal && panel && !q(".studio-proposal")?.childElementCount) applyProposal({ ...msg.proposal, job: msg.job?.reviewing ? msg.job.id : null });
           spendLine(Number(msg.spend?.usd), Number(msg.spend?.limit));
           running(Boolean(msg.running));
+          stepsHidden(Boolean(msg.job) || Boolean(msg.running));
           document.dispatchEvent(new CustomEvent("studio-state", { detail: { on } }));
           return true;
         case "studio-spend":
@@ -880,17 +1202,20 @@ export function createStudio(io) {
         }
         case "studio-review":
           running(false);
+          stepsHidden(true);
           showReview(String(msg.id), msg);
           io.attention?.(msg.flagged?.length ? "Pack ready: look at the flagged pictures" : "Pack ready to review");
           status(msg.flagged?.length ? `Done. ${msg.flagged.length} picture(s) did not pass every check: look at them.` : "Done. Look at the pack, then use it.");
           return true;
         case "studio-candidates-done":
           running(false);
+          stepsHidden(true);
           io.attention?.("Pick a picture");
           status(typeof msg.text === "string" && msg.text ? msg.text : "Pick the one you like. Nothing is saved until you do.");
           return true;
         case "studio-installed": {
           running(false);
+          stepsHidden(false);
           const name = String(msg.name);
           status(`Made ${name}: a draft pack, written to your pictures. Look it over in a chat before you rely on it.`);
           const show = el("button", { type: "button", textContent: `Show her as ${name}` });
@@ -901,6 +1226,7 @@ export function createStudio(io) {
         case "studio-error": {
           hideAssist();
           running(false);
+          stepsHidden(false);
           io.attention?.("The studio stopped");
           status(String(msg.message), true);
           // A job that stopped part way is still on disk: one button carries it on from the picture that failed.
@@ -919,6 +1245,7 @@ export function createStudio(io) {
         case "studio-cancelled":
           hideAssist();
           running(false);
+          stepsHidden(false);
           q(".studio-confirm")?.replaceChildren();
           q(".studio-candidates")?.replaceChildren();
           status(declined ? "Nothing was drawn." : "Stopped.");

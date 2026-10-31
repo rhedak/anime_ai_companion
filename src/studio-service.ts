@@ -46,6 +46,8 @@ export interface StudioDeps {
   remoteRefusal(): string;
   /** The packs a new one can be drawn from (all of them, shipped and installed). */
   sources(): Promise<string[]>;
+  /** Which character each of those packs belongs to ({ pack folder: { id, name } }), so the page can group outfits under their character. Optional: without it every pack stands alone. */
+  characters?(names: string[]): Promise<Record<string, { id: string; name: string }>>;
   readSource(name: string): Promise<SourceFrames | null>;
   /** The pack she is wearing now, or null (the drawn avatar): a new outfit is drawn from it unless the user picks another. */
   activeSource(): string | null;
@@ -299,6 +301,8 @@ export function createStudioService(deps: StudioDeps) {
       /** How many pictures a full pack has, the neutral one (the base, not in knownFrameNames) included (the form says what they are). */
       packSize: knownFrameNames().size + 1,
       sources: on ? (knownSources = await deps.sources()) : [],
+      /** Which character each pack is an outfit of, for the picker's character, then outfit, steps. */
+      characters: on && deps.characters ? await deps.characters(knownSources) : {},
       /** The pack the form starts from. */
       active: deps.activeSource() ?? deps.drawnSource?.() ?? null,
       running: running ? { id: running.job.id, name: running.job.name, phase: running.phase } : null,
