@@ -798,7 +798,10 @@ test("drawing one picture again refuses what it cannot do, and says why", async 
     assert.match(me.at(-1)?.message ?? "", /can have letters/);
     await t.service.message({ type: "studio-backend", value: "xai" }, send, false);
     await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a hat", name: "x-4" }, send, false);
-    assert.match(me.at(-1)?.message ?? "", /model on this computer/);
+    // A paid maker is no longer refused: it is asked about first (the paid test below draws it).
+    assert.ok(t.sent.some((m) => m.type === "studio-frame-ask" && /THIS IS PAID/.test(m.note)));
+    await t.service.message({ type: "studio-frame-ask-cancel" }, send, false);
+    assert.equal((await t.service.stateMessage()).frameAsk, null, "Not now closes the question");
   } finally {
     await t.cleanup();
   }
@@ -974,6 +977,38 @@ test("a server that exits at once is reported as failed with what it printed, an
       await other.cleanup();
     }
   } finally {
+    await t.cleanup();
+  }
+});
+
+test("one picture with a paid service is asked about first, drawn only on the yes, and costs what the service says", async () => {
+  const t = await setup({ backendUrl: "xai", xai: true, budget: 5 });
+  const me: Record<string, any>[] = [];
+  const send = (m: unknown) => me.push(m as Record<string, any>);
+  const previous = process.env.COMPANION_XAI_BASE;
+  try {
+    process.env.COMPANION_XAI_BASE = t.fake.url;
+    await t.service.command("on", t.say, false, () => {});
+    const calls = t.fake.requests.length;
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "a red scarf around her neck", name: "risa-paid-red" }, send, false);
+    const ask = t.sent.find((m) => m.type === "studio-frame-ask");
+    assert.ok(ask, `a question first (got ${me.map((m) => m.message).join("; ")})`);
+    assert.match(ask.note, /THIS IS PAID.*ONE picture|ONE picture.*THIS IS PAID/s);
+    assert.doesNotMatch(ask.note, /Making 1 pictures/);
+    assert.equal(t.fake.requests.length, calls, "nothing is sent before the yes");
+    assert.equal((await t.service.stateMessage()).frameAsk?.id, ask.id, "a reload shows the same question");
+    await t.service.message({ type: "studio-frame-edit", source: "risa-dress", frame: "neutral", prompt: "again", name: "other" }, send, false);
+    assert.match(me.at(-1)!.message, /Finish or stop/, "one question at a time");
+
+    await t.service.message({ type: "studio-frame-go", id: ask.id }, send, false);
+    await t.waitFor("studio-frame-review");
+    assert.equal(t.fake.requests.length, calls + 1, "drawn once, after the yes");
+    assert.equal((await t.service.stateMessage()).frameAsk, null);
+    await t.service.message({ type: "studio-frame-go", id: ask.id }, send, false);
+    assert.match(me.at(-1)!.message, /no longer open/, "the yes works once");
+  } finally {
+    if (previous === undefined) delete process.env.COMPANION_XAI_BASE;
+    else process.env.COMPANION_XAI_BASE = previous;
     await t.cleanup();
   }
 });

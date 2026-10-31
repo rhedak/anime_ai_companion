@@ -197,7 +197,7 @@ export function createStudio(io) {
       el("div", { className: "studio-proposal" }),
       el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }),
       el("div", { className: "pack-confirm-buttons" }, start, stop, closeButton, full, handover),
-      el("label", { textContent: "Draw one picture of a pack again (needs a model on this computer; the new pack is a copy, the source is not changed)" }),
+      el("label", { textContent: "Draw one picture of a pack again (with the image maker chosen above; a paid or browser maker asks first; the new pack is a copy, the source is not changed)" }),
       frameSource,
       frameName,
       framePrompt,
@@ -519,6 +519,21 @@ export function createStudio(io) {
     if (pictures.includes(keep)) name.value = keep;
   }
 
+  /** One picture with a paid service or a browser maker: the question first, with what it costs and what it does (nothing is drawn before the yes). */
+  function showFrameAsk(/** @type {Record<string, any>} */ a) {
+    const box = q(".studio-frame");
+    if (!box) return;
+    const yes = el("button", { type: "button", textContent: a.paid ? "Draw this one picture (paid)" : a.browser ? "Draw this one picture (drives your Chrome)" : "Draw this one picture" });
+    const no = el("button", { type: "button", className: "ghost", textContent: "Not now" });
+    yes.onclick = () => {
+      box.replaceChildren();
+      setBusy(true, `Drawing ${a.frame} again…`);
+      io.send({ type: "studio-frame-go", id: a.id });
+    };
+    no.onclick = () => io.send({ type: "studio-frame-ask-cancel" });
+    box.replaceChildren(el("p", { textContent: String(a.note) }), el("div", { className: "pack-confirm-buttons" }, yes, no));
+  }
+
   /** The drawn picture beside the one it replaces: keep it (a new pack is made) or drop it (nothing is written). */
   function showFrameReview(/** @type {Record<string, any>} */ r) {
     const box = q(".studio-frame");
@@ -595,6 +610,7 @@ export function createStudio(io) {
             frames = msg.frames && typeof msg.frames === "object" ? msg.frames : {};
             fillFrames();
             if (msg.frameReview) showFrameReview(msg.frameReview);
+            else if (msg.frameAsk) showFrameAsk(msg.frameAsk);
             else q(".studio-frame")?.replaceChildren();
             if (!msg.job && panel && Array.isArray(msg.resumable) && msg.resumable.length && !q(".studio-confirm")?.childElementCount) showResumable(msg.resumable);
             if (msg.job && panel) {
@@ -619,6 +635,10 @@ export function createStudio(io) {
           return true;
         case "studio-frame-progress":
           status(String(msg.text));
+          return true;
+        case "studio-frame-ask":
+          setBusy(false);
+          showFrameAsk(msg);
           return true;
         case "studio-frame-review":
           setBusy(false);

@@ -187,7 +187,8 @@ export function createStudioService(deps: StudioDeps) {
     `THIS IS PAID. It sends your source pictures and your words to ${info.paid?.host} (${info.model}), which charges for every picture, retries and "Draw again" included, to the account of the API key in this app's environment (${info.paid?.keyName}). ` +
     `Making ${pictures} pictures is the first step; the rest of the pack (about ${knownFrameNames().size} more, up to three tries each) comes after you pick one, and you are shown what the first step cost before that. ` +
     `The app stops at ${dollars(budget())} for this pack (/studio budget changes it). Keeping the key safe, and what it costs you, is your responsibility: the app never saves it, shows it or sends it anywhere but that host.`
-  const backendFor = (url: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0 }));
+  /** `dir` is where a browser maker keeps the picture it uploads (a job's folder); the others have no use for it. */
+  const backendFor = (url: string, dir?: string): ImageBackend => (deps.makeBackend ? deps.makeBackend(url) : makeBackend(url, { limitUsd: budget(), spentUsd: 0, dir }));
 
   /** A local model's answer to its /health, kept for a few seconds so the page can ask often without a request each time. */
   const localHealth = new Map<string, { at: number; ok: boolean }>();
@@ -260,6 +261,7 @@ export function createStudioService(deps: StudioDeps) {
       frames: on ? Object.fromEntries(await Promise.all(knownSources.map(async (s) => [s, await framesOf(s)]))) : {},
       frameBusy,
       frameReview: reviewMessage(),
+      frameAsk: frameAskMessage(),
       proposal,
       /** The user's own local image server: the paths they gave, what it prints, and the card that asks before it starts. */
       local: { ...local.state, python: deps.settings.studioPython ?? null, server: deps.settings.studioServer ?? null, address: localAddress(), ask: localAsk },
@@ -678,7 +680,7 @@ export function createStudioService(deps: StudioDeps) {
   /** Draws one picture of a pack again. Needs a model on this computer that can change a picture (a paid or browser maker is not wired for one picture yet). */
   async function frameStart(msg: Record<string, unknown>, send: Send): Promise<void> {
     const err = (message: string) => send({ type: "studio-error", message });
-    if (running || waiting || pending || frameBusy) return err("Finish or stop the job that is open first.");
+    if (running || waiting || pending || frameBusy || frameAsk) return err("Finish or stop the job that is open first.");
     if (frameReview) return err("Keep or drop the picture that is drawn first.");
     const source = typeof msg.source === "string" ? msg.source : "";
     const frame = typeof msg.frame === "string" ? msg.frame : "";
@@ -689,26 +691,67 @@ export function createStudioService(deps: StudioDeps) {
     if (change.length < 3) return err("Say what to change in that picture, in a few words.");
     if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
     if (await stat(join(deps.framesDir, name)).then(() => true, () => false)) return err(`There is already a pack called ${name}. Pick another name.`);
-    if (!isLocal(deps.settings.studioBackend)) return err("Drawing one picture again works with a model on this computer for now. Choose it in the Image maker list.");
+    const url = checkBackendUrl(deps.settings.studioBackend);
+    if (!url) return err("Choose an image maker first (the Image maker list).");
     const folder = await deps.packFolder(source);
     const bytes = folder ? await readFile(join(folder, `${frame}.webp`)).catch(() => null) : null;
     if (!bytes) return err(`The ${source} pack has no picture called ${frame}.`);
     const checked = await check();
     if (!checked.ok) return err(checked.reason);
+    const request = { id: `frame-${randomBytes(4).toString("hex")}`, source, frame, name, change, bytes, info: checked.info, url };
+    // A model on this computer costs nothing: it is drawn at once. A paid service or a browser maker is asked about first, with the same warning a pack gets.
+    if (isLocal(url)) return void (await frameDraw(request, send));
+    frameAsk = request;
+    deps.broadcast(frameAskMessage());
+  }
+
+  type FrameRequest = { id: string; source: string; frame: string; name: string; change: string; bytes: Buffer; info: BackendInfo; url: string };
+  let frameAsk: FrameRequest | null = null;
+  const frameAskMessage = () =>
+    frameAsk
+      ? {
+          type: "studio-frame-ask",
+          id: frameAsk.id,
+          source: frameAsk.source,
+          frame: frameAsk.frame,
+          name: frameAsk.name,
+          backend: describe(frameAsk.info),
+          paid: frameAsk.info.paid ? { host: frameAsk.info.paid.host, limit: budget() } : null,
+          browser: frameAsk.info.browser ?? null,
+          note:
+            `This draws ONE picture (${frameAsk.frame} of ${frameAsk.source}) with ${describe(frameAsk.info)}. ` +
+            (frameAsk.info.paid ? `${paidNote(frameAsk.info, 1).replace(/Making 1 pictures is the first step; the rest of the pack[^.]*\. /, "")} ` : "") +
+            (frameAsk.info.browser ? `${browserNote(frameAsk.info).replace("for the whole pack instead of for every click", "for this one picture instead of for every click")} ` : "") +
+            RESPONSIBILITY,
+        }
+      : null;
+
+  async function frameGo(id: string, send: Send): Promise<void> {
+    const request = frameAsk;
+    if (!request || request.id !== id) return send({ type: "studio-error", message: "That question is no longer open." });
+    frameAsk = null;
+    await frameDraw(request, send);
+  }
+
+  async function frameDraw(request: FrameRequest, send: Send): Promise<void> {
+    const { source, frame, name, change, bytes, info, url } = request;
+    const err = (message: string) => send({ type: "studio-error", message });
     frameBusy = true;
     deps.broadcast({ type: "studio-frame-progress", text: `Drawing ${frame} from ${source} again…` });
+    const work = join(deps.dataDir, "studio", `${request.id}-draw`);
     try {
+      await mkdir(work, { recursive: true });
       const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
-      const drawn = await drawFrame(bytes, change, seed, backendFor(deps.settings.studioBackend));
+      const drawn = await drawFrame(bytes, change, seed, backendFor(url, work));
       frameReview = {
-        id: `frame-${randomBytes(4).toString("hex")}`,
+        id: request.id,
         source,
         frame,
         name,
         change,
         picture: drawn.picture,
         flags: drawn.flags,
-        model: checked.info.model ?? checked.info.name,
+        model: info.model ?? info.name,
         old: await thumbnail(await decode(bytes)),
         new: await thumbnail(drawn.picture),
       };
@@ -717,10 +760,10 @@ export function createStudioService(deps: StudioDeps) {
       err(error instanceof Error ? error.message : String(error));
     } finally {
       frameBusy = false;
+      await rm(work, { recursive: true, force: true });
     }
   }
 
-  /** The yes: a new pack is made from a copy of the source pack, with this one picture replaced, the source's text files kept, and EDIT.md added. */
   async function frameAccept(id: string, send: Send): Promise<void> {
     const review = frameReview;
     if (!review || review.id !== id) return send({ type: "studio-error", message: "There is no picture to keep." });
@@ -938,6 +981,7 @@ export function createStudioService(deps: StudioDeps) {
         return say(`A pack made with a paid image service may now cost up to ${dollars(n)}.`);
       }
       if (word === "off") {
+        frameAsk = null;
         stopRunning();
         await local.stop();
         proposal = null;
@@ -967,7 +1011,11 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
         else if (msg.type === "studio-frame-edit") await frameStart(msg, send);
-        else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
+        else if (msg.type === "studio-frame-go" && typeof msg.id === "string") await frameGo(msg.id, send);
+        else if (msg.type === "studio-frame-ask-cancel") {
+          frameAsk = null;
+          send({ type: "studio-frame-cancelled" });
+        } else if (msg.type === "studio-frame-accept" && typeof msg.id === "string") await frameAccept(msg.id, send);
         else if (msg.type === "studio-frame-reject" && typeof msg.id === "string") frameReject(msg.id);
         else if (msg.type === "studio-export" || msg.type === "studio-import") await transfer(msg, send);
         else if (msg.type === "studio-local-config") await localConfig(msg, send);

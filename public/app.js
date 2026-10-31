@@ -1465,6 +1465,7 @@ function handle(msg) {
     case "studio-ask":
     case "studio-handover":
     case "studio-spend":
+    case "studio-frame-ask":
     case "studio-frame-progress":
     case "studio-frame-review":
     case "studio-frame-installed":
