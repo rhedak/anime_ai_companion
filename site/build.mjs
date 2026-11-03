@@ -9,6 +9,7 @@ const here = import.meta.dirname;
 const root = join(here, "..");
 const dist = join(here, "dist");
 const REPO = "https://github.com/rhedak/anime_ai_companion";
+const SITE = "https://rhedak.github.io/anime_ai_companion/";
 
 /** The pages, in order. `file` is relative to the repository root. */
 const pages = [
@@ -123,6 +124,14 @@ function layout({ page, index, html, headings, description, wide }) {
 <meta name="description" content="${escape(description)}">
 <meta property="og:title" content="${escape(title)}">
 <meta property="og:description" content="${escape(description)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Anime AI Companion">
+<meta property="og:url" content="${SITE}${page.slug === "index" ? "" : `${page.slug}.html`}">
+<meta property="og:image" content="${SITE}assets/og-banner.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Anime AI Companion: two of the drawn characters beside the title">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#1b1535">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
