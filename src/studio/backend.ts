@@ -35,7 +35,10 @@ export interface BackendInfo {
 }
 
 export interface EditRequest {
+  /** The picture to change (the base). */
   image: Buffer;
+  /** Further pictures the model may take a look or an outfit from, after `image` (image 2, image 3, …). Only the local maker and the by-hand maker take them. */
+  references?: Buffer[];
   prompt: string;
   seed: number;
   width: number;
@@ -275,7 +278,8 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
     return (k.length >= 8 ? message.split(k).join("…") : message).slice(0, 400);
   };
 
-  async function call(kind: "edit" | "generate", req: { prompt: string; image?: Buffer; width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
+  async function call(kind: "edit" | "generate", req: { prompt: string; image?: Buffer; references?: Buffer[]; width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
+    if (req.references?.length) throw new BackendError(`${adapter.label} takes one picture at a time. Use the local model or the by-hand maker for a reference picture.`);
     if (!key()) throw new BackendError(missing());
     if (unmetered) throw new BackendError(`${adapter.label} did not say what the last picture cost, so the spending limit cannot be kept. Nothing more is drawn.`);
     if (spent >= options.limitUsd) throw new BackendError(`The spending limit for this pack ($${options.limitUsd.toFixed(2)}) is reached ($${spent.toFixed(2)} spent). Nothing more is drawn; raise it with /studio budget <dollars> and carry on.`);
@@ -325,7 +329,7 @@ function paidBackend(adapter: PaidAdapter, options: PaidOptions): ImageBackend {
       return { name: `${adapter.label} (paid web service)`, model, revision: null, licence: null, edit: true, generate: true, paid: { host: new URL(base).host, keyName: adapter.keyEnv[0] } };
     },
     // The services take no seed: a picture drawn again is a new draw all the same.
-    edit: (req, signal) => call("edit", { prompt: req.prompt, image: req.image, width: req.width, height: req.height }, signal),
+    edit: (req, signal) => call("edit", { prompt: req.prompt, image: req.image, references: req.references, width: req.width, height: req.height }, signal),
     generate: (req, signal) => call("generate", { prompt: req.prompt, width: req.width, height: req.height }, signal),
   };
 }
@@ -392,8 +396,10 @@ export function httpBackend(baseUrl: string, options: { timeoutMs?: number; fetc
       };
     },
     async edit(req, signal) {
-      const { image, ...rest } = req;
-      return picture(await call("/edit", { ...rest, image: image.toString("base64") }, signal));
+      const { image, references, ...rest } = req;
+      return picture(
+        await call("/edit", { ...rest, image: image.toString("base64"), ...(references?.length ? { references: references.map((r) => r.toString("base64")) } : {}) }, signal),
+      );
     },
     async generate(req, signal) {
       return picture(await call("/generate", req, signal));

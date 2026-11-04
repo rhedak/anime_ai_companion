@@ -13,8 +13,14 @@ export interface Job {
   character: string | null;
   /** The user's own words for the outfit (untrusted text, length-capped). */
   outfit: string;
+  /** A reference picture in the job's folder (`reference.png`) that gives the outfit, or the character's face and hair; null when there is none. */
+  reference: "outfit" | "character" | null;
   /** The text of look.txt after the character line. */
   look: string;
+  /** Where the base comes from: a pack of an existing character (default), or a picture the user uploaded (a neutral pose, not yet used). */
+  sourceKind: "pack" | "upload";
+  /** A new character this pack starts (its id, name and one-line description), or null for an outfit of an existing one. Not used by the drawing yet. */
+  newCharacter: { id: string; name: string; description: string } | null;
   key: KeyName;
   /** Working size of the pictures (what the model sees). */
   width: number;
@@ -41,6 +47,16 @@ export function cleanText(value: unknown, max: number): string {
 }
 
 const KEY_NAMES = ["magenta", "green", "cyan"];
+
+/** A new character's id, name and description, or null when the job names none (or the id is not usable as a character id). */
+function parseNewCharacter(value: unknown): Job["newCharacter"] {
+  if (!value || typeof value !== "object") return null;
+  const c = value as Record<string, unknown>;
+  const id = typeof c.id === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(c.id) && c.id !== "thumbs" && c.id !== "characters" ? c.id : null;
+  const name = cleanText(c.name, 80);
+  if (!id || !name) return null;
+  return { id, name, description: cleanText(c.description, 300) };
+}
 
 export function parseJob(raw: unknown): { ok: true; job: Job } | { ok: false; reason: string } {
   const fail = (reason: string) => ({ ok: false as const, reason });
@@ -71,7 +87,10 @@ export function parseJob(raw: unknown): { ok: true; job: Job } | { ok: false; re
       source: j.source,
       character,
       outfit,
+      reference: j.reference === "outfit" || j.reference === "character" ? j.reference : null,
       look: cleanText(j.look, MAX_LOOK),
+      sourceKind: j.sourceKind === "upload" ? "upload" : "pack",
+      newCharacter: parseNewCharacter(j.newCharacter),
       key: j.key as KeyName,
       width,
       height,

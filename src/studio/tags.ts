@@ -16,6 +16,8 @@ export interface StudioProposal {
   look?: string;
   /** Pictures to draw again, by name. */
   redraw?: string[];
+  /** One change to the base, in words (a suggestion for the edit steps: nothing is drawn until the user picks it). */
+  step?: string;
 }
 
 const ATTRIBUTE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|“([^”]*)”)/g;
@@ -32,9 +34,10 @@ export function findStudioTags(text: string): StudioProposal[] {
       else if (key === "look") p.look = cleanText(value, MAX_LOOK);
       else if (key === "name") p.name = value.trim().slice(0, 40);
       else if (key === "source") p.source = value.trim().slice(0, 40);
+      else if (key === "step") p.step = cleanText(value, 200);
       else if (key === "redraw") p.redraw = value.split(/[,;\s]+/).map((n) => n.trim().toLowerCase()).filter((n) => /^[a-z0-9-]{1,30}$/.test(n)).slice(0, 12);
     }
-    if (p.outfit || p.name || p.look || p.source || p.redraw?.length) found.push(p);
+    if (p.outfit || p.name || p.look || p.source || p.redraw?.length || p.step) found.push(p);
   }
   return found;
 }

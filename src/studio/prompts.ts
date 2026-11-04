@@ -58,3 +58,24 @@ export const POSES: Record<string, (key: KeyName) => string> = {
   "cheer-1": (key) => `raise both arms up in a cheer with her fists in the air, a joyful open-mouthed smile; keep both hands fully inside the picture; ${KEEP(key)}`,
   "cheer-2": (key) => `raise both arms high above her head in a cheer with her fists in the air, a big joyful open-mouthed smile; keep both hands fully inside the picture; ${KEEP(key)}`,
 };
+
+/**
+ * A new outfit from a reference picture: image 1 is the base (the pose, framing, style and background stay), image 2 is the reference
+ * that only gives the clothes. Face and hair are named as not taken from it, or the model copies the whole person.
+ */
+export const referenceOutfitPrompt = (key: KeyName) =>
+  `keep the pose, framing, art style, lighting and the plain flat ${keyWords[key]} background of image 1 exactly; ` +
+  `dress her in the outfit that image 2 shows (its clothes, colours and accessories only); ` +
+  `keep her own hairstyle, hair colour, hair length and face from image 1, not from image 2; take nothing else from image 2: not its face, hair, pose or background`;
+
+/** A new character from a reference picture: the body, pose and style stay from image 1; the face and hair come from image 2. */
+export const referenceCharacterPrompt = (key: KeyName) =>
+  `keep the pose, framing, art style, clothes and the plain flat ${keyWords[key]} background of image 1 exactly; ` +
+  `change her face, eyes, hairstyle and hair colour to those of the character in image 2; take nothing else from image 2`;
+
+/**
+ * One change to a picture that is already a base (hair colour, a haircut, the head, one piece of clothing): the change is named once and
+ * everything else is named as unchanged, so each step moves one thing only.
+ */
+export const stepPrompt = (change: string, key: KeyName) =>
+  `change only ${change}; keep everything else exactly the same: her face, hair, body, pose, expression, the other clothes, framing and the plain flat ${keyWords[key]} background`;

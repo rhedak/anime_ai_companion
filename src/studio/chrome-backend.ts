@@ -206,6 +206,7 @@ export function chromeBackend(options: ChromeOptions): ImageBackend {
       return { name: `${site.label} website, driven through Claude in Chrome`, model: null, revision: null, licence: null, edit: true, generate: false, browser: { site: site.site } };
     },
     async edit(req: EditRequest, signal?: AbortSignal): Promise<Buffer> {
+      if (req.references?.length) throw new Error("The browser backend takes one picture at a time. Use the local model or the by-hand maker for a reference picture.");
       if (++asked > maxPictures) throw new Error(`The browser backend has asked for ${maxPictures} pictures in this run and stops there. Carry the job on to go further.`);
       const work = join(options.dir, "web");
       await mkdir(work, { recursive: true });

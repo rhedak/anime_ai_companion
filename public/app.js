@@ -1455,6 +1455,9 @@ function handle(msg) {
     case "studio-confirm":
     case "studio-progress":
     case "studio-candidate":
+    case "studio-step-candidate":
+    case "studio-steps-done":
+    case "studio-step-suggestions":
     case "studio-candidates-done":
     case "studio-installed":
     case "studio-error":

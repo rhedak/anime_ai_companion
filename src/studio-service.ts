@@ -14,9 +14,9 @@ import { knownFrameNames, readRecords } from "./studio/build.ts";
 import { processText } from "./studio/process.ts";
 import { pickKey } from "./studio/cutout.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
-import { decode, encodePng } from "./studio/raster.ts";
+import { decode, encodePng, flatten } from "./studio/raster.ts";
 import { assistFolder, type AssistRequest } from "./studio/assisted.ts";
-import { MAX_IMAGE_BYTES, sniffImageType } from "./images.ts";
+import { MAX_IMAGE_BYTES, sniffImageType, type ImageInput } from "./images.ts";
 import type { StudioEvent } from "./studio/runner.ts";
 import { findStudioTags, usableName, type StudioProposal } from "./studio/tags.ts";
 import { commandText, isDevice, LocalServer, type Device, type LocalStatus } from "./studio/local-server.ts";
@@ -38,6 +38,12 @@ export interface SourceFrames {
 
 /** What the pack studio needs from the server around it. */
 export interface StudioDeps {
+  /** Sends one message to the chat brain with one picture attached (the brain's reply comes back as `[studio step="…"]` suggestions). */
+  askBrain?: (text: string, image?: ImageInput) => void;
+  /** Switches to chat mode the way /chat does (the server's own switch, so the same checks apply). True when it is in chat mode afterwards. */
+  switchToChat?: () => Promise<boolean>;
+  /** True when the brain that is selected can see pictures (the same test as the chat's attach button). */
+  canSeePictures?: () => boolean;
   /** data/ */
   dataDir: string;
   /** data/frames: where a finished pack is installed. */
@@ -79,7 +85,7 @@ export interface StudioDeps {
 }
 
 type Send = (msg: unknown) => void;
-type Review = { tiles: { name: string; thumb: string | null; flagged: boolean; flags: string[] }[]; flagged: { name: string; flags: string[] }[] };
+type Review = { tiles: { name: string; thumb: string | null; flagged: boolean; flags: string[]; variant?: "pasted" | "whole"; alt?: string | null; altVariant?: "pasted" | "whole"; altFlags?: string[] }[]; flagged: { name: string; flags: string[] }[]; pasteAvailable?: boolean };
 
 interface Pending {
   job: Job;
@@ -91,7 +97,7 @@ interface Running {
   job: Job;
   dir: string;
   worker: Worker;
-  phase: "base" | "build" | "assemble";
+  phase: "base" | "build" | "assemble" | "step";
   info: BackendInfo;
 }
 
@@ -103,6 +109,26 @@ interface Waiting {
   info: BackendInfo;
   candidates: number[];
   review: Review | null;
+}
+
+/**
+ * The edit chain on a base the user has not approved yet: the picture the next step changes, the steps drawn so far (each with its
+ * pictures), what she suggested, and the steps before the current one (for undo). Nothing here reaches the pack until the base is approved.
+ */
+interface Chain {
+  jobId: string;
+  current: string;
+  currentThumb: string | null;
+  /** Before each kept picture: the base it replaced, and what that step had kept before (for undo). */
+  history: { file: string; thumb: string | null; n: number; kept: number | null }[];
+  steps: { n: number; change: string; kept: number | null; candidates: { seed: number; file: string; thumb: string | null }[] }[];
+  suggestions: string[];
+}
+
+/** A seed the user typed or the page sent: a whole number the image makers take. Null for anything else. */
+function validSeed(value: unknown): number | null {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n < 2 ** 31 - 1 ? n : null;
 }
 
 /** What she is told about the studio (src/studio/skill.md). Read once; the app runs from a folder that has it. */
@@ -132,6 +158,8 @@ export function createStudioService(deps: StudioDeps) {
   let pending: Pending | null = null;
   let running: Running | null = null;
   let waiting: Waiting | null = null;
+  let chain: Chain | null = null;
+  let pendingReference: Buffer | null = null;
   /** What the page would need to show a job again after a reload: the last thing said, and the candidate pictures so far. */
   let lastText = "";
   const shown = new Map<number, string>();
@@ -315,6 +343,12 @@ export function createStudioService(deps: StudioDeps) {
       /** What a paid backend has cost this job, and the limit. */
       spend: job && (running?.info ?? waiting?.info)?.paid ? { usd: spent, limit: budget() } : null,
       candidates: job && (running?.phase === "base" || waiting?.kind === "pick") ? [...shown].map(([seed, thumb]) => ({ seed, thumb })) : [],
+      /** Whether the chat is in chat mode (polishing switches it first, and the page says so). */
+      chatMode: deps.mode() === "chat",
+      /** Whether the brain that is selected can see pictures (the polish button asks before it sends the reference). */
+      brainSeesPictures: on && (deps.canSeePictures?.() ?? false),
+      /** The edit chain on the base, while the base waits for the user: the current picture, the steps, her suggestions, and whether the brain can be asked. */
+      chain: chain && job && job.id === chain.jobId && (waiting?.kind === "pick" || running?.phase === "step") ? { current: chain.currentThumb, steps: chain.steps.map((step) => ({ n: step.n, change: step.change, kept: step.kept, candidates: step.candidates.map((c) => ({ seed: c.seed, thumb: c.thumb })) })), suggestions: chain.suggestions, canAsk: on && (deps.canSeePictures?.() ?? false) } : null,
       review: waiting?.kind === "review" ? waiting.review : null,
       previews: running && running.phase !== "base" ? [...previews].map(([name, v]) => ({ name, ...v })) : [],
       resumable: on && !job && !pending ? await findJobs() : [],
@@ -443,6 +477,10 @@ export function createStudioService(deps: StudioDeps) {
       const names = frameNames(p.redraw);
       if (names.length) valid.redraw = names;
     }
+    if (p.step && on && waiting?.kind === "pick" && chain?.jobId === waiting.job.id) {
+      chain.suggestions = [...chain.suggestions, p.step].slice(-6);
+      deps.broadcast({ type: "studio-step-suggestions", id: waiting.job.id, suggestions: chain.suggestions });
+    }
     if (running || !(valid.outfit || valid.name || valid.look || valid.redraw)) return;
     proposal = { id: randomBytes(4).toString("hex"), ...valid };
     if (!on) {
@@ -508,32 +546,38 @@ export function createStudioService(deps: StudioDeps) {
     running = null;
   }
 
-  function startWorker(job: Job, dir: string, phase: "base" | "build" | "assemble", info: BackendInfo, data: Record<string, unknown>): void {
+  function startWorker(job: Job, dir: string, phase: "base" | "build" | "assemble" | "step", info: BackendInfo, data: Record<string, unknown>): void {
     const worker = new Worker(deps.workerUrl ?? new URL("./studio/studio-worker.ts", import.meta.url), {
       workerData: { phase, dir, job, limitUsd: budget(), spentUsd: spent, ...data },
       stderr: true,
     });
     worker.unref();
     const run: Running = { job, dir, worker, phase, info };
+    const back = waiting; // a step that fails or ends goes back to the base it was asked on
     const review0 = waiting?.kind === "review" && data.only ? waiting : null; // a redraw that fails leaves the review as it was
     running = run;
     waiting = null;
     void announce();
-    const candidates: number[] = [];
+    // A base drawn again starts from the pictures the user already has (`before`), so they are still listed after the new ones.
+    const candidates: number[] = Array.isArray(data.before) ? [...(data.before as number[])] : [];
     let review: Review | null = null;
     const fail = (message: string) => {
       if (running !== run) return;
       running = null;
       if (review0) waiting = review0;
+      else if (run.phase === "step") {
+        waiting = back;
+        if (chain) chain.steps = chain.steps.filter((step) => step.candidates.length > 0);
+      }
       deps.pushNote(`the pack studio stopped while drawing "${job.name}": ${message.slice(0, 300)}`);
       // The job's files are on disk: the page may offer to carry on (a redraw that failed keeps its review open instead, which has its own buttons).
       deps.broadcast({ type: "studio-error", id: job.id, message, retry: review0 ? null : "resume" });
       void announce();
     };
     // One message at a time and in order: reading a thumbnail takes a moment, and "finished" must not be handled before the review it follows.
-    let chain: Promise<void> = Promise.resolve();
+    let inOrder: Promise<void> = Promise.resolve();
     worker.on("message", (event: StudioEvent | { type: "finished" }) => {
-      chain = chain.then(() => handle(event)).catch((error) => fail(error instanceof Error ? error.message : String(error)));
+      inOrder = inOrder.then(() => handle(event)).catch((error) => fail(error instanceof Error ? error.message : String(error)));
     });
     const handle = async (event: StudioEvent | { type: "finished" }): Promise<void> => {
       if (running !== run) return;
@@ -560,14 +604,24 @@ export function createStudioService(deps: StudioDeps) {
       } else if (event.type === "base-done") {
         lastText = "Pick the one you like. Nothing is saved until you do." + (info.paid ? ` ${paidProjection(spent, job.seeds.length)}` : "");
         deps.broadcast({ type: "studio-candidates-done", id: job.id, text: lastText });
+      } else if (event.type === "step-candidate") {
+        const file = await readFile(join(dir, event.thumb)).catch(() => null);
+        const thumb = file ? `data:image/webp;base64,${file.toString("base64")}` : null;
+        chain?.steps.find((step) => step.n === event.n)?.candidates.push({ seed: event.seed, file: event.file, thumb });
+        deps.broadcast({ type: "studio-step-candidate", id: job.id, n: event.n, seed: event.seed, done: event.done, total: event.total, thumb });
+      } else if (event.type === "step-done") {
+        lastText = "Keep one of the pictures for the next step, or approve this base.";
+        deps.broadcast({ type: "studio-steps-done", id: job.id, text: lastText });
       } else if (event.type === "review") {
         const tiles = await Promise.all(
           event.tiles.map(async (t) => {
             const file = await readFile(join(dir, t.thumb)).catch(() => null);
-            return { name: t.name, thumb: file ? `data:image/webp;base64,${file.toString("base64")}` : null, flagged: t.flagged, flags: t.flags };
+            // A face edit's other version (pasted or whole), assembled the same way: the review compares the two.
+            const alt = t.alt ? await readFile(join(dir, t.alt)).catch(() => null) : null;
+            return { name: t.name, thumb: file ? `data:image/webp;base64,${file.toString("base64")}` : null, flagged: t.flagged, flags: t.flags, variant: t.variant, alt: alt ? `data:image/webp;base64,${alt.toString("base64")}` : null, altVariant: t.altVariant, altFlags: t.altFlags ?? [] };
           }),
         );
-        review = { tiles, flagged: event.flagged };
+        review = { tiles, flagged: event.flagged, pasteAvailable: event.pasteAvailable !== false };
       } else if (event.type === "error") {
         fail(event.message);
       } else if (event.type === "finished") {
@@ -575,6 +629,8 @@ export function createStudioService(deps: StudioDeps) {
         running = null;
         if (run.phase === "base") {
           waiting = { kind: "pick", job, dir, info, candidates, review: null };
+        } else if (run.phase === "step") {
+          waiting = back;
         } else {
           lastText = review && review.flagged.length ? `Done. ${review.flagged.length} picture${review.flagged.length === 1 ? "" : "s"} did not pass every check: look at them.` : "Done. Look at the pack, then use it.";
           waiting = { kind: "review", job, dir, info, candidates: [], review };
@@ -622,8 +678,12 @@ export function createStudioService(deps: StudioDeps) {
     const name = typeof msg.name === "string" ? msg.name.trim() : "";
     const outfit = cleanText(msg.outfit, MAX_OUTFIT);
     const look = cleanText(msg.look, MAX_LOOK);
+    const seed = validSeed(msg.seed);
     proposal = null;
     const err = (message: string) => send({ type: "studio-error", message });
+    const referenceKind = msg.referenceKind === "outfit" || msg.referenceKind === "character" ? msg.referenceKind : null;
+    const reference = referenceKind ? await pictureFrom(msg.reference) : null;
+    if (referenceKind && !reference) return err("The reference picture could not be read. Give a PNG, JPEG or WebP, or choose no reference.");
     if (!(await deps.sources()).includes(source)) return err("Pick one of your packs to draw from.");
     if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
     if (await stat(join(deps.framesDir, name)).then(() => true, () => false)) return err(`There is already a pack called ${name}. Pick another name.`);
@@ -648,11 +708,14 @@ export function createStudioService(deps: StudioDeps) {
       width,
       height,
       backend: { url: deps.settings.studioBackend, name: checked.info.name, model: checked.info.model, revision: checked.info.revision, licence: checked.info.licence },
-      seeds: [1, 2, 3, 4].slice(0, Number.isInteger(msg.pictures) && (msg.pictures as number) >= 1 && (msg.pictures as number) <= 4 ? (msg.pictures as number) : 4),
+      // A seed given in the form draws exactly that picture first; the rest of the candidates come from "add more".
+      seeds: seed !== null ? [seed] : [1, 2, 3, 4].slice(0, Number.isInteger(msg.pictures) && (msg.pictures as number) >= 1 && (msg.pictures as number) <= 4 ? (msg.pictures as number) : 4),
+      reference: referenceKind,
     });
     if (!parsed.ok) return err(parsed.reason);
     forget(); // only now: a form that fails above must not drop the review the user is looking at
     pending = { job: parsed.job, source: found, info: checked.info };
+    pendingReference = reference;
     send({
       type: "studio-confirm",
       id: parsed.job.id,
@@ -688,9 +751,157 @@ export function createStudioService(deps: StudioDeps) {
     const dir = join(deps.dataDir, "studio", job.id);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "job.json"), JSON.stringify(job, null, 2));
+    if (pendingReference) await writeFile(join(dir, "reference.png"), pendingReference);
+    pendingReference = null;
     spent = 0;
     startWorker(job, dir, "base", info, { source: source.neutral, sourceFrames: { blink: source.blink, talk: source.talk } });
     send({ type: "studio-progress", id: job.id, text: "Starting…" });
+  }
+
+  /** A picture the page sent (base64, with or without its data: prefix), as a PNG on white. Null when the app cannot read it. */
+  async function pictureFrom(value: unknown): Promise<Buffer | null> {
+    if (typeof value !== "string") return null;
+    const bytes = Buffer.from(value.replace(/^data:[^,]*,/, ""), "base64");
+    if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) return null;
+    try {
+      return await encodePng(flatten(await decode(bytes), [255, 255, 255]));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Adds base pictures to the ones waiting for a pick: on a seed the user gives, or on fresh random ones. A seed that is already here is refused. */
+  async function moreBase(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    if (!on) return err("Turn the pack studio on first.");
+    if (!waiting || waiting.kind !== "pick" || waiting.job.id !== msg.id || running) return err("There are no base pictures to add to right now.");
+    const given = validSeed(msg.seed);
+    if (msg.seed !== undefined && msg.seed !== null && msg.seed !== "" && given === null) return err("The seed has to be a whole number from 0 to 2147483646.");
+    const used = new Set(waiting.candidates);
+    let seeds: number[];
+    if (given !== null) {
+      if (used.has(given)) return err(`Seed ${given} already has a picture here. Pick it, or give another seed.`);
+      seeds = [given];
+    } else {
+      seeds = [];
+      while (seeds.length < 2) {
+        const seed = (randomBytes(4).readUInt32BE(0) % 2147483646) + 1;
+        if (!used.has(seed) && !seeds.includes(seed)) seeds.push(seed);
+      }
+    }
+    const found = await deps.readSource(waiting.job.source);
+    if (!found) return err(`The ${waiting.job.source} pack has no neutral picture to draw from.`);
+    const { job, dir, info, candidates } = waiting;
+    startWorker(job, dir, "base", info, { seeds, before: candidates, source: found.neutral, sourceFrames: { blink: found.blink, talk: found.talk } });
+    send({ type: "studio-progress", id: job.id, text: `Drawing ${seeds.length === 1 ? `seed ${seeds[0]}` : `${seeds.length} new pictures`}…` });
+  }
+
+  /** The base picture the steps change: one of the candidates. Resets the chain (its steps were for the other base). */
+  async function baseUse(id: string, seed: number, send: Send): Promise<void> {
+    if (!waiting || waiting.kind !== "pick" || waiting.job.id !== id || running || !waiting.candidates.includes(seed)) return send({ type: "studio-error", message: "That picture is not available." });
+    chain = { jobId: id, current: `base/seed-${seed}.png`, currentThumb: shown.get(seed) ?? null, history: [], steps: [], suggestions: [] };
+    void announce();
+  }
+
+  /** One step: one change in words to the current base, optionally with a picture it takes from (image 2). Drawn in the background; nothing is kept until the user says so. */
+  async function step(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    if (!on) return err("Turn the pack studio on first.");
+    if (!waiting || waiting.kind !== "pick" || waiting.job.id !== msg.id || running) return err("There is no base to change right now.");
+    if (!chain || chain.jobId !== waiting.job.id) return err("Pick the base picture to change first.");
+    const change = cleanText(msg.change, 200);
+    if (change.length < 3) return err("Say what to change in a few words.");
+    const reference = msg.reference === undefined || msg.reference === null ? null : await pictureFrom(msg.reference);
+    if (msg.reference !== undefined && msg.reference !== null && !reference) return err("The picture for the change could not be read. Give a PNG, JPEG or WebP.");
+    const { job, dir, info } = waiting;
+    const n = chain.steps.length + 1;
+    await mkdir(join(dir, "steps", String(n)), { recursive: true });
+    if (reference) await writeFile(join(dir, "steps", String(n), "reference.png"), reference);
+    chain.steps.push({ n, change, kept: null, candidates: [] });
+    chain.suggestions = chain.suggestions.filter((s) => s !== change);
+    startWorker(job, dir, "step", info, { step: { n, change, input: chain.current, reference: reference ? `steps/${n}/reference.png` : undefined, seeds: job.seeds.slice(0, 2) } });
+  }
+
+  /** The user keeps one picture of a step: it becomes the base for the next step (and the one that is approved, if nothing else follows). */
+  async function stepKeep(id: string, n: number, seed: number, send: Send): Promise<void> {
+    const record = chain?.jobId === id ? chain.steps.find((step) => step.n === n) : undefined;
+    const candidate = record?.candidates.find((c) => c.seed === seed);
+    if (!chain || !record || !candidate || !waiting || waiting.job.id !== id || running) return send({ type: "studio-error", message: "That picture is not available." });
+    chain.history.push({ file: chain.current, thumb: chain.currentThumb, n, kept: record.kept });
+    record.kept = seed;
+    chain.current = candidate.file;
+    chain.currentThumb = candidate.thumb;
+    void announce();
+  }
+
+  /** Puts back the picture before the last kept one. */
+  async function stepUndo(id: string, send: Send): Promise<void> {
+    if (!chain || chain.jobId !== id || !waiting || waiting.job.id !== id || running || chain.history.length === 0) return send({ type: "studio-error", message: "Nothing to undo." });
+    const back = chain.history.pop()!;
+    const record = chain.steps.find((step) => step.n === back.n);
+    if (record) record.kept = back.kept;
+    chain.current = back.file;
+    chain.currentThumb = back.thumb;
+    void announce();
+  }
+
+  /**
+   * Asks the selected brain to rewrite the outfit words for the image maker, with the reference picture attached when the brain can see
+   * pictures. Her answer is one `[studio outfit="…"]` tag, which the form takes like any other proposal (propose). One model call, on the user's yes.
+   */
+  async function polish(msg: Record<string, unknown>, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    if (!on) return err("Turn the pack studio on first.");
+    if (deps.mode() !== "chat") {
+      // The answer comes back as a tag, and only chat mode turns tags into the form (propose). So the polish switches to chat first.
+      if (!(await deps.switchToChat?.())) return err("Could not switch to chat mode, which polishing needs. Switch to chat in the menu, then try again.");
+    }
+    if (!deps.askBrain) return err("The chat brain is not available to polish the words.");
+    const outfit = cleanText(msg.outfit, MAX_OUTFIT);
+    const kind = msg.referenceKind === "character" ? "character" : msg.referenceKind === "outfit" ? "outfit" : null;
+    const reference = kind && msg.reference ? await pictureFrom(msg.reference) : null;
+    const withPicture = Boolean(reference && deps.canSeePictures?.());
+    // Blank words are fine when a picture the brain can see gives the outfit: then it describes that picture.
+    if (outfit.length < 3 && !withPicture) return err(kind && reference ? "The brain you have selected cannot see pictures, so it cannot describe the reference. Describe the outfit in a few words, or pick a vision capable model." : "Describe the outfit in a few words first.");
+    const about = kind === "character" ? "take her face and hair from it, and nothing else" : "take only the clothes from it";
+    const start =
+      outfit.length >= 3
+        ? `Polish these outfit words for an image model that redraws an anime character wearing it: "${outfit}". `
+        : "Her outfit words are blank. Write the outfit from the attached picture as words for an image model that redraws an anime character wearing it. ";
+    const text =
+      start +
+      (withPicture
+        ? `A reference picture is attached: ${about}. `
+        : "No picture is attached, so work from the words alone. If her words point at a picture (\"the outfit from the reference\"), do not copy them: write the clothes as a plain description of an outfit, and say nothing about a picture. ") +
+      `Keep it to one or two sentences, and name the clothes, colours and materials. ` +
+      `Reply with only one tag, in the form [studio outfit="…"].`;
+    deps.askBrain(text, withPicture && reference ? { mediaType: "image/png", data: reference.toString("base64") } : undefined);
+  }
+
+  /** Asks the brain, with the current base attached, for the next steps. Her reply comes back as `[studio step="…"]` tags (propose). Refused when the brain cannot see pictures. */
+  async function stepSuggest(id: string, send: Send): Promise<void> {
+    const err = (message: string) => send({ type: "studio-error", message });
+    if (!on || !waiting || waiting.kind !== "pick" || waiting.job.id !== id || running) return err("There is no base to suggest steps for right now.");
+    if (!chain || chain.jobId !== id) return err("Pick the base picture first.");
+    if (!deps.askBrain || !deps.canSeePictures?.()) return err("The brain you have selected cannot see pictures. Write the change yourself.");
+    const { job, dir } = waiting;
+    const picture = await readFile(join(dir, chain.current)).catch(() => null);
+    if (!picture) return err("The base picture is not there any more.");
+    const text =
+      `The pack studio is making a new outfit picture of her from the picture attached (her base, outfit: ${job.outfit}). ` +
+      `Suggest the next steps, one change at a time, as separate tags, each naming one thing only (for example a hair colour, a haircut, the head, or one piece of clothing). ` +
+      `Write only the tags, one per line, in the form [studio step="her hair to a short red bob"]. Nothing is drawn until the user chooses a step.`;
+    deps.askBrain(text, { mediaType: "image/png", data: picture.toString("base64") });
+  }
+
+  /** Approves the current base: it is what the rest of the pack is made from. */
+  async function approve(id: string, send: Send): Promise<void> {
+    if (!chain || chain.jobId !== id || !waiting || waiting.kind !== "pick" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "Pick the base picture first." });
+    const { job, dir, info } = waiting;
+    await copyFile(join(dir, chain.current), join(dir, "base/chosen.png"));
+    chain = null;
+    shown.clear();
+    startWorker(job, dir, "build", info, {});
   }
 
   async function pick(id: string, seed: number, send: Send): Promise<void> {
@@ -726,12 +937,23 @@ export function createStudioService(deps: StudioDeps) {
     send({ type: "studio-transferred", message: `${name} was imported (${count} pictures). Use it from Looks → Packs.` });
   }
 
-  async function regenerate(id: string, names: unknown, send: Send, sameSeed = false): Promise<void> {
+  async function regenerate(id: string, names: unknown, send: Send, sameSeed = false, seedValue: unknown = null, pasteBack = true): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
-    const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 12) : [];
+    const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 30) : [];
     if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
+    // A seed typed in the review is for every picture drawn again; empty means the usual seeds.
+    const seed = seedValue === null || seedValue === undefined || seedValue === "" ? null : validSeed(seedValue);
+    if (seed === null && seedValue !== null && seedValue !== undefined && seedValue !== "") return send({ type: "studio-error", message: "The seed is a whole number from 0 up, or empty for a random one." });
     const { job, dir, info } = waiting;
-    startWorker(job, dir, "build", info, { only, sameSeed: sameSeed ? only : [] });
+    startWorker(job, dir, "build", info, { only, sameSeed: sameSeed ? only : [], options: { seed: seed ?? undefined, pasteBack } });
+  }
+
+  /** The review's other version of a face picture goes into the pack (no drawing): the pack is assembled again. */
+  async function switchVersion(id: string, name: unknown, variant: unknown, send: Send): Promise<void> {
+    if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "The pack is not waiting for a look." });
+    if (typeof name !== "string" || (variant !== "pasted" && variant !== "whole")) return send({ type: "studio-error", message: "Say which picture and which version." });
+    const { job, dir, info } = waiting;
+    startWorker(job, dir, "assemble", info, { switchTo: { name, variant } });
   }
 
   // --- one picture of an installed pack, drawn again from words (src/studio/frame-edit.ts) ---
@@ -1143,6 +1365,15 @@ export function createStudioService(deps: StudioDeps) {
     await install(waiting);
   }
 
+  /** Drops the job that waits for the user (base pictures to pick from, or a finished pack to accept), with its working files. Nothing was written to data/frames yet, so a new pack can be started at once. */
+  async function discardReview(id: string, send: Send): Promise<void> {
+    if (!waiting || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is no pack to discard." });
+    const dir = waiting.dir;
+    forget();
+    await rm(dir, { recursive: true, force: true });
+    await announce();
+  }
+
   /** A picture at its full size for the pointer to enlarge: only of the job that is open, only a name this job can have, only from its folder. */
   async function full(id: string, name: unknown, send: Send): Promise<void> {
     const job = running?.job ?? waiting?.job;
@@ -1342,13 +1573,23 @@ export function createStudioService(deps: StudioDeps) {
         if (msg.type === "studio-start") await start(msg, send);
         else if (msg.type === "studio-confirm" && typeof msg.id === "string") await confirm(msg.id, send);
         else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
-        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send, msg.sameSeed === true);
+        else if (msg.type === "studio-base-use" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await baseUse(msg.id, msg.seed as number, send);
+        else if (msg.type === "studio-polish") await polish(msg, send);
+        else if (msg.type === "studio-base-more" && typeof msg.id === "string") await moreBase(msg, send);
+        else if (msg.type === "studio-step") await step(msg, send);
+        else if (msg.type === "studio-step-keep" && typeof msg.id === "string" && Number.isInteger(msg.n) && Number.isInteger(msg.seed)) await stepKeep(msg.id, msg.n as number, msg.seed as number, send);
+        else if (msg.type === "studio-step-undo" && typeof msg.id === "string") await stepUndo(msg.id, send);
+        else if (msg.type === "studio-step-suggest" && typeof msg.id === "string") await stepSuggest(msg.id, send);
+        else if (msg.type === "studio-base-approve" && typeof msg.id === "string") await approve(msg.id, send);
+        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send, msg.sameSeed === true, msg.seed, msg.pasteBack !== false);
+        else if (msg.type === "studio-variant" && typeof msg.id === "string") await switchVersion(msg.id, msg.name, msg.variant, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
         else if (msg.type === "studio-backend") await chooseBackend(msg.value, send);
         else if (msg.type === "studio-handover") send({ type: "studio-handover", prompt: handoverPrompt({ source: typeof msg.source === "string" ? msg.source : null, name: typeof msg.name === "string" ? msg.name : undefined, outfit: typeof msg.outfit === "string" ? msg.outfit : undefined }), guide: HANDOVER_GUIDE });
         else if (msg.type === "studio-discard" && typeof msg.id === "string") await discard(msg.id, send);
         else if (msg.type === "studio-full" && typeof msg.id === "string") await full(msg.id, msg.name, send);
         else if (msg.type === "studio-accept" && typeof msg.id === "string") await accept(msg.id, send);
+        else if (msg.type === "studio-review-discard" && typeof msg.id === "string") await discardReview(msg.id, send);
         else if (msg.type === "studio-frame-edit") await frameStart(msg, send);
         else if (msg.type === "studio-frame-go" && typeof msg.id === "string") await frameGo(msg.id, send);
         else if (msg.type === "studio-frame-ask-cancel") {
