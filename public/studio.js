@@ -1169,9 +1169,12 @@ export function createStudio(io) {
       };
       box.append(el("p", { textContent: "She suggests drawing these again:" }), go);
     } else if (p.outfit || p.name || p.look) {
-      mode = "new";
-      remember({ mode });
-      renderSources();
+      // A suggestion fills the outfit form; a new character stays a new character (only the words change).
+      if (mode !== "character") {
+        mode = "new";
+        remember({ mode });
+        renderSources();
+      }
       setStage(2);
       box.append(el("p", { textContent: "She suggested these words. Change anything, then go on to the end." }));
     }
