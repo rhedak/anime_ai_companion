@@ -9,12 +9,13 @@ description: Prepare and ship a release of the companion app (anime_ai_companion
 
 ## 1. Prepare (local, on `dev` in `../anime_ai_companion-dev`)
 
-1. Everything pushed first (`git push origin dev`) when asked; the bump commit is the last one.
+1. Everything pushed first (`git push origin dev`) when asked; the bump commit is the last one. Before the bump, compare `git log --oneline origin/dev..dev` and `git log --oneline dev..origin/dev`: a pull request merged on GitHub can exist only on `origin/dev` (0.22.0: PR #33 did). Merge it into `dev` and rerun the checks, because the release merge takes what is on `origin/dev`.
+   The check script refuses a dirty tree, so commit the bump before running `check.sh`.
 2. **Version.** A minor for a feature (a new command, activity, pack support), a patch for fixes and docs only. Edit `package.json` (`version` **and** `installerVersion`, equal when installers are built), `app/package.json`, run `npm install --package-lock-only`, and edit `app/package-lock.json` lines 3 and 9 by hand (`sed -i '' '3s/OLD/NEW/;9s/OLD/NEW/'`; npm does not touch that file). Commit `Version X.Y.Z`.
 3. **Pins.**
    - opencode: `gh release view v<pin> -R anomalyco/opencode`, newest tags (`gh release list`), and compare each asset's size and digest (`gh api repos/anomalyco/opencode/releases/tags/v<pin> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'`) with `OPENCODE_PIN` in `src/install-opencode.ts`.
    - Creator: `git -C ../anime-character-creator fetch --tags; git tag --sort=-v:refname | head`. A new creator tag means: `package.json` `creator.ref`, the three clone commands (`README.md`, `AGENTS.md`, `site/pages/getting-started.md`, `sed 's/--branch vOLD/--branch vNEW/'`), then re-record the fixture with `CREATOR_SRC=../anime-character-creator/ts/src node scripts/refresh-render-ops-fixture.ts` and read its diff (a new body or hairstyle is expected, anything else is a finding). The creator checkout must be at the pinned tag for `check.sh`.
-4. **`./check.sh --full`** in the background (it takes minutes; it fails on a dirty tree or a creator not at the pin). Read the result file, not just the exit code. **One flake is known:** `avatar-service` "a render that never ends is cut off at the timeout" on Node 22.18 under load. Run that file alone on 22.18 (`npx --yes node@22.18 --test test/avatar-service.test.ts`); if it passes, run `--full` again; a second failure is real.
+4. **`./check.sh --full`** in the background (it takes minutes; it fails on a dirty tree or a creator not at the pin). Read the result file, not just the exit code. **One flake is known:** `avatar-service` "a render that never ends is cut off at the timeout" on Node 22.18 under load. Run that file alone on 22.18 (`npx --yes node@22.18 --test test/avatar-service.test.ts`); if it passes, run `--full` again; a second failure is real. In 0.22.0 the full run failed on `npm test` once, the rerun of `npm test` alone passed (669 of 669), and the second full run passed. The cause of the first failure was never found: when `npm test` fails, save its whole output (the summary alone does not name the test), so the failing test can be read.
 5. **Release notes** in the scratchpad, from the last release's notes: what is new (user words, not commit subjects), fixed, "Tested" (say what was and was not run: installers are built by the workflow and not run; faked network), "Still true" (known limits: small models may not write tags, no signing). The download table lists the five installer names with the new version. Thank the tester when a report led to a change.
 
 ## 2. Packs that ship with it (only on go)
@@ -41,7 +42,14 @@ git tag -a vX.Y.Z -m "X.Y.Z"        # annotated; a docs-only release uses "[docs
 git push origin release-tmp:main vX.Y.Z   # main and the tag together
 ```
 
-Then wait for the **Release** workflow (`gh run list`, find its id, watch the Monitor tool on `gh run view ID --json status`): all five installers, `SHA256SUMS`, and also the CI and Documentation site runs for `main`. Publish the draft:
+Then wait for the **Release** workflow (`gh run list`, find its id, watch the Monitor tool on `gh run view ID --json status`): every installer file and `SHA256SUMS` (0.22.0 had seven installer files: Windows `.exe`, Linux AppImage x64 and arm64, macOS `.dmg` and `.zip` for x64 and arm64), and also the CI and Documentation site runs for `main`.
+
+**Traps seen in 0.22.0:**
+- The macOS build can be cancelled before any runner starts (no steps, no runner name). Check https://www.githubstatus.com first. Rerun only the failed job with `gh run rerun ID -R rhedak/anime_ai_companion --failed`. The checksum job stays skipped until every build passes, and the run is marked failed in the meantime.
+- A draft can hold only some installers. Do not publish it until every installer and `SHA256SUMS` are attached: `gh release view vX.Y.Z -R rhedak/anime_ai_companion --json assets`.
+- Monitor watches expire (5 to 30 minutes). A run that is still going when one expires needs a new watch; the run's status, not the expiry notice, says what happened.
+
+Publish the draft:
 
 ```bash
 gh release edit vX.Y.Z -R rhedak/anime_ai_companion --title "X.Y.Z" --notes-file <notes> --draft=false --latest
@@ -57,7 +65,18 @@ Say what happens to the owner's checkout: it stays on the old `main` until they 
 - Do not re-tag or move a pushed tag. Do not delete a published release without being asked.
 - Do not announce the site pages (`picture-packs.html#activities`, etc.) as live before the Pages run succeeds.
 
-## Packs waiting for the next release (as of 2026-10-22)
+## Packs waiting for the next release
 
-New or changed since 0.15.0, all committed locally and not pushed: the app's `franzi-dress` (bundled) has a 27-frame lossy dancing loop; the packs repo branch `franzi-activities` has `franzi-bikini` (swimming, 4 frames) and `franzi-casual` (24-frame lossy cooking loop). Before the release: push the packs branch and merge it to the packs repo's `main`, publish `franzi-bikini` and `franzi-casual` with a higher version than the live index entry (one at a time, see section 2), and check the archive builds (the build tool accepts lossy WebP for `activity-*` pictures only). The app side (`packs/characters/franzi.txt` lines, the 12 fps playback for loops over 8 frames, `/claude-login`, the archive exception) is on `dev`; a minor version (new commands and activity support).
+Check this at each release; do not carry over a list. As of 2026-11-05 none are waiting: every pack's latest source commit is older than its last `Publish <id> version N` commit on the packs repo's `main`, and the bundled `franzi-dress` activity was in 0.21.1.
+
+To check, for each id in the live index (`curl -s https://rhedak.github.io/anime_ai_companion-packs/index.json`):
+
+```bash
+cd ../anime_ai_companion-packs
+pub=$(git log -1 --format='%ct' --grep="^Publish $id version" main)
+src=$(git log -1 --format='%ct' -- packs-src/$id ref/$id)
+[ "$src" -gt "$pub" ] && echo "$id: source changed after its publish"
+```
+
+Also check that no feature branch in the packs repo has commits not in `main` (`git rev-list --count main..<branch>`). A pack that does need publishing goes through section 2, with a version higher than its live entry.
 
