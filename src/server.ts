@@ -765,7 +765,16 @@ const personaVoice = createPersonaService({
 
 // --- the pack studio: pictures of her in a new outfit, made on this computer; see studio-service.ts and docs/pack-studio.md ---
 const studio = createStudioService({
+  // A character id that is taken: the shipped characters and the user's own (data/frames/characters, the same folders the gallery reads).
+  characterExists: async (id) => readCharacters(packDirs).then((all) => Object.hasOwn(all, id)),
   mode: () => mode,
+  // The brain that can see pictures: the same test as the chat's attach button (see the attach check below).
+  canSeePictures: () => !basicMode && (settings.provider === "claude" || (settings.provider === "ollama" && ollamaBrain.canSeePicturesFor(settings.ollamaModel))),
+  askBrain: (text, image) => turns.submit(text, image ? [image] : [], () => {}),
+  switchToChat: async () => {
+    if (mode !== "chat") await switchMode("chat", undefined, (text) => broadcast({ type: "notice", text }));
+    return mode === "chat";
+  },
   activeSource: () => settings.framePack,
   drawnSource: () => defaultPacks[avatar.basePreset?.toLowerCase() ?? ""] ?? null,
   dataDir,

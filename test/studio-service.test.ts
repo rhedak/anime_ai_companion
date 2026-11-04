@@ -18,6 +18,13 @@ async function neutral(): Promise<Buffer> {
   return encodePng(r);
 }
 
+/** The neutral with her eyes closed: a dark line where the typical eyes are (her own blink, for learning where the face is). */
+async function blinkClosed(): Promise<Buffer> {
+  const r = await decode(await neutral());
+  for (let y = 60; y < 64; y++) for (let x = 76; x < 112; x++) r.data.set([40, 20, 20, 255], (y * r.w + x) * 4);
+  return encodePng(r);
+}
+
 /** The neutral with her mouth open: a pale patch where the typical mouth is (the pack has no blink to learn from, so the studio uses typical proportions). */
 async function mouthOpen(): Promise<Buffer> {
   const r = await decode(await neutral());
@@ -25,7 +32,7 @@ async function mouthOpen(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; mouth?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string } = {}) {
+async function setup(options: { switchToChat?: () => Promise<boolean>; askBrain?: (text: string, image?: { mediaType: string; data: string }) => void; canSeePictures?: boolean; faces?: boolean; backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; mouth?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string; characterExists?: (id: string) => Promise<boolean> } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
@@ -56,7 +63,13 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     remoteRefusal: () => "only on the computer",
     sources: async () => ["risa-dress"],
     characters: async (names) => Object.fromEntries(names.filter((n) => n.startsWith("risa-")).map((n) => [n, { id: "risa", name: "Risa" }])),
-    readSource: async (name) => (name === "risa-dress" ? { neutral: await neutral(), talk: options.mouth ? [await mouthOpen()] : [], character: "risa" } : null),
+    characterExists: options.characterExists,
+    readSource: async (name) =>
+      name === "risa-dress"
+        ? options.faces
+          ? { neutral: await neutral(), blink: await blinkClosed(), talk: [await mouthOpen(), await mouthOpen(), await mouthOpen()], character: "risa" }
+          : { neutral: await neutral(), talk: options.mouth ? [await mouthOpen()] : [], character: "risa" }
+        : null,
     refreshPacks: async () => {},
     pushNote: (t) => notes.push(t),
     brain: () => options.brain ?? "claude",
@@ -65,6 +78,9 @@ async function setup(options: { backendUrl?: string | null; again?: { dataDir: s
     // As the app finds a pack: the user's own copy in data/frames first, else the one that comes with the app (the folder above, outside data/frames).
     packFolder: async (name) => (name !== "risa-dress" ? null : (await stat(join(framesDir, name)).then(() => true, () => false)) ? join(framesDir, name) : packFolder),
     hubDir: options.hubDir ?? join(dataDir, "no-hub"),
+    askBrain: options.askBrain,
+    switchToChat: options.switchToChat,
+    canSeePictures: () => options.canSeePictures ?? false,
   });
   const waitFor = async (type: string, count = 1) => {
     // Up to three minutes: a whole pack is drawn in the test, and a full run is slow.
@@ -110,7 +126,8 @@ test("the studio is off until /studio on, needs a backend that answers, and is r
 });
 
 test("a redraw: the question, four pictures, one picked, the whole pack drawn and checked, a picture drawn again, and the pack installed", async () => {
-  const t = await setup();
+  // With her own blink and mouth pictures, her face areas are learned from the pack (so paste-back is on, as in a real pack).
+  const t = await setup({ faces: true });
   try {
     const opened: unknown[] = [];
     await t.service.command("on", t.say, false, (m) => opened.push(m));
@@ -232,6 +249,29 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     const sameHappy = same.find((r) => /warm happy smile/.test(String(r.body.prompt)));
     assert.ok(sameHappy, "happy was asked for again");
     assert.equal(sameHappy?.body.seed, recordedSeed, "with the seed it had");
+
+    // A seed typed for the redraw is used for every picture drawn again, and paste-back can be turned off: the picture the model drew
+    // is kept beside the pasted one (variants/) and the record says it was not pasted.
+    const askedSeeded = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-regen", id: card.id, names: ["happy"], seed: "4242", pasteBack: false }, send, false);
+    await t.waitFor("studio-review", 4);
+    const seeded = t.fake.requests.filter((r) => r.path === "/edit").slice(askedSeeded);
+    assert.ok(seeded.length >= 5, "happy and its pictures were drawn again");
+    assert.ok(seeded.every((r) => r.body.seed === 4242), "every one with the seed typed");
+    const afterSeeded = JSON.parse(await readFile(join(t.dataDir, "studio", card.id, "frames.json"), "utf8"));
+    assert.equal(afterSeeded.happy.pasted, false, "kept whole, not pasted back");
+    assert.equal(afterSeeded.happy.seed, 4242);
+    assert.ok(await stat(join(t.dataDir, "studio", card.id, "variants", "happy-whole.png")).then(() => true, () => false), "the whole version is kept beside the pasted one");
+    assert.ok(await stat(join(t.dataDir, "studio", card.id, "variants", "happy-pasted.png")).then(() => true, () => false), "and the pasted one");
+
+    // Switching to the pasted version puts it in the pack without drawing anything (no new requests), and the record follows.
+    const askedBeforeSwitch = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-variant", id: card.id, name: "happy", variant: "pasted" }, send, false);
+    await t.waitFor("studio-review", 5);
+    assert.equal(t.fake.requests.filter((r) => r.path === "/edit").length, askedBeforeSwitch, "nothing is drawn for a switch");
+    const switched = JSON.parse(await readFile(join(t.dataDir, "studio", card.id, "frames.json"), "utf8"));
+    assert.equal(switched.happy.pasted, true, "the pasted version is in the pack now");
+    assert.equal(switched.happy.seed, 4242, "the seed of the picture stays");
 
     await t.service.message({ type: "studio-accept", id: card.id }, send, false);
     await t.waitFor("studio-installed");
@@ -1268,5 +1308,312 @@ test("an activity refuses what it cannot do: a loop of one, a made-up source, ta
     assert.deepEqual((await t.service.stateMessage()).activities, []);
   } finally {
     await t.cleanup();
+  }
+});
+
+test("the edit steps: a base is chosen, changed one thing at a time, a kept picture is undone and kept again, and only the approved base is made into the pack", async () => {
+  const asked: { text: string; image?: { mediaType: string; data: string } }[] = [];
+  const t = await setup({ askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-steps", outfit: "a dark green winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm") as Record<string, any>;
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+
+    // Steps need a base first.
+    await t.service.message({ type: "studio-step", id: card.id, change: "her hair to a short red bob" }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error");
+    assert.equal(t.fake.requests.filter((r) => r.path === "/edit").length, 4 + 0 + 0, "nothing is drawn for a step before a base is chosen");
+
+    await t.service.message({ type: "studio-base-use", id: card.id, seed: 1 }, send, false);
+    let state: Record<string, any> = await t.service.stateMessage();
+    assert.equal(state.chain?.steps.length, 0);
+    assert.equal(state.chain?.canAsk, false, "the brain cannot see pictures here, so it cannot be asked");
+
+    // One step: drawn once per seed, from the base, and the page is told about each picture.
+    const before = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-step", id: card.id, change: "her hair to a short red bob" }, send, false);
+    await t.waitFor("studio-steps-done");
+    const edits = t.fake.requests.filter((r) => r.path === "/edit").slice(before);
+    assert.equal(edits.length, 2, "two pictures for the step");
+    assert.match(String(edits[0].body.prompt), /change only her hair to a short red bob/);
+    assert.equal(t.sent.filter((m) => m.type === "studio-step-candidate").length, 2);
+    state = await t.service.stateMessage();
+    assert.equal(state.chain.steps[0].candidates.length, 2);
+
+    // Keep one, undo it, keep it again: the base for the next step is the kept picture, and undo puts the old one back.
+    await t.service.message({ type: "studio-step-keep", id: card.id, n: 1, seed: 2 }, send, false);
+    state = await t.service.stateMessage();
+    assert.equal(state.chain.steps[0].kept, 2);
+    await t.service.message({ type: "studio-step-undo", id: card.id }, send, false);
+    state = await t.service.stateMessage();
+    assert.equal(state.chain.steps[0].kept, null);
+    await t.service.message({ type: "studio-step-keep", id: card.id, n: 1, seed: 2 }, send, false);
+
+    // Suggestions need a brain that can see; with one, it is asked with the base attached and nothing is drawn.
+    await t.service.message({ type: "studio-step-suggest", id: card.id }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error", "refused while the brain cannot see pictures");
+
+    // Approve: the kept picture becomes the base, and the rest of the pack is drawn from it.
+    await t.service.message({ type: "studio-base-approve", id: card.id }, send, false);
+    await t.waitFor("studio-review");
+    const dir = join(t.dataDir, "studio", card.id);
+    const chosen = await readFile(join(dir, "base", "chosen.png"));
+    const kept = await readFile(join(dir, "steps", "1", "seed-2.png"));
+    assert.ok(chosen.equals(kept), "the approved base is the kept step picture");
+    assert.equal(asked.length, 0, "no brain was asked");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("with a brain that can see pictures, the next steps are asked for with the base attached, and nothing is drawn", async () => {
+  const asked: { text: string; image?: { mediaType: string; data: string } }[] = [];
+  const t = await setup({ canSeePictures: true, askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-ask", outfit: "a dark green winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm") as Record<string, any>;
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    await t.service.message({ type: "studio-base-use", id: card.id, seed: 3 }, send, false);
+    const drawn = t.fake.requests.filter((r) => r.path === "/edit").length;
+    await t.service.message({ type: "studio-step-suggest", id: card.id }, send, false);
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].image?.mediaType, "image/png");
+    assert.match(asked[0].text, /\[studio step=/);
+    assert.equal(t.fake.requests.filter((r) => r.path === "/edit").length, drawn, "nothing is drawn by asking");
+    const state = await t.service.stateMessage();
+    assert.equal(state.chain?.canAsk, true);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("a finished pack that is not wanted is discarded: its working files go, nothing is written to the packs, and a new pack can be started", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-discard", outfit: "a dark green winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm") as Record<string, any>;
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    await t.service.message({ type: "studio-base-use", id: card.id, seed: 1 }, send, false);
+    await t.service.message({ type: "studio-base-approve", id: card.id }, send, false);
+    await t.waitFor("studio-review");
+    const dir = join(t.dataDir, "studio", card.id);
+    assert.ok(await stat(dir).then(() => true, () => false), "the working folder is there while the pack waits");
+
+    await t.service.message({ type: "studio-review-discard", id: card.id }, send, false);
+    assert.equal(await stat(dir).then(() => true, () => false), false, "the working folder is removed");
+    assert.equal(await stat(join(t.framesDir, "risa-discard")).then(() => true, () => false), false, "nothing was written to the packs");
+    const state = await t.service.stateMessage();
+    assert.equal(state.review, null);
+    assert.equal(state.job, null);
+
+    await t.service.message({ type: "studio-accept", id: card.id }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error", "the discarded pack cannot be used");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("the base pictures can be discarded too, before any is chosen", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-pick-discard", outfit: "a dark green winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm") as Record<string, any>;
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    const dir = join(t.dataDir, "studio", card.id);
+    assert.ok(await stat(dir).then(() => true, () => false));
+    await t.service.message({ type: "studio-review-discard", id: card.id }, send, false);
+    assert.equal(await stat(dir).then(() => true, () => false), false);
+    const state = await t.service.stateMessage();
+    assert.equal(state.job, null);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("polish the words: one model call, with the reference only when the brain can see it, and nothing in work mode", async () => {
+  const asked: { text: string; image?: { mediaType: string; data: string } }[] = [];
+  const reference = `data:image/png;base64,${(await encodePng(makeRaster(40, 40, [200, 40, 50, 255]))).toString("base64")}`;
+  const seeing = await setup({ canSeePictures: true, askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await seeing.service.command("on", seeing.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await seeing.service.message({ type: "studio-polish", outfit: "a gold top and shorts", referenceKind: "outfit", reference }, send, false);
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].text, /\[studio outfit=/);
+    assert.equal(asked[0].image?.mediaType, "image/png", "the reference is attached when the brain can see");
+    assert.equal((await seeing.service.stateMessage()).brainSeesPictures, true, "the page is told the brain can see");
+
+    await seeing.service.message({ type: "studio-polish", outfit: "x" }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error", "too short to polish without a picture");
+
+    asked.length = 0;
+    await seeing.service.message({ type: "studio-polish", outfit: "a gold top and shorts", referenceKind: "character", reference }, send, false);
+    assert.ok(asked[0].image, "the reference goes with the words");
+    assert.match(asked[0].text, /face and hair/);
+  } finally {
+    await seeing.cleanup();
+  }
+
+  const blind = await setup({ askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await blind.service.command("on", blind.say, false, () => {});
+    asked.length = 0;
+    const me: Record<string, any>[] = [];
+    await blind.service.message({ type: "studio-polish", outfit: "a gold top and shorts", referenceKind: "outfit", reference }, (m: unknown) => me.push(m as Record<string, any>), false);
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].image, undefined, "no picture when the brain cannot see one");
+    assert.match(asked[0].text, /No picture is attached/);
+  } finally {
+    await blind.cleanup();
+  }
+
+  // Work mode: the polish switches to chat first (the server's switch), then asks; the brain is asked once.
+  const switchedOn = { value: false };
+  const work = await setup({
+    askBrain: (text, image) => asked.push({ text, image }),
+    switchToChat: async () => {
+      switchedOn.value = true;
+      work.mode.value = "chat";
+      return true;
+    },
+  });
+  try {
+    await work.service.command("on", work.say, false, () => {});
+    work.mode.value = "work";
+    asked.length = 0;
+    const me: Record<string, any>[] = [];
+    await work.service.message({ type: "studio-polish", outfit: "a gold top and shorts" }, (m: unknown) => me.push(m as Record<string, any>), false);
+    assert.equal(switchedOn.value, true, "work mode switches to chat first");
+    assert.equal(asked.length, 1, "then the brain is asked");
+  } finally {
+    await work.cleanup();
+  }
+
+  // If the switch is refused, nothing is asked and the page is told why.
+  const refused = await setup({ askBrain: (text, image) => asked.push({ text, image }), switchToChat: async () => false });
+  try {
+    await refused.service.command("on", refused.say, false, () => {});
+    refused.mode.value = "work";
+    asked.length = 0;
+    const me: Record<string, any>[] = [];
+    await refused.service.message({ type: "studio-polish", outfit: "a gold top and shorts" }, (m: unknown) => me.push(m as Record<string, any>), false);
+    assert.equal(asked.length, 0);
+    assert.equal(me.at(-1)?.type, "studio-error");
+  } finally {
+    await refused.cleanup();
+  }
+});
+
+test("polish with blank words: the reference picture alone gives the outfit words, and without a picture the brain is asked for a description first", async () => {
+  const asked: { text: string; image?: { mediaType: string; data: string } }[] = [];
+  const reference = `data:image/png;base64,${(await encodePng(makeRaster(40, 40, [200, 40, 50, 255]))).toString("base64")}`;
+  const seeing = await setup({ canSeePictures: true, askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await seeing.service.command("on", seeing.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    await seeing.service.message({ type: "studio-polish", outfit: "", referenceKind: "outfit", reference }, (m: unknown) => me.push(m as Record<string, any>), false);
+    assert.equal(asked.length, 1, "a blank outfit with a picture the brain can see is polished from the picture");
+    assert.match(asked[0].text, /outfit words are blank/);
+    assert.ok(asked[0].image);
+    assert.equal(me.length, 0);
+  } finally {
+    await seeing.cleanup();
+  }
+  const blind = await setup({ askBrain: (text, image) => asked.push({ text, image }) });
+  try {
+    await blind.service.command("on", blind.say, false, () => {});
+    asked.length = 0;
+    const me: Record<string, any>[] = [];
+    await blind.service.message({ type: "studio-polish", outfit: "", referenceKind: "outfit", reference }, (m: unknown) => me.push(m as Record<string, any>), false);
+    assert.equal(asked.length, 0);
+    assert.equal(me.at(-1)?.type, "studio-error");
+  } finally {
+    await blind.cleanup();
+  }
+});
+
+test("base pictures can be added to: two on fresh random seeds, or one on a seed the user gives, and a seed already there is refused", async () => {
+  const t = await setup();
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-more", outfit: "a dark green winter coat", seed: "77" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm") as Record<string, any>;
+    await t.service.message({ type: "studio-confirm", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    let state = await t.service.stateMessage();
+    assert.equal(state.candidates.length, 1, "the form's seed draws exactly one picture first");
+    assert.equal(t.fake.requests.filter((r) => r.path === "/edit").length, 1);
+
+    await t.service.message({ type: "studio-base-more", id: card.id }, send, false);
+    await t.waitFor("studio-candidates-done", 2);
+    state = await t.service.stateMessage();
+    assert.equal(state.candidates.length, 3, "two fresh pictures are added to the one there");
+
+    await t.service.message({ type: "studio-base-more", id: card.id, seed: 500 }, send, false);
+    await t.waitFor("studio-candidates-done", 3);
+    state = await t.service.stateMessage();
+    assert.equal(state.candidates.length, 4);
+    assert.ok(state.candidates.some((c: { seed: number }) => c.seed === 500));
+
+    await t.service.message({ type: "studio-base-more", id: card.id, seed: 500 }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error", "a seed already here is refused");
+    await t.service.message({ type: "studio-base-more", id: card.id, seed: "nope" }, send, false);
+    assert.equal(me.at(-1)?.type, "studio-error", "a seed that is not a number is refused");
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test("a new character: its id must be free, an upload must be a readable picture, and a good upload asks first, naming her character file", async () => {
+  const taken = await setup({ characterExists: async (id) => id === "risa" });
+  try {
+    await taken.service.command("on", taken.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await taken.service.message({ type: "studio-start", mode: "character", characterName: "Risa", route: "pack", source: "risa-dress", name: "risa-new", outfit: "a green coat" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /already exists/, "a taken id is refused");
+    await taken.service.message({ type: "studio-start", mode: "character", characterName: "Mira", route: "upload", upload: "data:image/png;base64,", name: "mira-new", outfit: "" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /could not be read/, "an empty upload is refused");
+  } finally {
+    await taken.cleanup();
+  }
+
+  const fresh = await setup();
+  try {
+    await fresh.service.command("on", fresh.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    // Her picture on a plain white background, as a PNG: the cut-out is made in code, so no model call is made for it.
+    const figure = makeRaster(60, 80, [255, 255, 255, 255]);
+    for (let y = 15; y < 65; y++) for (let x = 20; x < 40; x++) figure.data.set([200, 40, 60, 255], (y * 60 + x) * 4);
+    const upload = `data:image/png;base64,${(await encodePng(figure)).toString("base64")}`;
+    await fresh.service.message({ type: "studio-start", mode: "character", characterName: "Mira", characterDescription: "a quiet engineer", route: "upload", upload, name: "mira-new", outfit: "" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.ok(card, "the question is asked before anything is drawn");
+    assert.equal(card.character?.id, "mira");
+    assert.match(card.note, /characters\/mira\.txt/, "the card names her character file");
+    assert.match(card.note, /no model call/, "a cut-out picture says no model call is made");
+    assert.equal(fresh.fake.requests.filter((r) => r.path === "/edit").length, 0, "nothing is drawn before the yes");
+  } finally {
+    await fresh.cleanup();
   }
 });

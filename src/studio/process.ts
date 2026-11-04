@@ -5,7 +5,7 @@ import type { FrameRecord } from "./build.ts";
  * It names the settings the pictures were made with, a checklist to go through by eye, and one row per picture: its tries, its seed and what the checks still flagged.
  * It says nothing about the owner: no name of a person and no contact address.
  */
-export function processText(job: { name: string; outfit: string; source: string }, model: string, records: Record<string, FrameRecord>): string {
+export function processText(job: { name: string; outfit: string; source: string; sourceKind?: string }, model: string, records: Record<string, FrameRecord>): string {
   const rows = Object.entries(records).map(
     ([name, r]) => `| ${name} | seed ${r.seed}, ${r.attempts + 1} ${r.attempts === 0 ? "try" : "tries"} | ${r.flags.length ? `flags: ${r.flags.join("; ")}` : "no flags"} |`,
   );
@@ -19,7 +19,7 @@ export function processText(job: { name: string; outfit: string; source: string 
   ];
   return `# How the ${job.name} pack was made
 
-Made on this computer with the pack studio of the companion app, from the \`${job.source}\` pack, in a new outfit: ${job.outfit}.
+Made on this computer with the pack studio of the companion app, from ${job.sourceKind === "upload" ? "a picture the user uploaded" : "the \`" + job.source + "\` pack"}, in a new outfit: ${job.outfit}.
 The pictures were generated locally or by the image maker the user chose; see NOTICE.md for what that means.
 
 ## Review checklist

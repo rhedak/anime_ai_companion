@@ -109,3 +109,24 @@ body.demo #file { display: none !important; }
   body.demo .tools button, body.demo .tools select { padding: 5px 5px; font-size: 11.5px; }
 }
 #demo-chips .chips-list button:disabled { opacity: 0.55; cursor: default; }
+
+/* A link that names a pack (?pack=…): she is covered while it loads, so the drawn avatar does not flash up first. */
+.demo-link-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(1200px 700px at 30% 20%, var(--stage-1, #2a2140), var(--stage-2, #120e1c)); /* the page's own backdrop */
+  transition: opacity 0.3s ease;
+}
+.demo-link-loading.gone { opacity: 0; pointer-events: none; }
+.demo-link-loading p { margin: 0; }
+.demo-link-loading .demo-link-title { font-size: 18px; font-weight: 600; color: var(--text, #eee); }
+.demo-link-loading progress { width: min(260px, 70%); height: 8px; }
+.demo-link-loading .demo-link-note { max-width: 420px; font-size: 12px; color: var(--muted, #b9b3c9); }

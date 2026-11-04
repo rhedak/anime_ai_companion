@@ -43,13 +43,18 @@ export function createStudio(io) {
   let busyOn = false;
   /** The ring was started by what the server reported (so the server's next report may end it), not by a click on this page. */
   let fromState = false;
+  /** A job (a pack, a base, a redraw) is running: its Stop is shown in the busy ring. */
+  let jobRunning = false;
   function setBusy(/** @type {boolean} */ on, /** @type {string} */ text = "") {
     busyOn = on;
     if (!on) fromState = false;
     let ring = document.querySelector(".studio-busy");
     if (!on) return void ring?.remove();
     if (!ring) {
-      ring = el("div", { className: "studio-busy", role: "status", ariaLive: "polite" }, el("span", { className: "studio-ring" }), el("span", { className: "studio-busy-text" }));
+      // The Stop of a running job is here too: the steps (and the Stop beside them) are hidden while a pack is drawn, so this one is always in reach.
+      const stopNow = el("button", { type: "button", className: "ghost studio-ring-stop", textContent: "Stop", title: "Stops the job; what is drawn so far is kept", hidden: !jobRunning });
+      stopNow.onclick = () => io.send({ type: "studio-cancel" });
+      ring = el("div", { className: "studio-busy", role: "status", ariaLive: "polite" }, el("span", { className: "studio-ring" }), el("span", { className: "studio-busy-text" }), stopNow);
       document.body.append(ring);
     }
     if (text) /** @type {HTMLElement} */ (ring.querySelector(".studio-busy-text")).textContent = text;
@@ -102,6 +107,7 @@ export function createStudio(io) {
   const STEPS = ["goal", "source", "words", "maker", "start"];
   /** What the user is making: a whole new outfit, or one picture of a pack drawn again. */
   /** @type {"new" | "redraw" | "activity" | ""} */
+  /** @type {string} */
   let mode = "";
   /** The activity workspace (public/studio-activity.js), made with the panel. */
   /** @type {ReturnType<typeof createActivityBox> | null} */
@@ -149,7 +155,7 @@ export function createStudio(io) {
     const chosen = makerChoice();
     /** @type {Record<string, string>} */
     const words = {
-      goal: mode === "new" ? "Design a new outfit" : mode === "redraw" ? "Redraw a picture" : mode === "activity" ? "Make an activity" : "",
+      goal: mode === "new" ? "Design a new outfit" : mode === "character" ? "Add a new character" : mode === "redraw" ? "Redraw a picture" : mode === "activity" ? "Make an activity" : "",
       source: mode && pick?.value ? (char ? `${char.name} › ${outfitLabel(pick.value, char.id)}` : pick.value) : "",
       words: !mode ? "" : mode === "redraw" ? frameName?.value || "" : (outfit?.value || "").slice(0, 70),
       maker: chosen ? `${chosen.available === false ? "not ready" : "ready"} · ${chosen.label}` : "",
@@ -174,7 +180,13 @@ export function createStudio(io) {
       else activity.hide();
     }
     // The two kinds of work share the third and the last step; only the fields differ.
-    for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = /** @type {HTMLElement} */ (n).dataset.for !== mode;
+    for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = !String(/** @type {HTMLElement} */ (n).dataset.for).split(" ").includes(mode);
+    // A new character from a picture the user uploads has no pack to draw from: the pack's fields are hidden for that route.
+    const uploading = mode === "character" && Boolean(/** @type {HTMLInputElement | null} */ (q("#studio-route-upload"))?.checked);
+    for (const n of panel.querySelectorAll("[data-route]")) {
+      const node = /** @type {HTMLElement} */ (n);
+      node.hidden = node.dataset.route === "upload" ? !uploading : uploading;
+    }
     const review = q(".studio-review-lines");
     if (review) {
       const frameSaved = /** @type {HTMLInputElement | null} */ (q("#studio-frame-pack"))?.value.trim();
@@ -183,7 +195,7 @@ export function createStudio(io) {
     }
   }
 
-  function chooseMode(/** @type {"new" | "redraw" | "activity"} */ next) {
+  function chooseMode(/** @type {"new" | "redraw" | "activity" | "character"} */ next) {
     mode = next;
     remember({ mode });
     renderSources();
@@ -379,11 +391,60 @@ export function createStudio(io) {
   function open() {
     if (!on) return askToOpen();
     if (panel) return close(); // the same menu entry again closes it
-    const source = el("select", { id: "studio-source", hidden: true, ariaLabel: "Draw from this pack" });
+    const source = el("select", { id: "studio-source", hidden: true, ariaLabel: "Draw from this pack", "data-route": "pack" });
     const name = el("input", { type: "text", id: "studio-name", title: "The folder name of the new pack in data/frames. A name that is taken is refused; nothing is replaced.", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
     const outfit = el("textarea", { id: "studio-outfit", title: "What she wears in the new pack. The image maker is told this, with the rest of the picture kept the same.", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
     outfit.addEventListener("input", refreshSteps);
     const look = el("textarea", { id: "studio-look", title: "The line she uses to say what she wears (look.txt). Left empty it is made from the outfit.", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
+    const refFile = el("input", { type: "file", id: "studio-reference-file", accept: "image/png,image/jpeg,image/webp", ariaLabel: "Reference picture (optional)", "data-route": "pack" });
+    // A new character: her name and a line about her, and either one of her outfits (the pack chosen) or a picture the user uploads.
+    const characterName = el("input", { type: "text", id: "studio-character-name", maxLength: 40, placeholder: "e.g. Mira", autocomplete: "off", title: "Her name. Her id, the name in lower case with dashes, is her character file's name; a taken id is refused." });
+    const characterDescription = el("textarea", { id: "studio-character-description", rows: 2, maxLength: 300, placeholder: "e.g. a quiet engineer with a dry sense of humour", title: "One line about her. Left empty, it is made from her look words." });
+    const routePack = el("input", { type: "radio", name: "studio-route", id: "studio-route-pack", value: "pack", checked: true });
+    const routeUpload = el("input", { type: "radio", name: "studio-route", id: "studio-route-upload", value: "upload" });
+    const uploadFile = el("input", { type: "file", id: "studio-upload-file", accept: "image/png,image/jpeg,image/webp", ariaLabel: "Her neutral picture", "data-route": "upload" });
+    // The route decides which fields show: the pack's own fields for one of her outfits, the upload's for a picture of her.
+    for (const r of [routePack, routeUpload]) r.addEventListener("change", () => refreshSteps());
+    characterName.addEventListener("input", () => {
+      if (!name.value || name.dataset.auto === "1") {
+        const id = characterName.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        name.value = id ? `${id}-new` : "";
+        name.dataset.auto = "1";
+      }
+    });
+    // A picture chosen while "No reference picture" is selected means the picture is wanted: the list moves to "Only the outfit". A choice the
+    // user has made (the outfit or the character) stays as it is.
+    refFile.addEventListener("change", () => {
+      if (refFile.files?.[0] && refKind.value === "") refKind.value = mode === "character" ? "character" : "outfit";
+    });
+    const polish = el("button", { type: "button", className: "ghost studio-action", id: "studio-polish", textContent: "Polish prompt", title: "Asks the chat brain you have selected to rewrite these words for the image maker. One model call." });
+    polish.onclick = async () => {
+      const withPicture = Boolean(refFile.files?.[0] && refKind.value);
+      const seeing = brainSeesPictures
+        ? withPicture ? "It can see pictures, so it will look at the reference too." : "It can see pictures, but no reference is chosen."
+        : "The selected model cannot see pictures, so the reference is not used. A vision capable model is recommended for this.";
+      // A picture chosen with "No reference picture" is not sent: say so, so the reference is not expected to be used.
+      const unused = Boolean(refFile.files?.[0] && !refKind.value);
+      const note = unused ? " The reference picture you chose is not used, because \"No reference picture\" is selected. Choose \"Only the outfit\" or \"The character\" to use it." : "";
+      const switching = chatMode ? "" : " This will switch to chat mode, because the answer can only fill in the form in chat mode.";
+      const question = `Polish these words with the chat brain you have selected? This is a model call: your words${withPicture ? " and the reference picture" : ""} are sent to that model, and its answer replaces the outfit words. ${seeing}${note}${switching} Continue?`;
+      if (!window.confirm(question)) return;
+      let reference = null;
+      if (withPicture) {
+        try {
+          reference = await readPicture(refFile.files[0]);
+        } catch (error) {
+          return status(error instanceof Error ? error.message : String(error), true);
+        }
+      }
+      io.send({ type: "studio-polish", outfit: outfit.value, referenceKind: refKind.value || null, reference });
+      status("Polishing the words…");
+    };
+    const refKind = el("select", { id: "studio-reference-kind", title: "What the reference picture gives: the clothes only, or the character's face and hair. Leave it on none to draw from the words alone.", ariaLabel: "What the reference picture gives" },
+      el("option", { value: "", textContent: "No reference picture" }),
+      el("option", { value: "outfit", textContent: "Only the outfit" }),
+      el("option", { value: "character", textContent: "The character (face and hair)" }));
+    const seedField = el("input", { type: "text", id: "studio-seed", inputMode: "numeric", autocomplete: "off", placeholder: "random", title: "The same seed draws the same picture again. Empty: a random seed.", ariaLabel: "Seed for the first picture (optional)" });
     const count = el("select", { id: "studio-count", title: "How many different first pictures are drawn for you to pick the best from. A paid maker charges for each one.", ariaLabel: "How many first pictures to draw" }, ...[4, 3, 2, 1].map((n) => el("option", { value: String(n), textContent: n === 4 ? "4 (you pick the best)" : String(n) })));
     const makerSelect = el("select", { id: "studio-maker", hidden: true, ariaLabel: "Which image maker draws it" });
     makerSelect.onchange = () => {
@@ -457,10 +518,32 @@ export function createStudio(io) {
       refreshSteps();
     };
     name.oninput = () => delete name.dataset.auto;
-    start.onclick = () => {
+    start.onclick = async () => {
       q(".studio-confirm")?.replaceChildren();
       q(".studio-candidates")?.replaceChildren();
-      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value) });
+      let reference = null;
+      if (refFile.files?.[0] && refKind.value) {
+        try {
+          reference = await readPicture(refFile.files[0]);
+        } catch (error) {
+          return status(error instanceof Error ? error.message : String(error), true);
+        }
+      }
+      if (mode === "character") {
+        const upload = routeUpload.checked ? uploadFile.files?.[0] : null;
+        let picture = null;
+        if (upload) {
+          try {
+            picture = await readPicture(upload);
+          } catch (error) {
+            return status(error instanceof Error ? error.message : String(error), true);
+          }
+        }
+        io.send({ type: "studio-start", mode: "character", characterName: characterName.value, characterDescription: characterDescription.value, route: upload ? "upload" : "pack", upload: picture, source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value), seed: seedField.value.trim() || null, referenceKind: !upload && reference ? refKind.value : null, reference: upload ? null : reference });
+        status("Checking…");
+        return;
+      }
+      io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value), seed: seedField.value.trim() || null, referenceKind: reference ? refKind.value : null, reference });
       status("Checking…");
     };
     const transferFolder = el("input", { id: "studio-transfer-folder", type: "text", placeholder: "Whole path of a folder, e.g. /Users/me/packs", autocomplete: "off" });
@@ -490,7 +573,7 @@ export function createStudio(io) {
       stepBoxes[key] = box;
       return box;
     };
-    const forMode = (/** @type {"new" | "redraw"} */ m, /** @type {(Node | string)[]} */ ...kids) => {
+    const forMode = (/** @type {string} */ m, /** @type {(Node | string)[]} */ ...kids) => {
       const box = el("div", {}, ...kids);
       box.dataset.for = m;
       return box;
@@ -500,7 +583,7 @@ export function createStudio(io) {
       b.onclick = () => setStage(to());
       return el("div", { className: "pack-confirm-buttons" }, b);
     };
-    const goalButton = (/** @type {"new" | "redraw" | "activity"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
+    const goalButton = (/** @type {"new" | "redraw" | "activity" | "character"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
       const b = el("button", { type: "button", className: "ghost studio-goal" }, el("strong", { textContent: title }), el("span", { textContent: sub }));
       b.onclick = () => chooseMode(m);
       return b;
@@ -549,11 +632,20 @@ export function createStudio(io) {
       el("div", { className: "studio-proposal" }),
       el("div", { className: "studio-resume" }),
       el("div", { className: "studio-steps" },
-        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"), goalButton("activity", "Make an activity", "A loop of pictures, drawn one after another")), activityBox.list),
-        step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs" }), el("div", { className: "studio-thumbs" }), source, frameSource, frameName),
+        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"), goalButton("activity", "Make an activity", "A loop of pictures, drawn one after another"), goalButton("character", "Add a new character", "Her first picture: from one of her outfits, or a picture you upload")), activityBox.list),
+        step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs", "data-route": "pack" }), el("div", { className: "studio-thumbs", "data-route": "pack" }), source, frameSource, frameName,
+          forMode("character", el("div", { className: "studio-route" },
+            el("label", { className: "studio-keep", htmlFor: "studio-route-pack" }, routePack, " Based on one of her outfits: she is drawn from the pack chosen above"),
+            el("label", { className: "studio-keep", htmlFor: "studio-route-upload" }, routeUpload, " Upload her neutral picture (a full-body picture: a plain background is cut out in code, a busy one is drawn over first)")),
+            el("label", { textContent: "Her neutral picture", htmlFor: "studio-upload-file", "data-route": "upload" }), uploadFile)),
         step("words", "What should change?", "",
-          forMode("new", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
+          forMode("character", el("label", { textContent: "Her name", htmlFor: "studio-character-name" }), characterName,
+            el("label", { textContent: "About her (one line; optional: made from her words if empty)", htmlFor: "studio-character-description" }), characterDescription),
+          forMode("new character", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
+            polish,
+            el("label", { textContent: "Reference picture (optional): the clothes, or the character", htmlFor: "studio-reference-file", "data-route": "pack" }), refFile, refKind,
             el("label", { textContent: "Name of the new pack", htmlFor: "studio-name" }), name,
+            el("label", { textContent: "Seed (optional: the same seed draws the same picture)", htmlFor: "studio-seed" }), seedField,
             el("details", {}, el("summary", { textContent: "Her words for it (optional)" }), look)),
           forMode("redraw", el("label", { textContent: "Which picture" }), el("div", { className: "studio-frame-chips" }),
             el("label", { textContent: "What to change in it", htmlFor: "studio-frame-prompt" }), framePrompt,
@@ -562,9 +654,9 @@ export function createStudio(io) {
         step("maker", "Who draws it?", "Web services cost money or allowance; the next question says what.", chip, models, makerSelect, pickMaker),
         step("start", "Review and start", "",
           el("dl", { className: "studio-review-lines" }),
-          forMode("new", el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }), count,
+          forMode("new character", el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }), count,
             el("details", {}, el("summary", { textContent: "What is in a pack?" }), el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }))),
-          el("div", { className: "pack-confirm-buttons" }, forMode("new", start), forMode("redraw", frameStart), stop)),
+          el("div", { className: "pack-confirm-buttons" }, forMode("new character", start), forMode("redraw", frameStart), stop)),
       ),
       activityBox.node,
       el("p", { className: "studio-status", role: "status" }),
@@ -572,6 +664,7 @@ export function createStudio(io) {
       el("div", { className: "studio-confirm" }),
       el("div", { className: "studio-frame" }),
       el("div", { className: "studio-candidates" }),
+      el("div", { className: "studio-job-discard" }),
       moreBox,
     );
     io.host()?.append(panel);
@@ -683,6 +776,159 @@ export function createStudio(io) {
 
   const isThumb = (/** @type {unknown} */ t) => typeof t === "string" && t.startsWith("data:image/webp;base64,");
 
+  /** A picture the user chose, as a data URL for the service (5 MB at most, the same cap as a chat attachment). */
+  function readPicture(/** @type {File} */ file) {
+    return new Promise((resolve, reject) => {
+      if (file.size > 5 * 1024 * 1024) return reject(new Error("That picture is larger than 5 MB. Use a smaller one."));
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("The picture could not be read."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /** The edit steps on the base, while it waits: the base, each step with its pictures (one kept), her suggestions, and the box for the next change. */
+  let chainId = "";
+  /** Whether the selected brain can see pictures (from the studio state): the polish button says so before it sends anything. */
+  let brainSeesPictures = false;
+  /** Whether the chat is in chat mode: polishing switches it first, and the confirmation says so. */
+  let chatMode = true;
+  let chainState = null;
+  let chainBusy = false;
+  const chainInput = el("textarea", { className: "studio-chain-change", rows: 2, maxLength: 200, placeholder: "one change, in words (her hair to a short red bob; a brown leather jacket over the top)", ariaLabel: "The next change" });
+  const chainRef = el("input", { type: "file", className: "studio-chain-ref", accept: "image/png,image/jpeg,image/webp", ariaLabel: "A picture the change takes from (optional)" });
+
+  function renderChain(/** @type {any} */ chain, /** @type {string} */ id) {
+    if (id) chainId = id;
+    if (chain !== undefined) chainState = chain;
+    let box = q(".studio-chain");
+    if (!chainState) return box?.remove();
+    if (!box) {
+      box = el("section", { className: "studio-chain" });
+      q(".studio-candidates")?.after(box);
+    }
+    const busy = chainBusy;
+    const draw = el("button", { type: "button", className: "studio-chain-draw", textContent: "Draw this step", disabled: busy }, );
+    draw.onclick = async () => {
+      const change = chainInput.value.trim();
+      if (change.length < 3) return status("Say what to change in a few words.", true);
+      let reference = null;
+      if (chainRef.files?.[0]) {
+        try {
+          reference = await readPicture(chainRef.files[0]);
+        } catch (error) {
+          return status(error instanceof Error ? error.message : String(error), true);
+        }
+      }
+      chainBusy = true;
+      renderChain(undefined, "");
+      io.send({ type: "studio-step", id: chainId, change, reference });
+      status(`Drawing "${change}"…`);
+    };
+    const suggest = el("button", { type: "button", className: "ghost", textContent: "Ask her for the next steps", disabled: busy || !chainState.canAsk, title: chainState.canAsk ? "The chat brain sees the base and suggests steps. Nothing is drawn until you pick one." : "The brain you have selected cannot see pictures. Write the change yourself." });
+    suggest.onclick = () => io.send({ type: "studio-step-suggest", id: chainId });
+    const undo = el("button", { type: "button", className: "ghost", textContent: "Undo the last kept step", disabled: busy || !chainState.steps.some((s) => s.kept !== null) });
+    undo.onclick = () => io.send({ type: "studio-step-undo", id: chainId });
+    const approve = el("button", { type: "button", className: "studio-chain-approve", textContent: "Approve this base and make the pack", disabled: busy || !chainState.current });
+    approve.onclick = () => {
+      io.send({ type: "studio-base-approve", id: chainId });
+      q(".studio-candidates")?.replaceChildren();
+      box?.replaceChildren();
+      status("Drawing the rest of her…");
+      running(true);
+    };
+    const current = chainState.current
+      ? el("div", { className: "studio-chain-current" }, el("span", { textContent: "Base to change" }), el("img", { src: chainState.current, alt: "The base picture" }))
+      : el("p", { className: "studio-help", textContent: "Pick a picture above to start the steps from it." });
+    const steps = chainState.steps.map((step) =>
+      el("div", { className: "studio-chain-step" },
+        el("p", { textContent: `${step.n}. ${step.change}${step.kept !== null ? " (kept)" : ""}` }),
+        el("div", { className: "studio-thumbs" }, ...step.candidates.filter((c) => isThumb(c.thumb)).map((c, i) => {
+          const keep = el("button", { type: "button", className: c.seed === step.kept ? "preset studio-chosen" : "preset", ariaLabel: `Keep picture ${i + 1} of step ${step.n}` });
+          keep.append(el("img", { src: /** @type {string} */ (c.thumb), alt: `Step ${step.n}, picture ${i + 1}` }));
+          keep.onclick = () => io.send({ type: "studio-step-keep", id: chainId, n: step.n, seed: c.seed });
+          return keep;
+        }))));
+    const hints = (chainState.suggestions || []).map((text) => {
+      const use = el("button", { type: "button", className: "ghost studio-chain-hint", textContent: text, title: "Fills in the change; nothing is drawn yet" });
+      use.onclick = () => {
+        chainInput.value = text;
+        chainInput.focus();
+      };
+      return use;
+    });
+    box.replaceChildren(
+      el("p", { className: "studio-help", textContent: "Change the base one thing at a time. Each step draws from the current base; keep the picture you like, then approve the base to make the pack." }),
+      current,
+      ...steps,
+      hints.length ? el("div", { className: "studio-chain-hints" }, el("span", { className: "studio-help", textContent: "Her suggestions (pick one to fill it in):" }), ...hints) : "",
+      el("label", { textContent: "Next change", htmlFor: "studio-chain-change" }),
+      chainInput,
+      el("label", { textContent: "A picture the change takes from (optional)" }),
+      chainRef,
+      el("div", { className: "pack-confirm-buttons" }, draw, suggest, undo, approve),
+    );
+  }
+
+  /** Drops the open job (base pictures or a finished pack) and frees the form. Shown whenever a job waits for the user. */
+  function discardJob(/** @type {string} */ id) {
+    if (!window.confirm("Discard this pack? Its pictures are deleted. Nothing has been written to your packs yet.")) return;
+    io.send({ type: "studio-review-discard", id });
+    q(".studio-job-discard")?.replaceChildren();
+    q(".studio-candidates")?.replaceChildren();
+    q(".studio-extra")?.replaceChildren();
+    renderChain(null, "");
+    chainBusy = false;
+    status("Discarded. Start a new pack from the form.");
+    running(false);
+  }
+
+  /** The discard button for an open job, or nothing when no job waits for the user. */
+  function showJobDiscard(/** @type {string | null} */ id, /** @type {boolean} */ picking = false) {
+    const box = q(".studio-job-discard");
+    if (!box) return;
+    if (!id) return box.replaceChildren();
+    const button = el("button", { type: "button", className: "ghost studio-action", textContent: "Discard pack and start a new one" });
+    button.onclick = () => discardJob(id);
+    const more = [];
+    if (picking) {
+      // More base pictures while none is right: two on fresh seeds, or one on a seed given here (the same seed draws the same picture).
+      const addMore = el("button", { type: "button", className: "ghost studio-action", textContent: "Add more pictures", title: "Two more base pictures, on new random seeds" });
+      addMore.onclick = () => {
+        io.send({ type: "studio-base-more", id });
+        running(true);
+        status("Drawing more pictures…");
+      };
+      const seedInput = el("input", { type: "text", inputMode: "numeric", autocomplete: "off", placeholder: "seed", ariaLabel: "Seed for one more base picture", className: "studio-more-seed" });
+      const withSeed = el("button", { type: "button", className: "ghost studio-action", textContent: "Draw with this seed" });
+      withSeed.onclick = () => {
+        const value = seedInput.value.trim();
+        if (!/^\d+$/.test(value)) return status("Give a whole number for the seed.", true);
+        io.send({ type: "studio-base-more", id, seed: Number(value) });
+        running(true);
+        status(`Drawing seed ${value}…`);
+      };
+      more.push(el("div", { className: "pack-confirm-buttons" }, addMore, seedInput, withSeed));
+    }
+    box.replaceChildren(...more, button);
+  }
+
+  /** One new picture of a step, as it is drawn. */
+  function addStepCandidate(/** @type {string} */ id, /** @type {number} */ n, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
+    const box = q(".studio-chain");
+    if (!box || !isThumb(thumb)) return;
+    chainId = id;
+    let row = box.querySelector(`[data-step="${n}"]`);
+    if (!row) {
+      row = el("div", { className: "studio-chain-step", dataset: { step: String(n) } }, el("p", { textContent: `${n}. ${chainState?.steps?.find((s) => s.n === n)?.change ?? "step"}` }), el("div", { className: "studio-thumbs" }));
+      box.querySelector(".studio-chain-hints, .pack-confirm-buttons")?.before(row);
+    }
+    const keep = el("button", { type: "button", className: "preset", ariaLabel: `Keep picture ${number} of step ${n}` });
+    keep.append(el("img", { src: /** @type {string} */ (thumb), alt: `Step ${n}, picture ${number}` }));
+    keep.onclick = () => io.send({ type: "studio-step-keep", id, n, seed });
+    row.querySelector(".studio-thumbs")?.append(keep);
+  }
+
   function addCandidate(/** @type {string} */ id, /** @type {number} */ seed, /** @type {unknown} */ thumb, /** @type {number} */ number) {
     const grid = q(".studio-candidates");
     grid?.classList.remove("studio-review");
@@ -692,10 +938,11 @@ export function createStudio(io) {
     attachZoom(pick, id, `seed-${seed}`, /** @type {string} */ (thumb));
     pick.onclick = () => {
       hideZoom();
-      io.send({ type: "studio-pick", id, seed });
-      grid.replaceChildren();
-      status("Drawing the rest of her…");
-      running(true);
+      // The picture becomes the base the steps change (below); the pack is made only when the base is approved.
+      for (const other of grid.querySelectorAll(".studio-chosen")) other.classList.remove("studio-chosen");
+      pick.classList.add("studio-chosen");
+      io.send({ type: "studio-base-use", id, seed });
+      status("This is the base. Change it in steps below, or approve it to make the pack.");
     };
     grid.append(pick);
   }
@@ -708,34 +955,81 @@ export function createStudio(io) {
     if (!grid) {
       box.classList.add("studio-review");
       grid = el("div", { className: "studio-tiles" });
-      box.replaceChildren(grid, el("div", { className: "studio-extra" }));
+      // The grid, with the comparison of a picture and its other version beside it (empty, and hidden, until a picture is clicked).
+      box.replaceChildren(el("div", { className: "studio-review-body" }, grid, el("div", { className: "studio-compare" })), el("div", { className: "studio-extra" }));
     }
-    return { grid, extra: /** @type {HTMLElement} */ (box.querySelector(".studio-extra")) };
+    return { grid, extra: /** @type {HTMLElement} */ (box.querySelector(".studio-extra")), compare: /** @type {HTMLElement} */ (box.querySelector(".studio-compare")) };
+  }
+
+  /**
+   * A picture beside its other version, on the right of the grid: the one in the pack has a mark, and the button puts the other one in (no
+   * drawing: the pack is assembled again). A picture with one version (a pose) is shown alone.
+   */
+  function showCompare(/** @type {{ grid: HTMLElement, compare: HTMLElement | null }} */ parts, /** @type {string} */ id, /** @type {any} */ tile) {
+    const box = parts.compare;
+    if (!box) return;
+    parts.grid.dataset.open = tile.name;
+    const close = el("button", { type: "button", className: "ghost studio-action", textContent: "Close", onclick: () => {
+      parts.grid.dataset.open = "";
+      box.replaceChildren();
+    } });
+    const head = el("div", { className: "studio-compare-head" }, el("strong", { textContent: tile.name }), close);
+    if (!isThumb(tile.alt) || !tile.variant || !tile.altVariant) {
+      box.replaceChildren(head, el("img", { src: tile.thumb, alt: tile.name, className: "studio-compare-one" }), el("p", { className: "studio-compare-note", textContent: "Only one version: a pose is drawn whole, so there is nothing to compare." }));
+      return;
+    }
+    const names = { pasted: "Pasted back into the face", whole: "Whole picture (no paste-back)" };
+    /** @param {string} v @param {string} src @param {string[]} flags */
+    const version = (v, src, flags) =>
+      el("figure", { className: "studio-compare-version" },
+        el("img", { src, alt: names[/** @type {"pasted" | "whole"} */ (v)] }),
+        el("figcaption", { textContent: `${names[/** @type {"pasted" | "whole"} */ (v)]}${v === tile.variant ? "  ✓ in the pack" : ""}` }),
+        el("small", { textContent: flags.length ? flags.join("; ") : "checks passed" }));
+    const other = /** @type {string} */ (tile.altVariant);
+    const put = el("button", { type: "button", className: "studio-action", textContent: other === "pasted" ? "Put the pasted version in the pack" : "Put the whole picture in the pack" });
+    put.onclick = () => {
+      io.send({ type: "studio-variant", id, name: tile.name, variant: other });
+      put.disabled = true;
+      status("Putting the other version in the pack…");
+      running(true);
+    };
+    box.replaceChildren(head, el("div", { className: "studio-compare-pair" }, version(tile.variant, tile.thumb, tile.flags ?? []), version(other, /** @type {string} */ (tile.alt), tile.altFlags ?? [])), put);
   }
 
   /** One tile: made, or made again (it takes the old one's place). Selectable only once the pack is done. */
-  function setTile(/** @type {string} */ id, /** @type {{ name: string, thumb: unknown, flagged?: boolean, flags?: string[] }} */ tile, /** @type {Set<string> | null} */ selected, /** @type {() => void} */ changed) {
+  function setTile(/** @type {string} */ id, /** @type {{ name: string, thumb: unknown, flagged?: boolean, flags?: string[], variant?: string, alt?: unknown, altVariant?: string, altFlags?: string[] }} */ tile, /** @type {Set<string> | null} */ selected, /** @type {() => void} */ changed) {
     const parts = tilesBox();
     if (!parts || !isThumb(tile.thumb)) return;
     const label = `${tile.flagged ? "⚠ " : ""}${tile.name}`;
     const t = el("button", { type: "button", className: "preset", title: tile.flagged ? `${tile.name}: ${tile.flags?.length ? tile.flags.join("; ") : "a check failed"}` : tile.name, ariaLabel: tile.name });
     t.dataset.name = tile.name;
+    t.dataset.thumb = /** @type {string} */ (tile.thumb);
+    /** @type {any} */ (t).tile = tile;
     t.append(el("img", { src: /** @type {string} */ (tile.thumb), alt: tile.name }), el("span", { className: "preset-name", textContent: label }));
     attachZoom(t, id, tile.name, /** @type {string} */ (tile.thumb));
+    // A click on the picture shows it on the right, beside its other version. The tick (for drawing again) is a mark on its corner.
+    t.onclick = () => showCompare(parts, id, tile);
     if (selected) {
-      t.setAttribute("aria-pressed", "false");
-      t.onclick = () => {
-        const on = !selected.has(tile.name);
-        if (on) selected.add(tile.name);
+      const on = selected.has(tile.name);
+      const tick = el("span", { className: "studio-tick", textContent: "✓", title: on ? "Taken out of the redraw" : "Draw this picture again", ariaHidden: "true" });
+      tick.classList.toggle("studio-tick-on", on);
+      t.classList.toggle("studio-selected", on);
+      tick.onclick = (/** @type {Event} */ e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const now = !selected.has(tile.name);
+        if (now) selected.add(tile.name);
         else selected.delete(tile.name);
-        t.setAttribute("aria-pressed", String(on));
-        t.classList.toggle("studio-selected", on);
+        t.classList.toggle("studio-selected", now);
+        tick.classList.toggle("studio-tick-on", now);
+        tick.title = now ? "Taken out of the redraw" : "Draw this picture again";
         changed();
       };
+      t.append(tick);
     }
     const old = Array.from(parts.grid.children).find((c) => /** @type {HTMLElement} */ (c).dataset.name === tile.name);
     // A picture made again keeps the one it replaced, small beside it, until the pack is used or left.
-    const was = old ? old.querySelector("img")?.getAttribute("src") : null;
+    const was = old ? /** @type {HTMLElement} */ (old).dataset.thumb ?? null : null;
     if (was && was !== tile.thumb) {
       t.append(el("img", { src: was, alt: `${tile.name}, before`, className: "studio-was", title: "the picture before it was drawn again" }));
       t.classList.add("studio-redrawn");
@@ -745,7 +1039,7 @@ export function createStudio(io) {
   }
 
   /** The finished pack: a tile for each emotion and pose, what the checks found, and the choice to draw some again or use it. */
-  function showReview(/** @type {string} */ id, /** @type {{ tiles?: any[], flagged?: any[] }} */ review) {
+  function showReview(/** @type {string} */ id, /** @type {{ tiles?: any[], flagged?: any[], pasteAvailable?: boolean }} */ review) {
     const parts = tilesBox();
     if (!parts) return;
     /** @type {Set<string>} */
@@ -754,11 +1048,25 @@ export function createStudio(io) {
     // Same seed keeps the picture as it is and only tries the checks again (the blur, mostly); a new seed draws it another way.
     const keepSeed = el("input", { type: "checkbox", id: "studio-keep-seed" });
     const use = el("button", { type: "button", className: "studio-action", textContent: "Use this pack" });
+    // The redraw's options: a seed for every picture drawn again, and whether face edits are pasted back into the base picture.
+    const seedField = el("input", { type: "text", inputMode: "numeric", id: "studio-redraw-seed", placeholder: "random", autocomplete: "off", ariaLabel: "Seed for the redraw" });
+    // Paste-back needs the character's own face areas: without them it is off, and the box says why (the whole picture is kept).
+    const pasteAvailable = review.pasteAvailable !== false;
+    const pasteBox = el("input", { type: "checkbox", id: "studio-paste-back", checked: pasteAvailable, disabled: !pasteAvailable });
+    // A picture clicked before the review is shown again (after a switch or a redraw) is shown again, beside its other version.
+    const openName = parts.grid.dataset.open ?? "";
     for (const tile of review.tiles ?? []) setTile(id, tile, selected, () => (again.disabled = selected.size === 0));
+    if (openName) {
+      const tile = (review.tiles ?? []).find((/** @type {{ name: string }} */ t) => t.name === openName);
+      if (tile) showCompare(parts, id, tile);
+      else parts.grid.dataset.open = "";
+    }
     const notes = el("ul", { className: "studio-flags" });
     /** Drawing again: the tiles stay (the ones that are made again are replaced as they are drawn), the buttons wait. */
     const redraw = (/** @type {string[]} */ names, /** @type {string} */ text) => {
-      io.send({ type: "studio-regen", id, names, sameSeed: keepSeed.checked });
+      const seed = seedField.value.trim();
+      if (seed !== "" && !/^\d+$/.test(seed)) return status("The seed is a whole number from 0 up, or empty for a random one.");
+      io.send({ type: "studio-regen", id, names, sameSeed: keepSeed.checked, seed, pasteBack: pasteBox.checked });
       parts.extra.querySelectorAll("button").forEach((b) => ((/** @type {HTMLButtonElement} */ (b)).disabled = true));
       parts.grid.querySelectorAll("button").forEach((b) => b.removeAttribute("aria-pressed"));
       status(text);
@@ -775,7 +1083,21 @@ export function createStudio(io) {
       use.disabled = true;
       status("Writing the pack…");
     };
-    parts.extra.replaceChildren(notes, el("label", { className: "studio-keep", htmlFor: "studio-keep-seed" }, keepSeed, " Same seed: keeps each picture, and only the checks are tried again (fixes blur, not a wrong pose or outfit)"), el("div", { className: "pack-confirm-buttons" }, use, again));
+    // The list can be long (one line for each picture): it folds away, and the ⚠ on its picture still shows which ones it is about.
+    const flagged = (review.flagged ?? []).length;
+    // "Draw all again" is in the summary's line: a click on it draws the flagged pictures again and does not fold the list.
+    const drawAll = el("button", { type: "button", className: "ghost studio-action", textContent: "Draw all again", title: "Draws every picture in this list again, with the seed and paste-back setting below" });
+    drawAll.onclick = (/** @type {Event} */ e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      redraw((review.flagged ?? []).map((/** @type {{ name: string }} */ f) => f.name), "Drawing them all again…");
+    };
+    const flagsBox = el("details", { className: "studio-flags-box", open: flagged <= 6 }, el("summary", {}, `${flagged} ${flagged === 1 ? "picture" : "pictures"} to look at `, drawAll), notes);
+    const optionRows = [
+      el("label", { className: "studio-keep", htmlFor: "studio-redraw-seed" }, "Seed for the redraw (optional, empty for random; overrides “Same seed”): ", seedField),
+      el("label", { className: "studio-keep", htmlFor: "studio-paste-back" }, pasteBox, pasteAvailable ? " Paste back into the original for the pictures drawn again (uncheck to take the whole picture instead; click a picture to compare)" : " Paste-back is off: this character has no face pictures to place it by, so each picture is the whole picture the model drew."),
+    ];
+    parts.extra.replaceChildren(...(flagged ? [flagsBox] : []), ...optionRows, el("label", { className: "studio-keep", htmlFor: "studio-keep-seed" }, keepSeed, " Same seed: keeps each picture, and only the checks are tried again (fixes blur, not a wrong pose or outfit)"), el("div", { className: "pack-confirm-buttons" }, use, again));
     // The panel scrolls and the buttons are below the pictures: bring them into view.
     parts.extra.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
@@ -847,9 +1169,12 @@ export function createStudio(io) {
       };
       box.append(el("p", { textContent: "She suggests drawing these again:" }), go);
     } else if (p.outfit || p.name || p.look) {
-      mode = "new";
-      remember({ mode });
-      renderSources();
+      // A suggestion fills the outfit form; a new character stays a new character (only the words change).
+      if (mode !== "character") {
+        mode = "new";
+        remember({ mode });
+        renderSources();
+      }
       setStage(2);
       box.append(el("p", { textContent: "She suggested these words. Change anything, then go on to the end." }));
     }
@@ -1146,12 +1471,15 @@ export function createStudio(io) {
   }
 
   function running(/** @type {boolean} */ busy) {
+    jobRunning = busy;
     setBusy(busy, busy ? q(".studio-status")?.textContent || "Working…" : "");
     const picker = /** @type {HTMLSelectElement | null} */ (q("#studio-maker"));
     if (picker) picker.disabled = busy;
     for (const b of panel?.querySelectorAll(".studio-start, .studio-frame-start") ?? []) /** @type {HTMLButtonElement} */ (b).disabled = busy;
     const stop = q(".studio-stop");
     if (stop) stop.hidden = !busy;
+    const ringStop = document.querySelector(".studio-ring-stop");
+    if (ringStop) /** @type {HTMLButtonElement} */ (ringStop).hidden = !busy;
     if (busy) stepsHidden(true);
   }
 
@@ -1213,6 +1541,10 @@ export function createStudio(io) {
               status(String(msg.job.text || "Working…"));
             }
           }
+          if (panel) renderChain(msg.job ? msg.chain ?? null : null, msg.job ? String(msg.job.id) : "");
+          if (panel) brainSeesPictures = msg.brainSeesPictures === true;
+          if (panel) chatMode = msg.chatMode !== false;
+          if (panel) showJobDiscard(msg.job && (msg.job.picking || msg.job.reviewing) ? String(msg.job.id) : null, Boolean(msg.job?.picking));
           if (msg.proposal && panel && !q(".studio-proposal")?.childElementCount) applyProposal({ ...msg.proposal, job: msg.job?.reviewing ? msg.job.id : null });
           spendLine(Number(msg.spend?.usd), Number(msg.spend?.limit));
           running(Boolean(msg.running));
@@ -1366,6 +1698,21 @@ export function createStudio(io) {
           io.attention?.(msg.flagged?.length ? "Pack ready: look at the flagged pictures" : "Pack ready to review");
           status(msg.flagged?.length ? `Done. ${msg.flagged.length} picture(s) did not pass every check: look at them.` : "Done. Look at the pack, then use it.");
           return true;
+        case "studio-step-candidate":
+          addStepCandidate(String(msg.id), Number(msg.n), Number(msg.seed), msg.thumb, Number(msg.done));
+          return true;
+        case "studio-steps-done":
+          chainBusy = false;
+          renderChain(undefined, String(msg.id));
+          running(false);
+          status(typeof msg.text === "string" && msg.text ? msg.text : "Keep one of the pictures for the next step, or approve this base.");
+          return true;
+        case "studio-step-suggestions":
+          if (chainState) {
+            chainState = { ...chainState, suggestions: Array.isArray(msg.suggestions) ? msg.suggestions : [] };
+            renderChain(undefined, String(msg.id));
+          }
+          return true;
         case "studio-candidates-done":
           running(false);
           stepsHidden(true);
@@ -1385,6 +1732,8 @@ export function createStudio(io) {
         case "studio-error": {
           hideAssist();
           running(false);
+          chainBusy = false;
+          renderChain(undefined, "");
           stepsHidden(false);
           io.attention?.("The studio stopped");
           status(String(msg.message), true);

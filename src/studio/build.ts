@@ -24,6 +24,10 @@ export interface FramePlan {
   group: string;
 }
 
+/** The two versions of a face edit: pasted back into the base's face, or the whole picture as the model drew it. */
+export type Variant = "pasted" | "whole";
+const OTHER: Record<Variant, Variant> = { pasted: "whole", whole: "pasted" };
+
 export const PACK_W = 940;
 export const PACK_H = 1070;
 const ATTEMPTS = 3;
@@ -63,7 +67,18 @@ export interface BuildDeps {
 export interface FrameRecord {
   seed: number;
   attempts: number;
+  /** The checks of the version in the pack. */
   flags: Flags;
+  /** A face edit: true when the pack has the pasted version, false when it has the whole picture. Older records have none. */
+  pasted?: boolean;
+  /** A face edit: the checks of the version that is not in the pack (it can be switched to without a redraw). */
+  other?: Flags;
+}
+
+/** What a redraw asks for: one seed for every picture drawn again (else the usual seeds, or the same ones with `sameSeed`), and whether face edits are pasted back. */
+export interface RedrawOptions {
+  seed?: number;
+  pasteBack?: boolean;
 }
 
 const framesFile = (dir: string) => join(dir, "frames.json");
@@ -79,34 +94,51 @@ async function load(dir: string, name: string, w: number, h: number): Promise<Ra
   return resize(await decode(await readFile(name === "base" ? join(dir, "base/chosen.png") : join(dir, `frames/${name}.png`))), w, h);
 }
 
-/** One picture: asks the model, keeps the part that was asked for, checks it, and tries again with another seed when a check fails. */
-async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: Float32Array | null, deps: BuildDeps, firstAttempt: number, fixedSeed?: number): Promise<{ picture: Raster; record: FrameRecord }> {
+/** A version a face edit kept (`variants/<name>-<variant>.png`), or null when there is none (an older job). */
+async function variantRaster(dir: string, name: string, variant: Variant, w: number, h: number): Promise<Raster | null> {
+  const bytes = await readFile(join(dir, `variants/${name}-${variant}.png`)).catch(() => null);
+  return bytes ? resize(await decode(bytes), w, h) : null;
+}
+
+/**
+ * One picture: asks the model, makes both versions of a face edit (pasted back, and the whole picture), checks them, and tries again with another
+ * seed when the chosen version fails a check. The pictures of both versions are returned; `chosen` is the one the pack will use.
+ */
+async function makeFrame(job: Job, plan: FramePlan, source: Raster, baseAlpha: Float32Array | null, deps: BuildDeps, firstAttempt: number, fixedSeed: number | undefined, chosen: Variant, allowPaste: boolean): Promise<{ pictures: Record<Variant, Raster>; flags: Record<Variant, Flags>; record: FrameRecord }> {
   const input = await encodePng(source);
   const seed0 = job.seeds[0] + hash(plan.name);
-  let best: { picture: Raster; flags: Flags; seed: number; blurry: number } | null = null;
+  // Paste-back needs the face areas of this character; without them (typical proportions) only the whole picture is kept.
+  const paired = plan.mode === "paste" && Boolean(plan.box) && allowPaste;
+  // Only a face edit has two versions: anything else is its whole picture, whatever was asked.
+  const pick: Variant = paired ? chosen : "whole";
+  let best: { pictures: Record<Variant, Raster>; flags: Record<Variant, Flags>; seed: number; blur: Record<Variant, number> } | null = null;
   let attempt = firstAttempt;
   for (let tries = 0; tries < (deps.backend.maxTries ?? ATTEMPTS); tries++, attempt++) {
     if (deps.signal?.aborted) throw new Error("stopped");
     const seed = fixedSeed ?? seed0 + attempt * SEED_STEP;
     const edited = await resize(await decode(await deps.backend.edit({ image: input, prompt: plan.prompt, seed, width: job.width, height: job.height }, deps.signal)), job.width, job.height);
-    let picture: Raster;
-    let flags: Flags;
-    if (plan.mode === "paste" && plan.box) {
-      picture = pasteBack(source, edited, plan.box, 6, keyBackground(source, job.key));
-      flags = checkFaceEdit(source, picture, plan.box);
-    } else {
-      picture = edited;
-      const cut = cutout(edited, { key: job.key });
-      flags = [...checkBackground(cut.background, job.width, job.height), ...(baseAlpha ? checkLowerBody(baseAlpha, cut.alpha, job.width, job.height) : [])];
+    const cut = cutout(edited, { key: job.key });
+    const wholeFlags = [...checkBackground(cut.background, job.width, job.height), ...(baseAlpha ? checkLowerBody(baseAlpha, cut.alpha, job.width, job.height) : [])];
+    const pictures: Record<Variant, Raster> = { whole: edited, pasted: edited };
+    const flags: Record<Variant, Flags> = { whole: wholeFlags, pasted: wholeFlags };
+    if (paired && plan.box) {
+      pictures.pasted = pasteBack(source, edited, plan.box, 6, keyBackground(source, job.key));
+      flags.pasted = checkFaceEdit(source, pictures.pasted, plan.box);
     }
-    // The blur check (src/studio/blur.ts): a soft try is flagged, so a retry is drawn; of equal tries the sharper one is kept.
-    const blurry = veryBlurryChance(picture);
-    if (blurry >= 0.5) flags = [...flags, "very blurry"];
-    if (!best || flags.length < best.flags.length || (flags.length === best.flags.length && blurry < best.blurry)) best = { picture, flags, seed, blurry };
-    if (flags.length === 0) break;
+    // The blur check (src/studio/blur.ts): a soft try is flagged, so a retry is drawn; of equal tries the sharper one is kept. Measured once per version.
+    const blur: Record<Variant, number> = { whole: veryBlurryChance(pictures.whole), pasted: paired ? veryBlurryChance(pictures.pasted) : 1 };
+    for (const v of ["whole", "pasted"] as const) if (blur[v] >= 0.5 && (v === "whole" || paired)) flags[v] = [...flags[v], "very blurry"];
+    const better = !best || flags[pick].length < best.flags[pick].length || (flags[pick].length === best.flags[pick].length && blur[pick] < best.blur[pick]);
+    if (better) best = { pictures, flags, seed, blur };
+    if (flags[pick].length === 0) break;
   }
-  const chosen = best as NonNullable<typeof best>;
-  return { picture: chosen.picture, record: { seed: chosen.seed, attempts: attempt - firstAttempt, flags: chosen.flags } };
+  const done = best as NonNullable<typeof best>;
+  const record: FrameRecord = { seed: done.seed, attempts: attempt - firstAttempt, flags: done.flags[pick] };
+  if (paired) {
+    record.pasted = pick === "pasted";
+    record.other = done.flags[OTHER[pick]];
+  }
+  return { pictures: done.pictures, flags: done.flags, record };
 }
 
 /** A small number from a name, so the frames of one pack do not all start from the same seed. */
@@ -121,7 +153,7 @@ function hash(name: string): number {
  * `only` makes just those frames again (with new seeds), and every frame that was an edit of one of them. `sameSeed` names the ones of `only`
  * that are drawn again with the seed they had: the composition stays, and only what the checks found is tried again (the blur, mostly).
  */
-export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, only?: string[], sameSeed?: string[]): Promise<void> {
+export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, only?: string[], sameSeed?: string[], options: RedrawOptions = {}): Promise<void> {
   const { dir, emit } = deps;
   await mkdir(join(dir, "frames"), { recursive: true });
   const plans = planFrames(job, geometry, job.width, job.height);
@@ -144,22 +176,56 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
     if (await stat(join(dir, `review/${name}.webp`)).then(() => true, () => false)) emit({ type: "preview", name, thumb: `review/${name}.webp`, flagged, flags });
     else await previewFrame(job, dir, name, name === "neutral" ? base : await load(dir, name, job.width, job.height), flags, emit);
   }
+  // Only the pictures that are drawn now count: a redraw of a few says "1 of 5", not "5 of 38" with the kept ones in between.
+  const todo = plans.filter((p) => records[p.name] === undefined || redo.has(p.name));
   let done = 0;
   for (const plan of plans) {
-    done++;
     const file = join(dir, `frames/${plan.name}.png`);
     const have = records[plan.name] !== undefined && !redo.has(plan.name);
     if (have) continue;
-    emit({ type: "status", text: `Drawing ${plan.name.replace("-", " ")} (${done} of ${plans.length})…` });
+    done++;
+    emit({ type: "status", text: `Drawing ${plan.name.replace("-", " ")} (${done} of ${todo.length})…` });
     const source = await load(dir, plan.from, job.width, job.height);
-    const fixed = keepSeed.has(plan.name) && only?.includes(plan.name) ? records[plan.name]?.seed : undefined;
-    const made = await makeFrame(job, plan, source, plan.mode === "whole" ? baseAlpha : null, deps, records[plan.name]?.attempts ?? 0, fixed);
-    await writeFile(file, await encodePng(made.picture));
+    // The pack takes the pasted version of a face edit unless the redraw says the whole picture (paste-back off).
+    // Paste-back is on when the face areas were learned from the pack, and off otherwise unless the redraw asks for it.
+    // Both versions of a face edit exist whenever her face areas are the pack's own; which one is in the pack follows paste-back.
+    const faceAreas = geometry.from === "pack";
+    const pasteOn = options.pasteBack ?? faceAreas;
+    const chosen: Variant = plan.mode === "paste" && pasteOn ? "pasted" : "whole";
+    // A seed given for the redraw is used for every picture drawn again; otherwise the same seed (sameSeed) or the usual ones.
+    const fixed = redo.has(plan.name) && options.seed !== undefined ? options.seed : keepSeed.has(plan.name) && only?.includes(plan.name) ? records[plan.name]?.seed : undefined;
+    const made = await makeFrame(job, plan, source, baseAlpha, deps, records[plan.name]?.attempts ?? 0, fixed, chosen, faceAreas);
+    const picture = made.pictures[chosen];
+    await writeFile(file, await encodePng(picture));
+    if (plan.mode === "paste" && faceAreas) {
+      // Both versions are kept, so the review can switch between them without another draw.
+      await mkdir(join(dir, "variants"), { recursive: true });
+      for (const v of ["pasted", "whole"] as const) await writeFile(join(dir, `variants/${plan.name}-${v}.png`), await encodePng(made.pictures[v]));
+    }
     records[plan.name] = { ...made.record, attempts: (records[plan.name]?.attempts ?? 0) + made.record.attempts };
     await writeFile(framesFile(dir), JSON.stringify(records, null, 2));
-    emit({ type: "frame", name: plan.name, done, total: plans.length, flags: made.record.flags });
-    await previewFrame(job, dir, plan.name, made.picture, made.record.flags, emit);
+    emit({ type: "frame", name: plan.name, done, total: todo.length, flags: made.record.flags });
+    await previewFrame(job, dir, plan.name, picture, made.record.flags, emit);
   }
+  await runAssemble(job, geometry, deps);
+}
+
+/**
+ * Puts the other version of a face edit into the pack, without drawing anything, and assembles the pack again. Only what the record says
+ * is the other version is used: the pictures drawn from it (its blink and mouths) are not redrawn.
+ */
+export async function switchVariant(job: Job, geometry: Geometry, deps: Pick<BuildDeps, "dir" | "emit">, name: string, variant: Variant): Promise<void> {
+  const { dir } = deps;
+  const records = await readRecords(dir);
+  const rec = records[name];
+  if (!rec || rec.pasted === undefined || !rec.other) throw new Error(`${name} has no other version to switch to.`);
+  const wantPasted = variant === "pasted";
+  if (rec.pasted === wantPasted) return;
+  const bytes = await readFile(join(dir, `variants/${name}-${variant}.png`)).catch(() => null);
+  if (!bytes) throw new Error(`The ${variant} version of ${name} was not kept.`);
+  await writeFile(join(dir, `frames/${name}.png`), bytes);
+  records[name] = { ...rec, pasted: wantPasted, flags: rec.other, other: rec.flags };
+  await writeFile(framesFile(dir), JSON.stringify(records, null, 2));
   await runAssemble(job, geometry, deps);
 }
 
@@ -187,8 +253,25 @@ async function previewFrame(job: Job, dir: string, name: string, picture: Raster
 }
 
 /**
+ * One picture on its outline: the group's outline everywhere, and the picture's own colours inside it (inside the face box for a shared
+ * outline, everywhere when the picture was kept whole).
+ */
+function compose(picture: Raster, g: { picture: Raster; cut: Cutout }, shared: boolean, whole: boolean, face: ReturnType<typeof padBox>, w: number, h: number): Raster {
+  const out = makeRaster(w, h);
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w, y = (i - x) / w;
+    const inside = !shared || whole || (x >= face[0] && x < face[2] && y >= face[1] && y < face[3]);
+    // Face frames are the group's picture everywhere but the face, so the outline cannot differ from frame to frame.
+    const useOwn = picture !== g.picture && inside && g.cut.alpha[i] === 1;
+    for (let c = 0; c < 3; c++) out.data[i * 4 + c] = useOwn ? picture.data[i * 4 + c] : g.cut.fg[i * 3 + c];
+    out.data[i * 4 + 3] = Math.round(g.cut.alpha[i] * 255);
+  }
+  return out;
+}
+
+/**
  * Step 3: the pack folder from the pictures: cut out, one shared outline for the pictures of a group, scaled to the pack size, lossless.
- * Also the thumbnails and the list of what the checks found, for the review.
+ * Also the thumbnails and the list of what the checks found, for the review. A face edit's other version is in the review too, to compare.
  */
 export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<BuildDeps, "dir" | "emit">): Promise<void> {
   const { dir, emit } = deps;
@@ -212,30 +295,37 @@ export async function runAssemble(job: Job, geometry: Geometry, deps: Pick<Build
   const everything: { name: string; picture: Raster; group: string }[] = [{ name: "neutral", picture: await load(dir, "base", w, h), group: "base" }];
   for (const plan of plans) if (records[plan.name]) everything.push({ name: plan.name, picture: await load(dir, plan.name, w, h), group: plan.group });
   const flagged: { name: string; flags: Flags }[] = [];
-  const tiles: { name: string; thumb: string; flagged: boolean; flags: string[] }[] = [];
+  const tiles: { name: string; thumb: string; flagged: boolean; flags: string[]; variant?: Variant; alt?: string; altVariant?: Variant; altFlags?: string[] }[] = [];
   let extraTiles = 0;
   for (const frame of everything) {
     const g = await groupOf(frame.group);
-    const out = makeRaster(w, h);
     const shared = frame.group === "base" || frame.group === "thinking";
-    for (let i = 0; i < w * h; i++) {
-      const x = i % w, y = (i - x) / w;
-      const inside = !shared || (x >= face[0] && x < face[2] && y >= face[1] && y < face[3]);
-      // Face frames are the group's picture everywhere but the face, so the outline cannot differ from frame to frame.
-      const useOwn = frame.picture !== g.picture && inside && g.cut.alpha[i] === 1;
-      for (let c = 0; c < 3; c++) out.data[i * 4 + c] = useOwn ? frame.picture.data[i * 4 + c] : g.cut.fg[i * 3 + c];
-      out.data[i * 4 + 3] = Math.round(g.cut.alpha[i] * 255);
-    }
-    const scaled = await resize(out, PACK_W, PACK_H);
-    await writeFile(join(dir, `out/${frame.name}.webp`), await encodeWebp(scaled, { lossless: true }));
     const rec = records[frame.name];
+    const variant: Variant | undefined = rec?.pasted === undefined ? undefined : rec.pasted ? "pasted" : "whole";
+    // A picture that is not pasted back is kept whole, everywhere inside the outline (also when no paste-back was made at all).
+    const scaled = await resize(compose(frame.picture, g, shared, rec?.pasted !== true, face, w, h), PACK_W, PACK_H);
+    await writeFile(join(dir, `out/${frame.name}.webp`), await encodeWebp(scaled, { lossless: true }));
     if (rec && rec.flags.length) flagged.push({ name: frame.name, flags: rec.flags });
     if (REVIEW_FRAMES.includes(frame.name) || (rec?.flags.length && ++extraTiles <= MAX_EXTRA_TILES)) {
       await writeReview(dir, frame.name, scaled);
-      tiles.push({ name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length), flags: rec?.flags ?? [] });
+      const tile: (typeof tiles)[number] = { name: frame.name, thumb: `review/${frame.name}.webp`, flagged: Boolean(rec?.flags.length), flags: rec?.flags ?? [] };
+      if (variant && rec?.other) {
+        // The other version, assembled the same way, so the review can show the two side by side.
+        const altVariant = OTHER[variant];
+        const alt = await variantRaster(dir, frame.name, altVariant, w, h);
+        if (alt) {
+          await writeReview(dir, `${frame.name}.alt`, await resize(compose(alt, g, shared, altVariant === "whole", face, w, h), PACK_W, PACK_H));
+          tile.alt = `review/${frame.name}.alt.webp`;
+          tile.altVariant = altVariant;
+          tile.altFlags = rec.other;
+        }
+        tile.variant = variant;
+      }
+      tiles.push(tile);
     }
   }
-  emit({ type: "review", tiles, flagged });
+  // The page offers paste-back only when the face areas are the pack's own (otherwise it would be placed by typical proportions).
+  emit({ type: "review", tiles, flagged, pasteAvailable: geometry.from === "pack" });
 }
 
 /** Every name a pack job draws, for checking a name that came from outside (the brain's proposal, the page). */

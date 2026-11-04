@@ -59,6 +59,8 @@ export function assistedBackend(options: AssistedOptions): ImageBackend {
       const n = ++counter;
       await mkdir(folder, { recursive: true });
       await writeFile(join(folder, `${n}-in.png`), req.image);
+      const refs = (req.references ?? []).map((_, i) => `${n}-ref-${i + 1}.png`);
+      await Promise.all((req.references ?? []).map((r, i) => writeFile(join(folder, refs[i]), r)));
       await writeFile(join(folder, `${n}-prompt.txt`), req.prompt);
       try {
         let request: AssistRequest = { n, prompt: req.prompt };
@@ -89,7 +91,7 @@ export function assistedBackend(options: AssistedOptions): ImageBackend {
           });
         }
       } finally {
-        await Promise.all([`${n}-in.png`, `${n}-prompt.txt`, ...(await readdir(folder).catch(() => [] as string[])).filter((f) => Number(OUT.exec(f)?.[1]) === n)].map((f) => rm(join(folder, f), { force: true })));
+        await Promise.all([`${n}-in.png`, `${n}-prompt.txt`, ...refs, ...(await readdir(folder).catch(() => [] as string[])).filter((f) => Number(OUT.exec(f)?.[1]) === n)].map((f) => rm(join(folder, f), { force: true })));
       }
     },
     async generate(): Promise<Buffer> {
