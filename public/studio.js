@@ -107,6 +107,7 @@ export function createStudio(io) {
   const STEPS = ["goal", "source", "words", "maker", "start"];
   /** What the user is making: a whole new outfit, or one picture of a pack drawn again. */
   /** @type {"new" | "redraw" | "activity" | ""} */
+  /** @type {string} */
   let mode = "";
   /** The activity workspace (public/studio-activity.js), made with the panel. */
   /** @type {ReturnType<typeof createActivityBox> | null} */
@@ -154,7 +155,7 @@ export function createStudio(io) {
     const chosen = makerChoice();
     /** @type {Record<string, string>} */
     const words = {
-      goal: mode === "new" ? "Design a new outfit" : mode === "redraw" ? "Redraw a picture" : mode === "activity" ? "Make an activity" : "",
+      goal: mode === "new" ? "Design a new outfit" : mode === "character" ? "Add a new character" : mode === "redraw" ? "Redraw a picture" : mode === "activity" ? "Make an activity" : "",
       source: mode && pick?.value ? (char ? `${char.name} › ${outfitLabel(pick.value, char.id)}` : pick.value) : "",
       words: !mode ? "" : mode === "redraw" ? frameName?.value || "" : (outfit?.value || "").slice(0, 70),
       maker: chosen ? `${chosen.available === false ? "not ready" : "ready"} · ${chosen.label}` : "",
@@ -179,7 +180,13 @@ export function createStudio(io) {
       else activity.hide();
     }
     // The two kinds of work share the third and the last step; only the fields differ.
-    for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = /** @type {HTMLElement} */ (n).dataset.for !== mode;
+    for (const n of panel.querySelectorAll("[data-for]")) /** @type {HTMLElement} */ (n).hidden = !String(/** @type {HTMLElement} */ (n).dataset.for).split(" ").includes(mode);
+    // A new character from a picture the user uploads has no pack to draw from: the pack's fields are hidden for that route.
+    const uploading = mode === "character" && Boolean(/** @type {HTMLInputElement | null} */ (q("#studio-route-upload"))?.checked);
+    for (const n of panel.querySelectorAll("[data-route]")) {
+      const node = /** @type {HTMLElement} */ (n);
+      node.hidden = node.dataset.route === "upload" ? !uploading : uploading;
+    }
     const review = q(".studio-review-lines");
     if (review) {
       const frameSaved = /** @type {HTMLInputElement | null} */ (q("#studio-frame-pack"))?.value.trim();
@@ -188,7 +195,7 @@ export function createStudio(io) {
     }
   }
 
-  function chooseMode(/** @type {"new" | "redraw" | "activity"} */ next) {
+  function chooseMode(/** @type {"new" | "redraw" | "activity" | "character"} */ next) {
     mode = next;
     remember({ mode });
     renderSources();
@@ -384,16 +391,31 @@ export function createStudio(io) {
   function open() {
     if (!on) return askToOpen();
     if (panel) return close(); // the same menu entry again closes it
-    const source = el("select", { id: "studio-source", hidden: true, ariaLabel: "Draw from this pack" });
+    const source = el("select", { id: "studio-source", hidden: true, ariaLabel: "Draw from this pack", "data-route": "pack" });
     const name = el("input", { type: "text", id: "studio-name", title: "The folder name of the new pack in data/frames. A name that is taken is refused; nothing is replaced.", maxLength: 40, placeholder: "name of the new pack", ariaLabel: "Name of the new pack" });
     const outfit = el("textarea", { id: "studio-outfit", title: "What she wears in the new pack. The image maker is told this, with the rest of the picture kept the same.", rows: 3, maxLength: 400, placeholder: "her new outfit, in your own words (a dark green winter coat over a white sweater)", ariaLabel: "The new outfit" });
     outfit.addEventListener("input", refreshSteps);
     const look = el("textarea", { id: "studio-look", title: "The line she uses to say what she wears (look.txt). Left empty it is made from the outfit.", rows: 2, maxLength: 600, placeholder: "optional: how she says what she wears (You wear …). Left empty, it is made from the outfit.", ariaLabel: "What she says she wears" });
-    const refFile = el("input", { type: "file", id: "studio-reference-file", accept: "image/png,image/jpeg,image/webp", ariaLabel: "Reference picture (optional)" });
+    const refFile = el("input", { type: "file", id: "studio-reference-file", accept: "image/png,image/jpeg,image/webp", ariaLabel: "Reference picture (optional)", "data-route": "pack" });
+    // A new character: her name and a line about her, and either one of her outfits (the pack chosen) or a picture the user uploads.
+    const characterName = el("input", { type: "text", id: "studio-character-name", maxLength: 40, placeholder: "e.g. Mira", autocomplete: "off", title: "Her name. Her id, the name in lower case with dashes, is her character file's name; a taken id is refused." });
+    const characterDescription = el("textarea", { id: "studio-character-description", rows: 2, maxLength: 300, placeholder: "e.g. a quiet engineer with a dry sense of humour", title: "One line about her. Left empty, it is made from her look words." });
+    const routePack = el("input", { type: "radio", name: "studio-route", id: "studio-route-pack", value: "pack", checked: true });
+    const routeUpload = el("input", { type: "radio", name: "studio-route", id: "studio-route-upload", value: "upload" });
+    const uploadFile = el("input", { type: "file", id: "studio-upload-file", accept: "image/png,image/jpeg,image/webp", ariaLabel: "Her neutral picture", "data-route": "upload" });
+    // The route decides which fields show: the pack's own fields for one of her outfits, the upload's for a picture of her.
+    for (const r of [routePack, routeUpload]) r.addEventListener("change", () => refreshSteps());
+    characterName.addEventListener("input", () => {
+      if (!name.value || name.dataset.auto === "1") {
+        const id = characterName.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        name.value = id ? `${id}-new` : "";
+        name.dataset.auto = "1";
+      }
+    });
     // A picture chosen while "No reference picture" is selected means the picture is wanted: the list moves to "Only the outfit". A choice the
     // user has made (the outfit or the character) stays as it is.
     refFile.addEventListener("change", () => {
-      if (refFile.files?.[0] && refKind.value === "") refKind.value = "outfit";
+      if (refFile.files?.[0] && refKind.value === "") refKind.value = mode === "character" ? "character" : "outfit";
     });
     const polish = el("button", { type: "button", className: "ghost studio-action", id: "studio-polish", textContent: "Polish prompt", title: "Asks the chat brain you have selected to rewrite these words for the image maker. One model call." });
     polish.onclick = async () => {
@@ -507,6 +529,20 @@ export function createStudio(io) {
           return status(error instanceof Error ? error.message : String(error), true);
         }
       }
+      if (mode === "character") {
+        const upload = routeUpload.checked ? uploadFile.files?.[0] : null;
+        let picture = null;
+        if (upload) {
+          try {
+            picture = await readPicture(upload);
+          } catch (error) {
+            return status(error instanceof Error ? error.message : String(error), true);
+          }
+        }
+        io.send({ type: "studio-start", mode: "character", characterName: characterName.value, characterDescription: characterDescription.value, route: upload ? "upload" : "pack", upload: picture, source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value), seed: seedField.value.trim() || null, referenceKind: !upload && reference ? refKind.value : null, reference: upload ? null : reference });
+        status("Checking…");
+        return;
+      }
       io.send({ type: "studio-start", source: source.value, name: name.value, outfit: outfit.value, look: look.value, pictures: Number(count.value), seed: seedField.value.trim() || null, referenceKind: reference ? refKind.value : null, reference });
       status("Checking…");
     };
@@ -537,7 +573,7 @@ export function createStudio(io) {
       stepBoxes[key] = box;
       return box;
     };
-    const forMode = (/** @type {"new" | "redraw"} */ m, /** @type {(Node | string)[]} */ ...kids) => {
+    const forMode = (/** @type {string} */ m, /** @type {(Node | string)[]} */ ...kids) => {
       const box = el("div", {}, ...kids);
       box.dataset.for = m;
       return box;
@@ -547,7 +583,7 @@ export function createStudio(io) {
       b.onclick = () => setStage(to());
       return el("div", { className: "pack-confirm-buttons" }, b);
     };
-    const goalButton = (/** @type {"new" | "redraw" | "activity"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
+    const goalButton = (/** @type {"new" | "redraw" | "activity" | "character"} */ m, /** @type {string} */ title, /** @type {string} */ sub) => {
       const b = el("button", { type: "button", className: "ghost studio-goal" }, el("strong", { textContent: title }), el("span", { textContent: sub }));
       b.onclick = () => chooseMode(m);
       return b;
@@ -596,12 +632,18 @@ export function createStudio(io) {
       el("div", { className: "studio-proposal" }),
       el("div", { className: "studio-resume" }),
       el("div", { className: "studio-steps" },
-        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"), goalButton("activity", "Make an activity", "A loop of pictures, drawn one after another")), activityBox.list),
-        step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs" }), el("div", { className: "studio-thumbs" }), source, frameSource, frameName),
+        step("goal", "What do you want to do?", "", el("div", { className: "studio-goals" }, goalButton("new", "Design a new outfit", "A new pack, made from one of her outfits"), goalButton("redraw", "Redraw a picture", "Change one picture of a pack you have"), goalButton("activity", "Make an activity", "A loop of pictures, drawn one after another"), goalButton("character", "Add a new character", "Her first picture: from one of her outfits, or a picture you upload")), activityBox.list),
+        step("source", "Draw from", "Only read: nothing in the pack you pick is changed.", el("div", { className: "studio-crumbs", "data-route": "pack" }), el("div", { className: "studio-thumbs", "data-route": "pack" }), source, frameSource, frameName,
+          forMode("character", el("div", { className: "studio-route" },
+            el("label", { className: "studio-keep", htmlFor: "studio-route-pack" }, routePack, " Based on one of her outfits: she is drawn from the pack chosen above"),
+            el("label", { className: "studio-keep", htmlFor: "studio-route-upload" }, routeUpload, " Upload her neutral picture (a full-body picture: a plain background is cut out in code, a busy one is drawn over first)")),
+            el("label", { textContent: "Her neutral picture", htmlFor: "studio-upload-file", "data-route": "upload" }), uploadFile)),
         step("words", "What should change?", "",
-          forMode("new", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
+          forMode("character", el("label", { textContent: "Her name", htmlFor: "studio-character-name" }), characterName,
+            el("label", { textContent: "About her (one line; optional: made from her words if empty)", htmlFor: "studio-character-description" }), characterDescription),
+          forMode("new character", el("label", { textContent: "Her new outfit", htmlFor: "studio-outfit" }), outfit,
             polish,
-            el("label", { textContent: "Reference picture (optional): the clothes, or the character", htmlFor: "studio-reference-file" }), refFile, refKind,
+            el("label", { textContent: "Reference picture (optional): the clothes, or the character", htmlFor: "studio-reference-file", "data-route": "pack" }), refFile, refKind,
             el("label", { textContent: "Name of the new pack", htmlFor: "studio-name" }), name,
             el("label", { textContent: "Seed (optional: the same seed draws the same picture)", htmlFor: "studio-seed" }), seedField,
             el("details", {}, el("summary", { textContent: "Her words for it (optional)" }), look)),
@@ -612,9 +654,9 @@ export function createStudio(io) {
         step("maker", "Who draws it?", "Web services cost money or allowance; the next question says what.", chip, models, makerSelect, pickMaker),
         step("start", "Review and start", "",
           el("dl", { className: "studio-review-lines" }),
-          forMode("new", el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }), count,
+          forMode("new character", el("label", { textContent: "First pictures (a paid service charges for each)", htmlFor: "studio-count" }), count,
             el("details", {}, el("summary", { textContent: "What is in a pack?" }), el("p", { className: "studio-contents", textContent: `A full pack is ${packSize || "39"} pictures: the neutral picture, six expressions, thinking, four poses, and for each expression a blink and three mouth shapes. Each picture is checked and drawn again when a check fails (up to three tries).` }))),
-          el("div", { className: "pack-confirm-buttons" }, forMode("new", start), forMode("redraw", frameStart), stop)),
+          el("div", { className: "pack-confirm-buttons" }, forMode("new character", start), forMode("redraw", frameStart), stop)),
       ),
       activityBox.node,
       el("p", { className: "studio-status", role: "status" }),

@@ -306,3 +306,12 @@ Until the save everything is in a working folder, `data/studio/activity-<id>/` (
 - **Two versions of a face edit:** after a draw both are kept (`variants/<name>-pasted.png` and `variants/<name>-whole.png`). Click a picture in the review and it shows on the right beside its other version, with a mark on the one in the pack; *Put … in the pack* switches to the other one without drawing anything (the pack is assembled again). The picture's blink and mouths keep the version they were drawn from.
 - **Tick marks:** the mark in a picture's corner selects it for *Draw the selected again*; the picture itself is for comparing.
 - **Files:** `variants/<name>-<pasted|whole>.png` for each face edit, `frames/<name>.png` is the one in the pack, and `frames.json` says `"pasted": true|false` (and keeps the checks of the other one as `other`). A job drawn before this change has no second version and no comparison.
+
+## A new character (2026-11-04)
+
+- **Add a new character** is a fourth goal. It asks for her name (the id is the name in lower case with dashes; a taken id is refused) and a line about her (optional: made from her words if empty).
+- **Drawn from** has two routes. *Based on one of her outfits* draws her from the chosen pack (a reference picture then goes to *The character*, as the first choice). *Upload her neutral picture* takes a picture of her (at most 5 MB).
+- **An uploaded picture** is cut out in code when it has real transparency or one flat background colour that touches the edge; then no model call is made for it. A busy background is drawn over first by the model (a model call): the confirm card says so, and that is the question the user answers.
+- **Install** writes the pack as before, and her character file `data/frames/characters/<id>.txt` (name, description, `default:` the new pack), only after the yes. An existing file is refused.
+- **Paste-back** is off for an uploaded picture (it has no face areas of its own), so each face picture is the whole picture the model drew.
+- Not yet: an upload is one picture (no reference picture on that route), and an installed character is not offered to a new studio run by its own id.

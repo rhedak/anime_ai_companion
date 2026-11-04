@@ -79,3 +79,11 @@ export const referenceCharacterPrompt = (key: KeyName) =>
  */
 export const stepPrompt = (change: string, key: KeyName) =>
   `change only ${change}; keep everything else exactly the same: her face, hair, body, pose, expression, the other clothes, framing and the plain flat ${keyWords[key]} background`;
+
+/** For an uploaded picture with a busy background: only the background is changed, to the plain key colour the cut-out needs. */
+export function cleanBackgroundPrompt(key: KeyName): string {
+  return (
+    `keep her exactly the same: her face, hair, outfit, pose, expression, colours and framing, and the same edges to the picture; ` +
+    `change only the background, to a plain flat ${keyWords[key]} with nothing else in it (no shadow, no floor, no gradient, no props)`
+  );
+}

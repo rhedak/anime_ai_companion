@@ -32,7 +32,7 @@ async function mouthOpen(): Promise<Buffer> {
   return encodePng(r);
 }
 
-async function setup(options: { switchToChat?: () => Promise<boolean>; askBrain?: (text: string, image?: { mediaType: string; data: string }) => void; canSeePictures?: boolean; faces?: boolean; backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; mouth?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string } = {}) {
+async function setup(options: { switchToChat?: () => Promise<boolean>; askBrain?: (text: string, image?: { mediaType: string; data: string }) => void; canSeePictures?: boolean; faces?: boolean; backendUrl?: string | null; again?: { dataDir: string; fake: FakeBackend }; delayMs?: number; xai?: boolean; budget?: number; noWeights?: boolean; brain?: string; chromeOn?: boolean; mouth?: boolean; env?: NodeJS.ProcessEnv; hubDir?: string; characterExists?: (id: string) => Promise<boolean> } = {}) {
   // `again`: a second server on the same data folder and the same backend, as after a restart.
   const dataDir = options.again?.dataDir ?? (await mkdtemp(join(tmpdir(), "studio-service-")));
   const framesDir = join(dataDir, "frames");
@@ -63,6 +63,7 @@ async function setup(options: { switchToChat?: () => Promise<boolean>; askBrain?
     remoteRefusal: () => "only on the computer",
     sources: async () => ["risa-dress"],
     characters: async (names) => Object.fromEntries(names.filter((n) => n.startsWith("risa-")).map((n) => [n, { id: "risa", name: "Risa" }])),
+    characterExists: options.characterExists,
     readSource: async (name) =>
       name === "risa-dress"
         ? options.faces
@@ -1579,5 +1580,40 @@ test("base pictures can be added to: two on fresh random seeds, or one on a seed
     assert.equal(me.at(-1)?.type, "studio-error", "a seed that is not a number is refused");
   } finally {
     await t.cleanup();
+  }
+});
+
+test("a new character: its id must be free, an upload must be a readable picture, and a good upload asks first, naming her character file", async () => {
+  const taken = await setup({ characterExists: async (id) => id === "risa" });
+  try {
+    await taken.service.command("on", taken.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await taken.service.message({ type: "studio-start", mode: "character", characterName: "Risa", route: "pack", source: "risa-dress", name: "risa-new", outfit: "a green coat" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /already exists/, "a taken id is refused");
+    await taken.service.message({ type: "studio-start", mode: "character", characterName: "Mira", route: "upload", upload: "data:image/png;base64,", name: "mira-new", outfit: "" }, send, false);
+    assert.match(me.at(-1)?.message ?? "", /could not be read/, "an empty upload is refused");
+  } finally {
+    await taken.cleanup();
+  }
+
+  const fresh = await setup();
+  try {
+    await fresh.service.command("on", fresh.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    // Her picture on a plain white background, as a PNG: the cut-out is made in code, so no model call is made for it.
+    const figure = makeRaster(60, 80, [255, 255, 255, 255]);
+    for (let y = 15; y < 65; y++) for (let x = 20; x < 40; x++) figure.data.set([200, 40, 60, 255], (y * 60 + x) * 4);
+    const upload = `data:image/png;base64,${(await encodePng(figure)).toString("base64")}`;
+    await fresh.service.message({ type: "studio-start", mode: "character", characterName: "Mira", characterDescription: "a quiet engineer", route: "upload", upload, name: "mira-new", outfit: "" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    assert.ok(card, "the question is asked before anything is drawn");
+    assert.equal(card.character?.id, "mira");
+    assert.match(card.note, /characters\/mira\.txt/, "the card names her character file");
+    assert.match(card.note, /no model call/, "a cut-out picture says no model call is made");
+    assert.equal(fresh.fake.requests.filter((r) => r.path === "/edit").length, 0, "nothing is drawn before the yes");
+  } finally {
+    await fresh.cleanup();
   }
 });

@@ -13,6 +13,7 @@ import { ASSISTED, BackendError, DEFAULT_LOCAL_BACKEND, LOCAL_MODEL_GUIDE, check
 import { knownFrameNames, readRecords } from "./studio/build.ts";
 import { processText } from "./studio/process.ts";
 import { pickKey } from "./studio/cutout.ts";
+import { prepareUpload } from "./studio/upload.ts";
 import { cleanText, MAX_LOOK, MAX_OUTFIT, parseJob, type Job } from "./studio/job.ts";
 import { decode, encodePng, flatten } from "./studio/raster.ts";
 import { assistFolder, type AssistRequest } from "./studio/assisted.ts";
@@ -26,8 +27,17 @@ import { checkPath } from "./settings.ts";
 import { detectLocalImageModels, hubCacheDir } from "./studio/local-models.ts";
 import type { Flags } from "./studio/checks.ts";
 import { encodeWebp, type Raster } from "./studio/raster.ts";
+import type { KeyName } from "./studio/cutout.ts";
 
 /** The pictures of a source pack the studio reads: its rest picture, and its blink and mouth pictures to learn where her face is. */
+/** A new character's id and name from what the user typed: the id is the name in lower case with dashes, and never a folder name the app uses. Null when nothing usable is left. */
+export function characterFrom(value: unknown): { id: string; name: string } | null {
+  const name = cleanText(value, 40);
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id) || id === "thumbs" || id === "characters") return null;
+  return { id, name };
+}
+
 export interface SourceFrames {
   neutral: Buffer;
   blink?: Buffer;
@@ -57,6 +67,8 @@ export interface StudioDeps {
   /** Which character each of those packs belongs to ({ pack folder: { id, name } }), so the page can group outfits under their character. Optional: without it every pack stands alone. */
   characters?(names: string[]): Promise<Record<string, { id: string; name: string }>>;
   readSource(name: string): Promise<SourceFrames | null>;
+  /** Whether a character of this id already exists (shipped or the user's own): a new character must not take its place. Optional: without it only the user's own folder is checked. */
+  characterExists?(id: string): Promise<boolean>;
   /** The pack she is wearing now, or null (the drawn avatar): a new outfit is drawn from it unless the user picks another. */
   activeSource(): string | null;
   /** While she is drawn: the pack of her own character to start from, if it is on this computer. */
@@ -648,20 +660,29 @@ export function createStudioService(deps: StudioDeps) {
     const out = join(dir, "out");
     try {
       const lookText = job.look || `You wear ${job.outfit}.`;
+      // Where the base came from, in words (an upload has no pack).
+      const from = job.sourceKind === "upload" ? "a picture the user uploaded" : `the \`${job.source}\` pack`;
       await writeFile(join(out, "look.txt"), `${job.character ? `character: ${job.character}\n` : ""}${lookText}\n`);
-      await writeFile(join(out, "credit.txt"), `${job.name}: made on this computer with AI (${info.model ?? info.name}), from the ${job.source} pack.\nMade with AI. See packs/${job.name}/NOTICE.md for the terms.\n`);
+      await writeFile(join(out, "credit.txt"), `${job.name}: made on this computer with AI (${info.model ?? info.name}), from ${job.sourceKind === "upload" ? "a picture the user uploaded" : `the ${job.source} pack`}.\nMade with AI. See packs/${job.name}/NOTICE.md for the terms.\n`);
       await writeFile(
         join(out, "NOTICE.md"),
-        `# ${job.name}\n\nA picture pack made on this computer with the app's pack studio, from the \`${job.source}\` pack, in a new outfit: ${job.outfit}.\n\n` +
+        `# ${job.name}\n\nA picture pack made on this computer with the app's pack studio, from ${from}, in a new outfit: ${job.outfit}.\n\n` +
           `**These pictures were made with AI**: ${describe(info)}${info.revision ? `, revision ${info.revision}` : ""}. The terms of that model apply to them, and ${RESPONSIBILITY[0].toLowerCase()}${RESPONSIBILITY.slice(1)}\n\n` +
           `A pack made like this is a draft and belongs to whoever made it. It is not part of the shared packs and is not published by the app.\n`,
       );
       await writeFile(join(out, "PROCESS.md"), processText(job, info.model ?? info.name, await readRecords(dir)));
       const target = join(deps.framesDir, job.name);
       if (await stat(target).then(() => true, () => false)) throw new Error(`There is already a pack called ${job.name}. Nothing was replaced; start again with another name.`);
+      // A new character's file is the user's own and is written with the pack, only after the yes; it is refused if it exists.
+      const characterFile = job.newCharacter ? join(deps.framesDir, "characters", `${job.newCharacter.id}.txt`) : null;
+      if (characterFile && (await stat(characterFile).then(() => true, () => false))) throw new Error(`There is already a character called ${job.newCharacter?.id}. Nothing was written; start again with another name.`);
       await mkdir(deps.framesDir, { recursive: true });
       // The job's own folder keeps its pictures (a later redraw can use them); the pack is a copy, renamed into place whole.
       await copyDir(out, join(deps.dataDir, "studio", `${job.id}-install`), target);
+      if (characterFile && job.newCharacter) {
+        await mkdir(join(deps.framesDir, "characters"), { recursive: true });
+        await writeFile(characterFile, `${job.newCharacter.name}\n${job.newCharacter.description || lookText}\ndefault: ${job.name}\n`, { flag: "wx" });
+      }
       forget();
       await deps.refreshPacks();
       deps.pushNote(`the user made a new picture pack on their computer, ${job.name} (${job.outfit}); it is a draft.`);
@@ -681,36 +702,59 @@ export function createStudioService(deps: StudioDeps) {
     const seed = validSeed(msg.seed);
     proposal = null;
     const err = (message: string) => send({ type: "studio-error", message });
-    const referenceKind = msg.referenceKind === "outfit" || msg.referenceKind === "character" ? msg.referenceKind : null;
+    // A new character (`mode: "character"`): her id is made from the name; the base is an existing character's neutral picture, or an upload.
+    const newChar = msg.mode === "character" ? characterFrom(msg.characterName) : null;
+    if (msg.mode === "character" && !newChar) return err("The new character needs a name with letters or digits.");
+    if (newChar && (await deps.characterExists?.(newChar.id))) return err(`A character called ${newChar.id} already exists. Pick another name.`);
+    const isUpload = Boolean(newChar) && msg.route === "upload";
+    const referenceKind = !isUpload && (msg.referenceKind === "outfit" || msg.referenceKind === "character") ? msg.referenceKind : null;
     const reference = referenceKind ? await pictureFrom(msg.reference) : null;
     if (referenceKind && !reference) return err("The reference picture could not be read. Give a PNG, JPEG or WebP, or choose no reference.");
-    if (!(await deps.sources()).includes(source)) return err("Pick one of your packs to draw from.");
+    if (!isUpload && !(await deps.sources()).includes(source)) return err("Pick one of your packs to draw from.");
     if (!isPackName(name) || name.startsWith(".")) return err("The new pack's name can have letters, digits, spaces and . _ - only.");
     if (await stat(join(deps.framesDir, name)).then(() => true, () => false)) return err(`There is already a pack called ${name}. Pick another name.`);
-    if (outfit.length < 3) return err("Describe the outfit in a few words.");
+    if (!isUpload && outfit.length < 3) return err("Describe the outfit in a few words.");
     const checked = await check();
     if (!checked.ok) return err(checked.reason);
-    const found = await deps.readSource(source);
-    if (!found) return err(`The ${source} pack has no neutral picture to draw from.`);
-    const picture = await decode(found.neutral);
-    const { key } = pickKey(picture);
+    let found: SourceFrames;
+    let picture: Raster;
+    let key: KeyName;
+    let uploadRedraw = false;
+    if (isUpload && newChar) {
+      const raw = await uploadFrom(msg.upload);
+      if (!raw) return err("The picture could not be read. Give a PNG, JPEG or WebP of up to 5 MB.");
+      const prepared = prepareUpload(raw);
+      uploadRedraw = prepared.route === "redraw";
+      picture = prepared.picture;
+      key = prepared.key;
+      found = { neutral: await encodePng(picture), talk: [], character: newChar.id };
+    } else {
+      const fromPack = await deps.readSource(source);
+      if (!fromPack) return err(`The ${source} pack has no neutral picture to draw from.`);
+      found = fromPack;
+      picture = await decode(found.neutral);
+      key = pickKey(picture).key;
+    }
     const height = 1024;
     const width = Math.min(1536, Math.max(256, Math.round(((picture.w / picture.h) * height) / 16) * 16));
     const parsed = parseJob({
       id: `job-${randomBytes(4).toString("hex")}`,
       kind: "redraw",
       name,
-      source,
-      character: found.character,
+      source: isUpload ? "upload" : source,
+      character: newChar ? newChar.id : found.character,
       outfit,
       look: look || `You wear ${outfit}.`,
       key,
       width,
       height,
       backend: { url: deps.settings.studioBackend, name: checked.info.name, model: checked.info.model, revision: checked.info.revision, licence: checked.info.licence },
-      // A seed given in the form draws exactly that picture first; the rest of the candidates come from "add more".
-      seeds: seed !== null ? [seed] : [1, 2, 3, 4].slice(0, Number.isInteger(msg.pictures) && (msg.pictures as number) >= 1 && (msg.pictures as number) <= 4 ? (msg.pictures as number) : 4),
+      // A seed given in the form draws exactly that picture first; the rest of the candidates come from "add more". A cut-out upload is one picture.
+      seeds: isUpload && !uploadRedraw ? [1] : seed !== null ? [seed] : [1, 2, 3, 4].slice(0, Number.isInteger(msg.pictures) && (msg.pictures as number) >= 1 && (msg.pictures as number) <= 4 ? (msg.pictures as number) : 4),
       reference: referenceKind,
+      sourceKind: isUpload ? "upload" : "pack",
+      newCharacter: newChar ? { ...newChar, description: cleanText(msg.characterDescription, 300) } : null,
+      uploadRedraw,
     });
     if (!parsed.ok) return err(parsed.reason);
     forget(); // only now: a form that fails above must not drop the review the user is looking at
@@ -720,8 +764,9 @@ export function createStudioService(deps: StudioDeps) {
       type: "studio-confirm",
       id: parsed.job.id,
       name,
-      source,
+      source: isUpload ? "your uploaded picture" : source,
       outfit: parsed.job.outfit,
+      character: newChar ? { id: newChar.id, name: newChar.name, file: join(deps.framesDir, "characters", `${newChar.id}.txt`) } : null,
       backend: describe(checked.info),
       folder: join(deps.framesDir, name),
       pictures: parsed.job.seeds.length,
@@ -729,12 +774,14 @@ export function createStudioService(deps: StudioDeps) {
       browser: checked.info.browser ?? null,
       assisted: checked.info.assisted ?? null,
       note:
+        (newChar ? `This makes a new character, ${newChar.name} (${newChar.id}): her file characters/${newChar.id}.txt is written when you accept the pack. ` : "") +
+        (isUpload ? (uploadRedraw ? "Your picture has a busy background, so the model draws the background over first (a model call, paid on a paid maker). " : "Your picture is cut out in code: no model call is made for it. ") : "") +
         (checked.info.paid ? `${paidNote(checked.info, parsed.job.seeds.length)} ` : "") +
         (checked.info.browser ? `${browserNote(checked.info)} ` : "") +
         (checked.info.assisted ? `${assistedNote(parsed.job.seeds.length)} ` : "") +
         (() => {
           const n = parsed.job.seeds.length;
-          const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${source} in that outfit with ${describe(checked.info)}`;
+          const what = `${n} ${n === 1 ? "picture" : "pictures"} of ${isUpload ? "your uploaded picture" : source} in that outfit with ${describe(checked.info)}`;
           const rest = `You pick one (if you drew several); then about forty more pictures are made from it (faces, blinks, mouths and poses), and you look at the pack before it is written to data/frames/${name}. `;
           return checked.info.paid || checked.info.browser || checked.info.assisted
             ? `This draws ${what}. ${rest}`
@@ -759,6 +806,18 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   /** A picture the page sent (base64, with or without its data: prefix), as a PNG on white. Null when the app cannot read it. */
+  /** An uploaded picture as decoded (its transparency kept), or null when it cannot be read or is too big. */
+  async function uploadFrom(value: unknown): Promise<Raster | null> {
+    if (typeof value !== "string") return null;
+    const bytes = Buffer.from(value.replace(/^data:[^,]*,/, ""), "base64");
+    if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) return null;
+    try {
+      return await decode(bytes);
+    } catch {
+      return null;
+    }
+  }
+
   async function pictureFrom(value: unknown): Promise<Buffer | null> {
     if (typeof value !== "string") return null;
     const bytes = Buffer.from(value.replace(/^data:[^,]*,/, ""), "base64");

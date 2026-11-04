@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
-import { keyRgb, outfitPrompt, referenceCharacterPrompt, referenceOutfitPrompt, stepPrompt } from "./prompts.ts";
+import { cleanBackgroundPrompt, keyRgb, outfitPrompt, referenceCharacterPrompt, referenceOutfitPrompt, stepPrompt } from "./prompts.ts";
 import { decode, encodePng, encodeWebp, flatten, resize } from "./raster.ts";
 import { deriveGeometry } from "./geometry.ts";
 import type { Job } from "./job.ts";
@@ -61,7 +61,20 @@ export async function runBase(job: Job, deps: RunDeps): Promise<void> {
   emit({ type: "status", text: geometry.from === "pack" ? "Learned where her face is from the pack's own blink and mouth pictures." : "The pack has no blink and mouth pictures to learn her face from; using typical proportions." });
   // With a reference picture the model sees the base first and the reference second (image 1 and image 2 in the words); without one it is the old one-picture outfit change.
   const referenceFile = job.reference ? await readFile(join(dir, "reference.png")) : null;
-  const prompt = referenceFile ? (job.reference === "character" ? referenceCharacterPrompt(job.key) : referenceOutfitPrompt(job.key)) : outfitPrompt(job.outfit, job.key);
+  // An uploaded picture is not an outfit change: when its background has to be drawn over, only the background is asked for.
+  const prompt = job.sourceKind === "upload" ? cleanBackgroundPrompt(job.key) : referenceFile ? (job.reference === "character" ? referenceCharacterPrompt(job.key) : referenceOutfitPrompt(job.key)) : outfitPrompt(job.outfit, job.key);
+  // An uploaded picture cut out in code is the one candidate itself: nothing is drawn for it.
+  if (job.sourceKind === "upload" && !job.uploadRedraw) {
+    const seed = job.seeds[0];
+    const file = `base/seed-${seed}.png`;
+    const thumb = `base/seed-${seed}.thumb.webp`;
+    await writeFile(join(dir, file), await encodePng(reference));
+    await writeFile(join(dir, thumb), await encodeWebp(await resize(reference, THUMB_WIDTH, Math.round((THUMB_WIDTH * job.height) / job.width)), { quality: 80 }));
+    await writeFile(join(dir, `base/seed-${seed}.full.webp`), await encodeWebp(reference, { quality: 85 }));
+    emit({ type: "candidate", seed, file, thumb, done: 1, total: 1 });
+    emit({ type: "base-done" });
+    return;
+  }
   let done = 0;
   for (const seed of job.seeds) {
     if (signal?.aborted) return;

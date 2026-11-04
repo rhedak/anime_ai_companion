@@ -21,6 +21,8 @@ export interface Job {
   sourceKind: "pack" | "upload";
   /** A new character this pack starts (its id, name and one-line description), or null for an outfit of an existing one. Not used by the drawing yet. */
   newCharacter: { id: string; name: string; description: string } | null;
+  /** An uploaded picture whose background is drawn over by the model first (the user was asked: a model call). False when it is cut out in code. */
+  uploadRedraw: boolean;
   key: KeyName;
   /** Working size of the pictures (what the model sees). */
   width: number;
@@ -67,7 +69,9 @@ export function parseJob(raw: unknown): { ok: true; job: Job } | { ok: false; re
   if (j.kind !== "redraw") return fail("Only redraw jobs exist so far.");
   if (typeof j.name !== "string" || !isPackName(j.name)) return fail("The new pack's name is not usable.");
   if (typeof j.source !== "string" || !isPackName(j.source)) return fail("The source pack's name is not usable.");
-  const outfit = cleanText(j.outfit, MAX_OUTFIT);
+  const uploaded = j.sourceKind === "upload";
+  // An uploaded picture already shows her outfit, so the words are optional for it.
+  const outfit = cleanText(j.outfit, MAX_OUTFIT) || (uploaded ? "the outfit in the picture" : "");
   if (outfit.length < 3) return fail("Describe the outfit in a few words.");
   const character = typeof j.character === "string" && /^[a-z0-9_-]{1,24}$/.test(j.character) ? j.character : null;
   if (typeof j.key !== "string" || !KEY_NAMES.includes(j.key)) return fail("The key colour is not one of ours.");
@@ -89,8 +93,9 @@ export function parseJob(raw: unknown): { ok: true; job: Job } | { ok: false; re
       outfit,
       reference: j.reference === "outfit" || j.reference === "character" ? j.reference : null,
       look: cleanText(j.look, MAX_LOOK),
-      sourceKind: j.sourceKind === "upload" ? "upload" : "pack",
+      sourceKind: uploaded ? "upload" : "pack",
       newCharacter: parseNewCharacter(j.newCharacter),
+      uploadRedraw: uploaded && j.uploadRedraw === true,
       key: j.key as KeyName,
       width,
       height,
