@@ -71,8 +71,12 @@ What is here, and how the pieces fit:
   instead of the Download link. A new voice is one more entry there; keep each line's emotion tag, and keep it to what the script can actually do.
 - **A link can pick the pack or character:** `…/demo/?pack=franzi-bikini` or `?character=franzi` (`wantedFromSearch`, `applyWanted`). A pack that is here (the two
   bundled ones) is shown at once; a character shows its default outfit (`default:` in `packs/characters/<id>.txt`), else any outfit that is here; one that is only
-  on the packs site is asked about first (the same question as its tile: size, host, nothing fetched until the visitor says yes). Anything else in the link is ignored, and
-  the link wins over the pack she showed last time.
+  on the packs site is fetched at once, because following a link to it is the visitor's yes: no question, and instead a loading screen over her (`linkLoading` in
+  `demo-boot.js`, told by `onLinkPack`) with the pack's name, how many of her first pictures (neutral, and her greeting's face and gesture) have arrived, and a line
+  that they come from the packs site's host, which sees the visitor's IP address. She is shown when they are in, and her first words are the pack's own greeting
+  (`packIntroFor`), not the drawn avatar's. If the fetch fails, the chat says why, she stays drawn, and the usual question follows (its Download is the retry). A pack
+  chosen in the gallery or with `/frames` is still asked about first. A name nobody knows is ignored (she is drawn, as without the link), and the link wins over the
+  pack she showed last time.
 - A picture pack: Looks… → Packs… offers **Risa in a dress** (`DEMO_PACKS` in `stage.mjs`; also `/frames risa-dress`, `/frames off`,
   or the "Try the picture pack" prompt). `stage.mjs` reads the pack with the app's own `readPack` and copies it to `frames/<name>/`, a
   thumbnail to `pack-thumb/<name>` (the page asks for that path) and the list the page needs to `packs.json`. The pictures load only when the

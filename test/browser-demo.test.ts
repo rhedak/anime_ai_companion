@@ -40,9 +40,9 @@ function fakeRenderer() {
 
 /** A socket with the page's side of it: what the page receives, in order. */
 type FakeModel = { ready(): boolean; chat(messages: { role: string; content: string }[], onPiece: (piece: string) => void): Promise<string>; stop(): void };
-function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; characters?: Record<string, any>; remote?: Record<string, any>; fetchJson?: (url: string) => Promise<unknown>; preload?: (url: string) => Promise<unknown>; want?: string; agreed?: string[]; onAgree?: (id: string) => void; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
+function connect(options: { renderer?: Promise<Renderer>; greeting?: string; packs?: Record<string, PackInfo>; characters?: Record<string, any>; remote?: Record<string, any>; fetchJson?: (url: string) => Promise<unknown>; preload?: (url: string) => Promise<unknown>; want?: string; onLinkPack?: (state: any) => void; onPack?: (name: string | null) => void; model?: FakeModel; pause?: (ms: number) => Promise<void>; restore?: { character?: any; pack?: string | null } | null; onSave?: (saved: any) => void } = {}) {
   const fake = fakeRenderer();
-  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, characters: options.characters, remote: options.remote, fetchJson: options.fetchJson, preload: options.preload, want: options.want, agreed: options.agreed, onAgree: options.onAgree, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
+  const socket = createLocalSocket({ renderer: options.renderer ?? Promise.resolve(fake.renderer), emotions, reply, greeting: options.greeting ?? "", pause: options.pause ?? (async () => {}), packs: options.packs, characters: options.characters, remote: options.remote, fetchJson: options.fetchJson, preload: options.preload, want: options.want, onLinkPack: options.onLinkPack, onPack: options.onPack, model: options.model, restore: options.restore, onSave: options.onSave });
   const events: any[] = [];
   socket.onmessage = (e) => events.push(JSON.parse(e.data));
   const next = async (match: (e: any) => boolean, from = 0, ms = 3000) => {
@@ -1016,21 +1016,57 @@ test("a pack fetched on the last visit comes back quietly on the next one, and o
 
 // --- a link that names a pack or a character (?pack=… or ?character=…) ---
 
-test("a link naming a pack that is here shows it, one that must be fetched is only asked about, and a name nobody knows is ignored", async () => {
+test("a link naming a pack that is here shows it, one that must be fetched is fetched at once (the link is the yes), and a name nobody knows is ignored", async () => {
   const fetched: string[] = [];
   const here = connect({ packs: PICTURES, remote: REMOTE, want: "pic", fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
   assert.equal((await here.next((e) => e.type === "pack" && e.pack)).pack.name, "pic");
 
   const far = connect({ packs: PICTURES, remote: REMOTE, want: "franzi-bikini", fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
-  const offer = await far.next((e) => e.type === "pack-offer");
-  assert.equal(offer.id, "franzi-bikini");
+  assert.equal((await far.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini");
   await far.next((e) => e.type === "queue");
-  assert.equal(far.events.find((e) => e.type === "pack").pack, null, "she stays drawn until the visitor says yes");
-  assert.deepEqual(fetched, [], "asking is not fetching");
+  assert.equal(far.events.some((e) => e.type === "pack-offer"), false, "no question: following the link was the yes");
+  assert.deepEqual(fetched, [`${REMOTE["franzi-bikini"].base}pack.json`]);
 
-  const none = connect({ packs: PICTURES, remote: REMOTE, want: "nobody" });
+  const none = connect({ packs: PICTURES, remote: REMOTE, want: "nobody", fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
   await none.next((e) => e.type === "queue");
   assert.equal(none.events.some((e) => e.type === "pack-offer" || (e.type === "pack" && e.pack)), false);
+  assert.equal(fetched.length, 1, "nothing fetched for a name nobody knows");
+});
+
+test("a pack from a link is said to be loading (name, host, pictures so far), shown only when her first pictures are in, and greets in its character's voice", async () => {
+  const states: any[] = [];
+  const preloaded: string[] = [];
+  const dra = { ...REMOTE["franzi-bikini"], id: "dra", name: "Draconia Malfoid (uniform)", character: { id: "draconia", name: "Draconia Malfoid" }, base: "https://rhedak.github.io/anime_ai_companion-packs/frames/dra/" };
+  const json = { name: "dra", character: "draconia", emotions: { neutral: { idle: "n.webp", blink: "nb.webp", talk: ["nt.webp"] }, angry: { idle: "a.webp", talk: ["at.webp"] }, sad: { idle: "s.webp", talk: [] } }, gestures: { wave: ["w1.webp"], cheer: ["c1.webp"] } };
+  const { events, next } = connect({ remote: { dra }, want: "dra", greeting: GREETING, fetchJson: async () => json, preload: async (url) => void preloaded.push(url), onLinkPack: (state) => states.push({ ...state, shown: events.some((e) => e.type === "pack" && e.pack) }) });
+  await next((e) => e.type === "done");
+  assert.deepEqual(states[0], { phase: "download", id: "dra", name: "Draconia Malfoid (uniform)", host: "rhedak.github.io", shown: false });
+  const last = states.at(-1);
+  assert.equal(last.phase, "done");
+  assert.equal(states.filter((s) => s.phase === "download" && s.total).at(-1).received, 6, "every picture counted");
+  const base = dra.base;
+  assert.deepEqual(new Set(preloaded), new Set(["n.webp", "nb.webp", "nt.webp", "a.webp", "at.webp", "w1.webp"].map((f) => base + f)), "neutral, and the face and gesture of her greeting");
+  assert.equal(states.some((s) => s.phase === "download" && s.shown), false, "not shown while it is said to be loading");
+  assert.equal(events.filter((e) => e.type === "delta").map((e) => e.text).join(""), packIntroFor("draconia"), "her own greeting, and not the drawn avatar's");
+  assert.equal(events.some((e) => e.type === "pack-offer"), false);
+  assert.ok(events.findIndex((e) => e.type === "pack" && e.pack) > events.findIndex((e) => e.type === "history"), "shown after the log is filled, so the page keeps the pack's terms in it");
+});
+
+test("a pack from a link that cannot be fetched: the page is told, the chat says why, she stays drawn, and the usual question is the retry", async () => {
+  const states: any[] = [];
+  const failed = connect({ remote: REMOTE, want: "franzi-bikini", greeting: GREETING, fetchJson: async () => Promise.reject(new Error("offline")), onLinkPack: (state) => states.push(state) });
+  const offer = await failed.next((e) => e.type === "pack-offer");
+  assert.equal(offer.id, "franzi-bikini");
+  assert.equal(states.at(-1).phase, "error");
+  assert.match(states.at(-1).message, /offline/);
+  assert.match(failed.events.find((e) => e.type === "notice").text, /Franzi \(bikini\) is not available in the demo yet \(offline\)\..* tries again/);
+  assert.ok(failed.events.findIndex((e) => e.type === "notice") > failed.events.findIndex((e) => e.type === "history"), "said after the log is filled, so the page keeps it");
+  await failed.next((e) => e.type === "done");
+  assert.equal(failed.events.filter((e) => e.type === "pack").every((e) => e.pack === null), true, "the drawn avatar");
+  assert.equal(failed.events.filter((e) => e.type === "delta").map((e) => e.text).join(""), GREETING, "and the drawn avatar's greeting");
+
+  const slow = connect({ remote: REMOTE, want: "franzi-bikini", fetchJson: async () => BIKINI_JSON, preload: () => new Promise(() => {}) });
+  assert.equal((await slow.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini", "a picture that never arrives does not hold her back for ever");
 });
 
 test("a link naming a character shows its default outfit if that is here, else one that is here, else asks about the first one to fetch", async () => {
@@ -1038,8 +1074,8 @@ test("a link naming a character shows its default outfit if that is here, else o
   const characters = { dress: { id: "franzi", name: "Franzi" }, casual: { id: "franzi", name: "Franzi", default: "casual" } };
   const a = connect({ packs: two, characters, remote: REMOTE, want: "franzi" });
   assert.equal((await a.next((e) => e.type === "pack" && e.pack)).pack.name, "casual", "the outfit the character file names");
-  const b = connect({ packs: PICTURES, characters: { pic: { id: "pic", name: "Pic" } }, remote: REMOTE, want: "franzi" });
-  assert.equal((await b.next((e) => e.type === "pack-offer")).id, "franzi-bikini", "only on the packs site: ask");
+  const b = connect({ packs: PICTURES, characters: { pic: { id: "pic", name: "Pic" } }, remote: REMOTE, want: "franzi", fetchJson: async () => BIKINI_JSON });
+  assert.equal((await b.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini", "only on the packs site: fetched");
 });
 
 test("a link that names the pack she showed last time does not show it twice", async () => {
@@ -1097,25 +1133,18 @@ test("in the demo her pack's character decides the voice: the intro, the answers
   assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), PACK_INTRO, "another pack: the plain intro");
 });
 
-test("a link to a pack the visitor already said yes to fetches it quietly, instead of asking every visit, and saying yes is reported to be kept", async () => {
+test("without a link, a pack on the packs site is still asked about first, and its Download fetches and shows it", async () => {
   const fetched: string[] = [];
-  const kept: string[] = [];
-  const known = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["franzi-bikini"], fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
-  assert.equal((await known.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini");
-  assert.equal(known.events.some((e) => e.type === "pack-offer"), false, "no question for a pack they agreed to");
+  const { events, next, send } = connect({ remote: REMOTE, fetchJson: async (url) => (fetched.push(url), BIKINI_JSON) });
+  await next((e) => e.type === "queue");
+  send({ type: "user", text: "/frames franzi-bikini" });
+  await next((e) => e.type === "pack-offer");
+  assert.deepEqual(fetched, [], "asking is not fetching");
+  send({ type: "pack-install", name: "franzi-bikini" });
+  await next((e) => e.type === "pack-progress" && e.phase === "done");
+  assert.equal((await next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini");
   assert.equal(fetched.length, 1);
-
-  const last = connect({ remote: REMOTE, want: "franzi-bikini", restore: { pack: "franzi-bikini" }, fetchJson: async () => BIKINI_JSON });
-  assert.equal((await last.next((e) => e.type === "pack" && e.pack)).pack.name, "franzi-bikini", "the pack she showed last time counts as agreed");
-
-  const never = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["something-else"], fetchJson: async () => BIKINI_JSON, onAgree: (id) => void kept.push(id) });
-  await never.next((e) => e.type === "pack-offer");
-  never.send({ type: "pack-install", name: "franzi-bikini" });
-  await never.next((e) => e.type === "pack-progress" && e.phase === "done");
-  assert.deepEqual(kept, ["franzi-bikini"], "yes is reported, so the page can keep it");
-
-  const gone = connect({ remote: REMOTE, want: "franzi-bikini", agreed: ["franzi-bikini"], fetchJson: async () => Promise.reject(new Error("offline")) });
-  assert.equal((await gone.next((e) => e.type === "pack-offer")).id, "franzi-bikini", "a pack that cannot be fetched is asked about as any other");
+  assert.equal(events.filter((e) => e.type === "pack-offer").length, 1);
 });
 
 test("the packs message names the preview of every pack the list has, fetched or not, so the gallery never falls back to a folder the demo does not have", async () => {
