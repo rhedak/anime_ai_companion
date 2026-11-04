@@ -35,13 +35,12 @@ export function createLocalSocket(options: {
   remote?: Record<string, import("./remote-packs.js").RemotePack> | Promise<Record<string, import("./remote-packs.js").RemotePack>>;
   /** Fetches a JSON document (a pack's pack.json); replaced in tests. */
   fetchJson?: (url: string) => Promise<unknown>;
-  /** Warms the browser's cache with a picture (the pack's neutral one) before the pack is shown. */
+  /** Warms the browser's cache with a picture (the pack's neutral one; for a pack from the link, also those of her greeting) before the pack is shown. */
   preload?: (url: string) => Promise<unknown>;
-  /** A pack or character id from the page's link (`?pack=…`), shown, or asked about if it must be fetched first. */
+  /** A pack or character id from the page's link (`?pack=…`): shown, fetched first if it is only on the packs site (the link is the yes). */
   want?: string;
-  /** Packs the visitor said yes to on earlier visits, and a call when they say yes to one now (the page keeps the list in the browser). */
-  agreed?: string[];
-  onAgree?: (id: string) => void;
+  /** How a pack named by the link is loading, for the page's loading screen: `download` (with `received` of `total` pictures once known), then `done`, or `error` (the usual question follows). */
+  onLinkPack?: (state: { phase: "download" | "done" | "error"; id: string; name: string; host?: string; received?: number; total?: number; message?: string }) => void;
   onPack?: (name: string | null) => void;
   /** The look and pack from the visitor's last visit. */
   restore?: { character?: any; pack?: string | null; base?: string | null } | null;

@@ -49,15 +49,8 @@ const remote = fetch(`${PACKS_SITE}index.json`, { signal: AbortSignal.timeout(80
   .then((res) => (res.ok ? res.json() : {}))
   .then((index) => remotePacksFrom(index))
   .catch(() => ({}));
-/** The packs the visitor has said yes to on earlier visits (kept in this browser): a link to one of them does not ask again. */
-const agreed = (() => {
-  try {
-    const list = JSON.parse(remembered("demoAgreedPacks") || "[]");
-    return Array.isArray(list) ? list.filter((id) => typeof id === "string" && /^[A-Za-z0-9._-]{1,40}$/.test(id)).slice(0, 20) : [];
-  } catch {
-    return [];
-  }
-})();
+/** The pack or character the link names (`?pack=…`), or "". */
+const want = wantedFromSearch(location.search);
 /** Fetches a picture so the browser has it before the pack is shown. */
 const preload = (url) =>
   new Promise((resolve, reject) => {
@@ -106,6 +99,44 @@ const modelDialog = createModelDialog({
     socket?.announce("[emotion:neutral] The small model's files are removed from this browser, and it is off.");
   },
 });
+/**
+ * While a link (`?pack=…`) is being followed, a loading screen covers her, so the drawn avatar does not flash up before the pack: "Loading…", then
+ * the pack's name, how many of her first pictures have arrived, and the server it comes from. It goes when she is shown, or when the link turns out
+ * to name a pack that is here, nothing known (she is drawn, as without the link), or a pack that could not be fetched (the chat says why).
+ */
+const linkLoading = (() => {
+  const stage = document.querySelector(".stage");
+  if (!want || !stage) return { update() {}, hide() {} };
+  const box = document.createElement("div");
+  box.className = "demo-link-loading";
+  box.setAttribute("role", "status");
+  const title = Object.assign(document.createElement("p"), { className: "demo-link-title", textContent: "Loading…" });
+  const bar = document.createElement("progress");
+  const note = Object.assign(document.createElement("p"), { className: "demo-link-note", hidden: true });
+  box.append(title, bar, note);
+  stage.append(box);
+  const hide = () => {
+    if (!box.isConnected) return;
+    box.classList.add("gone");
+    setTimeout(() => box.remove(), 400); // after the pack's first picture is on screen and the fade
+  };
+  return {
+    /** @param {{ phase: string, name: string, host?: string, received?: number, total?: number }} state */
+    update(state) {
+      if (state.phase !== "download") return hide();
+      title.textContent = `Loading ${state.name}…`;
+      if (state.total) {
+        bar.max = state.total;
+        bar.value = state.received ?? 0;
+        bar.title = `${state.received ?? 0} of ${state.total} pictures`;
+      }
+      note.textContent = `Her pictures come from ${state.host || "the packs site"}, which sees your IP address.`;
+      note.hidden = false;
+    },
+    hide,
+  };
+})();
+
 /** @type {ReturnType<typeof createLocalSocket> | null} */
 let socket = null;
 let packed = false;
@@ -123,9 +154,8 @@ let loading = true;
     characters,
     remote,
     preload,
-    want: wantedFromSearch(location.search),
-    agreed,
-    onAgree: (id) => remember("demoAgreedPacks", JSON.stringify([...new Set([...agreed, id])].slice(-20))),
+    want,
+    onLinkPack: (state) => linkLoading.update(state),
     onPack: (name) => showChips(name !== null),
     model,
     restore: savedLook(),
@@ -135,6 +165,7 @@ let loading = true;
   void socket.ready.then(() => {
     loading = false;
     showChips(packed);
+    linkLoading.hide(); // whatever the link named has been shown, asked about or ignored by now
   });
   return socket;
 };

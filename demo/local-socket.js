@@ -34,9 +34,8 @@ export function createLocalSocket({
   fetchJson = (/** @type {string} */ url) => fetch(url, { signal: AbortSignal.timeout(15000) }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(`the server answered ${res.status}`)))),
   preload = (/** @type {string} */ _url) => Promise.resolve(),
   want = "",
-  agreed = /** @type {string[]} */ ([]),
-  onAgree = (/** @type {string} */ _id) => {},
   onPack = (/** @type {string | null} */ _name) => {},
+  onLinkPack = (/** @type {{ phase: "download" | "done" | "error", id: string, name: string, host?: string, received?: number, total?: number, message?: string }} */ _state) => {},
   model = null,
   restore = null,
   onSave = (/** @type {{ character: any, pack: string | null, base: string | null } | null} */ _saved) => {},
@@ -58,6 +57,8 @@ export function createLocalSocket({
   let remoteList = {};
   /** The visitor chose "Allow for this session" on the pretend Edit card: it is not asked again until a new conversation. */
   let editAllowed = false;
+  /** A link showed a pack when the page opened: her first words are that pack's own greeting, not the drawn avatar's. */
+  let linkGreeting = false;
   /** The built-in character her look started from (a tweak keeps it), for the gallery to mark; null when it is not known. */
   let basePreset = preset;
   /** The base she had at each earlier look, in step with `looks`, so Undo goes back to it too. */
@@ -244,14 +245,19 @@ export function createLocalSocket({
     }
     out(packMessage());
     out(packsMessage());
-    if (want) await applyWanted();
     out({ type: "meter", model: "the demo", effort: null, session: null, week: null, limitsAt: null, ctx: null });
     out({ type: "history", items: history });
     out({ type: "queue", items: [], returned: [] });
+    // After the page has filled its log (`history` starts it over), so what the link's pack says there (its terms, a failure) stays.
+    if (want) await applyWanted();
   }
 
   /** She says something unprompted (the greeting), like a reply with no question before it. */
   async function greet() {
+    if (linkGreeting) {
+      linkGreeting = false;
+      return speak(packIntroFor(characterId()));
+    }
     if (!greeting) return;
     await speak(greeting);
   }
@@ -431,20 +437,31 @@ export function createLocalSocket({
     }
     const info = packInfoFrom(json, entry.base);
     if (!info) throw new Error(`The description of ${entry.name} on the server does not look right, so it was not used.`);
-    await preload(info.emotions.neutral.idle).catch(() => {});
+    await Promise.race([preload(info.emotions.neutral.idle).catch(() => {}), pause(15000)]); // a picture that never arrives is left to load when shown
     packList[id] = info;
     if (entry.character && !characterList[id]) characterList[id] = entry.character;
   }
 
-  /** The visitor said yes to this pack, now or on an earlier visit (kept in the browser by the page): a link to it does not ask again. */
-  const agree = (id) => {
-    if (!agreed.includes(id)) agreed = [...agreed, id];
-    onAgree(id);
-  };
+  /**
+   * The pictures she shows first (neutral, and the face and gesture of her greeting), fetched before a pack from a link is shown, so she is
+   * whole when she appears. `onStep(done, total)` counts them; a picture that fails or takes too long is left to load when it is shown.
+   */
+  async function warmUp(info, onStep) {
+    const intro = packIntroFor(info.character ?? "");
+    const feel = /\[emotion:([a-z_-]+)\]/i.exec(intro)?.[1];
+    const gesture = /\[gesture:([a-z_-]+)\]/i.exec(intro)?.[1];
+    const frames = (e) => (e ? [e.idle, e.blink, ...e.talk] : []);
+    const urls = [...new Set([...frames(info.emotions.neutral), ...frames(feel ? info.emotions[feel] : null), ...((gesture && info.gestures[gesture]) || [])].filter(Boolean))];
+    let done = 0;
+    onStep(done, urls.length);
+    await Promise.all(urls.map((url) => Promise.race([preload(url).catch(() => {}), pause(15000)]).then(() => onStep(++done, urls.length))));
+  }
 
   /**
-   * The link asked for a pack or a character (`?pack=…`): one that is here is shown at once, one that is only on the packs site is asked about first
-   * (the same question as a click on its tile: size and host, nothing fetched until the visitor says yes). Anything else is ignored.
+   * The link asked for a pack or a character (`?pack=…`): one that is here is shown at once. One that is only on the packs site is fetched at once
+   * too, because following a link to it is the visitor's yes (the page shows it loading, with the host, instead of asking; `onLinkPack`). If that
+   * fails, the page says why and asks the usual question, whose Download is the retry. Anything else is ignored. Either way her first words are
+   * the pack's greeting.
    */
   async function applyWanted() {
     const id = Object.keys(packList).find((n) => n.toLowerCase() === want) ?? Object.keys(remoteList).find((n) => n.toLowerCase() === want);
@@ -453,16 +470,25 @@ export function createLocalSocket({
     const here = ofCharacter(packList);
     const chosen = id ?? (here.find((n) => characterList[n]?.default === n) ?? here[0] ?? ofCharacter(remoteList)[0]);
     if (!chosen || chosen === pack) return;
-    if (Object.hasOwn(packList, chosen)) return choosePack(chosen);
-    // A pack the visitor already said yes to (the one she showed last time, or one they agreed to on an earlier visit) is fetched again without asking, as the plain page does.
-    if (restore?.pack === chosen || agreed.includes(chosen)) {
-      try {
-        await fetchPack(chosen);
-        return choosePack(chosen);
-      } catch {} // gone from the server: ask as for any other pack
+    if (Object.hasOwn(packList, chosen)) {
+      linkGreeting = true;
+      return choosePack(chosen, true);
     }
     const entry = remoteList[chosen];
-    out({ type: "pack-offer", id: chosen, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
+    const state = { id: chosen, name: entry.name, host: entry.host };
+    onLinkPack({ phase: "download", ...state });
+    try {
+      await fetchPack(chosen);
+      await warmUp(packList[chosen], (received, total) => onLinkPack({ phase: "download", ...state, received, total }));
+    } catch (err) {
+      const message = err?.message ?? String(err);
+      onLinkPack({ phase: "error", ...state, message });
+      out({ type: "notice", text: `${message} Download in the question over her picture tries again.` });
+      return void out({ type: "pack-offer", id: chosen, name: entry.name, bytes: entry.sizes.archiveBytes, host: entry.host, saved: entry.saved });
+    }
+    linkGreeting = true;
+    await choosePack(chosen, true);
+    onLinkPack({ phase: "done", ...state });
   }
 
   /** The visitor said yes to the question the page asked: fetch the pack, then show it, as the app does after an install. */
@@ -473,7 +499,6 @@ export function createLocalSocket({
     } catch (err) {
       return void out({ type: "pack-progress", id, phase: "error", message: err?.message ?? String(err) });
     }
-    agree(id);
     out({ type: "pack-progress", id, phase: "done" });
     await choosePack(id);
   }
