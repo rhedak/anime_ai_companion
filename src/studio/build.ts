@@ -75,13 +75,27 @@ export interface FrameRecord {
   other?: Flags;
 }
 
-/** What a redraw asks for: one seed for every picture drawn again (else the usual seeds, or the same ones with `sameSeed`), and whether face edits are pasted back. */
+/** What a redraw asks for: one seed for every picture drawn again (else the usual seeds, or the same ones with `sameSeed`), and whether face edits are pasted back (off unless the user turned it on). */
 export interface RedrawOptions {
   seed?: number;
   pasteBack?: boolean;
 }
 
 const framesFile = (dir: string) => join(dir, "frames.json");
+/** The paste-back choice of the last build or redraw of this job, so a build that stops and carries on keeps it. */
+const pasteFile = (dir: string) => join(dir, "paste-back.json");
+
+/** Off unless a build or redraw of this job said on: paste-back is for the users who want it (the model's whole picture is the default). */
+export async function readPasteBack(dir: string): Promise<boolean> {
+  const bytes = await readFile(pasteFile(dir), "utf8").catch(() => null);
+  if (!bytes) return false;
+  try {
+    return JSON.parse(bytes).pasteBack === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readRecords(dir: string): Promise<Record<string, FrameRecord>> {
   try {
     return JSON.parse(await readFile(framesFile(dir), "utf8"));
@@ -167,6 +181,9 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
   const base = await load(dir, "base", job.width, job.height);
   const baseAlpha = cutout(base, { key: job.key }).alpha;
   const keepSeed = new Set(sameSeed ?? []);
+  // Paste-back: what this build was told, else what it was last told (off at the start). Kept in the job's folder for a carry-on.
+  const pasteOn = options.pasteBack ?? (await readPasteBack(dir));
+  if (options.pasteBack !== undefined) await writeFile(pasteFile(dir), JSON.stringify({ pasteBack: pasteOn }));
   // What is already drawn (a job that was stopped and carried on) is shown again, from the thumbnails already on disk when there are some.
   for (const name of REVIEW_FRAMES) {
     const drawn = name === "neutral" || records[name] !== undefined;
@@ -186,11 +203,9 @@ export async function runBuild(job: Job, geometry: Geometry, deps: BuildDeps, on
     done++;
     emit({ type: "status", text: `Drawing ${plan.name.replace("-", " ")} (${done} of ${todo.length})…` });
     const source = await load(dir, plan.from, job.width, job.height);
-    // The pack takes the pasted version of a face edit unless the redraw says the whole picture (paste-back off).
-    // Paste-back is on when the face areas were learned from the pack, and off otherwise unless the redraw asks for it.
-    // Both versions of a face edit exist whenever her face areas are the pack's own; which one is in the pack follows paste-back.
+    // The pack takes the whole picture the model drew, unless paste-back is on (the user turned it on for this build or redraw).
+    // Both versions of a face edit exist whenever her face areas are the pack's own, so the review can switch between them.
     const faceAreas = geometry.from === "pack";
-    const pasteOn = options.pasteBack ?? faceAreas;
     const chosen: Variant = plan.mode === "paste" && pasteOn ? "pasted" : "whole";
     // A seed given for the redraw is used for every picture drawn again; otherwise the same seed (sameSeed) or the usual ones.
     const fixed = redo.has(plan.name) && options.seed !== undefined ? options.seed : keepSeed.has(plan.name) && only?.includes(plan.name) ? records[plan.name]?.seed : undefined;

@@ -954,21 +954,22 @@ export function createStudioService(deps: StudioDeps) {
   }
 
   /** Approves the current base: it is what the rest of the pack is made from. */
-  async function approve(id: string, send: Send): Promise<void> {
+  async function approve(id: string, send: Send, pasteBack: boolean): Promise<void> {
     if (!chain || chain.jobId !== id || !waiting || waiting.kind !== "pick" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "Pick the base picture first." });
     const { job, dir, info } = waiting;
     await copyFile(join(dir, chain.current), join(dir, "base/chosen.png"));
     chain = null;
     shown.clear();
-    startWorker(job, dir, "build", info, {});
+    // The paste-back choice of the first build (off unless the user turned it on on the base's panel).
+    startWorker(job, dir, "build", info, { options: { pasteBack } });
   }
 
-  async function pick(id: string, seed: number, send: Send): Promise<void> {
+  async function pick(id: string, seed: number, send: Send, pasteBack: boolean): Promise<void> {
     if (!waiting || waiting.kind !== "pick" || waiting.job.id !== id || running || !waiting.candidates.includes(seed)) return send({ type: "studio-error", message: "That picture is not available." });
     const { job, dir, info } = waiting;
     await copyFile(join(dir, `base/seed-${seed}.png`), join(dir, "base/chosen.png"));
     shown.clear();
-    startWorker(job, dir, "build", info, {});
+    startWorker(job, dir, "build", info, { options: { pasteBack } });
   }
 
   /** The picture names a list means: exact names, and a pose's own name (`cheer`, `wave`) for all its pictures. Anything else is dropped. */
@@ -996,7 +997,7 @@ export function createStudioService(deps: StudioDeps) {
     send({ type: "studio-transferred", message: `${name} was imported (${count} pictures). Use it from Looks → Packs.` });
   }
 
-  async function regenerate(id: string, names: unknown, send: Send, sameSeed = false, seedValue: unknown = null, pasteBack = true): Promise<void> {
+  async function regenerate(id: string, names: unknown, send: Send, sameSeed = false, seedValue: unknown = null, pasteBack = false): Promise<void> {
     if (!waiting || waiting.kind !== "review" || waiting.job.id !== id || running) return send({ type: "studio-error", message: "There is nothing to redraw." });
     const only = Array.isArray(names) ? frameNames(names.filter((n): n is string => typeof n === "string")).slice(0, 30) : [];
     if (only.length === 0) return send({ type: "studio-error", message: "Say which picture to draw again." });
@@ -1353,6 +1354,8 @@ export function createStudioService(deps: StudioDeps) {
     const draft = isDraftId(msg.id) ? await readDraft(studioDir(), msg.id) : null;
     if (!draft || draft.frames.length === 0) return fail(send, "Draw the loop's pictures first.");
     const how = msg.how === "model" ? "model" : "script";
+    // Paste-back for the model's talking versions: off unless the user turned it on (the whole picture is kept then).
+    const pasteBack = msg.pasteBack === true;
     const url = checkBackendUrl(deps.settings.studioBackend);
     if (how === "model" && !(url && isLocal(url))) return fail(send, "Talking pictures by a model need an image model on this computer (the Image maker list). The script way works with any maker.");
     if (how === "model" && !(await check()).ok) return fail(send, "The image model on this computer is not answering. Start it, or use the script way.");
@@ -1369,7 +1372,7 @@ export function createStudioService(deps: StudioDeps) {
         deps.broadcast({ type: "studio-activity-progress", id: draft.id, text: `Talking version ${i + 1} of ${todo.length}…` });
         const bytes = await readFile(framePath(studioDir(), draft, f.file));
         const seed = (randomBytes(4).readUInt32LE() % 2147483646) + 1;
-        const done = how === "script" ? await talkByScript(bytes, mouth) : await talkByModel(bytes, mouth, seed, backendFor(url as string), abort.signal);
+        const done = how === "script" ? await talkByScript(bytes, mouth) : await talkByModel(bytes, mouth, seed, backendFor(url as string), abort.signal, pasteBack);
         if (!done) return fail(send, `The ${draft.source} pack has no mouth pictures to learn her mouth from. Draw the talking pictures one by one instead.`);
         await setTalk(studioDir(), draft, f.file, done);
         await activityShow(draft);
@@ -1631,7 +1634,7 @@ export function createStudioService(deps: StudioDeps) {
       try {
         if (msg.type === "studio-start") await start(msg, send);
         else if (msg.type === "studio-confirm" && typeof msg.id === "string") await confirm(msg.id, send);
-        else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send);
+        else if (msg.type === "studio-pick" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await pick(msg.id, msg.seed as number, send, msg.pasteBack === true);
         else if (msg.type === "studio-base-use" && typeof msg.id === "string" && Number.isInteger(msg.seed)) await baseUse(msg.id, msg.seed as number, send);
         else if (msg.type === "studio-polish") await polish(msg, send);
         else if (msg.type === "studio-base-more" && typeof msg.id === "string") await moreBase(msg, send);
@@ -1639,8 +1642,8 @@ export function createStudioService(deps: StudioDeps) {
         else if (msg.type === "studio-step-keep" && typeof msg.id === "string" && Number.isInteger(msg.n) && Number.isInteger(msg.seed)) await stepKeep(msg.id, msg.n as number, msg.seed as number, send);
         else if (msg.type === "studio-step-undo" && typeof msg.id === "string") await stepUndo(msg.id, send);
         else if (msg.type === "studio-step-suggest" && typeof msg.id === "string") await stepSuggest(msg.id, send);
-        else if (msg.type === "studio-base-approve" && typeof msg.id === "string") await approve(msg.id, send);
-        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send, msg.sameSeed === true, msg.seed, msg.pasteBack !== false);
+        else if (msg.type === "studio-base-approve" && typeof msg.id === "string") await approve(msg.id, send, msg.pasteBack === true);
+        else if (msg.type === "studio-regen" && typeof msg.id === "string") await regenerate(msg.id, msg.names, send, msg.sameSeed === true, msg.seed, msg.pasteBack === true);
         else if (msg.type === "studio-variant" && typeof msg.id === "string") await switchVersion(msg.id, msg.name, msg.variant, send);
         else if (msg.type === "studio-resume" && typeof msg.id === "string") await resume(msg.id, send);
         else if (msg.type === "studio-backend") await chooseBackend(msg.value, send);

@@ -185,10 +185,12 @@ export function createActivityBox(ctx) {
     if (hasFrames) {
       const have = frames.filter((f) => f.talk).length;
       const script = el("button", { type: "button", className: "ghost", textContent: have ? (have < frames.length ? "Finish them by script" : "Make them again by script") : "By script", title: "Copies her mouth from the pack's own talking pictures. Quick and free; right while her head stays about where it is in the pack's rest picture." });
-      const model = el("button", { type: "button", className: "ghost", textContent: have ? (have < frames.length ? "Finish them with the image model" : "Make them again with the image model") : "With the image model", title: "The image model opens her mouth in each picture, and only the mouth is kept. Needs an image model on this computer." });
+      const model = el("button", { type: "button", className: "ghost", textContent: have ? (have < frames.length ? "Finish them with the image model" : "Make them again with the image model") : "With the image model", title: "The image model opens her mouth in each picture. With paste-back ticked only the mouth is kept; otherwise the whole picture the model drew. Needs an image model on this computer." });
       script.onclick = () => ctx.send({ type: "studio-activity-talk", id: d.id, how: "script", redo: have === frames.length });
-      model.onclick = () => ctx.send({ type: "studio-activity-talk", id: d.id, how: "model", redo: have === frames.length });
-      talks.append(el("label", { textContent: `Talking versions (${have} of ${frames.length})` }), el("p", { className: "studio-help", textContent: "The same pictures with her mouth open, for while she speaks." }), el("div", { className: "pack-confirm-buttons" }, script, model), el("p", { className: "studio-help studio-talk-text", textContent: talkText }));
+      // Paste-back for the model's talking versions: off unless ticked (the whole picture the model drew is kept then).
+      const paste = el("input", { type: "checkbox", id: "studio-activity-paste", checked: false });
+      model.onclick = () => ctx.send({ type: "studio-activity-talk", id: d.id, how: "model", redo: have === frames.length, pasteBack: paste.checked });
+      talks.append(el("label", { textContent: `Talking versions (${have} of ${frames.length})` }), el("p", { className: "studio-help", textContent: "The same pictures with her mouth open, for while she speaks." }), el("div", { className: "pack-confirm-buttons" }, script, model), el("label", { className: "studio-keep", htmlFor: "studio-activity-paste" }, paste, " Paste back into her face for the model's talking versions (off by default: the whole picture the model drew is kept)"), el("p", { className: "studio-help studio-talk-text", textContent: talkText }));
     }
 
     // The save.

@@ -7,6 +7,7 @@ import { readPack } from "../src/frame-pack.ts";
 import { readEdits } from "../src/pack-edits.ts";
 import { createStudioService } from "../src/studio-service.ts";
 import { decode, encodePng, makeRaster } from "../src/studio/raster.ts";
+import { readPasteBack } from "../src/studio/build.ts";
 import { startFakeBackend, type FakeBackend } from "./helpers/image-backend.ts";
 import { removeDir } from "./helpers/platform.ts";
 import { writeStandIn } from "./helpers/standin.ts";
@@ -125,8 +126,42 @@ test("the studio is off until /studio on, needs a backend that answers, and is r
   }
 });
 
+test("the first build keeps the whole picture the model drew unless paste-back is turned on, and both versions are kept beside it", async () => {
+  const t = await setup({ faces: true });
+  try {
+    await t.service.command("on", t.say, false, () => {});
+    const me: Record<string, any>[] = [];
+    const send = (m: unknown) => me.push(m as Record<string, any>);
+    await t.service.message({ type: "studio-start", source: "risa-dress", name: "risa-whole", outfit: "a dark green winter coat" }, send, false);
+    const card = me.find((m) => m.type === "studio-confirm");
+    await t.service.message({ type: "studio-confirm", id: card?.id }, send, false);
+    await t.waitFor("studio-candidates-done");
+    // No paste-back asked for: the pick draws the pack with the whole pictures (the default).
+    await t.service.message({ type: "studio-pick", id: card?.id, seed: 3 }, send, false);
+    await t.waitFor("studio-review");
+    const dir = join(t.dataDir, "studio", card?.id);
+    const records = JSON.parse(await readFile(join(dir, "frames.json"), "utf8"));
+    assert.equal(records.happy.pasted, false, "the pack has the whole picture of a face edit");
+    assert.ok(await stat(join(dir, "variants", "happy-pasted.png")).then(() => true, () => false), "the pasted version is kept beside it, for the review");
+    assert.ok(await stat(join(dir, "variants", "happy-whole.png")).then(() => true, () => false), "and the whole one");
+    // The whole picture changes the lower half too (the band the fake draws across her middle), which a pasted face never does.
+    const [neutralPic, happy] = await Promise.all(["neutral", "happy"].map((n) => decode(join(dir, "out", `${n}.webp`))));
+    let changed = 0;
+    for (let i = Math.floor(0.4 * happy.h) * happy.w; i < happy.w * happy.h; i++) for (let c = 0; c < 4; c++) if (happy.data[i * 4 + c] !== neutralPic.data[i * 4 + c]) (changed++, (c = 4));
+    assert.ok(changed > 0, "the whole picture is in the pack");
+    // A redraw turned on for paste-back is the one that puts the pasted face in the pack.
+    await t.service.message({ type: "studio-regen", id: card?.id, names: ["happy"], seed: "4242", pasteBack: true }, send, false);
+    await t.waitFor("studio-review", 2);
+    assert.equal(JSON.parse(await readFile(join(dir, "frames.json"), "utf8")).happy.pasted, true, "turned on for the redraw, the pasted face is in the pack");
+    // The choice is kept in the job's folder, so a build that carries on keeps it.
+    assert.equal(await readPasteBack(dir), true);
+  } finally {
+    await t.cleanup();
+  }
+});
+
 test("a redraw: the question, four pictures, one picked, the whole pack drawn and checked, a picture drawn again, and the pack installed", async () => {
-  // With her own blink and mouth pictures, her face areas are learned from the pack (so paste-back is on, as in a real pack).
+  // With her own blink and mouth pictures, her face areas are learned from the pack (so paste-back can be placed, as in a real pack).
   const t = await setup({ faces: true });
   try {
     const opened: unknown[] = [];
@@ -167,7 +202,8 @@ test("a redraw: the question, four pictures, one picked, the whole pack drawn an
     const bigger = await decode(Buffer.from(String(asked[0].image).split(",")[1], "base64"));
     assert.ok(bigger.w > 240, `full size, not the thumbnail (${bigger.w} wide)`);
 
-    await t.service.message({ type: "studio-pick", id: card.id, seed: 3 }, send, false);
+    // Paste-back is off unless the user turns it on for the first build (the next test has the default); this one turns it on.
+    await t.service.message({ type: "studio-pick", id: card.id, seed: 3, pasteBack: true }, send, false);
     await t.waitFor("studio-review");
     const review = t.sent.find((m) => m.type === "studio-review")!;
     // The pictures of the review reach the page one by one while the rest is drawn: in plan order, each before the review itself.

@@ -795,6 +795,16 @@ export function createStudio(io) {
   let chatMode = true;
   let chainState = null;
   let chainBusy = false;
+  /** Paste-back for the pack's first build (the approve button below): off unless the user ticks it. */
+  let pasteChoice = false;
+  /** The checkbox for it: it keeps its tick when the panel is drawn again. */
+  function pasteChoiceBox() {
+    const box = el("input", { type: "checkbox", id: "studio-paste-first", checked: pasteChoice });
+    box.onchange = () => {
+      pasteChoice = box.checked;
+    };
+    return box;
+  }
   const chainInput = el("textarea", { className: "studio-chain-change", rows: 2, maxLength: 200, placeholder: "one change, in words (her hair to a short red bob; a brown leather jacket over the top)", ariaLabel: "The next change" });
   const chainRef = el("input", { type: "file", className: "studio-chain-ref", accept: "image/png,image/jpeg,image/webp", ariaLabel: "A picture the change takes from (optional)" });
 
@@ -831,7 +841,7 @@ export function createStudio(io) {
     undo.onclick = () => io.send({ type: "studio-step-undo", id: chainId });
     const approve = el("button", { type: "button", className: "studio-chain-approve", textContent: "Approve this base and make the pack", disabled: busy || !chainState.current });
     approve.onclick = () => {
-      io.send({ type: "studio-base-approve", id: chainId });
+      io.send({ type: "studio-base-approve", id: chainId, pasteBack: pasteChoice });
       q(".studio-candidates")?.replaceChildren();
       box?.replaceChildren();
       status("Drawing the rest of her…");
@@ -866,6 +876,7 @@ export function createStudio(io) {
       chainInput,
       el("label", { textContent: "A picture the change takes from (optional)" }),
       chainRef,
+      el("label", { className: "studio-keep", htmlFor: "studio-paste-first" }, pasteChoiceBox(), " Paste back into the original's face when the pack is drawn (off: the whole picture the model drew is kept; click a picture in the review to compare)"),
       el("div", { className: "pack-confirm-buttons" }, draw, suggest, undo, approve),
     );
   }
@@ -1052,7 +1063,11 @@ export function createStudio(io) {
     const seedField = el("input", { type: "text", inputMode: "numeric", id: "studio-redraw-seed", placeholder: "random", autocomplete: "off", ariaLabel: "Seed for the redraw" });
     // Paste-back needs the character's own face areas: without them it is off, and the box says why (the whole picture is kept).
     const pasteAvailable = review.pasteAvailable !== false;
-    const pasteBox = el("input", { type: "checkbox", id: "studio-paste-back", checked: pasteAvailable, disabled: !pasteAvailable });
+    // Off unless the user ticked it for the first build (the last choice is kept); the redraw says what it does.
+    const pasteBox = el("input", { type: "checkbox", id: "studio-paste-back", checked: pasteAvailable && pasteChoice, disabled: !pasteAvailable });
+    pasteBox.onchange = () => {
+      pasteChoice = pasteBox.checked;
+    };
     // A picture clicked before the review is shown again (after a switch or a redraw) is shown again, beside its other version.
     const openName = parts.grid.dataset.open ?? "";
     for (const tile of review.tiles ?? []) setTile(id, tile, selected, () => (again.disabled = selected.size === 0));
@@ -1095,7 +1110,7 @@ export function createStudio(io) {
     const flagsBox = el("details", { className: "studio-flags-box", open: flagged <= 6 }, el("summary", {}, `${flagged} ${flagged === 1 ? "picture" : "pictures"} to look at `, drawAll), notes);
     const optionRows = [
       el("label", { className: "studio-keep", htmlFor: "studio-redraw-seed" }, "Seed for the redraw (optional, empty for random; overrides “Same seed”): ", seedField),
-      el("label", { className: "studio-keep", htmlFor: "studio-paste-back" }, pasteBox, pasteAvailable ? " Paste back into the original for the pictures drawn again (uncheck to take the whole picture instead; click a picture to compare)" : " Paste-back is off: this character has no face pictures to place it by, so each picture is the whole picture the model drew."),
+      el("label", { className: "studio-keep", htmlFor: "studio-paste-back" }, pasteBox, pasteAvailable ? " Paste back into the original for the pictures drawn again (off by default: the whole picture the model drew is kept; click a picture to compare both)" : " Paste-back is off: this character has no face pictures to place it by, so each picture is the whole picture the model drew."),
     ];
     parts.extra.replaceChildren(...(flagged ? [flagsBox] : []), ...optionRows, el("label", { className: "studio-keep", htmlFor: "studio-keep-seed" }, keepSeed, " Same seed: keeps each picture, and only the checks are tried again (fixes blur, not a wrong pose or outfit)"), el("div", { className: "pack-confirm-buttons" }, use, again));
     // The panel scrolls and the buttons are below the pictures: bring them into view.
