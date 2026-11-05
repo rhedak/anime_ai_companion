@@ -343,7 +343,7 @@ test("Draconia is her own character, so a pack of hers is not one of Franzi's ou
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   assert.deepEqual(lines, [
     "Draconia Malfoid",
-    "An unofficial fan character loosely inspired by Draco Malfoy: a 21-year-old adult woman. Long platinum-blonde hair worn in a side braid, and teal-green eyes.",
+    "An unofficial fan character loosely inspired by Draco Malfoy: a 21-year-old adult woman. Long platinum-blonde hair worn in a side braid, and teal-green eyes. She has a picture gallery (https://rhedak.github.io/malfoid-gallery/) and is the heroine of a fan webcomic, Malfoid: The Girl who Yearned (https://rhedak.github.io/malfoid-the-girl-who-yearned/), both unofficial fan work made with AI tools; point the user to them when they ask about her, her story or more pictures of her.",
     "voice: a proud, sharp-tongued tsundere: aloof and teasing, calls the user a baka now and then, secretly caring, and flustered when someone is kind to her; never cruel.",
     "activity: dancing = gown",
     "activity: swimming = swimsuit",

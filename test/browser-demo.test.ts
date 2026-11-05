@@ -1113,6 +1113,36 @@ test("the scripted lines are in a character's own voice while her pack is on, an
   assert.match(personaFor("draconia"), /21-year-old adult[^]*tsundere/);
 });
 
+test("Draconia's pack stands on its own: she offers the drawn avatar, names the pre-built outfits and the full version, and knows her gallery and comic", () => {
+  const d = { pack: true, character: "draconia", switch: true };
+  const intro = packIntroFor("draconia");
+  assert.match(intro, /say "switch to the drawn avatar"/, "the offer");
+  assert.match(intro, /Yule Ball gown, the swimsuit, the uniform and the vest/, "the pre-built outfits");
+  assert.match(intro, /download the full version/, "the way to build new ones");
+  assert.doesNotMatch(intro, /cannot redraw|can't redraw myself\.$/, "no dead end");
+  // a request to look different offers the switch; a yes (or the words) carries it out
+  const asked = reply("make your hair blue", d).text;
+  assert.match(asked, /switch to the drawn avatar/);
+  assert.match(asked, /pre-built picture pack/);
+  assert.equal(reply("yes", { ...d, recent: [asked] }).scene, "drawn");
+  assert.equal(reply("yes", { ...d, recent: ["Hmph. Satisfied?"] }).scene, undefined, "a yes to nothing she offered does nothing");
+  assert.equal(reply("switch to the drawn avatar", d).scene, "drawn");
+  assert.equal(reply("switch to the drawn avatar", { pack: true, character: "draconia" }).scene, undefined, "only where the caller can do it");
+  assert.doesNotMatch(reply("make your hair blue", { pack: true, character: "draconia" }).text, /say "switch/, "basic mode points to the menu instead");
+  assert.match(reply("what can you do?", d).text, /switch to the drawn avatar[^]*pre-built picture packs[^]*full version/);
+  // her gallery and her comic, in her voice, with links
+  for (const q of ["where can I see more pictures of you?", "is there a webcomic?", "show me your gallery"]) {
+    const t = reply(q, d).text;
+    assert.match(t, /^\[emotion:happy\]/, q);
+    assert.match(t, /\]\(https:\/\/rhedak\.github\.io\/malfoid-gallery\/\)/, q);
+    assert.match(t, /\]\(https:\/\/rhedak\.github\.io\/malfoid-the-girl-who-yearned\/\)/, q);
+    assert.match(t, /unofficial fan work/i, q);
+  }
+  // another pack, and the drawn avatar, have no such answer
+  assert.doesNotMatch(reply("show me your gallery", { pack: true, character: "franzi", switch: true }).text, /malfoid/);
+  assert.doesNotMatch(reply("show me your gallery", { switch: true }).text, /malfoid/);
+});
+
 test("in the demo her pack's character decides the voice: the intro, the answers and what the small model is told", async () => {
   const two = { ...PICTURES, dra: { ...PICTURES.pic, name: "dra", character: "draconia" } };
   const { model, asked } = fakeModel("[emotion:angry] Hmph.");
@@ -1131,6 +1161,25 @@ test("in the demo her pack's character decides the voice: the intro, the answers
   send({ type: "pack-select", name: "pic" });
   await next((e) => e.type === "done", from);
   assert.equal(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), PACK_INTRO, "another pack: the plain intro");
+});
+
+test("in the demo, Draconia's offer of the drawn avatar is kept: a yes puts the drawn avatar back", async () => {
+  const two = { ...PICTURES, dra: { ...PICTURES.pic, name: "dra", character: "draconia" } };
+  const { events, next, send } = connect({ packs: two, characters: { dra: { id: "draconia", name: "Draconia Malfoid" } } });
+  await next((e) => e.type === "queue");
+  let from = events.length;
+  send({ type: "pack-select", name: "dra" });
+  await next((e) => e.type === "done", from);
+  from = events.length;
+  send({ type: "user", text: "make your hair blue" });
+  await next((e) => e.type === "done", from);
+  assert.match(events.slice(from).filter((e) => e.type === "delta").map((e) => e.text).join(""), /switch to the drawn avatar/);
+  from = events.length;
+  send({ type: "user", text: "yes" });
+  await next((e) => e.type === "done", from);
+  const after = events.slice(from);
+  assert.equal(after.filter((e) => e.type === "delta").map((e) => e.text).join(""), DRAWN_AGAIN);
+  assert.equal(after.some((e) => e.type === "pack" && !e.name), true, "the page is told she is drawn again");
 });
 
 test("without a link, a pack on the packs site is still asked about first, and its Download fetches and shows it", async () => {
