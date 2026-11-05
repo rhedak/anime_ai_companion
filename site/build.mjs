@@ -136,6 +136,8 @@ function layout({ page, index, html, headings, description, wide }) {
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <style>${css}</style>
+  <script data-goatcounter="https://rhedak.goatcounter.com/count"
+          async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to the page</a>
