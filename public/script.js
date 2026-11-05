@@ -165,6 +165,17 @@ const HELP_BASIC =
 const CHAT_WORDS =
   /\b(chat|talk|converse|conversation|speak)\b.*\b(you|with|me)\b|\bcan (we|you|i) (chat|talk)\b|\b(let'?s|lets|i want to|i wanna) (chat|talk)\b|\bhow are you\b|\bwho are you\b|\byour name\b|\btell me (a|an|about|something)\b|\bjoke\b|\bwrite (me|a)\b|\bexplain\b|\bwhat do you (think|like)\b/;
 
+/** Where Draconia's own work lives (the other public repositories of the same author; see docs/other-projects.md). */
+const GALLERY = "https://rhedak.github.io/malfoid-gallery/";
+const COMIC = "https://rhedak.github.io/malfoid-the-girl-who-yearned/";
+
+/** The phrase that asks her to leave the pictures (the demo carries it out), and the offer that a later "yes" answers. */
+const SWITCH_WORDS = /\b(switch|go|change|turn|swap|back|return|bring)\b.*\b(drawn|avatar|code)\b|\bdrawn (avatar|version|one)\b|\bdrawn by code\b/;
+const YES_WORDS = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|do it|go ahead|alright|fine)\b/;
+/** Her gallery or her comic: asked about by a character that has them. */
+const ELSEWHERE_WORDS = /\b(gallery|galleries|web ?comic|comic|manga|your story|more (pictures|images|art|of you)|where (can|do) i (see|find|read)|who (made|created|drew) you|fan ?art)\b/;
+const OFFER_MARK = "switch to the drawn avatar";
+
 /** What she says when the drawn avatar comes back. */
 export const DRAWN_AGAIN =
   "[emotion:happy] [gesture:cheer] I'm drawn by code again, so I can change my hair, eyes, glasses and clothes, or become one of the 21 characters. Just ask.";
@@ -178,7 +189,7 @@ const HELP_PACK =
  * What she says in her own voice when a character's picture pack is on, by the character's id (look.txt's `character:` line). Anything a voice does not
  * have is said in the plain voice above; a character with no voice here speaks plainly. `persona` is also what the small model in the demo is told.
  * Like the plain lines, these only ever mention what the script can do: no promise of a chat, no link but the real documentation.
- * @type {Record<string, { persona: string, packIntro: string, helpPack: string, undoPack: string, redraw: (things: string) => string, beyond: string, chat: (basic: boolean) => string, needsModel: string, needsBrain: string, work: string, moods: Record<string, string>, wave: string, cheer: string }>}
+ * @type {Record<string, { persona: string, packIntro: string, helpPack: (sw: boolean) => string, undoPack: string, redraw: (things: string, sw: boolean) => string, elsewhere?: string, beyond: string, chat: (basic: boolean) => string, needsModel: string, needsBrain: string, work: string, moods: Record<string, string>, wave: string, cheer: string }>}
  */
 const VOICES = {
   draconia: {
@@ -186,17 +197,23 @@ const VOICES = {
       "You are Draconia Malfoid, an unofficial fan character: a 21-year-old adult woman, a proud, sharp-tongued tsundere. You act aloof and tease, " +
       "but you are secretly caring and get flustered when someone is kind to you. Stay in that voice, and keep the teasing light.",
     packIntro:
-      "[emotion:angry] [gesture:wave] Hmph. So you picked me. Fine. Right now I'm a set of pictures, not something drawn by code, so don't ask me to change my hair, eyes or clothes: " +
-      "I'm perfect as I am anyway! I can still change my face, blink, talk, wave and cheer. If you want the drawn avatar back, choose Looks… → Packs… → Drawn avatar (or type /frames off). " +
-      "And type /show if you want to see everything I can do. Not that I'm trying to impress you!",
-    helpPack:
-      "[emotion:angry] Honestly, do I have to explain everything? As pictures I can show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
-      "I can't change my looks: for that, go back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off). " +
-      'Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. And don\'t expect me to chat freely here, baka: that needs a real language model.',
+      "[emotion:angry] [gesture:wave] Hmph. So you picked me. Fine. I'm Draconia Malfoid. I can change my face, blink, talk, wave and cheer: " +
+      "type /show and I run through all of it, not that I'm trying to impress you! Want to see me in something else? There are pre-built picture packs of me under Looks… → Packs…: " +
+      "the Yule Ball gown, the swimsuit, the uniform and the vest. To make new outfits of your own and to really talk, download the full version. " +
+      "You can also ask about my gallery or my comic. " +
+      `And if you really want, I suppose you can also try the drawn avatar, baka: say "${OFFER_MARK}".`,
+    helpPack: (sw) =>
+      "[emotion:angry] Honestly, do I have to explain everything? I can show a mood (\"be shy\", \"be sad\"), wave, cheer and talk, and /show runs through all of it. " +
+      "Other outfits of mine are pre-built picture packs under Looks… → Packs…, and the [full version](" + DOCS + "download.html) lets you build new ones. " +
+      'Ask about my gallery or my comic if you like. Say "show me work mode" for a pretend coding session. And don\'t expect me to chat freely here, baka: that needs a real language model. ' +
+      (sw ? `If you really want, I suppose you can also try the drawn avatar: say "${OFFER_MARK}".` : "If you really want, I suppose you can also try the drawn avatar: Looks… → Packs… → Drawn avatar (or /frames off)."),
+    elsewhere:
+      "[emotion:happy] Hmph. Since you're asking: there's a [gallery](" + GALLERY + ") with all my pictures, and a [webcomic](" + COMIC + "), *Malfoid: The Girl who Yearned*, " +
+      "that retells the first year with me and Harry as the two points of view. Unofficial fan work, made with AI image tools, nothing to do with Warner Bros. Go on, look. I'm not nervous about it!",
     undoPack: "[emotion:angry] There is nothing to undo, baka: I'm only pictures, so nothing has changed.",
-    redraw: (things) =>
-      `[emotion:angry] I can't do that as a picture pack, baka: I'm only pictures, so I can't change ${things}. ` +
-      "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask again, if you must. For now I can show a mood, wave or cheer.",
+    redraw: (things, sw) =>
+      `[emotion:angry] Changing ${things} isn't something I do as pictures, baka. But a different outfit of mine is a pre-built picture pack under Looks… → Packs…, and the full version builds new ones. ` +
+      (sw ? `If you really want, I suppose you can try the drawn avatar to dress up: say "${OFFER_MARK}".` : "If you really want, I suppose you can try the drawn avatar to dress up: Looks… → Packs… → Drawn avatar (or /frames off)."),
     beyond: "[emotion:angry] What kind of question is that? I'm only pictures here, so I only know a few things.",
     chat: (basic) =>
       basic
@@ -232,7 +249,7 @@ export const personaFor = (character = "") => VOICES[character]?.persona ?? "";
 /**
  * Her answer to a message: `{ text, scene }`. `text` has the tags; `scene` names a longer scripted scene the stand-in plays ("work").
  * @param {string} input
- * @param {{ presets?: string[], pack?: boolean, character?: string, model?: boolean, recent?: string[], basic?: boolean, body?: string | null }} [context]  `pack`: she is a picture pack just now, so she cannot redraw herself; `character`: that pack's character id, whose voice she speaks in; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `body`: the body of her drawn look, for what that body does not draw (hair tips); `recent`: the last lines of the conversation, newest last, for "that colour"
+ * @param {{ presets?: string[], pack?: boolean, character?: string, model?: boolean, recent?: string[], basic?: boolean, body?: string | null, switch?: boolean }} [context]  `switch`: the caller can carry out a request to leave the pictures (the demo can; she then says to ask for it in words); `pack`: she is a picture pack just now, so she cannot redraw herself; `character`: that pack's character id, whose voice she speaks in; `model`: the small model is on; `basic`: the app has no brain installed (not the browser demo); `body`: the body of her drawn look, for what that body does not draw (hair tips); `recent`: the last lines of the conversation, newest last, for "that colour"
  * @returns {{ text: string, scene?: string, needsModel?: boolean }}  `needsModel`: this is something only a language model could answer
  */
 export function reply(input, context = {}) {
@@ -246,6 +263,12 @@ export function reply(input, context = {}) {
   const lastColour = [...(context.recent ?? [])].reverse().map((line) => colourIn(String(line).toLowerCase())).find(Boolean) ?? null;
 
   if (SHOW_WORDS.test(t)) return { text: "[emotion:happy] Sure, watch this! [demo]" };
+  // Asked to leave the pictures (or a yes to her offer): the demo does it (scene "drawn"); elsewhere she says how.
+  if (context.pack && context.switch) {
+    const offered = String((context.recent ?? []).at(-1) ?? "").includes(OFFER_MARK);
+    if (SWITCH_WORDS.test(t) || (offered && YES_WORDS.test(t))) return { scene: "drawn", text: "" };
+  }
+  if (voice?.elsewhere && ELSEWHERE_WORDS.test(t)) return { text: voice.elsewhere };
   if (WORK_WORDS.test(t) && context.basic) {
     return { needsModel: true, text: `${voice?.work ?? "[emotion:thinking] Work mode needs a brain: with only a script I can't read or change your files."} ${needs}` };
   }
@@ -253,7 +276,7 @@ export function reply(input, context = {}) {
   if (CHAT_WORDS.test(t) && !/\b(wave|cheer|show|become)\b/.test(t) && !LOOK_WORDS.test(t)) {
     return { needsModel: true, text: `${voice ? voice.chat(Boolean(context.basic)) : `[emotion:happy] I'd love to chat, but ${noModel}: I only follow a small script.`} ${needs}` };
   }
-  if (HELP_WORDS.test(t)) return { text: context.basic && !context.pack ? HELP_BASIC : context.pack ? (voice?.helpPack ?? HELP_PACK) : HELP };
+  if (HELP_WORDS.test(t)) return { text: context.basic && !context.pack ? HELP_BASIC : context.pack ? (voice ? voice.helpPack(Boolean(context.switch)) : HELP_PACK) : HELP };
   if (/\bundo\b/.test(t) && context.pack) return { text: voice?.undoPack ?? "[emotion:thinking] There is nothing to undo: as a picture pack I can't change my looks, so nothing has changed." };
   if (/\bundo\b/.test(t)) return { text: "[emotion:thinking] Use the Undo button above my picture: it takes back my last change, one at a time." };
 
@@ -335,7 +358,7 @@ export function reply(input, context = {}) {
 
   if (context.pack && (set.size || missing.length)) {
     const things = set.size ? nice(phrases.map((p) => p.replace(/^(an?|the) /, ""))) : "my looks";
-    if (voice) return { text: voice.redraw(things) };
+    if (voice) return { text: voice.redraw(things, Boolean(context.switch)) };
     return {
       text:
         `[emotion:shy] I can't do that as a picture pack: I'm only pictures, so I can't change ${things}. ` +

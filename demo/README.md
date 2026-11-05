@@ -69,6 +69,10 @@ What is here, and how the pieces fit:
   to me properly, download the full version and link a proper brain. If you even have one, baka!", and the link to the Download page follows. Another pack, or the drawn
   avatar, speaks plainly. The app's basic mode (no brain installed) uses the same voices (`character` in `src/providers/scripted.ts`) with the way to install a brain
   instead of the Download link. A new voice is one more entry there; keep each line's emotion tag, and keep it to what the script can actually do.
+- **Draconia's pack stands on its own** (she is the page a link from her gallery and her webcomic lands on): her intro says what the pictures can do, offers the drawn avatar
+  (`say "switch to the drawn avatar"`; a yes to the offer, or those words, plays `scene: "drawn"` and the demo calls `choosePack(null)`; the app's basic mode passes no `switch`, so it points to
+  the menu instead), names the pre-built outfits (Looks… → Packs…) and the full version for building new ones, and answers questions about her gallery and her webcomic
+  with their links (`elsewhere`, `docs/other-projects.md`). Keep those links in step with that file.
 - **A link can pick the pack or character:** `…/demo/?pack=franzi-bikini` or `?character=franzi` (`wantedFromSearch`, `applyWanted`). A pack that is here (the two
   bundled ones) is shown at once; a character shows its default outfit (`default:` in `packs/characters/<id>.txt`), else any outfit that is here; one that is only
   on the packs site is fetched at once, because following a link to it is the visitor's yes: no question, and instead a loading screen over her (`linkLoading` in

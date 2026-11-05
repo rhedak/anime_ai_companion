@@ -124,6 +124,7 @@ Keep the user's changes where updates do not overwrite them, and tell them when 
   until the sister repo is published), checks size and sha256, and renames a restored folder into `data/frames/<id>/`. Packs already on disk
   are not replaced. Nothing is downloaded until the page has asked and the user said yes: the question (`pack-offer`, `askPackDownload` in `public/app.js`) gives the size and the host,
   and a pack named by `/frames` that is not on disk only raises that question. Each character's default outfit (the `default:` line of `characters/<id>.txt`) is the one that stays bundled; the other outfits can be download-only. `sharp` is a runtime dependency because restoring a pack decodes WebP.
+- **Other public repositories** of the owner (the Draconia gallery and webcomic, the creator, the packs, small tools) are listed with what to say about them in `docs/other-projects.md`. Draconia's voice points to her gallery and webcomic (`elsewhere` in `VOICES`, `public/script.js`; her `packs/characters/draconia.txt`); keep both in step with that file.
 - `../anime-character-creator` is a dependency, not a fork. Drawing changes belong in that repo.
 - `data/` and `workspace/` (except `workspace/.gitkeep`) are the user's machine. Do not commit
   them, and do not put API keys, sessions, or account details in the repo.

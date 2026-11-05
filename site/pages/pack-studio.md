@@ -31,6 +31,8 @@ In chat you can also just ask her ("could you have a tennis outfit made?"). She 
 2. **The first pictures.** The neutral picture of the source pack, on a flat key colour that nothing of her has, is changed to the new outfit. You pick the one you like.
 3. **The rest of the pack** (about 38 more pictures): the other six expressions, blinks, mouths, waves, cheers and a hand-on-chin picture. Each is checked and tried up to three times. The eleven main pictures line up in the panel as they are drawn, so a bad outfit shows within minutes and you can stop. Hover over any of them to see it at full size.
 4. **The review.** A marked picture failed a check (the mark says which); **Draw again** redraws it, with its blink and mouths.
+
+**Paste back into the face** is off everywhere by default: the pack takes the whole picture the model drew. Each step that can use it has its own tick box: the one above **Approve this base** (for the pack's first pictures), the one in the review (for pictures drawn again) and the one by the image model's talking versions. Ticked, only the face (or the mouth) is taken from the new picture and the rest of the original is kept; the review still shows both versions, so you can compare.
 5. **Use this pack** writes the pack to `data/frames/<name>`, and **Show her as …** puts it on.
 
 When the four pictures are ready, the pack is ready to review or the job stops while this tab is in the background, the tab's title gets a mark and the words ("● Pack ready to review · Risa") until you look at it again. Nothing is played and nothing is asked.

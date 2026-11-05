@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ImageBackend } from "./backend.ts";
-import { KEYS, keyBackground, pickKey } from "./cutout.ts";
+import { cutout, KEYS, keyBackground, pickKey, toRaster } from "./cutout.ts";
 import { deriveGeometry } from "./geometry.ts";
 import { featherMask, pasteBack, scaleBox, type Box } from "./paste.ts";
 import { talkPrompt } from "./prompts.ts";
@@ -177,8 +177,11 @@ export async function talkByScript(frame: Buffer, source: MouthSource): Promise<
   return encodeWebp(blendBox(base, mouth.opening, mouth.box), { lossless: true });
 }
 
-/** The model way: the model opens her mouth in this very picture, and only the mouth's box is kept. Throws what the backend throws. */
-export async function talkByModel(frame: Buffer, source: MouthSource, seed: number, backend: ImageBackend, signal?: AbortSignal): Promise<Buffer | null> {
+/**
+ * The model way: the model opens her mouth in this very picture. With paste-back on (the user's choice; off by default), only the mouth's box
+ * is kept; off, the whole picture the model drew is kept, cut out on its key colour like a loop picture. Throws what the backend throws.
+ */
+export async function talkByModel(frame: Buffer, source: MouthSource, seed: number, backend: ImageBackend, signal?: AbortSignal, pasteOn = false): Promise<Buffer | null> {
   const base = await decode(frame);
   const mouth = await mouthOf(source, base.w, base.h);
   if (!mouth) return null;
@@ -187,6 +190,10 @@ export async function talkByModel(frame: Buffer, source: MouthSource, seed: numb
   const width = Math.min(1536, Math.max(256, Math.round(((base.w / base.h) * height) / 16) * 16));
   const onKey = await resize(flatten(base, KEYS[key]), width, height);
   const edited = await resize(await decode(await backend.edit({ image: await encodePng(onKey), prompt: talkPrompt(2), seed, width, height }, signal)), width, height);
+  if (!pasteOn) {
+    const whole = toRaster(width, height, cutout(edited, { key }));
+    return encodeWebp(await resize(whole, base.w, base.h), { lossless: true });
+  }
   const box = scaleBox(mouth.box, width / base.w, height / base.h);
   const pasted = pasteBack(onKey, edited, box, 6, keyBackground(onKey, key));
   const patch = await resize(pasted, base.w, base.h);

@@ -36,7 +36,7 @@ try {
     const geometry = JSON.parse(await readFile(join(workerData.dir, "geometry.json"), "utf8")) as Geometry;
     await runBuild(parsed.job, geometry, { dir: workerData.dir, backend, emit: send }, Array.isArray(workerData.only) ? workerData.only.map(String) : undefined, Array.isArray(workerData.sameSeed) ? workerData.sameSeed.map(String) : undefined, {
       seed: typeof workerData.options?.seed === "number" ? workerData.options.seed : undefined,
-      // Undefined when the run does not say (the first build): the face areas of the character decide.
+      // Undefined when the run does not say (a build that carries on): the choice saved in the job's folder decides, off at the start.
       pasteBack: typeof workerData.options?.pasteBack === "boolean" ? workerData.options.pasteBack : undefined,
     });
   } else if (workerData.phase === "step") {
