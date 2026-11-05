@@ -368,7 +368,7 @@ export function createStudio(io) {
     initialised = true;
     const last = remembered();
     const select = /** @type {HTMLSelectElement | null} */ (q("#studio-source"));
-    if ((last.mode === "new" || last.mode === "redraw" || last.mode === "activity") && sources.includes(last.source) && select) {
+    if ((last.mode === "new" || last.mode === "redraw" || last.mode === "activity" || last.mode === "character") && sources.includes(last.source) && select) {
       mode = last.mode;
       choosePackQuiet(last.source);
       setStage(2);
