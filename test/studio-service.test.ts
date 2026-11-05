@@ -84,8 +84,8 @@ async function setup(options: { switchToChat?: () => Promise<boolean>; askBrain?
     canSeePictures: () => options.canSeePictures ?? false,
   });
   const waitFor = async (type: string, count = 1) => {
-    // Up to three minutes: a whole pack is drawn in the test, and a full run is slow.
-    for (let i = 0; i < Number(process.env.STUDIO_TEST_WAIT_LOOPS ?? 7200); i++) {
+    // Up to six minutes: a whole pack is drawn in the test (about four minutes alone), and a full run is slower still.
+    for (let i = 0; i < Number(process.env.STUDIO_TEST_WAIT_LOOPS ?? 14400); i++) {
       if (sent.filter((m) => m.type === type).length >= count) return;
       await new Promise((r) => setTimeout(r, 25));
     }
