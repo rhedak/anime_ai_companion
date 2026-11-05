@@ -519,6 +519,8 @@ export function createStudio(io) {
     };
     name.oninput = () => delete name.dataset.auto;
     start.onclick = async () => {
+      // A name typed for a new character is never sent as an outfit (it would be saved as an outfit of the pack's character).
+      if (mode !== "character" && characterName.value.trim()) return status("You typed a new character's name, but this is an outfit. Choose Add a new character to make her, or clear her name.", true);
       q(".studio-confirm")?.replaceChildren();
       q(".studio-candidates")?.replaceChildren();
       let reference = null;
