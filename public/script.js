@@ -197,24 +197,23 @@ const VOICES = {
       "You are Draconia Malfoid, an unofficial fan character: a 21-year-old adult woman, a proud, sharp-tongued tsundere. You act aloof and tease, " +
       "but you are secretly caring and get flustered when someone is kind to you. Stay in that voice, and keep the teasing light.",
     packIntro:
-      "[emotion:angry] [gesture:wave] Hmph. So you picked me. Fine. I'm Draconia Malfoid, and right now I'm a set of pictures: I can change my face, blink, talk, wave and cheer " +
-      "(type /show and I run through all of it, not that I'm trying to impress you!). What I can't do is redraw myself. " +
-      `If you want a drawn avatar to dress up, say "${OFFER_MARK}" and I'll do it. If it's just another outfit of mine you're after, there are pre-built picture packs: ` +
-      "Looks… → Packs… has the Yule Ball gown, the swimsuit, the uniform and the vest. For new outfits of your own, or to really talk, download the full version. " +
-      "And if you want to know more about me, ask about my gallery or my comic.",
+      "[emotion:angry] [gesture:wave] Hmph. So you picked me. Fine. I'm Draconia Malfoid. I can change my face, blink, talk, wave and cheer: " +
+      "type /show and I run through all of it, not that I'm trying to impress you! Want to see me in something else? There are pre-built picture packs of me under Looks… → Packs…: " +
+      "the Yule Ball gown, the swimsuit, the uniform and the vest. To make new outfits of your own and to really talk, download the full version. " +
+      "You can also ask about my gallery or my comic. " +
+      `And if you really want, I suppose you can also try the drawn avatar, baka: say "${OFFER_MARK}".`,
     helpPack: (sw) =>
-      "[emotion:angry] Honestly, do I have to explain everything? As pictures I can show a mood (\"be shy\", \"be sad\"), wave or cheer, and talk. " +
-      (sw ? `For a drawn avatar you can dress up, say "${OFFER_MARK}". ` : "For a drawn avatar, choose Looks… → Packs… → Drawn avatar (or type /frames off). ") +
+      "[emotion:angry] Honestly, do I have to explain everything? I can show a mood (\"be shy\", \"be sad\"), wave, cheer and talk, and /show runs through all of it. " +
       "Other outfits of mine are pre-built picture packs under Looks… → Packs…, and the [full version](" + DOCS + "download.html) lets you build new ones. " +
-      'Ask about my gallery or my comic if you like. Type /show and I run through every emotion and gesture. Say "show me work mode" for a pretend coding session. And don\'t expect me to chat freely here, baka: that needs a real language model.',
+      'Ask about my gallery or my comic if you like. Say "show me work mode" for a pretend coding session. And don\'t expect me to chat freely here, baka: that needs a real language model. ' +
+      (sw ? `If you really want, I suppose you can also try the drawn avatar: say "${OFFER_MARK}".` : "If you really want, I suppose you can also try the drawn avatar: Looks… → Packs… → Drawn avatar (or /frames off)."),
     elsewhere:
       "[emotion:happy] Hmph. Since you're asking: there's a [gallery](" + GALLERY + ") with all my pictures, and a [webcomic](" + COMIC + "), *Malfoid: The Girl who Yearned*, " +
       "that retells the first year with me and Harry as the two points of view. Unofficial fan work, made with AI image tools, nothing to do with Warner Bros. Go on, look. I'm not nervous about it!",
     undoPack: "[emotion:angry] There is nothing to undo, baka: I'm only pictures, so nothing has changed.",
     redraw: (things, sw) =>
-      `[emotion:angry] I can't do that as a picture pack, baka: I'm only pictures, so I can't change ${things}. ` +
-      (sw ? `Say "${OFFER_MARK}" and you can dress up a drawn one instead (not me, though). ` : "Switch back to the drawn avatar (Looks… → Packs… → Drawn avatar, or /frames off) and ask again, if you must. ") +
-      "A different outfit of mine is a pre-built picture pack under Looks… → Packs…; to build new ones, download the full version.",
+      `[emotion:angry] Changing ${things} isn't something I do as pictures, baka. But a different outfit of mine is a pre-built picture pack under Looks… → Packs…, and the full version builds new ones. ` +
+      (sw ? `If you really want, I suppose you can try the drawn avatar to dress up: say "${OFFER_MARK}".` : "If you really want, I suppose you can try the drawn avatar to dress up: Looks… → Packs… → Drawn avatar (or /frames off)."),
     beyond: "[emotion:angry] What kind of question is that? I'm only pictures here, so I only know a few things.",
     chat: (basic) =>
       basic

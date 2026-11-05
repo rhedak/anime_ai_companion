@@ -1098,7 +1098,7 @@ test("the scripted lines are in a character's own voice while her pack is on, an
   assert.match(reply("be shy", d).text, /^\[emotion:shy\] D-don't stare at me!/);
   assert.match(reply("wave", d).text, /\[gesture:wave\] H-hello/);
   assert.match(reply("cheer", d).text, /\[gesture:cheer\] F-fine, hooray!/);
-  assert.match(reply("make your hair blue", d).text, /baka: I'm only pictures, so I can't change blue hair\./);
+  assert.match(reply("make your hair blue", d).text, /Changing blue hair isn't something I do as pictures, baka\./);
   assert.match(reply("what can you do?", d).text, /Honestly, do I have to explain everything\?/);
   assert.match(reply("undo", d).text, /nothing to undo, baka/);
   assert.match(reply("what is the weather like", d).text, /^\[emotion:angry\] What kind of question is that\?/);
@@ -1119,17 +1119,19 @@ test("Draconia's pack stands on its own: she offers the drawn avatar, names the 
   assert.match(intro, /say "switch to the drawn avatar"/, "the offer");
   assert.match(intro, /Yule Ball gown, the swimsuit, the uniform and the vest/, "the pre-built outfits");
   assert.match(intro, /download the full version/, "the way to build new ones");
-  assert.doesNotMatch(intro, /cannot redraw|can't redraw myself\.$/, "no dead end");
+  assert.doesNotMatch(intro, /can't|cannot/, "says what she can do, not what she can't");
+  assert.match(intro, /I suppose you can also try the drawn avatar, baka: say "switch to the drawn avatar"\.$/, "the drawn avatar comes last");
   // a request to look different offers the switch; a yes (or the words) carries it out
   const asked = reply("make your hair blue", d).text;
   assert.match(asked, /switch to the drawn avatar/);
   assert.match(asked, /pre-built picture pack/);
+  assert.match(asked, /switch to the drawn avatar/);
   assert.equal(reply("yes", { ...d, recent: [asked] }).scene, "drawn");
   assert.equal(reply("yes", { ...d, recent: ["Hmph. Satisfied?"] }).scene, undefined, "a yes to nothing she offered does nothing");
   assert.equal(reply("switch to the drawn avatar", d).scene, "drawn");
   assert.equal(reply("switch to the drawn avatar", { pack: true, character: "draconia" }).scene, undefined, "only where the caller can do it");
   assert.doesNotMatch(reply("make your hair blue", { pack: true, character: "draconia" }).text, /say "switch/, "basic mode points to the menu instead");
-  assert.match(reply("what can you do?", d).text, /switch to the drawn avatar[^]*pre-built picture packs[^]*full version/);
+  assert.match(reply("what can you do?", d).text, /pre-built picture packs[^]*full version[^]*switch to the drawn avatar/);
   // her gallery and her comic, in her voice, with links
   for (const q of ["where can I see more pictures of you?", "is there a webcomic?", "show me your gallery"]) {
     const t = reply(q, d).text;
