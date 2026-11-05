@@ -13,17 +13,17 @@ import { dataDir } from "./paths.ts";
  * pin is part of a release: see "Before a release" in AGENTS.md. A file whose hash differs is thrown away.
  */
 export const OPENCODE_PIN = {
-  version: "2.1.3",
+  version: "2.2.5",
   registry: "https://registry.npmjs.org",
   /** By `${platform}-${arch}`. The x64 packages are the "baseline" ones: they need no AVX2, so they start on any 64-bit PC, and she does not need the speed. */
   assets: {
-    "win32-x64": { package: "@opencode/cli-windows-x64-baseline", name: "cli-windows-x64-baseline-2.1.3.tgz", sha256: "ee2a2c4ca6db550a05a8c4668ad1fc0a497c0b71a16795cf60f7298c4090ee98", bytes: 116608796, folder: "package", program: "bin/opencode.exe" },
-    "win32-arm64": { package: "@opencode/cli-windows-arm64", name: "cli-windows-arm64-2.1.3.tgz", sha256: "82bacaf2c7df0b95d59fc52bb86820090bec7e9ef1549636adcc0131aa03fa59", bytes: 110098074, folder: "package", program: "bin/opencode.exe" },
+    "win32-x64": { package: "@opencode/cli-windows-x64-baseline", name: "cli-windows-x64-baseline-2.2.5.tgz", sha256: "2468c9fafad44e0454767410b5503cef361269a76e537496e5e9159e1b2385f4", bytes: 121997424, folder: "package", program: "bin/opencode.exe" },
+    "win32-arm64": { package: "@opencode/cli-windows-arm64", name: "cli-windows-arm64-2.2.5.tgz", sha256: "0aec456e313a0bd4c65dd6e3834bf6a3005280a311d8cc449933931ccbbbe389", bytes: 115455350, folder: "package", program: "bin/opencode.exe" },
     // macOS and Linux (the glibc build: Alpine and other musl systems fall back to installing by hand). The system `tar` reads every tarball.
-    "darwin-arm64": { package: "@opencode/cli-darwin-arm64", name: "cli-darwin-arm64-2.1.3.tgz", sha256: "f1addcd5efa7fea919e66f4f26b4f25c7fc695d52225d861ebc3a0779ec04db8", bytes: 100520406, folder: "package", program: "bin/opencode" },
-    "darwin-x64": { package: "@opencode/cli-darwin-x64-baseline", name: "cli-darwin-x64-baseline-2.1.3.tgz", sha256: "b6aa0eeac0f94e5f4a6ef7193c79ed4a72845fb997dceb9cce4fa07383668e4f", bytes: 105630583, folder: "package", program: "bin/opencode" },
-    "linux-arm64": { package: "@opencode/cli-linux-arm64", name: "cli-linux-arm64-2.1.3.tgz", sha256: "85046ccd46334022a702dc6e53231fefd994ff935a3b934b95390776b36b98c8", bytes: 112423922, folder: "package", program: "bin/opencode" },
-    "linux-x64": { package: "@opencode/cli-linux-x64-baseline", name: "cli-linux-x64-baseline-2.1.3.tgz", sha256: "dc83c937744ba5e2322fec05b26170e3f9240b0e4e8ffc665fe8e96e7e6e807e", bytes: 113799625, folder: "package", program: "bin/opencode" },
+    "darwin-arm64": { package: "@opencode/cli-darwin-arm64", name: "cli-darwin-arm64-2.2.5.tgz", sha256: "dfd827de3281b4c3ca2b0bfc8f4beb103fa660c419d148a1a515c4344f9e9c02", bytes: 105814595, folder: "package", program: "bin/opencode" },
+    "darwin-x64": { package: "@opencode/cli-darwin-x64-baseline", name: "cli-darwin-x64-baseline-2.2.5.tgz", sha256: "c223acf0ac653af93d35a39cc26343e88172ba5f6b46cdc5fea38205c706e1f8", bytes: 111044383, folder: "package", program: "bin/opencode" },
+    "linux-arm64": { package: "@opencode/cli-linux-arm64", name: "cli-linux-arm64-2.2.5.tgz", sha256: "f8c5a82075fede9b5b044ed6c8a6d13ad807a7e62caea1cd0a878adef49eb053", bytes: 117223869, folder: "package", program: "bin/opencode" },
+    "linux-x64": { package: "@opencode/cli-linux-x64-baseline", name: "cli-linux-x64-baseline-2.2.5.tgz", sha256: "873856acbaa71c5ed8df6433e312dfa0c82a86e2cddfb9d80f0a31123a917a08", bytes: 118637337, folder: "package", program: "bin/opencode" },
   },
 } as const;
 

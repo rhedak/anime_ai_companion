@@ -25,7 +25,8 @@ test("the site builds, every page exists, and no link or picture points at nothi
     const html = readFileSync(join(dist, file), "utf8");
     for (const m of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
       const target = m[1];
-      if (/^(https?:|mailto:|#)/.test(target)) continue;
+      // Protocol-relative (`//host/...`) is an outside script, such as the site's GoatCounter counter: not a file of the site.
+      if (/^(https?:|\/\/|mailto:|#)/.test(target)) continue;
       if (target === "demo/") continue; // staged into the site after the build (the pages workflow, or npm run site:preview)
       const [path, hash] = target.split("#");
       assert.ok(existsSync(join(dist, path)), `${file} links to ${target}, which does not exist`);

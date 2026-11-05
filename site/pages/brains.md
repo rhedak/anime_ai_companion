@@ -30,9 +30,9 @@ Ollama; a brain you chose yourself that has gone missing is not swapped for anot
 
 ## Which opencode the app uses
 
-The app was made for one opencode version (**2.1.3** at the time of writing; the card and `/doctor` name the current one). The one-click install (the card, or **`/install-opencode`**, which works wherever you are, with any other opencode installed or not) downloads exactly that release
+The app was made for one opencode version (**2.2.5** at the time of writing; the card and `/doctor` name the current one). The one-click install (the card, or **`/install-opencode`**, which works wherever you are, with any other opencode installed or not) downloads exactly that release
 from `registry.npmjs.org`, checks it against a checksum the app knows, and keeps it in the app's own data folder, in `tools/opencode-<version>/` (on Windows
-`%APPDATA%\Anime AI Companion\data\tools\opencode-2.1.3\` for the desktop app; `~/Library/Application Support/Anime AI Companion/data/tools/…` on a Mac; `~/.config/Anime AI Companion/data/tools/…` on Linux). It never touches your PATH or an opencode you installed yourself.
+`%APPDATA%\Anime AI Companion\data\tools\opencode-2.2.5\` for the desktop app; `~/Library/Application Support/Anime AI Companion/data/tools/…` on a Mac; `~/.config/Anime AI Companion/data/tools/…` on Linux). It never touches your PATH or an opencode you installed yourself.
 
 The app picks the program in this order: **`OPENCODE_BIN`** (your own choice, if you set it), then **this copy**, then any `opencode` on the PATH. So once the pinned copy is there it is used even if you have another one, and `npm install -g opencode-ai` (which gets the newest release, not the pinned one) is only the fallback. **`/doctor`** says which one is in use, its version and where it is. An opencode you installed yourself is used as it is, whether it is a 1.x or a 2.x release.
 
